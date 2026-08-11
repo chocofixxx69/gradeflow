@@ -1,0 +1,36 @@
+name: Institutional Syllabus Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch Code (e.g. CSE, ECE, ISE)'
+        required: true
+        default: 'CSE'
+      scheme:
+        description: 'Scheme Year (e.g. 2022, 2025)'
+        required: true
+        default: '2022'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 supabase python-dotenv
+          
+      - name: Run Sync Script
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python scripts/syllabus_sync.py ${{ github.event.inputs.branch }} ${{ github.event.inputs.scheme }}

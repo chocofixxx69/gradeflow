@@ -1,0 +1,429 @@
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    --layout-page-max: var(--layout-content-default);
+}
+
+.section,
+.dangerZone {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-5);
+    padding: var(--space-6);
+}
+
+.sectionHeader,
+.profileHeader,
+.semesterHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.eyebrow {
+    color: var(--tx-dim);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    margin-bottom: var(--space-2);
+    text-transform: uppercase;
+}
+
+.title,
+.sectionTitle,
+.semesterTitle {
+    color: var(--tx-main);
+    font-weight: 900;
+    line-height: 1.1;
+    margin: 0;
+}
+
+.title {
+    font-size: 32px;
+}
+
+.sectionTitle {
+    font-size: 18px;
+}
+
+.semesterTitle {
+    font-size: 15px;
+}
+
+.subtitle,
+.meta {
+    color: var(--tx-muted);
+    font-size: 13px;
+    font-weight: 600;
+    margin: var(--space-2) 0 0;
+}
+
+.lookupRow {
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+}
+
+.notice {
+    color: var(--tx-muted);
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+}
+
+.noticeSuccess {
+    background: var(--green-bg);
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.noticeInfo {
+    background: var(--surface-low);
+    border-color: var(--border);
+    color: var(--tx-muted);
+}
+
+.noticeWarning {
+    background: var(--amber-bg);
+    border-color: var(--amber);
+    color: var(--amber);
+}
+
+.noticeError {
+    background: var(--red-bg);
+    border-color: var(--red);
+    color: var(--red);
+}
+
+.avatar {
+    align-items: center;
+    background: var(--surface-low);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-5);
+    color: var(--tx-main);
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 20px;
+    font-weight: 900;
+    height: 56px;
+    justify-content: center;
+    width: 56px;
+}
+
+.profileActions {
+    display: flex;
+    gap: var(--space-2);
+    margin-left: auto;
+}
+
+.statsGrid {
+    gap: var(--space-4);
+    margin-top: var(--space-5);
+}
+
+.statCard {
+    padding: var(--space-5);
+}
+
+.statLabel {
+    color: var(--tx-dim);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.statValue {
+    color: var(--tx-main);
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+    margin-top: var(--space-3);
+}
+
+.statCardButton {
+    cursor: pointer;
+    font-family: inherit;
+    padding: var(--space-5);
+    text-align: left;
+    transition: transform 0.2s;
+}
+
+.statCardButton:not(:disabled):hover {
+    transform: translateY(-4px);
+}
+
+.statCardButton:disabled {
+    cursor: default;
+}
+
+.successText {
+    color: var(--green);
+}
+
+.dangerText {
+    color: var(--red);
+}
+
+.dangerText,
+.statCardButton .statValue {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+}
+
+.resultBar {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--space-5);
+    padding: var(--space-5);
+}
+
+.resultLabel {
+    color: var(--tx-dim);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.resultValue {
+    color: var(--tx-main);
+    font-size: 40px;
+    font-weight: 900;
+    line-height: 1;
+    margin-top: var(--space-1);
+}
+
+.resultMeta {
+    color: var(--tx-muted);
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: var(--space-2);
+}
+
+.chipRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    justify-content: flex-end;
+}
+
+.records {
+    display: grid;
+    gap: var(--space-4);
+    margin-top: var(--space-5);
+}
+
+.semesterCard {
+    padding: var(--space-5);
+}
+
+.notice,
+.statCard,
+.statCardButton,
+.resultBar,
+.semesterCard {
+    background: var(--surface-low);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-4);
+}
+
+.subjectName {
+    color: var(--tx-main);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.semesterActions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    justify-content: flex-end;
+}
+
+.tableWrap {
+    margin-top: var(--space-5);
+    overflow-x: auto;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table {
+    border-collapse: collapse;
+    min-width: 600px;
+    width: 100%;
+}
+
+.table th,
+.table td,
+.table tbody th {
+    border-bottom: 1px solid var(--border);
+    color: var(--tx-main);
+    font-size: 12px;
+    font-weight: 600;
+    padding: var(--space-3);
+    text-align: left;
+    vertical-align: middle;
+    background: transparent;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.table thead th {
+    color: var(--tx-dim);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.table tr:last-child td,
+.table tr:last-child th {
+    border-bottom: 0;
+}
+
+.subjectTable {
+    min-width: 760px;
+}
+
+.center {
+    text-align: center !important;
+}
+
+.code {
+    color: var(--tx-main);
+    font-family: monospace;
+    font-weight: 800;
+}
+
+.nowrap {
+    color: var(--tx-muted);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.dangerZone {
+    align-items: center;
+    border-color: var(--red);
+    display: flex;
+    justify-content: space-between;
+}
+
+.modalOverlay {
+    align-items: center;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: var(--space-5);
+    position: fixed;
+    z-index: var(--z-modal);
+}
+
+.modal {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-7);
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+    max-width: 600px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.modalHeader {
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-6);
+}
+
+.modalTitle {
+    color: var(--tx-main);
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0;
+    margin: 0;
+}
+
+.modalDescription {
+    color: var(--tx-muted);
+    font-size: 13px;
+    font-weight: 600;
+    margin: var(--space-2) 0 0;
+}
+
+.modalBody {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-6);
+}
+
+.modalList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.modalItem {
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-6);
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-4);
+}
+
+@media (max-width: 768px) {
+    .sectionHeader,
+    .profileHeader,
+    .semesterHeader,
+    .dangerZone,
+    .resultBar {
+        flex-direction: column;
+    }
+
+    .profileActions,
+    .chipRow,
+    .semesterActions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .profileActions > *,
+    .semesterActions > * {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .modalOverlay {
+        align-items: flex-end;
+        padding: var(--space-3);
+    }
+
+    .modal {
+        max-height: 88vh;
+        border-radius: var(--radius-6);
+    }
+
+    .modalHeader,
+    .modalBody {
+        padding: var(--space-5);
+    }
+
+    .modalItem {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

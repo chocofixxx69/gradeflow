@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Next.js
+.next/
+out/
+build/
+
+# IDEs
+.vscode/
+.idea/
+
+# Environment Variables & MCP
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.sample
+*.env
+.mcp.json
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Student PII — NEVER commit (real names + USNs)
+backend/students.csv
+backend/usn_list.txt
+*.csv
+
+# PDF/Temp files
+*.pdf
+tmp/
+temp/
+training_data/
+backend/debug*
+debug_*/
+*.png
+*.jpg
+*.jpeg
+!app/public/*.png
+!app/public/*.jpg
+!app/public/*.jpeg

@@ -1,0 +1,19 @@
+# GradeFlow Clean Requirements (2026)
+# Core Backend & Scraper
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+supabase>=2.3.0
+python-dotenv>=1.0.0
+playwright>=1.40.0
+
+# OCR & AI (Captcha Solving)
+torch>=2.0.0
+easyocr>=1.7.0
+pytesseract>=0.3.10
+opencv-python-headless>=4.9.0
+numpy>=1.24.0
+Pillow>=10.2.0
+
+# PDF Parsing (Student Uploads)
+pdfplumber>=0.10.0
+pypdf>=3.17.0

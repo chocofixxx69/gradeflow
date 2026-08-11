@@ -1,0 +1,61 @@
+name: VTU Results Cloud Fetcher
+
+on:
+  # ── Automatic: Poll every 15 minutes for new scraper jobs ──
+  schedule:
+    - cron: '*/15 * * * *'  # Every 15 minutes, 24/7
+
+  # ── Manual: Faculty can trigger with a specific USN ──
+  workflow_dispatch:
+    inputs:
+      usn:
+        description: 'Student USN to fetch (leave empty to process queue)'
+        required: false
+        default: ''
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('scraper/requirements.txt') }}
+
+      - name: Install Chrome & Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq google-chrome-stable tesseract-ocr
+          pip install -q selenium webdriver-manager beautifulsoup4 supabase python-dotenv pillow numpy pytesseract requests
+
+      - name: Process Scraper Queue
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          TESSERACT_PATH: /usr/bin/tesseract
+          HEADLESS: 'true'
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          if [ -n "${{ github.event.inputs.usn }}" ]; then
+            echo "Manual trigger: fetching results for ${{ github.event.inputs.usn }}"
+            python scraper/engine.py --single ${{ github.event.inputs.usn }}
+          else
+            echo "Processing queued scraper jobs..."
+            python scraper/process_queue.py --limit 10
+          fi
+
+      - name: Report Status
+        if: always()
+        run: echo "VTU Fetcher run completed at $(date -u)"

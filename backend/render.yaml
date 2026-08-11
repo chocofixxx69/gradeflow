@@ -1,0 +1,19 @@
+# Render Blueprint — deploys ONLY the GradeFlow Swagger API.
+# In Render: New + → Blueprint → pick this repo. It auto-fills the settings below.
+# Swagger UI will be live at:  https://<service>.onrender.com/docs
+services:
+  - type: web
+    name: gradeflow-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Optional — only needed for the Toppers/Monitoring/Scraping endpoints.
+      # The /calc/* endpoints work without these.
+      # Set the real values in the Render dashboard (do NOT hard-code them here).
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false

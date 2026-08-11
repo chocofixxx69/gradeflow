@@ -1,0 +1,197 @@
+
+
+```
+COMPLETE FEATURE ADDITION INSTRUCTIONS
+=======================================
+
+IMPORTANT RULES BEFORE YOU START
+---------------------------------
+
+DO NOT modify, delete, replace, or restructure any existing file, component, page, route, layout, style, or functionality. Everything that currently works must continue to work exactly as it does now. All of the following are purely additive features built on top of the existing system. If you need to integrate a new component into an existing page, wrap or append — never replace. Read the entire existing codebase thoroughly before writing a single line. Understand the database schema, the component naming conventions, the styling approach, the folder structure, and the routing pattern already in use. Match everything you build to those existing patterns.
+
+
+DEPENDENCIES TO INSTALL
+------------------------
+
+Install the following packages in a single command. Check package.json first and skip any that are already installed.
+
+recharts for pie charts and visual statistics.
+xlsx also known as SheetJS for generating Excel files on the client side.
+jspdf for generating PDF documents on the client side.
+jspdf-autotable which is a plugin for jspdf that makes table generation in PDFs easy.
+@clerk/nextjs for authentication.
+
+Do not remove or upgrade any existing dependency.
+
+
+FEATURE 1 — BYPASS SUPABASE 1000 ROW LIMIT
+--------------------------------------------
+
+Currently the application only loads a maximum of 1000 rows from Supabase because that is the default row limit per query. This means students with many records or bulk result views are incomplete. You must fix this everywhere results or marks data is fetched.
+
+Create a new utility file in the lib folder. This utility must contain a function that fetches all rows from any given Supabase table by using range-based pagination internally. The function should accept the table name and an optional query modifier function so that callers can still apply filters like filtering by student ID or semester or branch. The function should loop in batches of 1000, using the range method on the Supabase query builder, appending results to an accumulator array, and stopping when a batch returns fewer rows than the batch size. It should return the complete array of all rows.
+
+Create a second helper in the same file that does the same but accepts a custom select clause instead of always using select star.
+
+Create a third helper that returns just the count of rows using the head and count exact options on the Supabase query, useful for showing progress or totals.
+
+After creating this utility, search the entire codebase for every place where student marks or results are fetched from Supabase. Replace those calls with calls to this new utility so that every single mark is loaded regardless of how many rows exist. Do not change the Supabase client configuration file itself. Do not change the table structure. Only change the fetch calls.
+
+
+FEATURE 2 — SEMESTER WISE RESULTS DISPLAY
+-------------------------------------------
+
+When a user taps or clicks on a student and sees that student's details, currently all results are shown in a flat list or a single view. You need to add a new section below the existing student details that organizes and displays results semester by semester.
+
+First, create a utility file in the lib folder that contains logic to group a flat array of marks records into semester-wise organized data. Read the actual Supabase table and identify which column represents the semester number, which represents the subject name, which represents the subject code, which represents marks obtained, which represents maximum marks, and which represents grade if it exists. Use those exact column names throughout. The grouping function should return an array of semester objects, each containing the semester number, an array of subject results for that semester, the total marks obtained, the total maximum marks, the calculated percentage, the number of passed subjects, the number of failed subjects, the total number of subjects, and the overall pass or fail status for that semester. Sort the output by semester number ascending.
+
+Include a helper function that calculates letter grades from percentage if the grade is not already stored in the database. Use a standard grading scale such as O for 90 and above, A+ for 80 and above, A for 70 and above, B+ for 60 and above, B for 50 and above, C for 40 and above, and F for below 40. Include a helper that returns the list of distinct available semesters for a given set of marks data.
+
+Next, create a new component that serves as the semester-wise results viewer. This component receives the raw marks data array, the student name, the student ID, and an optional passing percentage threshold which defaults to 40. Inside this component, use the grouping utility to organize the data. Render a row of semester selector buttons or tabs at the top, one for each available semester plus an All Semesters option. When a semester is selected, display a table showing all subjects for that semester with columns for serial number, subject code, subject name, marks obtained, maximum marks, percentage for that subject, grade, and pass or fail status. Below the table show a footer row with totals. Above the table show a header bar for that semester displaying the semester number, overall percentage, and overall pass or fail badge.
+
+Integrate this component into the existing student detail page by importing it and placing it below all existing content. Fetch the student's marks using the new fetch-all utility created in Feature 1. Pass the loaded marks to this new component. Do not move or rearrange any existing elements on the student detail page.
+
+
+FEATURE 3 — STATISTICS WITH PIE CHARTS
+----------------------------------------
+
+For each semester displayed in the semester results viewer, add a statistics section below the marks table. This section should contain three pie charts side by side or in a responsive grid.
+
+The first pie chart should show subject-wise percentage distribution. Each slice represents one subject and its percentage score. Label each slice with the subject name abbreviated if needed and its percentage value. Use distinct colors for each subject.
+
+The second pie chart should show the pass versus fail ratio for that semester. One slice for subjects passed and one for subjects failed. Use green for pass and red for fail.
+
+The third pie chart should show the grade distribution for that semester. Each distinct grade that appears among the subjects becomes a slice, and the value is the count of subjects with that grade.
+
+Below the pass fail pie chart, display a text line showing the average passing percentage for that semester in bold, colored green if above 40 percent and red if below.
+
+Create this as a separate component that receives a single semester result object. Import it into the semester results viewer component and render it below each semester's table. Use the recharts library for all charts. Use PieChart, Pie, Cell, Tooltip, Legend, and ResponsiveContainer from recharts.
+
+
+FEATURE 4 — EXPORT TO EXCEL AND PDF AND GOOGLE SHEETS
+------------------------------------------------------
+
+Create an export utility file in the lib folder containing all export functions. This file must not depend on any UI framework, only on the xlsx, jspdf, and jspdf-autotable libraries and on the semester result types defined in Feature 2.
+
+For Excel export, create three functions. The first exports a single student's all semester results into an xlsx file with a summary sheet showing per-semester totals and a separate sheet for each semester with full subject details. The second exports a single semester's results for a student. The third exports all students' results in bulk with a master summary sheet and a detailed sheet containing every row.
+
+For PDF export, create three matching functions. Each should generate a well-formatted PDF document with a title, student name and ID, generation date, and tables using the jspdf-autotable plugin. Use a consistent color scheme for table headers. For the bulk export, use landscape orientation to fit more columns. Handle page breaks properly when tables span multiple pages.
+
+For Google Sheets export, create a function that generates CSV content from the semester results, copies it to the clipboard, downloads it as a CSV file, and opens a new Google Sheets tab in the browser so the user can import or paste the data. Include an alert or notification telling the user that the CSV has been copied to their clipboard and they can paste it into the newly opened Google Sheet.
+
+Create a helper function that builds a CSV string from semester results data so it can be reused across export functions.
+
+Next, create an export buttons UI component that renders a row of three buttons labeled Excel, PDF, and Google Sheets. This component receives the semester results array, student name, student ID, and the currently selected semester. When a button is clicked, it calls the appropriate export function with the correct data scope based on whether All Semesters or a specific semester is selected. Show a loading or disabled state on the buttons during export. Place this component inside the semester results viewer component, between the semester selector tabs and the results tables.
+
+Create a separate bulk export component for the main results listing page. This component should have two buttons, one for exporting all students to Excel and one for exporting all to PDF. When clicked, it should fetch all students and all marks using the fetch-all utility, group every student's marks by semester, and then call the bulk export function. Show a progress message during this process since it may take time. Integrate this component into the main results page by adding it above or below the existing results list without modifying the list itself.
+
+
+FEATURE 5 — FACULTY SUBJECT MANAGEMENT
+----------------------------------------
+
+In the faculty section of the application, there is a left sidebar or navigation panel. Add a new navigation item called Subjects in that sidebar. When clicked, it should navigate to a new page or section dedicated to subject management.
+
+On the subjects management page, display a two-step selector at the top. The first selector is for Scheme, which should be a dropdown listing all available schemes from the database. The second selector is for Branch, which should be a dropdown that populates based on the selected scheme. After both are selected, load and display all subjects that exist for that scheme and branch combination.
+
+Display the subjects in a table with columns for subject name, subject code, credits, and an actions column with an edit button for each row.
+
+Below the table or above it, provide an Add Subject button that opens a form. The form should have fields for subject name, subject code, and credits. On submission, save the new subject to the Supabase database associated with the selected scheme and branch. Also record which faculty member added this subject and the timestamp.
+
+When the edit button is clicked on an existing subject, open the same form pre-filled with the current values. Allow the faculty to change the subject name, the subject code, and the credits. On save, update the record in Supabase. Also record which faculty member made the edit, what the old values were, what the new values are, and the timestamp.
+
+If a subjects table does not exist in the database, create one with columns for id, scheme, branch, subject name, subject code, credits, semester number, created by which should store the faculty identifier, created at timestamp, updated by, and updated at. If the table already exists, work with whatever columns it has and adapt accordingly.
+
+Validate inputs before saving. Subject code should be unique within the same scheme and branch. Credits should be a positive number. Subject name should not be empty. Show appropriate error messages for validation failures.
+
+
+FEATURE 6 — ADMIN AUDIT LOG FOR FACULTY ACTIONS
+-------------------------------------------------
+
+Every action performed by any faculty member must be logged and visible in the admin panel. This includes adding a subject, editing a subject, and any other write operation a faculty member performs in the system.
+
+Create an audit log table in Supabase if it does not already exist. This table should have columns for id, timestamp, faculty id or email or name identifying who performed the action, action type such as ADD_SUBJECT or EDIT_SUBJECT or any other action type, entity type such as subject or marks or any other entity, entity id the ID of the record that was affected, old values stored as JSON showing the previous state before the change, new values stored as JSON showing the new state after the change, and any additional metadata like IP address or page URL if available.
+
+Create a utility function that inserts a row into this audit log table. Call this function every time a faculty member performs any create, update, or delete operation anywhere in the system. Pass in all relevant details including old and new values for edits.
+
+In the admin panel, add a new section or page accessible from the admin navigation. Call it Activity Log or Faculty Actions or Audit Log. On this page, display the audit log entries in a table sorted by most recent first. The table should show the timestamp formatted in a readable way, the faculty member's name or email, the action type, a description of what was changed, and the old versus new values for edits. Provide basic filtering options allowing the admin to filter by faculty member, by action type, by date range, and by entity type. Provide pagination since the log could grow large. Use the fetch-all utility to load all log entries, or implement server-side pagination if the admin panel already uses server-side patterns.
+
+This gives the admin complete visibility into what every faculty member is doing in the system, what operations they are performing, and what data they are changing.
+
+
+FEATURE 7 — CLERK AUTHENTICATION WITH COLLEGE EMAIL RESTRICTION
+-----------------------------------------------------------------
+
+Integrate Clerk for authentication. Only users with a specific college email domain should be allowed to sign up and use the application.
+
+Add the Clerk publishable key and secret key to the environment variables file. Also add environment variables for the sign-in URL, sign-up URL, after sign-in redirect URL, and after sign-up redirect URL. Add a variable for the allowed college email domain.
+
+Wrap the entire application with the ClerkProvider component in the root layout file. Do this by adding the ClerkProvider around the existing children. Do not remove or restructure anything else in the layout.
+
+Create a middleware file at the project root that uses Clerk's middleware utilities to protect all routes except the sign-in and sign-up pages. Any unauthenticated user trying to access any page should be redirected to the sign-in page.
+
+Create a sign-in page at the appropriate route for Clerk's catch-all sign-in pattern. This page should render Clerk's SignIn component centered on the page with a title indicating this is the student results portal and a note saying to sign in with a college email ID.
+
+Create a sign-up page at the appropriate route for Clerk's catch-all sign-up pattern. This page should render Clerk's SignUp component with similar styling and a note about using a college email.
+
+To restrict sign-ups to college emails only, configure the email allowlist in the Clerk Dashboard under User and Authentication settings. Add the college email domain pattern as an allowed domain. Additionally, create a utility function in the lib folder that validates whether a given email belongs to the allowed domain and another function that extracts the college ID portion from the email address by taking everything before the at symbol.
+
+Add the Clerk UserButton component to the existing header or navigation bar of the application so that signed-in users can see their profile and sign out. Place it in a sensible location within the existing nav without rearranging other elements.
+
+In components or pages where you need to know the current user's identity, use Clerk's useUser hook in client components or the currentUser function in server components. Use the user's email to identify which student or faculty member is logged in and to record their identity in audit logs.
+
+
+IMPLEMENTATION ORDER
+---------------------
+
+Follow this exact sequence to minimize risk of breaking anything.
+
+Phase 1. Install all new dependencies in one command.
+
+Phase 2. Create the Supabase fetch-all utility. Then go through the entire codebase and replace every marks or results fetch call with the new utility. Test that all existing pages still load correctly and now show complete data beyond 1000 rows.
+
+Phase 3. Create the semester grouping utility. Create the semester results viewer component. Integrate it into the existing student detail page below all existing content. Test that semester tabs work and data displays correctly per semester.
+
+Phase 4. Create the pie chart component. Integrate it into the semester results viewer below each semester's table. Test that charts render with correct data.
+
+Phase 5. Create all export utility functions. Create the export buttons component and integrate into the semester results viewer. Create the bulk export component and integrate into the main results page. Test Excel download, PDF download, and Google Sheets export for individual students, individual semesters, and bulk export.
+
+Phase 6. Create the subjects management page and all its components. Add the Subjects navigation item to the faculty sidebar. Create or verify the subjects table in Supabase. Test adding and editing subjects.
+
+Phase 7. Create the audit log table in Supabase. Create the audit logging utility function. Integrate audit logging into every faculty write operation including the new subject management and any existing faculty operations. Create the audit log viewer page in the admin panel. Add navigation to it in the admin sidebar. Test that all faculty actions appear in the admin audit log.
+
+Phase 8. Set up Clerk. Add environment variables. Create middleware. Wrap layout with ClerkProvider. Create sign-in and sign-up pages. Configure email domain restriction in Clerk Dashboard. Add UserButton to the header. Test that unauthenticated users cannot access any page, that only college emails can sign up, and that existing functionality works for authenticated users.
+
+Phase 9. Final testing. Verify every single existing feature still works. Verify all new features work. Verify data loads completely beyond 1000 rows. Verify exports are accurate. Verify audit logs capture everything. Verify authentication blocks unauthorized access.
+
+
+DATABASE REQUIREMENTS
+----------------------
+
+You may need to create these tables in Supabase if they do not already exist. Check the existing schema first.
+
+A subjects table with columns for id as primary key, scheme as text, branch as text, semester as integer, subject_name as text, subject_code as text unique within scheme and branch, credits as numeric, created_by as text to store faculty identifier, created_at as timestamp with default now, updated_by as text, updated_at as timestamp.
+
+An audit_log table with columns for id as primary key auto-generated, timestamp with default now, faculty_id as text, faculty_name as text, faculty_email as text, action_type as text, entity_type as text, entity_id as text, old_values as jsonb nullable, new_values as jsonb nullable, metadata as jsonb nullable for any extra context.
+
+Do not modify any existing tables. Only create new tables if needed.
+
+
+COLUMN NAME MAPPING
+--------------------
+
+Before writing any code, read the actual Supabase tables and identify the exact column names used for student ID, semester number, subject name, subject code, marks obtained, maximum marks, grade, student name, and student primary key. Use those exact names everywhere in the new code. Do not assume column names. Look at the actual schema.
+
+
+FINAL REMINDERS
+----------------
+
+Do not change any existing UI layout or styling.
+Do not remove any existing component or page.
+Do not restructure any existing folder or file.
+Do not modify any existing API route behavior.
+Do not upgrade or downgrade any existing dependency.
+All new components should follow the same styling conventions already used in the project whether that is Tailwind or CSS modules or inline styles or styled components.
+All new pages should follow the same routing and layout patterns already established.
+Every new feature is purely additive and sits on top of what already exists.
+The goal is to make this a complete system without breaking anything that already works.
+```

@@ -1,0 +1,776 @@
+.button {
+  max-width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast), transform var(--transition-fast);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.buttonText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.button:focus-visible,
+.iconButton:focus-visible,
+.fieldControl:focus-visible,
+.selectControl:focus-visible,
+.searchClear:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.button:disabled,
+.buttonDisabled,
+.iconButton:disabled,
+.fieldControl:disabled,
+.selectControl:disabled,
+.searchClear:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.buttonSm {
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  font-size: 12px;
+}
+
+.buttonMd {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  font-size: 13px;
+}
+
+.buttonLg {
+  min-height: 46px;
+  padding: 0 var(--space-6);
+  font-size: 14px;
+}
+
+.buttonCompact {
+  min-height: 34px;
+  padding-inline: var(--space-3);
+  font-size: 12px;
+}
+
+.buttonFull {
+  width: 100%;
+}
+
+.buttonPrimary {
+  background: var(--primary);
+  color: var(--bg);
+}
+
+.buttonPrimary:hover:not(:disabled):not(.buttonDisabled) {
+  background: var(--primary-hover);
+}
+
+.buttonSecondary {
+  background: var(--surface-low);
+  border-color: var(--border);
+  color: var(--tx-main);
+}
+
+.buttonSecondary:hover:not(:disabled):not(.buttonDisabled) {
+  border-color: var(--border-strong);
+}
+
+.buttonGhost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--tx-muted);
+}
+
+.buttonGhost:hover:not(:disabled):not(.buttonDisabled) {
+  background: var(--surface-low);
+  color: var(--tx-main);
+}
+
+.buttonDanger {
+  background: var(--destructive-bg);
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+.buttonIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.spinner {
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: spin var(--duration-slower) linear infinite;
+}
+
+.iconButton {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--tx-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--surface-low);
+  color: var(--tx-main);
+}
+
+.iconButtonDefault {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--tx-muted);
+}
+
+.iconButtonGhost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--tx-muted);
+}
+
+.iconButtonGhost:hover:not(:disabled) {
+  background: var(--surface-low);
+  border-color: transparent;
+}
+
+.iconButtonDanger {
+  background: var(--destructive-bg);
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+.iconButtonSelected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--bg);
+}
+
+.iconButtonSelected:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--bg);
+}
+
+.iconButtonSm {
+  width: 32px;
+  height: 32px;
+}
+
+.iconButtonMd {
+  width: 38px;
+  height: 38px;
+}
+
+.iconButtonLg {
+  width: 44px;
+  height: 44px;
+}
+
+.iconButtonCompact {
+  width: 32px;
+  height: 32px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-low);
+  color: var(--tx-muted);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.badgeSm {
+  min-height: 20px;
+  padding: 0 var(--space-2);
+  font-size: 10px;
+}
+
+.badgeMd {
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  font-size: 11px;
+}
+
+.badgeSuccess {
+  background: var(--green-bg);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.badgeWarning {
+  background: var(--amber-bg);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.badgeDanger {
+  background: var(--destructive-bg);
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+.badgeInfo {
+  background: var(--surface-low);
+  border-color: var(--border);
+  color: var(--tx-main);
+}
+
+.avatar {
+  border-radius: var(--radius-2);
+  background: var(--surface-low);
+  color: var(--tx-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.avatarSm {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+.avatarMd {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.avatarLg {
+  width: 48px;
+  height: 48px;
+  font-size: 16px;
+}
+
+.avatarImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.divider {
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.dividerHorizontal {
+  width: 100%;
+  height: 1px;
+  margin: var(--space-6) 0;
+}
+
+.dividerVertical {
+  width: 1px;
+  min-height: 1em;
+  align-self: stretch;
+  margin: 0 var(--space-3);
+}
+
+.tooltipWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltipContent {
+  position: absolute;
+  z-index: var(--z-toast);
+  max-width: 240px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-3);
+  background: var(--primary);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: var(--elevation-overlay);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.tooltipWrap:hover .tooltipContent,
+.tooltipWrap:focus-within .tooltipContent {
+  opacity: 1;
+}
+
+.tooltipTop {
+  left: 50%;
+  bottom: calc(100% + var(--space-2));
+  transform: translate(-50%, var(--space-1));
+}
+
+.tooltipBottom {
+  left: 50%;
+  top: calc(100% + var(--space-2));
+  transform: translate(-50%, calc(-1 * var(--space-1)));
+}
+
+.tooltipLeft {
+  right: calc(100% + var(--space-2));
+  top: 50%;
+  transform: translate(var(--space-1), -50%);
+}
+
+.tooltipRight {
+  left: calc(100% + var(--space-2));
+  top: 50%;
+  transform: translate(calc(-1 * var(--space-1)), -50%);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}
+
+.fieldCompact {
+  gap: var(--space-1);
+}
+
+.fieldLabel {
+  color: var(--tx-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.fieldRequired {
+  color: var(--red);
+}
+
+.fieldControl,
+.selectControl {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--tx-main);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.fieldControl {
+  padding: 11px var(--space-4);
+}
+
+.fieldControlCompact {
+  min-height: 34px;
+  padding: 7px var(--space-3);
+  font-size: 13px;
+}
+
+.textareaControl {
+  min-height: 112px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.textareaCompact {
+  min-height: 84px;
+}
+
+.selectControl {
+  padding: 0 var(--space-4);
+}
+
+.selectControlCompact {
+  min-height: 34px;
+  padding-inline: var(--space-3);
+  font-size: 13px;
+}
+
+.fieldControl::placeholder {
+  color: var(--tx-dim);
+}
+
+.fieldControl:focus,
+.selectControl:focus {
+  border-color: var(--tx-main);
+}
+
+.fieldInvalid {
+  border-color: var(--red);
+}
+
+.fieldHelp,
+.fieldError,
+.fieldSuccess {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.fieldHelp {
+  color: var(--tx-muted);
+}
+
+.fieldError {
+  color: var(--red);
+}
+
+.fieldSuccess {
+  color: var(--green);
+}
+
+.searchWrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tx-dim);
+  pointer-events: none;
+}
+
+.searchInput {
+  padding-left: var(--space-10);
+  padding-right: var(--space-10);
+}
+
+.searchWrapCompact .searchIcon {
+  left: var(--space-3);
+  font-size: 18px;
+}
+
+.searchWrapCompact .searchInput {
+  padding-left: var(--space-8);
+  padding-right: var(--space-8);
+}
+
+.searchClear {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-3);
+  background: transparent;
+  color: var(--tx-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.searchClearCompact {
+  width: 28px;
+  height: 28px;
+  right: var(--space-1);
+}
+
+.emptyState {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.emptyStatePanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+  padding: var(--space-10);
+}
+
+.emptyStateInline {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-4) 0;
+}
+
+.emptyStateTable {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-8) var(--space-4);
+}
+
+.emptyStateCompact {
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+
+.emptyStateInline.emptyStateCompact {
+  padding: var(--space-3) 0;
+}
+
+.emptyStateTable.emptyStateCompact {
+  padding: var(--space-5) var(--space-3);
+}
+
+.emptyIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-3);
+  background: var(--surface-low);
+  color: var(--tx-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emptyTitle {
+  color: var(--tx-main);
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0;
+}
+
+.emptyDescription {
+  max-width: 460px;
+  color: var(--tx-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.emptyActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.stackSm {
+  gap: var(--space-3);
+}
+
+.stackMd {
+  gap: var(--space-5);
+}
+
+.stackLg {
+  gap: var(--space-7);
+}
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.inlineWrap {
+  flex-wrap: wrap;
+}
+
+.inlineNoWrap {
+  flex-wrap: nowrap;
+}
+
+.inlineStart {
+  justify-content: flex-start;
+}
+
+.inlineCenter {
+  justify-content: center;
+}
+
+.inlineEnd {
+  justify-content: flex-end;
+}
+
+.inlineBetween {
+  justify-content: space-between;
+}
+
+.responsiveGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--grid-min, 240px)), 1fr));
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.responsiveGridSm {
+  --grid-min: 180px;
+  gap: var(--space-4);
+}
+
+.responsiveGridMd {
+  --grid-min: 240px;
+}
+
+.responsiveGridLg {
+  --grid-min: 320px;
+  gap: var(--space-6);
+}
+
+.loadingState {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--tx-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.loadingCompact {
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.loadingBlock {
+  width: 100%;
+  min-height: 160px;
+}
+
+.skeleton {
+  display: block;
+  border-radius: var(--radius-3);
+  background: linear-gradient(90deg, var(--surface-low), var(--surface), var(--surface-low));
+  background-size: 240% 100%;
+  animation: shimmer var(--duration-slower) var(--ease-standard) infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .button,
+  .fieldControl,
+  .selectControl {
+    min-height: 44px;
+  }
+
+  .iconButtonCompact {
+    width: 44px;
+    height: 44px;
+  }
+
+  .iconButtonSm,
+  .iconButtonMd {
+    width: 44px;
+    height: 44px;
+  }
+
+  .emptyStatePanel {
+    padding: var(--space-6);
+  }
+
+  .emptyState {
+    align-items: stretch;
+  }
+
+  .emptyActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .emptyActions > * {
+    width: 100%;
+  }
+
+  .inline {
+    align-items: stretch;
+  }
+
+  .inlineStackMobile {
+    flex-direction: column;
+  }
+
+  .inlineStackMobile > * {
+    width: 100%;
+  }
+
+  .responsiveGrid,
+  .responsiveGridLg {
+    gap: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .iconButton,
+  .fieldControl,
+  .selectControl,
+  .tooltipContent,
+  .skeleton,
+  .spinner {
+    transition: none;
+    animation: none;
+  }
+}

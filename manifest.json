@@ -1,0 +1,37 @@
+{
+  "name": "UIU Calc",
+  "short_name": "UIU Calc",
+  "description": "The all-in-one academic toolkit for UIU students. Calculate CGPA, plan Target Grades, and estimate Tuition Fees instantly.",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#000",
+  "theme_color": "#000",
+  "orientation": "portrait",
+  "lang": "en",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "assets/image/favicon/favicon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/image/favicon/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/image/favicon/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/image/favicon/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

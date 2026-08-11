@@ -1,0 +1,128 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabase';
+import { fetchAllPaginated } from '../../../lib/supabase-utils';
+import AuthGuard from '../../../components/AuthGuard';
+import Link from 'next/link';
+
+const S = {
+    page: { padding: 'var(--page-py) var(--page-px)', maxWidth: '1200px', margin: '0 auto' },
+    title: { fontSize: '28px', fontWeight: 900, marginBottom: 'var(--space-2)', letterSpacing: '-0.03em' },
+    subtitle: { fontSize: '14px', color: 'var(--tx-muted)', marginBottom: 'var(--space-6)' },
+    label: { fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: 'var(--space-1)', display: 'block' }
+};
+
+
+export default function AdminAuditLog() {
+    const [logs, setLogs] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState('all');
+
+    useEffect(() => {
+        fetchLogs();
+    }, []);
+
+    const fetchLogs = async () => {
+        setLoading(true);
+        try {
+            const data = await fetchAllPaginated('audit_logs', '*', supabase, 'created_at', false);
+            setLogs(data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const filtered = logs.filter(l => {
+        const matchesSearch = !search || 
+            (l.faculty_name||'').toLowerCase().includes(search.toLowerCase()) ||
+            (l.faculty_email||'').toLowerCase().includes(search.toLowerCase()) ||
+            (l.action_type||'').toLowerCase().includes(search.toLowerCase());
+        const matchesType = typeFilter === 'all' || l.action_type === typeFilter;
+        return matchesSearch && matchesType;
+    });
+
+    const uniqueTypes = [...new Set(logs.map(l => l.action_type).filter(Boolean))];
+
+    return (
+        <AuthGuard role="admin">
+            <div style={S.page}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                    <h1 style={S.title}>Institutional Audit Log</h1>
+                    <button onClick={fetchLogs} className="gf-btn gf-btn-ghost" style={{ height: '36px', padding: '0 var(--space-4)', fontSize: '13px' }}>
+                        <span className="material-icons-round" style={{ fontSize: '18px' }}>refresh</span>
+                        Refresh
+                    </button>
+                </div>
+                <p style={S.subtitle}>Comprehensive record of all faculty actions and system modifications.</p>
+
+                <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
+                    <div style={{ flex: 1 }}>
+                        <label style={S.label}>Search Logs</label>
+                        <input className="gf-input" placeholder="Search name, email, action..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '9px var(--space-3)', fontSize: '13px' }} />
+                    </div>
+                    <div style={{ width: '200px' }}>
+                        <label style={S.label}>Action Type</label>
+                        <select className="gf-input" value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ padding: '9px var(--space-3)', fontSize: '13px' }}>
+                            <option value="all">All Actions</option>
+                            {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="gf-table-wrap">
+                    <table className="gf-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Faculty</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                                <th>Previous State</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '60px' }}>Syncing with audit node...</td></tr>
+                            ) : filtered.length === 0 ? (
+                                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '60px' }}>No audit records found.</td></tr>
+                            ) : filtered.map(l => (
+                                <tr key={l.id}>
+                                    <td style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                                        {new Date(l.created_at).toLocaleString()}
+                                    </td>
+                                    <td>
+                                        <div style={{ fontWeight: 800 }}>{l.faculty_name}</div>
+                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)' }}>{l.faculty_email}</div>
+                                    </td>
+                                    <td>
+                                        <span className={`gf-badge ${l.action_type.includes('DELETE') ? 'gf-badge-red' : 'gf-badge-stone'}`}>
+                                            {l.action_type}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-main)', fontWeight: 600 }}>{l.entity_type}: {l.entity_id}</div>
+                                        {l.new_values && (
+                                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }}>
+                                                {JSON.stringify(l.new_values)}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {l.old_values ? (
+                                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
+                                                {JSON.stringify(l.old_values)}
+                                            </div>
+                                        ) : '—'}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </AuthGuard>
+    );
+}

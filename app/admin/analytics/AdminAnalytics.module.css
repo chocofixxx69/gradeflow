@@ -1,0 +1,311 @@
+.page {
+  --layout-page-max: var(--layout-content-wide);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.eyebrow {
+  color: var(--tx-dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+}
+
+.title {
+  color: var(--tx-main);
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+  margin: 0;
+}
+
+.subtitle {
+  max-width: 720px;
+  color: var(--tx-muted);
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.65;
+  margin-top: var(--space-3);
+}
+
+.headerActions {
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.printOnlyHeader {
+  display: none;
+}
+
+
+.filterPanel,
+.panel,
+.statePanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+}
+
+.filterPanel {
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+.filterHeader,
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.sectionLabel {
+  color: var(--tx-dim);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sectionTitle {
+  color: var(--tx-main);
+  font-size: 16px;
+  font-weight: 900;
+  margin: var(--space-1) 0 0;
+}
+
+.sectionDescription {
+  max-width: 620px;
+  color: var(--tx-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+  margin-top: var(--space-1);
+}
+
+.filterGrid {
+  gap: var(--space-4);
+  align-items: end;
+}
+
+.kpiGrid {
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.kpiCard {
+  min-height: 132px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.kpiLabel {
+  color: var(--tx-dim);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kpiValue {
+  color: var(--tx-main);
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.kpiMeta {
+  color: var(--tx-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kpiState {
+  min-height: 180px;
+  margin-bottom: var(--space-6);
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.wideGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.intelligenceGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.panel {
+  min-height: 280px;
+  padding: var(--space-5);
+}
+
+.panelBody {
+  min-height: 188px;
+}
+
+.chartSkeleton {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  align-items: end;
+  gap: var(--space-3);
+  height: 188px;
+  padding-top: var(--space-4);
+}
+
+.errorState {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface-low);
+  padding: var(--space-6);
+  min-height: 172px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.errorIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--destructive-bg);
+  color: var(--destructive);
+}
+
+.errorTitle {
+  color: var(--tx-main);
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.errorText {
+  color: var(--tx-muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.stateActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 1024px) {
+  .header,
+  .filterHeader,
+  .panelHeader {
+    flex-direction: column;
+  }
+
+  .mainGrid,
+  .wideGrid {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+@media (max-width: 640px) {
+  .filterPanel,
+  .panel,
+  .kpiCard {
+    padding: var(--space-4);
+  }
+}
+
+@media print {
+  .page {
+    padding: 0;
+    margin: 0;
+    max-width: 100%;
+  }
+
+  .headerActions,
+  .filterPanel {
+    display: none !important;
+  }
+
+  .printOnlyHeader {
+    display: block !important;
+    margin-bottom: var(--space-6);
+  }
+
+  .printLogo {
+    font-size: 24px;
+    font-weight: 900;
+    color: #000;
+  }
+
+  .printMeta {
+    font-size: 12px;
+    color: #555;
+    margin-top: var(--space-1);
+  }
+
+  .printDivider {
+    margin-top: var(--space-4);
+    border: none;
+    border-top: 1px solid #ddd;
+  }
+
+  .panel,
+  .kpiCard,
+  .errorState {
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .kpiGrid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .mainGrid,
+  .wideGrid,
+  .intelligenceGrid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Make sure background colors print */
+  .page,
+  .page :global(*) {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+

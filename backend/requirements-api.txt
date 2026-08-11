@@ -1,0 +1,6 @@
+# Lightweight deps for the Swagger API ONLY (no scraper/torch/playwright).
+# Used by the Render web service that hosts api/main.py.
+fastapi
+uvicorn[standard]
+supabase
+python-dotenv
