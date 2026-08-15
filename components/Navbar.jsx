@@ -253,9 +253,11 @@ export default function Navbar() {
                 <nav className="gf-sidebar-nav" aria-label="Primary">
                     {navGroups.map(group => (
                         <div key={group.label}>
-                            <div className="gf-nav-group-title">
-                                {group.label}
-                            </div>
+                            {!collapsed && (
+                                <div className="gf-nav-group-title">
+                                    {group.label}
+                                </div>
+                            )}
                             <div className="gf-nav-group-items">
                                 {group.items.map(link => {
                                     const active = isNavItemActive(pathname, link.href);
@@ -266,9 +268,10 @@ export default function Navbar() {
                                             href={link.href}
                                             className={`gf-nav-link${active ? ' active' : ''}`}
                                             aria-current={active ? 'page' : undefined}
+                                            title={collapsed ? link.label : undefined}
                                         >
                                             <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">{link.icon}</span>
-                                            {link.label}
+                                            {!collapsed && <span>{link.label}</span>}
                                         </Link>
                                     );
                                 })}
@@ -281,11 +284,12 @@ export default function Navbar() {
                     <button
                         onClick={toggleTheme}
                         className="gf-nav-link"
+                        title={collapsed ? (dark ? 'Light Mode' : 'Dark Mode') : undefined}
                     >
                         <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">
                             {dark ? 'light_mode' : 'dark_mode'}
                         </span>
-                        {dark ? 'Light Mode' : 'Dark Mode'}
+                        {!collapsed && <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>}
                     </button>
 
                     {user && (
@@ -293,14 +297,16 @@ export default function Navbar() {
                             <div className="gf-avatar" aria-hidden="true">
                                 {getInitial(userLabel)}
                             </div>
-                            <div className="gf-user-info">
-                                <div className="gf-user-name">
-                                    {userLabel}
+                            {!collapsed && (
+                                <div className="gf-user-info">
+                                    <div className="gf-user-name">
+                                        {userLabel}
+                                    </div>
+                                    <div className="gf-user-meta">
+                                        {userMeta}
+                                    </div>
                                 </div>
-                                <div className="gf-user-meta">
-                                    {userMeta}
-                                </div>
-                            </div>
+                            )}
                         </div>
                     )}
 
@@ -309,9 +315,10 @@ export default function Navbar() {
                             onClick={logout}
                             className="gf-nav-link gf-nav-link-danger"
                             style={{ marginTop: '2px' }}
+                            title={collapsed ? 'Sign out' : undefined}
                         >
                             <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">logout</span>
-                            Sign out
+                            {!collapsed && <span>Sign out</span>}
                         </button>
                     )}
                 </div>
@@ -361,29 +368,6 @@ export default function Navbar() {
 
             <div className="gf-shell-topbar" role="banner">
                 <div className="gf-topbar-left">
-                    {collapsed && (
-                        <button 
-                            onClick={toggleSidebarCollapse}
-                            title="Expand Navigation Menu"
-                            style={{ 
-                                background: 'var(--surface)', 
-                                border: '1px solid var(--border)', 
-                                color: 'var(--tx-main)', 
-                                cursor: 'pointer', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '6px',
-                                padding: '6px 12px', 
-                                borderRadius: 'var(--radius-4)', 
-                                fontWeight: 700, 
-                                fontSize: '13px',
-                                marginRight: '12px'
-                            }}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '18px' }}>menu</span>
-                            Menu
-                        </button>
-                    )}
                     {breadcrumbs.length > 0 && (
                         <nav aria-label="Breadcrumb" className="gf-breadcrumbs">
                             {breadcrumbs.map((crumb, index) => (

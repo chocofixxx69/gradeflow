@@ -465,30 +465,6 @@ function AdminPanelContent() {
 
             {/* Main */}
             <main style={c.main} className="gf-fade-up">
-                {sidebarCollapsed && (
-                    <div style={{ marginBottom: '16px' }}>
-                        <button 
-                            onClick={() => setSidebarCollapsed(false)}
-                            title="Expand Menu"
-                            style={{ 
-                                background: 'var(--surface)', 
-                                border: '1px solid var(--border)', 
-                                color: 'var(--tx-main)', 
-                                cursor: 'pointer', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '6px',
-                                padding: '8px 14px', 
-                                borderRadius: 'var(--radius-4)', 
-                                fontWeight: 700, 
-                                fontSize: '13px' 
-                            }}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '18px' }}>menu</span>
-                            Expand Menu
-                        </button>
-                    </div>
-                )}
 
                 {tab === 'overview' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>

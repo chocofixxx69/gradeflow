@@ -293,6 +293,7 @@ html.gf-sidebar-is-collapsed .app-layout {
 html.gf-sidebar-is-collapsed .gf-sidebar {
   width: 72px !important;
   padding: var(--space-4) var(--space-2) !important;
+  overflow-x: hidden !important;
 }
 
 html.gf-sidebar-is-collapsed .gf-sidebar-header-info,
