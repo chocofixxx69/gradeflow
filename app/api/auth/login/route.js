@@ -139,7 +139,7 @@ export async function POST(req) {
     } catch (err) {
         console.error('[POST /api/auth/login]', err);
         return NextResponse.json(
-            { success: false, error: 'Authentication service unavailable.' },
+            { success: false, error: err.message || 'Authentication service unavailable.' },
             { status: 500 }
         );
     }
