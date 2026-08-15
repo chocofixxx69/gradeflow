@@ -13,7 +13,7 @@ const S = {
 };
 
 
-export default function AdminAuditLog() {
+export function AuditLogContent() {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -26,10 +26,16 @@ export default function AdminAuditLog() {
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const data = await fetchAllPaginated('audit_logs', '*', supabase, 'created_at', false);
-            setLogs(data);
+            const [auditData, { data: actData }] = await Promise.all([
+                fetchAllPaginated('audit_logs', '*', supabase, 'created_at', false).catch(() => []),
+                supabase.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(500)
+            ]);
+            const combined = [...(auditData || []), ...(actData || [])].sort(
+                (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+            );
+            setLogs(combined);
         } catch (err) {
-            console.error(err);
+            console.error('Audit log fetch error:', err);
         } finally {
             setLoading(false);
         }
@@ -125,4 +131,12 @@ export default function AdminAuditLog() {
             </div>
         </AuthGuard>
     );
+}
+
+export default function AdminAuditLogPage() {
+    const router = useRouter();
+    useEffect(() => {
+        router.replace('/admin/terminal?tab=audit');
+    }, [router]);
+    return <AuthGuard role="admin"><div style={{ padding: '80px', textAlign: 'center', color: 'var(--tx-dim)' }}>Opening System Audit…</div></AuthGuard>;
 }

@@ -83,7 +83,7 @@ const fetchAllRows = async (table, select, filterCol, filterValues) => {
 };
 
 // ══════════════════════════════════════════════════════════
-function ClassesContent() {
+export function ClassesContent({ embedded = false }) {
     const [faculty, setFaculty] = useState(null);
     const [classes, setClasses] = useState([]);
     const [loadingClasses, setLoadingClasses] = useState(true);
@@ -1012,12 +1012,14 @@ function ClassesContent() {
     // ── CLASS LIST VIEW ──────────────────────────────────────
     return (
         <div style={S.page} className="gf-fade-up">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
-                <button onClick={() => router.push('/admin/terminal')} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="material-icons-round" style={{ fontSize: '18px' }}>arrow_back</span>
-                    Return to Admin Terminal
-                </button>
-            </div>
+            {!embedded && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
+                    <button onClick={() => router.push('/admin/terminal')} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span className="material-icons-round" style={{ fontSize: '18px' }}>arrow_back</span>
+                        Return to Admin Terminal
+                    </button>
+                </div>
+            )}
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '36px', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
@@ -1096,5 +1098,9 @@ function ClassesContent() {
 }
 
 export default function ClassesPage() {
-    return <AuthGuard role="admin"><ClassesContent /></AuthGuard>;
+    const router = useRouter();
+    useEffect(() => {
+        router.replace('/admin/terminal?tab=classes');
+    }, [router]);
+    return <AuthGuard role="admin"><div style={{ padding: '80px', textAlign: 'center', color: 'var(--tx-dim)' }}>Opening Classes…</div></AuthGuard>;
 }

@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
+import { ClassesContent } from '../classes/page';
+import { AuditLogContent } from '../audit-log/page';
 
 // Helper to fetch all rows beyond 1000 (no filter version)
 async function fetchAllRows(table, select, orderCol = 'created_at', ascending = false) {
@@ -22,7 +24,10 @@ async function fetchAllRows(table, select, orderCol = 'created_at', ascending = 
 
 function AdminPanelContent() {
     const router = useRouter();
-    const [tab, setTab] = useState('overview');
+    const searchParams = useSearchParams();
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const initialTab = searchParams?.get('tab') || 'overview';
+    const [tab, setTab] = useState(initialTab);
     const [students, setStudents] = useState([]);
     const [requests, setRequests] = useState([]);
     const [activityLogs, setActivityLogs] = useState([]);
@@ -248,10 +253,15 @@ function AdminPanelContent() {
     const c = {
         layout: { display: 'flex', minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" },
         sidebar: {
-            width: '260px', minWidth: '260px', background: 'var(--surface)',
-            borderRight: '1px solid var(--border)', padding: 'var(--space-6) var(--space-4)',
+            width: sidebarCollapsed ? '72px' : '260px',
+            minWidth: sidebarCollapsed ? '72px' : '260px',
+            background: 'var(--surface)',
+            borderRight: '1px solid var(--border)',
+            padding: sidebarCollapsed ? 'var(--space-4) var(--space-2)' : 'var(--space-6) var(--space-4)',
             display: 'flex', flexDirection: 'column',
             position: 'sticky', top: 0, height: '100vh', overflow: 'auto',
+            transition: 'all 0.2s ease-in-out',
+            zIndex: 100,
         },
         logoRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-2) var(--space-1)' },
         logoBox: {
@@ -339,10 +349,10 @@ function AdminPanelContent() {
     const nav = [
         { id: 'overview', label: 'Overview', icon: 'space_dashboard' },
         { id: 'students', label: 'Students', icon: 'school' },
-        { id: 'classes', label: 'Classes', icon: 'groups', href: '/admin/classes' },
+        { id: 'classes', label: 'Classes', icon: 'groups' },
         { id: 'requests', label: 'Faculty Access', icon: 'verified_user' },
         { id: 'activity', label: 'Activity Log', icon: 'history' },
-        { id: 'audit', label: 'System Audit', icon: 'security', href: '/admin/audit-log' },
+        { id: 'audit', label: 'System Audit', icon: 'security' },
         { id: 'settings', label: 'Settings', icon: 'settings_suggest' },
     ];
 
@@ -388,19 +398,41 @@ function AdminPanelContent() {
         <div style={c.layout}>
             {/* Sidebar */}
             <aside style={c.sidebar}>
-                <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => setTab('overview')}>
-                    <div style={c.logoBox}>G</div>
-                    <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>GradeFlow</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: '0 4px', marginBottom: '8px' }}>
+                    {!sidebarCollapsed ? (
+                        <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => setTab('overview')}>
+                            <div style={c.logoBox}>G</div>
+                            <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>GradeFlow</span>
+                        </div>
+                    ) : (
+                        <div style={{ ...c.logoBox, cursor: 'pointer' }} onClick={() => setTab('overview')}>G</div>
+                    )}
+                    <button 
+                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                        title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '6px' }}
+                    >
+                        <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
+                    </button>
                 </div>
-                <span style={c.adminTag}>Institutional Admin</span>
+                {!sidebarCollapsed && <span style={c.adminTag}>Institutional Admin</span>}
                 <div style={c.sep} />
 
                 {nav.map(n => (
-                    <button key={n.id} style={c.navBtn(tab === n.id)} onClick={() => n.href ? router.push(n.href) : setTab(n.id)}>
+                    <button 
+                        key={n.id} 
+                        style={{ 
+                            ...c.navBtn(tab === n.id), 
+                            justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                            padding: sidebarCollapsed ? '12px 0' : '11px 14px' 
+                        }} 
+                        onClick={() => setTab(n.id)}
+                        title={sidebarCollapsed ? n.label : undefined}
+                    >
                         <span className="material-icons-round" style={{ fontSize: '18px' }}>{n.icon}</span>
-                        {n.label}
+                        {!sidebarCollapsed && <span>{n.label}</span>}
                         {n.id === 'requests' && stats.pending > 0 && (
-                            <span style={{ marginLeft: 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
+                            <span style={{ marginLeft: sidebarCollapsed ? '0' : 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
                                 {stats.pending}
                             </span>
                         )}
@@ -408,20 +440,55 @@ function AdminPanelContent() {
                 ))}
 
                 <div style={{ ...c.sep, marginTop: 'auto' }} />
-                <div style={{ padding: '0 8px 12px' }}>
-                    <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: '14px', border: '1px solid var(--border)' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)' }}>{adminUser?.email || 'Admin Account'}</div>
-                        <div style={{ fontSize: '9px', color: 'var(--tx-dim)', textTransform: 'uppercase', marginTop: '2px', fontWeight: 700 }}>Full Access Active</div>
+                {!sidebarCollapsed && (
+                    <div style={{ padding: '0 8px 12px' }}>
+                        <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)' }}>{adminUser?.email || 'Admin Account'}</div>
+                            <div style={{ fontSize: '9px', color: 'var(--tx-dim)', textTransform: 'uppercase', marginTop: '2px', fontWeight: 700 }}>Full Access Active</div>
+                        </div>
                     </div>
-                </div>
-                <button style={{ ...c.navBtn(false), color: 'var(--red)' }} onClick={() => { localStorage.removeItem('admin_session'); router.push('/admin/gateway'); }}>
+                )}
+                <button 
+                    style={{ 
+                        ...c.navBtn(false), 
+                        color: 'var(--red)',
+                        justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                        padding: sidebarCollapsed ? '12px 0' : '11px 14px'
+                    }} 
+                    onClick={() => { localStorage.removeItem('admin_session'); router.push('/admin/gateway'); }}
+                    title={sidebarCollapsed ? "Terminate Session" : undefined}
+                >
                     <span className="material-icons-round" style={{ fontSize: '18px' }}>logout</span>
-                    Terminate Session
+                    {!sidebarCollapsed && <span>Terminate Session</span>}
                 </button>
             </aside>
 
             {/* Main */}
             <main style={c.main} className="gf-fade-up">
+                {sidebarCollapsed && (
+                    <div style={{ marginBottom: '16px' }}>
+                        <button 
+                            onClick={() => setSidebarCollapsed(false)}
+                            title="Expand Menu"
+                            style={{ 
+                                background: 'var(--surface)', 
+                                border: '1px solid var(--border)', 
+                                color: 'var(--tx-main)', 
+                                cursor: 'pointer', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                padding: '8px 14px', 
+                                borderRadius: 'var(--radius-4)', 
+                                fontWeight: 700, 
+                                fontSize: '13px' 
+                            }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>menu</span>
+                            Expand Menu
+                        </button>
+                    </div>
+                )}
 
                 {tab === 'overview' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
@@ -648,6 +715,10 @@ function AdminPanelContent() {
                     </div>
                 </>
                 }
+
+                {tab === 'classes' && <ClassesContent embedded={true} />}
+
+                {tab === 'audit' && <AuditLogContent />}
 
                 {tab === 'settings' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
