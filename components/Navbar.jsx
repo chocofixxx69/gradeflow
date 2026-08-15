@@ -39,8 +39,18 @@ export default function Navbar() {
     const [dark, setDark] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [sessionRole, setSessionRole] = useState('student');
+    const [collapsed, setCollapsed] = useState(false);
     const sidebarRef = useRef(null);
     const mobileMenuButtonRef = useRef(null);
+
+    const toggleSidebarCollapse = useCallback(() => {
+        setCollapsed(prev => {
+            const next = !prev;
+            localStorage.setItem('gf_sidebar_collapsed', String(next));
+            document.documentElement.classList.toggle('gf-sidebar-is-collapsed', next);
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         const stored = localStorage.getItem('theme');
@@ -48,22 +58,44 @@ export default function Navbar() {
         setDark(nextDark);
         document.documentElement.setAttribute('data-theme', nextDark ? 'dark' : 'light');
 
+        const isCollapsed = localStorage.getItem('gf_sidebar_collapsed') === 'true';
+        setCollapsed(isCollapsed);
+        document.documentElement.classList.toggle('gf-sidebar-is-collapsed', isCollapsed);
+
         const student = parseSession(localStorage.getItem('student_session'));
         const faculty = parseSession(localStorage.getItem('faculty_session'));
         const admin = parseSession(localStorage.getItem('admin_session'));
 
-        if (admin) {
-            setUser(admin);
-            setSessionRole('admin');
-        } else if (faculty) {
-            setUser(faculty);
-            setSessionRole('faculty');
-        } else if (student) {
-            setUser(student);
-            setSessionRole('student');
+        if (pathname?.startsWith('/admin')) {
+            if (admin) {
+                setUser(admin);
+                setSessionRole('admin');
+            } else {
+                setUser(null);
+                setSessionRole('admin');
+            }
+        } else if (pathname?.startsWith('/faculty')) {
+            if (faculty) {
+                setUser(faculty);
+                setSessionRole('faculty');
+            } else {
+                setUser(null);
+                setSessionRole('faculty');
+            }
         } else {
-            setUser(null);
-            setSessionRole(resolveRoleFromPath(pathname));
+            if (faculty) {
+                setUser(faculty);
+                setSessionRole('faculty');
+            } else if (student) {
+                setUser(student);
+                setSessionRole('student');
+            } else if (admin) {
+                setUser(admin);
+                setSessionRole('admin');
+            } else {
+                setUser(null);
+                setSessionRole(resolveRoleFromPath(pathname));
+            }
         }
     }, [pathname]);
 
@@ -186,15 +218,37 @@ export default function Navbar() {
                 id="gf-sidebar"
                 aria-label={`${getRoleLabel(activeRole)} navigation`}
             >
-                <Link href="/" className="gf-sidebar-header">
-                    <div className="gf-logo-box">G</div>
-                    <div className="gf-sidebar-header-info">
-                        <div className="gf-sidebar-title">GradeFlow</div>
-                        <div className="gf-sidebar-role">
-                            {getRoleLabel(activeRole)}
-                        </div>
-                    </div>
-                </Link>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 'var(--space-5)' }}>
+                    <Link href="/" className="gf-sidebar-header" style={{ marginBottom: 0 }}>
+                        <div className="gf-logo-box">G</div>
+                        {!collapsed && (
+                            <div className="gf-sidebar-header-info">
+                                <div className="gf-sidebar-title">GradeFlow</div>
+                                <div className="gf-sidebar-role">
+                                    {getRoleLabel(activeRole)}
+                                </div>
+                            </div>
+                        )}
+                    </Link>
+                    <button
+                        onClick={toggleSidebarCollapse}
+                        className="gf-hamburger-toggle-btn"
+                        title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--tx-muted)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '6px',
+                            borderRadius: '6px'
+                        }}
+                    >
+                        <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
+                    </button>
+                </div>
 
                 <nav className="gf-sidebar-nav" aria-label="Primary">
                     {navGroups.map(group => (
@@ -307,6 +361,29 @@ export default function Navbar() {
 
             <div className="gf-shell-topbar" role="banner">
                 <div className="gf-topbar-left">
+                    {collapsed && (
+                        <button 
+                            onClick={toggleSidebarCollapse}
+                            title="Expand Navigation Menu"
+                            style={{ 
+                                background: 'var(--surface)', 
+                                border: '1px solid var(--border)', 
+                                color: 'var(--tx-main)', 
+                                cursor: 'pointer', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                padding: '6px 12px', 
+                                borderRadius: 'var(--radius-4)', 
+                                fontWeight: 700, 
+                                fontSize: '13px',
+                                marginRight: '12px'
+                            }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>menu</span>
+                            Menu
+                        </button>
+                    )}
                     {breadcrumbs.length > 0 && (
                         <nav aria-label="Breadcrumb" className="gf-breadcrumbs">
                             {breadcrumbs.map((crumb, index) => (

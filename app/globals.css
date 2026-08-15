@@ -282,6 +282,38 @@ body.gf-drawer-open {
   z-index: var(--z-sidebar);
   overflow-y: auto;
   overscroll-behavior: contain;
+  transition: width 0.2s ease-in-out, padding 0.2s ease-in-out;
+}
+
+/* ── COLLAPSED SIDEBAR ── */
+html.gf-sidebar-is-collapsed .app-layout {
+  grid-template-columns: 72px minmax(0, 1fr) !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-sidebar {
+  width: 72px !important;
+  padding: var(--space-4) var(--space-2) !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-sidebar-header-info,
+html.gf-sidebar-is-collapsed .gf-sidebar-role,
+html.gf-sidebar-is-collapsed .gf-nav-group-title,
+html.gf-sidebar-is-collapsed .gf-user-info,
+html.gf-sidebar-is-collapsed .gf-nav-link span:not(.material-icons-round) {
+  display: none !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-nav-link {
+  justify-content: center !important;
+  padding: 12px 0 !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-logo-box {
+  margin: 0 auto !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-sidebar-footer {
+  padding-top: var(--space-2) !important;
 }
 
 .gf-sidebar-header {
