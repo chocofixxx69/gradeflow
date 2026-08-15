@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
-import { ClassesContent } from '../classes/page';
-import { AuditLogContent } from '../audit-log/page';
+import { ClassesContent } from '../../../components/ClassesContent';
+import { AuditLogContent } from '../../../components/AuditLogContent';
 
 // Helper to fetch all rows beyond 1000 (no filter version)
 async function fetchAllRows(table, select, orderCol = 'created_at', ascending = false) {

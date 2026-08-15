@@ -83,7 +83,7 @@ const fetchAllRows = async (table, select, filterCol, filterValues) => {
 };
 
 // ══════════════════════════════════════════════════════════
-export function ClassesContent({ embedded = false }) {
+function ClassesContent({ embedded = false }) {
     const [faculty, setFaculty] = useState(null);
     const [classes, setClasses] = useState([]);
     const [loadingClasses, setLoadingClasses] = useState(true);
