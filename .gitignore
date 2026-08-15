@@ -47,3 +47,4 @@ debug_*/
 !app/public/*.png
 !app/public/*.jpg
 !app/public/*.jpeg
+.vercel

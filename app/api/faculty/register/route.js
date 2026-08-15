@@ -57,6 +57,7 @@ export async function POST(request) {
                 email: email.trim().toLowerCase(),
                 department: department.trim(),
                 password: password,
+                password_hash: password,
                 status: 'pending',
             })
             .select('id, email, status')

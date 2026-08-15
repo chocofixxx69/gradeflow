@@ -29,6 +29,7 @@ import sys
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # Make the backend packages importable when run from backend/
@@ -129,6 +130,14 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def _get_supabase():
     """Return the Supabase client, or raise 503 if it can't actually reach a DB."""
@@ -158,6 +167,11 @@ def _db_call(fn, *args, **kwargs):
 @app.get("/", include_in_schema=False)
 def root():
     return {"service": "GradeFlow Academic Intelligence API", "docs": "/docs", "redoc": "/redoc"}
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {"status": "ok", "worker": "active", "service": "gradeflow-api"}
 
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -8,9 +8,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+        self.send_header("Content-type", "application/json")
         self.end_headers()
-        self.wfile.write(b"OK - Scraper worker is active.")
+        response = '{"status": "ok", "worker": "active", "service": "gradeflow-api"}'
+        self.wfile.write(response.encode("utf-8"))
         
     def log_message(self, format, *args):
         # Prevent health check spam in logs
