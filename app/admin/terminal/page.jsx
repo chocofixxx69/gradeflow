@@ -113,19 +113,46 @@ function AdminPanelContent() {
 
     const approveRequest = async (id) => {
         setActionId(id);
-        const key = `GF-${Math.random().toString(36).substr(2, 6).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
-        await supabase.from('faculty_onboarding').update({
-            status: 'approved', generated_access_key: key, approved_at: new Date().toISOString(),
-        }).eq('id', id);
-        await loadData();
-        setActionId(null);
+        try {
+            const res = await fetch('/api/admin/approve-faculty', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: 'approve' }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                await loadData();
+            } else {
+                alert(data.error || 'Failed to approve request.');
+            }
+        } catch (err) {
+            console.error('Approve error:', err);
+            alert('Failed to approve request.');
+        } finally {
+            setActionId(null);
+        }
     };
 
     const rejectRequest = async (id) => {
         setActionId(id);
-        await supabase.from('faculty_onboarding').update({ status: 'rejected' }).eq('id', id);
-        await loadData();
-        setActionId(null);
+        try {
+            const res = await fetch('/api/admin/approve-faculty', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: 'reject' }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                await loadData();
+            } else {
+                alert(data.error || 'Failed to reject request.');
+            }
+        } catch (err) {
+            console.error('Reject error:', err);
+            alert('Failed to reject request.');
+        } finally {
+            setActionId(null);
+        }
     };
 
     const addStudent = async () => {
@@ -361,7 +388,7 @@ function AdminPanelContent() {
         <div style={c.layout}>
             {/* Sidebar */}
             <aside style={c.sidebar}>
-                <div style={c.logoRow}>
+                <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => setTab('overview')}>
                     <div style={c.logoBox}>G</div>
                     <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>GradeFlow</span>
                 </div>
