@@ -39,9 +39,9 @@ const S = {
     label: { display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.06em' },
     th: { padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'left' },
     td: { padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: 600, color: 'var(--tx-main)' },
-    modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5)' },
-    mbox: (w = '480px') => ({ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', width: '100%', maxWidth: w, padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: '90vh', overflowY: 'auto' }),
-    drawer: { position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: '720px', background: 'var(--surface)', borderLeft: '1px solid var(--border)', zIndex: 1100, overflowY: 'hidden', padding: 'var(--space-10) clamp(var(--space-6), 4vw, var(--space-9))', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-lg)' },
+    modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(var(--space-4), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-4), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left))', overflowY: 'auto' },
+    mbox: (w = '480px') => ({ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', width: '100%', maxWidth: w, padding: 'clamp(var(--space-5), 4vw, var(--space-8))', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: 'calc(100dvh - max(var(--space-8), env(safe-area-inset-top) + env(safe-area-inset-bottom)))', overflowY: 'auto' }),
+    drawer: { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(100vw, 720px)', maxWidth: '720px', background: 'var(--surface)', borderLeft: '1px solid var(--border)', zIndex: 1100, overflowY: 'hidden', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-5), 4vw, var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-lg)', maxHeight: '100dvh' },
     overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1050 },
 };
 const btn = (v = 'primary') => ({ padding: 'var(--space-3) var(--space-5)', borderRadius: 'var(--radius-3)', fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: v === 'primary' ? 'var(--primary)' : v === 'danger' ? 'var(--red-bg)' : 'var(--surface-low)', color: v === 'primary' ? 'var(--bg)' : v === 'danger' ? 'var(--red)' : 'var(--tx-main)', ...(v !== 'primary' && { border: `1px solid ${v === 'danger' ? 'var(--red)' : 'var(--border)'}` }) });
@@ -455,8 +455,8 @@ function ClassesContent() {
                 </button>
                 <span style={{ color: 'var(--tx-dim)' }}>›</span>
                 {editingName ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <input style={{ ...S.input, width: '240px', padding: '6px 12px' }} value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') renameClass(); if (e.key === 'Escape') setEditingName(false); }} autoFocus />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+                        <input style={{ ...S.input, width: 'min(240px, 100%)', padding: '6px 12px', flex: '1 1 180px' }} value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') renameClass(); if (e.key === 'Escape') setEditingName(false); }} autoFocus />
                         <button onClick={renameClass} style={btn('primary')}>✓</button>
                         <button onClick={() => setEditingName(false)} style={btn('ghost')}>✕</button>
                     </div>
@@ -476,7 +476,7 @@ function ClassesContent() {
                     <h1 style={S.title}>{selectedClass.name}</h1>
                     <p style={S.subtitle}>{selectedClass.branch} · Sem {selectedClass.semester} · {selectedClass.scheme} Scheme · {students.length} students</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('single'); setMsg(''); }}>
                         <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>person_add</span>Add Students
                     </button>
@@ -796,8 +796,8 @@ function ClassesContent() {
                         <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' }}>Students</h3>
                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>{students.length} Students</div>
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                        <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr>
                                     <th style={S.th}>USN</th>
@@ -967,7 +967,8 @@ function ClassesContent() {
                                                 {tc > 0 ? `SGPA ${sgpa}` : ''}
                                             </span>
                                         </div>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
+                                        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginBottom: '20px' }}>
+                                        <table style={{ width: '100%', minWidth: '520px', borderCollapse: 'collapse', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                                             <thead><tr>{['Subject', 'CIE', 'SEE', 'Total', 'Grade'].map(h => <th key={h} style={{ ...S.th, padding: '8px 14px' }}>{h}</th>)}</tr></thead>
                                             <tbody>
                                                 {marks.map(m => {
@@ -993,6 +994,7 @@ function ClassesContent() {
                                                 })}
                                             </tbody>
                                         </table>
+                                        </div>
                                     </div>
                                     );
                                 })
@@ -1134,12 +1136,12 @@ function ClassesContent() {
                     {/* Move vs Copy */}
                     <div>
                         <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Transfer Mode</div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             {[
                                 { id: 'move', label: 'Move', desc: 'Remove from this class → add to new class', icon: 'drive_file_move' },
                                 { id: 'copy', label: 'Copy', desc: 'Keep in both classes', icon: 'content_copy' },
                             ].map(m => (
-                                <button key={m.id} onClick={() => setTransferMode(m.id)} style={{ flex: 1, padding: '12px', border: `2px solid ${transferMode === m.id ? 'var(--primary)' : 'var(--border)'}`, borderRadius: '12px', cursor: 'pointer', fontFamily: 'inherit', background: transferMode === m.id ? 'var(--surface-low)' : 'var(--bg)', textAlign: 'left', transition: 'all 0.15s' }}>
+                                <button key={m.id} onClick={() => setTransferMode(m.id)} style={{ flex: '1 1 180px', padding: '12px', border: `2px solid ${transferMode === m.id ? 'var(--primary)' : 'var(--border)'}`, borderRadius: '12px', cursor: 'pointer', fontFamily: 'inherit', background: transferMode === m.id ? 'var(--surface-low)' : 'var(--bg)', textAlign: 'left', transition: 'all 0.15s' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                                         <span className="material-icons-round" style={{ fontSize: '16px', color: transferMode === m.id ? 'var(--primary)' : 'var(--tx-dim)' }}>{m.icon}</span>
                                         <span style={{ fontWeight: 800, fontSize: '13px', color: transferMode === m.id ? 'var(--primary)' : 'var(--tx-main)' }}>{m.label}</span>
@@ -1179,7 +1181,7 @@ function ClassesContent() {
                         </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <button style={btn('ghost')} onClick={() => setShowTransfer(false)}>Cancel</button>
                         <button style={btn('primary')} onClick={doTransfer} disabled={!transferTarget || transferLoading}>
                             {transferLoading ? 'Processing…' : transferMode === 'move' ? 'Move Student' : 'Copy to Class'}
@@ -1192,12 +1194,12 @@ function ClassesContent() {
             {showUrlModal && <div style={S.modal} onClick={() => setShowUrlModal(false)}>
 
                 <div style={S.mbox('600px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
                         <div>
                             <h3 style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Choose VTU Portals</h3>
                             <p style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>Enable the portals to scrape. Your settings only affect your account.</p>
                         </div>
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             <button style={{ ...btn('ghost'), fontSize: '11px', padding: '6px 12px' }} onClick={() => toggleAllUrls(true)}>Enable All</button>
                             <button style={{ ...btn('ghost'), fontSize: '11px', padding: '6px 12px' }} onClick={() => toggleAllUrls(false)}>Disable All</button>
                         </div>
@@ -1222,10 +1224,10 @@ function ClassesContent() {
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <input style={{ ...S.input, flex: 2, minWidth: '160px' }} placeholder="https://results.vtu.ac.in/..." value={newUrlInput.url} onChange={e => setNewUrlInput(p => ({ ...p, url: e.target.value }))} />
                             <input style={{ ...S.input, flex: 1, minWidth: '120px' }} placeholder="Exam name" value={newUrlInput.exam_name} onChange={e => setNewUrlInput(p => ({ ...p, exam_name: e.target.value }))} />
-                            <button style={btn('primary')} onClick={addNewUrl}>Add</button>
+                            <button style={{ ...btn('primary'), flex: '0 0 auto' }} onClick={addNewUrl}>Add</button>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '16px', flexWrap: 'wrap' }}>
                         <div style={{ fontSize: '12px', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center' }}>{vtuUrls.filter(u => u.is_active).length} of {vtuUrls.length} active</div>
                         <button style={btn('ghost')} onClick={() => setShowUrlModal(false)}>Cancel</button>
                         <button style={btn('primary')} onClick={fetchAllVtu}>Fetch with Active URLs ({vtuUrls.filter(u => u.is_active).length})</button>
@@ -1237,8 +1239,8 @@ function ClassesContent() {
             {viewingList && (
                 <>
                     <div style={{...S.overlay, zIndex: 2000}} onClick={() => setViewingList(null)} />
-                    <div style={{...S.drawer, zIndex: 2010, padding: '32px 24px', maxWidth: '800px'}} className="gf-fade-up">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '8px' }}>
+                    <div style={{...S.drawer, zIndex: 2010, padding: 'max(var(--space-6), env(safe-area-inset-top)) 24px max(var(--space-6), env(safe-area-inset-bottom))', maxWidth: '800px'}} className="gf-fade-up">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '8px', gap: '12px' }}>
                             <div>
                                 <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>{viewingList.title}</h3>
                                 <p style={{ margin: 0, fontSize: '12px', color: 'var(--tx-muted)' }}>{viewingList.data.length} Students</p>
@@ -1248,8 +1250,8 @@ function ClassesContent() {
                             </button>
                         </div>
                         
-                        <div style={{ overflowX: 'auto', flex: 1 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <div style={{ overflow: 'auto', flex: 1, minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
+                            <table style={{ width: '100%', minWidth: viewingList.showMarks ? '620px' : '360px', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
                                         <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '10px', color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', width: '40px' }}>Rank</th>
@@ -1349,7 +1351,7 @@ function ClassesContent() {
                     <div><h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>New Class</h3><p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>All faculty can view and manage this class.</p></div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         <div><label style={S.label}>Class Name</label><input style={S.input} placeholder="e.g. CSE-A 2023 Batch" value={newClass.name} onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
                             <div>
                                 <label style={S.label}>Branch</label>
                                 <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
@@ -1371,7 +1373,7 @@ function ClassesContent() {
                             </select>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
                 </div>
             </div>}
 
@@ -1386,7 +1388,7 @@ function ClassesContent() {
                             {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
                         </select>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <button style={btn('ghost')} onClick={() => setShowEditSem(null)}>Cancel</button>
                         <button style={btn('primary')} onClick={() => updateClassSem(showEditSem.id, editSemVal)}>Update Semester</button>
                     </div>

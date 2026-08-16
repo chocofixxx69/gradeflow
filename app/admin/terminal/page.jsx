@@ -251,7 +251,7 @@ function AdminPanelContent() {
     };
 
     const c = {
-        layout: { display: 'flex', minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" },
+        layout: { display: 'flex', minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", minWidth: 0 },
         sidebar: {
             width: sidebarCollapsed ? '72px' : '260px',
             minWidth: sidebarCollapsed ? '72px' : '260px',
@@ -259,7 +259,7 @@ function AdminPanelContent() {
             borderRight: '1px solid var(--border)',
             padding: sidebarCollapsed ? 'var(--space-4) var(--space-2)' : 'var(--space-6) var(--space-4)',
             display: 'flex', flexDirection: 'column',
-            position: 'sticky', top: 0, height: '100vh', overflow: 'auto',
+            position: 'sticky', top: 0, height: '100dvh', overflow: 'auto',
             transition: 'all 0.2s ease-in-out',
             zIndex: 100,
         },
@@ -284,20 +284,20 @@ function AdminPanelContent() {
             cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
             transition: 'all 0.15s', marginBottom: '2px',
         }),
-        main: { flex: 1, padding: 'var(--page-py) var(--page-px)', overflowY: 'auto' },
+        main: { flex: 1, padding: 'var(--page-py) var(--page-px)', overflowY: 'auto', minWidth: 0 },
         pageLabel: { fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--space-2)' },
         pageTitle: { fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.03em', marginBottom: 'var(--space-7)' },
         statGrid: {},
         statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: 'var(--space-6)' },
         statLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-3)' },
         statVal: { fontSize: '40px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
-        tableWrap: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', overflow: 'hidden' },
-        tableHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border)' },
+        tableWrap: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch' },
+        tableHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border)', gap: 'var(--space-3)', flexWrap: 'wrap' },
         tableTitle: { fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' },
         searchInput: {
             background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)',
             padding: '9px 14px', fontSize: '13px', color: 'var(--tx-main)',
-            outline: 'none', width: '240px', fontFamily: 'inherit', fontWeight: 600,
+            outline: 'none', width: 'min(240px, 100%)', fontFamily: 'inherit', fontWeight: 600, boxSizing: 'border-box',
         },
         th: { padding: '14px var(--space-6)', background: 'var(--surface-low)', fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid var(--border)' },
         td: { padding: '16px var(--space-6)', borderBottom: '1px solid var(--border)', fontSize: '13px', color: 'var(--tx-main)', fontWeight: 600, verticalAlign: 'middle' },
@@ -318,9 +318,9 @@ function AdminPanelContent() {
             color: filled ? 'var(--bg)' : 'var(--tx-muted)',
             fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.1s',
         }),
-        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.3)', zIndex: 2000, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' },
-        drawer: { width: '100%', maxWidth: '760px', background: 'var(--surface)', height: '100vh', overflowY: 'auto', padding: 'clamp(var(--space-6), 4vw, var(--space-9))', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-7)', boxShadow: 'var(--shadow-lg)' },
-        tabRow: { display: 'flex', gap: 'var(--space-1)', background: 'var(--surface-low)', padding: 'var(--space-1)', borderRadius: 'var(--radius-5)', width: 'fit-content' },
+        overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 2000, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)', paddingLeft: 'env(safe-area-inset-left)' },
+        drawer: { width: 'min(100vw, 760px)', maxWidth: '760px', background: 'var(--surface)', maxHeight: '100dvh', overflowY: 'auto', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-5), 4vw, var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-7)', boxShadow: 'var(--shadow-lg)' },
+        tabRow: { display: 'flex', gap: 'var(--space-1)', background: 'var(--surface-low)', padding: 'var(--space-1)', borderRadius: 'var(--radius-5)', width: '100%', maxWidth: 'fit-content', overflowX: 'auto' },
         tabBtn: (active) => ({
             padding: '8px var(--space-5)', borderRadius: 'var(--radius-3)', border: 'none',
             background: active ? 'var(--surface)' : 'transparent',
@@ -329,14 +329,16 @@ function AdminPanelContent() {
             cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
         }),
         modal: {
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            position: 'fixed', inset: 0,
             background: 'rgba(0,0,0,0.4)', zIndex: 3000,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             backdropFilter: 'blur(4px)',
+            padding: 'max(var(--space-4), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-4), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left))',
+            overflowY: 'auto',
         },
         modalCard: {
             background: 'var(--surface)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-8)', padding: 'var(--space-8)', width: '100%', maxWidth: '480px',
+            borderRadius: 'var(--radius-8)', padding: 'clamp(var(--space-5), 4vw, var(--space-8))', width: '100%', maxWidth: '480px', maxHeight: 'calc(100dvh - max(var(--space-8), env(safe-area-inset-top) + env(safe-area-inset-bottom)))', overflowY: 'auto',
         },
         input: {
             width: '100%', background: 'var(--surface-low)', border: '1px solid var(--border)',
@@ -493,7 +495,7 @@ function AdminPanelContent() {
                             <div style={c.tableTitle}>Recent Registrations</div>
                             <button style={c.actionBtn(true)} onClick={() => setTab('students')}>View All Students</button>
                         </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr>{['Student', 'USN', 'Branch', 'Scheme', 'Registered'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
                             </thead>
@@ -523,16 +525,16 @@ function AdminPanelContent() {
                     <h1 style={c.pageTitle}>Student Directory</h1>
                     <div style={c.tableWrap}>
                         <div style={c.tableHead}>
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <div style={c.tableTitle}>All Registered Students</div>
                                 <button style={c.actionBtn(true)} onClick={() => setShowAddStudent(true)}>
                                     <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>add</span>
                                     Add Student
                                 </button>
                             </div>
-                            <input style={c.searchInput} placeholder="Search USN or Name..." value={search} onChange={e => setSearch(e.target.value)} />
+                            <input style={{ ...c.searchInput, flex: '1 1 220px' }} placeholder="Search USN or Name..." value={search} onChange={e => setSearch(e.target.value)} />
                         </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr>{['Student', 'USN', 'Semester', 'Branch', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
                             </thead>
@@ -564,7 +566,7 @@ function AdminPanelContent() {
                         <div style={c.tableHead}>
                             <div style={c.tableTitle}>Verification Queue</div>
                         </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr>{['Faculty Member', 'Employee ID', 'Department', 'Access Key', 'Action'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
                             </thead>
@@ -620,7 +622,7 @@ function AdminPanelContent() {
                             onChange={e => setActivitySearch(e.target.value)}
                         />
                         <select
-                            style={{ ...c.searchInput, width: 'auto', cursor: 'pointer' }}
+                            style={{ ...c.searchInput, width: 'auto', minWidth: '150px', flex: '1 1 150px', cursor: 'pointer' }}
                             value={activityTypeFilter}
                             onChange={e => setActivityTypeFilter(e.target.value)}
                         >
@@ -628,7 +630,7 @@ function AdminPanelContent() {
                             {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                         <select
-                            style={{ ...c.searchInput, width: 'auto', cursor: 'pointer' }}
+                            style={{ ...c.searchInput, width: 'auto', minWidth: '150px', flex: '1 1 150px', cursor: 'pointer' }}
                             value={activityDateFilter}
                             onChange={e => setActivityDateFilter(e.target.value)}
                         >
@@ -647,7 +649,7 @@ function AdminPanelContent() {
                             <div style={c.tableTitle}>All Faculty Actions</div>
                             <div style={{ fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 600 }}>{filteredActivity.length} records</div>
                         </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr>{['Timestamp', 'Faculty', 'Dept', 'Action', 'Target / Detail', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
                             </thead>
@@ -745,14 +747,14 @@ function AdminPanelContent() {
             {selectedStudent && (
                 <div style={c.overlay} onClick={e => { if (e.target === e.currentTarget) setSelectedStudent(null); }}>
                     <div style={c.drawer} className="gf-fade-up">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', minWidth: 0, flex: '1 1 260px' }}>
                                 <div style={{ ...c.avatar, width: '64px', height: '64px', fontSize: '22px', borderRadius: '16px' }}>
                                     {((selectedStudent.name || selectedStudent.usn || '?')[0]).toUpperCase()}
                                 </div>
                                 <div>
                                     <h2 style={{ fontSize: '24px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em' }}>{selectedStudent.name || 'Student'}</h2>
-                                    <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
+                                    <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
                                         {selectedStudent.usn} · {selectedStudent.branch || 'Unassigned'} · Sem {selectedStudent.semester || '—'}
                                     </div>
                                     <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
@@ -792,7 +794,8 @@ function AdminPanelContent() {
                                                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>Semester {sem}</div>
                                                 <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>SGPA: {calcSGPA(marks)}</div>
                                             </div>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                            <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                                                 <thead>
                                                     <tr>{['Subject', 'CIE', 'SEE', 'Total', 'Grade'].map(h => <th key={h} style={{ ...c.th, padding: '10px 16px' }}>{h}</th>)}</tr>
                                                 </thead>
@@ -813,6 +816,7 @@ function AdminPanelContent() {
                                                     ))}
                                                 </tbody>
                                             </table>
+                                            </div>
                                         </div>
                                     ))
                                 ) : (
@@ -822,10 +826,10 @@ function AdminPanelContent() {
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 {(studentDetails?.docs || []).map(d => (
-                                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '14px' }}>
+                                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '14px', flexWrap: 'wrap' }}>
                                         <span className="material-icons-round" style={{ color: 'var(--tx-main)' }}>description</span>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '14px', fontWeight: 800 }}>{d.file_name}</div>
+                                        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                                            <div style={{ fontSize: '14px', fontWeight: 800, overflowWrap: 'anywhere' }}>{d.file_name}</div>
                                             <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{d.file_size ? (d.file_size / 1024 / 1024).toFixed(2) + ' MB' : ''} · Added {new Date(d.created_at).toLocaleDateString()}</div>
                                         </div>
                                         {d.file_url && <a href={d.file_url} target="_blank" rel="noreferrer" style={c.actionBtn(true)}>View</a>}
@@ -853,7 +857,7 @@ function AdminPanelContent() {
                         <input style={c.input} placeholder="Full Name" value={newStudent.name} onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))} />
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Branch</label>
                         <input style={c.input} placeholder="e.g. CSE, ISE, ECE" value={newStudent.branch} onChange={e => setNewStudent(p => ({ ...p, branch: e.target.value }))} />
-                        <div style={{ display: 'flex', gap: '12px' }}>
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                             <button style={{ ...c.actionBtn(true), padding: '12px 24px', fontSize: '13px' }} onClick={addStudent}>Create Student</button>
                             <button style={{ ...c.actionBtn(false), padding: '12px 24px', fontSize: '13px' }} onClick={() => setShowAddStudent(false)}>Cancel</button>
                         </div>
