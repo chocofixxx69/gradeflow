@@ -51,7 +51,7 @@ export default function FacultyRegister() {
 
     const s = {
         page: {
-            minHeight: '100vh', background: 'var(--bg)',
+            minHeight: '100dvh', background: 'var(--bg)',
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', padding: 'var(--space-10) var(--page-px)',
         },

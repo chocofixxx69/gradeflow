@@ -171,19 +171,20 @@ function VtuUrlManagerContent() {
                     {vtuUrls.map(u => (
                         <div key={u.id} style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            flexWrap: 'wrap', gap: 'var(--space-3)',
                             padding: 'var(--space-4) var(--space-5)', background: 'var(--surface-low)',
                             borderRadius: 'var(--radius-6)', border: `1px solid ${u.is_active ? 'var(--primary)' : 'var(--border)'}`,
                             opacity: u.is_active ? 1 : 0.6
                         }}>
-                            <div style={{ overflow: 'hidden' }}>
+                            <div style={{ overflow: 'hidden', minWidth: 0, flex: '1 1 200px' }}>
                                 <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)' }}>{u.exam_name || 'Unnamed Exam'}</div>
                                 <div style={{ fontSize: '11px', color: 'var(--tx-dim)', fontFamily: 'monospace', marginTop: 'var(--space-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.url}</div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginLeft: 'var(--space-5)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexShrink: 0 }}>
                                 <button
                                     onClick={() => toggleVtuUrl(u)}
                                     style={{
-                                        padding: 'var(--space-2) var(--space-4)', background: u.is_active ? 'var(--green-bg)' : 'var(--surface)',
+                                        padding: 'var(--space-2) var(--space-4)', minHeight: '44px', background: u.is_active ? 'var(--green-bg)' : 'var(--surface)',
                                         color: u.is_active ? 'var(--green)' : 'var(--tx-muted)',
                                         border: `1px solid ${u.is_active ? 'var(--green)' : 'var(--border)'}`,
                                         borderRadius: 'var(--radius-2)', fontWeight: 800, fontSize: '11px', cursor: 'pointer',

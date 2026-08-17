@@ -449,7 +449,7 @@ function ClassesContent() {
     if (selectedClass) return (
         <div style={S.page} className="gf-fade-up">
             {/* Breadcrumb */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
                 <button onClick={() => setSelectedClass(null)} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>Classes
                 </button>
@@ -461,8 +461,8 @@ function ClassesContent() {
                         <button onClick={() => setEditingName(false)} style={btn('ghost')}>✕</button>
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>{selectedClass.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55vw' }}>{selectedClass.name}</span>
                         <button onClick={() => { setEditName(selectedClass.name); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', padding: '2px' }}>
                             <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>
                         </button>
@@ -851,8 +851,8 @@ function ClassesContent() {
                     <div style={S.overlay} onClick={() => setOpenStudent(null)} />
                     <div style={S.drawer} className="gf-fade-up">
                         {/* Header */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0, flexWrap: 'wrap', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
                                 <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 900, color: 'var(--tx-muted)', flexShrink: 0 }}>
                                     {(openStudent.name || openStudent.usn || '?')[0].toUpperCase()}
                                 </div>
@@ -1208,8 +1208,10 @@ function ClassesContent() {
                         : <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '360px', overflowY: 'auto' }}>
                             {vtuUrls.map(u => (
                                 <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: 'var(--surface-low)', borderRadius: '10px', border: `1px solid ${u.is_active ? 'var(--primary)' : 'var(--border)'}` }}>
-                                    <button onClick={() => toggleUrl(u)} style={{ flexShrink: 0, width: '36px', height: '20px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: u.is_active ? 'var(--primary)' : 'var(--border)', transition: 'background 0.2s', position: 'relative' }}>
-                                        <span style={{ position: 'absolute', top: '2px', left: u.is_active ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+                                    <button onClick={() => toggleUrl(u)} style={{ flexShrink: 0, width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}>
+                                        <span style={{ width: '36px', height: '20px', borderRadius: '10px', background: u.is_active ? 'var(--primary)' : 'var(--border)', transition: 'background 0.2s', position: 'relative' }}>
+                                            <span style={{ position: 'absolute', top: '2px', left: u.is_active ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+                                        </span>
                                     </button>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>{u.exam_name || 'Unnamed'}</div>

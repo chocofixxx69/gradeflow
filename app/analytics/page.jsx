@@ -254,8 +254,8 @@ function AnalyticsContent() {
 
         goalInput: {
             background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px',
-            padding: '4px 8px', fontSize: '13px', fontWeight: 800, width: '56px', color: 'var(--primary)',
-            textAlign: 'center', marginLeft: '8px'
+            padding: '4px 8px', minHeight: '44px', fontSize: '13px', fontWeight: 800, width: '56px', color: 'var(--primary)',
+            textAlign: 'center', marginLeft: '8px', boxSizing: 'border-box'
         }
     };
 
@@ -348,9 +348,9 @@ function AnalyticsContent() {
                                 </div>
                             </div>
                             {semesterData.length > 0 ? (
-                                <div style={{ height: '260px', display: 'flex', alignItems: 'flex-end', gap: '20px', padding: '0 12px' }}>
+                                <div style={{ height: '260px', display: 'flex', alignItems: 'flex-end', gap: '20px', padding: '0 12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                                     {semesterData.map((sem, i) => (
-                                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                        <div key={i} style={{ flex: '1 0 44px', minWidth: '44px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                                             <span style={{ fontSize: '13px', fontWeight: 900, color: 'var(--tx-main)' }}>{sem.sgpa.toFixed(2)}</span>
                                             <div style={{
                                                 width: '100%',

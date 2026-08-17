@@ -47,7 +47,7 @@ export default function FacultyLogin() {
 
     const s = {
         page: {
-            minHeight: '100vh', background: 'var(--bg)',
+            minHeight: '100dvh', background: 'var(--bg)',
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', padding: 'var(--space-6)',
         },

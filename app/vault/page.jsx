@@ -174,7 +174,7 @@ function BatchUploadContent() {
             padding: 'clamp(24px, 4vw, 40px)', color: 'var(--bg)', marginBottom: 'var(--space-8)',
         },
         steps: {
-            display: 'flex', justifyContent: 'center', gap: '0', marginBottom: 'var(--space-9)',
+            display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px', marginBottom: 'var(--space-9)',
         },
         stepItem: (active, done) => ({
             display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-3) var(--space-5)',
@@ -233,7 +233,7 @@ function BatchUploadContent() {
             {/* STEP 1: Configuration */}
             {step === 1 && (
                 <Card style={{ padding: 'clamp(24px, 4vw, 48px)' }} className="gf-fade-up">
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '32px' }}>
                         <div>
                             <label style={s.label}>Select Scheme</label>
                             <select aria-label="Select scheme" style={s.select} value={scheme} onChange={e => setScheme(e.target.value)}>

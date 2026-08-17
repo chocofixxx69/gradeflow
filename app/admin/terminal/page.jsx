@@ -26,6 +26,12 @@ function AdminPanelContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setSidebarCollapsed(true);
+        }
+    }, []);
     const initialTab = searchParams?.get('tab') || 'overview';
     const [tab, setTab] = useState(initialTab);
     const [students, setStudents] = useState([]);
@@ -251,7 +257,7 @@ function AdminPanelContent() {
     };
 
     const c = {
-        layout: { display: 'flex', minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", minWidth: 0 },
+        layout: { display: 'flex', minHeight: '100dvh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", minWidth: 0 },
         sidebar: {
             width: sidebarCollapsed ? '72px' : '260px',
             minWidth: sidebarCollapsed ? '72px' : '260px',
@@ -412,7 +418,7 @@ function AdminPanelContent() {
                     <button 
                         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                         title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '6px' }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', borderRadius: '6px' }}
                     >
                         <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
                     </button>
@@ -772,7 +778,7 @@ function AdminPanelContent() {
                                     </div>
                                 </div>
                             </div>
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)' }} onClick={() => setSelectedStudent(null)}>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }} onClick={() => setSelectedStudent(null)}>
                                 <span className="material-icons-round" style={{ fontSize: '28px' }}>close</span>
                             </button>
                         </div>

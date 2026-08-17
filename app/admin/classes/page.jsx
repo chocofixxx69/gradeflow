@@ -417,7 +417,7 @@ function ClassesContent({ embedded = false }) {
                 ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>{selectedClass.name}</span>
-                        <button onClick={() => { setEditName(selectedClass.name); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', padding: '2px' }}>
+                        <button onClick={() => { setEditName(selectedClass.name); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
                             <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>
                         </button>
                     </div>
@@ -598,12 +598,12 @@ function ClassesContent({ embedded = false }) {
                                                         </button>
                                                     </td>
                                                     <td style={{ ...S.td, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                                                        <button title="Transfer to another class" onClick={e => openTransfer(s, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
+                                                        <button title="Transfer to another class" onClick={e => openTransfer(s, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
                                                             <span className="material-icons-round" style={{ fontSize: '18px' }}>swap_horiz</span>
                                                         </button>
                                                     </td>
                                                     <td style={{ ...S.td, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                                                        <button title="Remove from class" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
+                                                        <button title="Remove from class" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
                                                             <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
                                                         </button>
                                                     </td>
@@ -650,7 +650,7 @@ function ClassesContent({ embedded = false }) {
                                     <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>refresh</span>
                                     {drawerScrapeStatus === 'scraping' ? 'Fetching…' : 'Fetch VTU'}
                                 </button>
-                                <button onClick={() => setOpenStudent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)' }}>
+                                <button onClick={() => setOpenStudent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
                                     <span className="material-icons-round" style={{ fontSize: '28px' }}>close</span>
                                 </button>
                             </div>

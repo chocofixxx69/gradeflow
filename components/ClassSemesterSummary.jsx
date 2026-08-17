@@ -71,7 +71,7 @@ export default function ClassSemesterSummary({ students = [], allMarks = [], sel
 
     return (
         <div style={{ marginTop: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: 900 }}>Class Semester Summary (Sem {selectedSem})</h3>
                 <button onClick={handleExport} className="gf-btn gf-btn-ghost">
                     <span className="material-icons-round" style={{ fontSize: '18px' }}>download</span>

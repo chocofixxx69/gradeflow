@@ -76,7 +76,7 @@ function FacultyAdminContent() {
             background: ok ? 'var(--green-bg)' : 'var(--red-bg)',
             color: ok ? 'var(--green)' : 'var(--red)',
         }),
-        statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' },
+        statsGrid: { marginBottom: 'var(--space-8)' },
         statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: 'var(--space-6)' },
         statLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-3)' },
         statVal: { fontSize: '32px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },

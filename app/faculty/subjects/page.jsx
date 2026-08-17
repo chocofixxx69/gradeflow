@@ -19,7 +19,7 @@ const S = {
   page: { padding: 'var(--page-py) var(--page-px)', maxWidth: '1100px', margin: '0 auto' },
   label: { display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5)' },
-  mbox: { background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', width: '100%', maxWidth: '480px', padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: '90vh', overflowY: 'auto' },
+  mbox: { background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', width: '100%', maxWidth: '480px', padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: '90dvh', overflowY: 'auto' },
   statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' },
 };
 

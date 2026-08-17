@@ -265,7 +265,7 @@ function BatchUploadContent() {
         title: { fontSize: 'clamp(24px, 5vw, 32px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', marginBottom: 'var(--space-1)' },
         subtitle: { fontSize: '13px', color: 'var(--tx-muted)', lineHeight: 1.6, marginBottom: 'var(--space-8)' },
         card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: 'var(--space-7)', marginBottom: 'var(--space-6)' },
-        tabBar: { display: 'flex', gap: 'var(--space-2)', background: 'var(--surface-low)', padding: 'var(--space-1)', borderRadius: 'var(--radius-4)', width: 'fit-content', marginBottom: 'var(--space-8)' },
+        tabBar: { display: 'flex', gap: 'var(--space-2)', background: 'var(--surface-low)', padding: 'var(--space-1)', borderRadius: 'var(--radius-4)', width: 'fit-content', maxWidth: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginBottom: 'var(--space-8)' },
         tabBtn: (active) => ({
             padding: 'var(--space-3) var(--space-6)', borderRadius: 'var(--radius-3)', border: 'none',
             background: active ? 'var(--primary)' : 'transparent',

@@ -34,7 +34,8 @@ const S = {
     th: { padding: '10px var(--space-4)', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'left' },
     td: { padding: '13px var(--space-4)', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: 600, color: 'var(--tx-main)' },
     modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5)' },
-    mbox: (w = '480px') => ({ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-8)', width: '100%', maxWidth: w, padding: 'var(--space-7)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: '90vh', overflowY: 'auto' }),
+    mbox: (w = '480px') => ({ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-8)', width: '100%', maxWidth: w, padding: 'var(--space-7)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: '90dvh', overflowY: 'auto' }),
+    tableWrap: { overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
     drawer: { position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: '720px', background: 'var(--surface)', borderLeft: '1px solid var(--border)', zIndex: 1100, overflowY: 'hidden', padding: '40px clamp(var(--space-6),4vw,var(--space-9))', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-lg)' },
     overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1050 },
 };
@@ -275,7 +276,8 @@ export function ClassesContent({ embedded = false }) {
                 </div>
                 {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
                     : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <div style={S.tableWrap}>
+                        <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr>{['#', 'Name', 'USN', 'Sem', 'CGPA', 'Backlogs', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
                             </thead>
@@ -293,7 +295,7 @@ export function ClassesContent({ embedded = false }) {
                                             </span>
                                         </td>
                                         <td style={{ ...S.td, textAlign: 'center' }}>
-                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
+                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
                                                 <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
                                             </button>
                                         </td>
@@ -301,6 +303,7 @@ export function ClassesContent({ embedded = false }) {
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     )}
             </div>
         </div>
