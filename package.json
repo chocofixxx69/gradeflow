@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.5",
+    "@supabase/mcp-server-supabase": "^0.10.0",
     "@supabase/supabase-js": "^2.97.0",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
