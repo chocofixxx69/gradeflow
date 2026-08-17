@@ -1,0 +1,32 @@
+name: VTU Result Portal Discovery
+
+on:
+  # ── Automatic: check the VTU results homepage for new/updated exam links ──
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+
+  # ── Manual trigger ──
+  workflow_dispatch:
+
+jobs:
+  discover-urls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install -q requests beautifulsoup4 supabase python-dotenv
+
+      - name: Discover VTU Result URLs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python backend/scraper/discover_urls.py

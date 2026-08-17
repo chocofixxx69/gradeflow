@@ -37,6 +37,14 @@ FALLBACK_URLS = [
     "https://results.vtu.ac.in/MakeUpEcbcs23/index.php",# Jun/Jul 23 Makeup
     "https://results.vtu.ac.in/JFEcbcs23/index.php",    # Dec 22/Jan 23 Regular
     "https://results.vtu.ac.in/JFRVcbcs23/index.php",   # Dec 22/Jan 23 Reval
+    "https://results.vtu.ac.in/indexCDOE.php",          # VTU Online Degree Programs Provisional Results
+    "https://results.vtu.ac.in/indexMJ26.php",          # May/June-2026 Examination
+    "https://results.vtu.ac.in/indexSUMU25.php",        # Summer Semester Examination-2025
+    "https://results.vtu.ac.in/indexSJSEJJ25.php",      # Silver Jubilee July 2025 Examination
+    "https://results.vtu.ac.in/NDPhDRV24/index.php",    # Ph.D./M.S(Research) Course-Work Reval Nov/Dec-2024
+    "https://results.vtu.ac.in/SplJcbcs25/index.php",   # January-2025 Special Examination
+    "https://results.vtu.ac.in/JanSplRVEnoncbcs24/index.php", # Jan-2024 Special Exam [B.E] Revaluation
+    "https://results.vtu.ac.in/JanSplEnoncbcs24/index.php",   # January-2024 Special Exam [B.E & PG]
 ]
 
 def get_vtu_urls(faculty_id=None):

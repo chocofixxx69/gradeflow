@@ -35,6 +35,14 @@ const FALLBACK_URLS = [
     { exam_name: "Jun/Jul 23 Makeup", url: "https://results.vtu.ac.in/MakeUpEcbcs23/index.php" },
     { exam_name: "Dec 22/Jan 23 Regular", url: "https://results.vtu.ac.in/JFEcbcs23/index.php" },
     { exam_name: "Dec 22/Jan 23 Reval", url: "https://results.vtu.ac.in/JFRVcbcs23/index.php" },
+    { exam_name: "VTU ONLINE DEGREE PROGRAMS PROVISIONAL RESULTS", url: "https://results.vtu.ac.in/indexCDOE.php" },
+    { exam_name: "May/June-2026 Examination", url: "https://results.vtu.ac.in/indexMJ26.php" },
+    { exam_name: "Summer Semester Examination-2025", url: "https://results.vtu.ac.in/indexSUMU25.php" },
+    { exam_name: "Silver Jubilee July 2025 Examination", url: "https://results.vtu.ac.in/indexSJSEJJ25.php" },
+    { exam_name: "Ph.D./M.S(Research) Course-Work Reval Nov/Dec-2024", url: "https://results.vtu.ac.in/NDPhDRV24/index.php" },
+    { exam_name: "January-2025 Special Examination", url: "https://results.vtu.ac.in/SplJcbcs25/index.php" },
+    { exam_name: "Jan-2024 Special Exam [B.E] Revaluation", url: "https://results.vtu.ac.in/JanSplRVEnoncbcs24/index.php" },
+    { exam_name: "January-2024 Special Exam [B.E & PG]", url: "https://results.vtu.ac.in/JanSplEnoncbcs24/index.php" },
 ];
 
 // GET — List all VTU result URLs for a specific faculty
