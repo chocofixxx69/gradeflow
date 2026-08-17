@@ -48,3 +48,6 @@ debug_*/
 !app/public/*.jpg
 !app/public/*.jpeg
 .vercel
+
+# Supabase CLI local state (project ref/pooler URL, regenerated locally)
+supabase/.temp/

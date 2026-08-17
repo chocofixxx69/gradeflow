@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { requireStaff } from '../../../lib/server-session';
+import { weightedCGPA, computeBacklogs } from '../../../lib/analytics-data';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -22,8 +22,9 @@ export async function GET(req) {
         const class_id = searchParams.get('class_id');
         if (!class_id) return NextResponse.json({ error: 'class_id required.' }, { status: 400 });
 
-        // Get USNs in class (paginated)
-        const members = await fetchByChunks('class_students', 'id, usn, added_at, added_by', 'class_id', [class_id], supabaseAdmin);
+        // Get USNs in class (paginated). class_students has no added_at/added_by
+        // columns — fall back to created_at for display.
+        const members = await fetchByChunks('class_students', 'id, usn, created_at', 'class_id', [class_id], supabaseAdmin);
 
         if (!members || members.length === 0) {
             return NextResponse.json({ success: true, students: [] });
@@ -34,11 +35,14 @@ export async function GET(req) {
         // Fetch student profiles (paginated)
         const profiles = await fetchByChunks('students', 'usn, name, branch, semester', 'usn', usns, supabaseAdmin);
 
-        // Fetch academic remarks (SGPA per semester) + results (credits per semester) for CGPA (paginated)
-        const remarks = await fetchByChunks('academic_remarks', 'student_usn, sgpa, backlog_count, semester', 'student_usn', usns, supabaseAdmin);
+        // Fetch academic remarks (SGPA per semester) for the shared weighted-CGPA formula (paginated)
+        const remarks = await fetchByChunks('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', usns, supabaseAdmin);
 
         // Pull total_credits per student per semester from results table for weighted CGPA (paginated)
         const resultRows = await fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', usns, supabaseAdmin);
+
+        // Backlogs are derived from subject_marks.is_backlog — the real source of truth
+        const marks = await fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, total, is_backlog', 'usn', usns, supabaseAdmin);
 
         // Build a map: usn → { semester → total_credits }
         const creditsMap = {};
@@ -49,36 +53,21 @@ export async function GET(req) {
             creditsMap[r.usn][r.semester] = Math.max(prev, r.total_credits || 0);
         });
 
-        // Compute CGPA per student — VTU weighted formula: Σ(SGPA×credits) / Σ(credits)
+        // Compute CGPA per student via the shared canonical weighted formula
+        const remarksByUsn = {};
+        (remarks || []).forEach(r => (remarksByUsn[r.student_usn] ||= []).push(r));
         const cgpaMap = {};
-        const backlogMap = {};
+        usns.forEach(usn => {
+            cgpaMap[usn] = weightedCGPA(remarksByUsn[usn] || [], creditsMap[usn] || {});
+        });
 
-        if (remarks) {
-            const byStu = {};
-            remarks.forEach(r => {
-                if (!byStu[r.student_usn]) byStu[r.student_usn] = [];
-                byStu[r.student_usn].push(r);
-                backlogMap[r.student_usn] = (backlogMap[r.student_usn] || 0) + (r.backlog_count || 0);
-            });
-            Object.entries(byStu).forEach(([usn, rows]) => {
-                let weightedSum = 0;
-                let totalCr = 0;
-                rows.forEach(r => {
-                    const cr = (creditsMap[usn]?.[r.semester]) || 0;
-                    if (cr > 0) {
-                        weightedSum += parseFloat(r.sgpa || 0) * cr;
-                        totalCr += cr;
-                    }
-                });
-                // Fallback: equal weighting if credits data missing
-                if (totalCr === 0) {
-                    const avg = rows.reduce((s, r) => s + parseFloat(r.sgpa || 0), 0) / rows.length;
-                    cgpaMap[usn] = parseFloat(avg.toFixed(2));
-                } else {
-                    cgpaMap[usn] = parseFloat((weightedSum / totalCr).toFixed(2));
-                }
-            });
-        }
+        // Compute backlogs per student via the shared canonical derivation
+        const marksByUsn = {};
+        (marks || []).forEach(m => (marksByUsn[m.usn] ||= []).push(m));
+        const backlogMap = {};
+        usns.forEach(usn => {
+            backlogMap[usn] = computeBacklogs(marksByUsn[usn] || []).totalBacklogs;
+        });
 
         const profileMap = {};
         (profiles || []).forEach(p => { profileMap[p.usn] = p; });
@@ -91,7 +80,7 @@ export async function GET(req) {
             semester: profileMap[m.usn]?.semester || '—',
             cgpa: cgpaMap[m.usn] ?? null,
             total_backlogs: backlogMap[m.usn] ?? 0,
-            added_at: m.added_at,
+            added_at: m.created_at,
         }));
 
         return NextResponse.json({ success: true, students });

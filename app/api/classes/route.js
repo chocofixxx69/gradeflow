@@ -36,7 +36,7 @@ export async function POST(req) {
         const { error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        const { name, branch, semester, scheme, faculty_id } = await req.json();
+        const { name, branch, semester, scheme, faculty_id, section, batch, academic_year } = await req.json();
 
         if (!name || !branch || !semester || !faculty_id) {
             return NextResponse.json({ error: 'name, branch, semester, and faculty_id are required.' }, { status: 400 });
@@ -44,7 +44,10 @@ export async function POST(req) {
 
         const { data, error } = await supabaseAdmin
             .from('classes')
-            .insert({ name, branch, semester: parseInt(semester), scheme: scheme || '2022', faculty_id })
+            .insert({
+                name, branch, semester: parseInt(semester), scheme: scheme || '2022', faculty_id,
+                section: section || null, batch: batch || null, academic_year: academic_year || null,
+            })
             .select()
             .single();
 
@@ -62,12 +65,15 @@ export async function PUT(req) {
         const { error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        const { id, name, semester } = await req.json();
+        const { id, name, semester, section, batch, academic_year } = await req.json();
         if (!id) return NextResponse.json({ error: 'id required.' }, { status: 400 });
 
         const updates = {};
         if (name?.trim()) updates.name = name.trim();
         if (semester !== undefined && semester !== null) updates.semester = parseInt(semester);
+        if (section !== undefined) updates.section = section || null;
+        if (batch !== undefined) updates.batch = batch || null;
+        if (academic_year !== undefined) updates.academic_year = academic_year || null;
 
         if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
 

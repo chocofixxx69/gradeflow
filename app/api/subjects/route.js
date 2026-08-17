@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireStaff } from '../../../lib/server-session';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,43 +8,39 @@ const supabase = createClient(
 );
 
 export async function GET(req) {
+    const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+    if (authError) return authError;
+
     const { searchParams } = new URL(req.url);
     const scheme = searchParams.get('scheme') || '2022';
     const branch = searchParams.get('branch') || 'CSE';
     const semester = searchParams.get('semester');
-
-
 
     if (!semester) {
         return NextResponse.json({ error: 'Semester is required' }, { status: 400 });
     }
 
     try {
-        // Query the Unified Master Registry
+        // Query the subjects master table (subject_master_registry never existed live).
         const { data, error } = await supabase
-            .from('subject_master_registry')
-            .select('subject_code, subject_title, credits, category, cie_max, see_max')
+            .from('subjects')
+            .select('code, name, credits, cie_max, see_max')
             .eq('scheme', scheme)
-            .eq('branch_code', branch)
+            .eq('branch', branch)
             .eq('semester', parseInt(semester))
-            .eq('is_active', true)
-            .order('order_index', { ascending: true });
-
-
+            .order('code', { ascending: true });
 
         if (error) {
             console.error('Database Query Error:', error);
             return NextResponse.json({ success: false, subjects: [], error: 'Syllabus not found' });
         }
 
-        // Map to the format expected by the frontend
-        const subjects = data.map(s => ({
-            code: s.subject_code,
-            name: s.subject_title,
+        const subjects = (data || []).map(s => ({
+            code: s.code,
+            name: s.name,
             credits: s.credits,
-            category: s.category,
             cieMax: s.cie_max,
-            seeMax: s.see_max
+            seeMax: s.see_max,
         }));
 
         return NextResponse.json({ success: true, subjects });

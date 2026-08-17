@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { parsePDF } from '../../../lib/pdfParser';
+import { classify } from '../../../lib/vtuGrades';
 import crypto from 'crypto';
 
 export async function POST(req) {
@@ -124,10 +125,8 @@ export async function POST(req) {
             : 0;
 
         const percentage = Math.max(0, (cgpa - 0.75) * 10);
-        const classification = cgpa >= 7.75 ? 'First Class Distinction'
-            : cgpa >= 6.75 ? 'First Class'
-                : cgpa >= 5.0 ? 'Second Class'
-                    : 'Pass';
+        // Canonical 3-tier classification (single source of truth: lib/vtuGrades.js#classify)
+        const classification = classify(cgpa).label;
 
         return NextResponse.json({
             success: true,

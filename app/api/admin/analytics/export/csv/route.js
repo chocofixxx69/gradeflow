@@ -4,7 +4,11 @@ import { getAdminClient, getStudentAnalytics } from '../../../../../../lib/analy
 
 export const dynamic = 'force-dynamic';
 
-const COLUMNS = ['usn', 'name', 'branch', 'semester', 'cgpa', 'total_backlogs', 'has_results', 'lateral_entry'];
+const COLUMNS = [
+    'usn', 'name', 'branch', 'semester', 'section', 'batch', 'cgpa', 'sgpa',
+    'total_credits', 'earned_credits', 'total_backlogs', 'classification',
+    'result_status', 'has_results', 'lateral_entry',
+];
 
 function toCSV(rows) {
     const esc = (v) => {
