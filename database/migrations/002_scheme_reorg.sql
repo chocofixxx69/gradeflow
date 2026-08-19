@@ -18,6 +18,13 @@ INSERT INTO branches (code, label) VALUES
   ('RI', 'Robotics & Artificial Intelligence')
 ON CONFLICT (code) DO NOTHING;
 
+-- This project enables RLS by default on new tables, so an explicit public-read
+-- policy is required (subject_catalog and every other client-read table already
+-- has one) — without it the anon-key browser client gets zero rows.
+ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Branches are public" ON branches;
+CREATE POLICY "Branches are public" ON branches FOR SELECT USING (true);
+
 -- 2. Scheme-specific VTU result-portal tables (replaces vtu_result_urls as the
 --    canonical discovery target; vtu_result_urls is left in place, unwritten,
 --    since faculty_vtu_urls seeding still falls back to it for old rows).
