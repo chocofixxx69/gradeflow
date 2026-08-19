@@ -482,12 +482,17 @@ function StudentAuthContent() {
                                     onKeyDown={e => { if (e.key === 'Enter' && mode === 'login') handleLogin(); }}
                                 />
 
-                                <div style={{ textAlign: 'right', marginTop: '-10px' }}>
-                                    <Link href="/sign-in" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none' }}>
-                                        Forgot Password? Reset securely
-                                    </Link>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>Password is managed and protected by Clerk.</div>
-                                </div>
+                                {mode === 'login' && (
+                                    <div style={{ textAlign: 'right', marginTop: '-10px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+                                            style={{ fontSize: '12px', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                        >
+                                            Forgot Password? Reset securely
+                                        </button>
+                                    </div>
+                                )}
 
                                 <Button
                                     onClick={mode === 'login' ? handleLogin : handleReset}
@@ -497,6 +502,18 @@ function StudentAuthContent() {
                                 >
                                     {mode === 'login' ? 'Sign In' : 'Reset Password'}
                                 </Button>
+
+                                {mode === 'forgot' && (
+                                    <div style={{ textAlign: 'center' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setMode('login'); setError(''); setSuccess(''); }}
+                                            style={{ fontSize: '12px', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                        >
+                                            Back to Sign In
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </>

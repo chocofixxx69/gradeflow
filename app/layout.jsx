@@ -15,6 +15,15 @@ export const metadata = {
     description: 'GradeFlow — Track marks, calculate SGPA and CGPA, and manage your academic record.',
 };
 
+// viewport-fit=cover is what makes every env(safe-area-inset-*) rule in
+// globals.css resolve to a real value on notched/Dynamic Island iPhones —
+// without it they silently resolve to 0.
+export const viewport = {
+    width: 'device-width',
+    initialScale: 1,
+    viewportFit: 'cover',
+};
+
 export default function RootLayout({ children }) {
     return (
         <html lang="en" suppressHydrationWarning>

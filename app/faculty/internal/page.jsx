@@ -15,6 +15,7 @@ function FacultyAdminContent() {
     const [processed, setProcessed] = useState([]);
     const [activities, setActivities] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(null);
 
     useEffect(() => {
         const facSession = localStorage.getItem('faculty_session');
@@ -37,8 +38,10 @@ function FacultyAdminContent() {
             setRequests(pending || []);
             setProcessed(approved || []);
             setActivities(logs || []);
+            setLoadError(null);
         } catch (err) {
             console.error('Failed to load admin data:', err);
+            setLoadError('Failed to load administration data. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -116,6 +119,13 @@ function FacultyAdminContent() {
                 <PageHeaderTitle>Faculty Administration</PageHeaderTitle>
                 <PageHeaderSubtitle>Manage faculty access requests, monitor engagement, and oversee institutional data flow.</PageHeaderSubtitle>
             </PageHeader>
+
+            {loadError && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap', padding: 'var(--space-4) var(--space-6)', marginBottom: 'var(--space-6)', background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: 'var(--radius-6)' }}>
+                    <span style={{ color: 'var(--red)', fontWeight: 700, fontSize: '13px' }}>{loadError}</span>
+                    <Button size="sm" variant="ghost" onClick={() => { setLoadError(null); fetchData(); }}>Retry</Button>
+                </div>
+            )}
 
             {/* Stats Grid */}
             <div className="gf-stats-grid" style={s.statsGrid}>

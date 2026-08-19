@@ -337,7 +337,7 @@ export default function SubjectsPage() {
   const displayedBranchLabel = branches.find(b => b.code === branch)?.label || branch;
 
   return (
-    <AuthGuard restrictTo="faculty">
+    <AuthGuard role="faculty">
       <div style={S.page}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>

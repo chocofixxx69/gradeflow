@@ -28,9 +28,15 @@ function AdminPanelContent() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     useEffect(() => {
-        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-            setSidebarCollapsed(true);
-        }
+        if (typeof window === 'undefined') return;
+
+        const applyCollapseForWidth = () => {
+            setSidebarCollapsed(window.innerWidth < 1024);
+        };
+
+        applyCollapseForWidth();
+        window.addEventListener('resize', applyCollapseForWidth);
+        return () => window.removeEventListener('resize', applyCollapseForWidth);
     }, []);
     const initialTab = searchParams?.get('tab') || 'overview';
     const [tab, setTab] = useState(initialTab);
@@ -42,6 +48,7 @@ function AdminPanelContent() {
     const [activityDateFilter, setActivityDateFilter] = useState('all');
     const [stats, setStats] = useState({ students: 0, pending: 0, faculty: 0, totalMarks: 0, activityToday: 0 });
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [actionId, setActionId] = useState(null);
     const [search, setSearch] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
@@ -65,6 +72,7 @@ function AdminPanelContent() {
 
     const loadData = useCallback(async () => {
         setLoading(true);
+        setLoadError('');
         try {
             const [studs, { data: reqs, error: rErr }, { data: marksCount, error: mErr }, { data: logs, error: lErr }, { data: facultyList, error: fErr }] = await Promise.all([
                 fetchAllRows('students', '*', 'created_at', false),
@@ -101,6 +109,7 @@ function AdminPanelContent() {
             });
         } catch (err) {
             console.error('Failed to load admin data:', err);
+            setLoadError('Failed to load admin data. Please check your connection and try again.');
         } finally {
             setLoading(false);
         }
@@ -473,6 +482,15 @@ function AdminPanelContent() {
 
             {/* Main */}
             <main style={c.main} className="gf-fade-up">
+                {loadError && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 18px', borderRadius: 'var(--radius-5)', marginBottom: 'var(--space-6)', background: 'var(--red-bg)', border: '1px solid var(--red)' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--red)' }}>{loadError}</span>
+                        <button style={c.actionBtn(false)} onClick={loadData}>
+                            <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>refresh</span>
+                            Retry
+                        </button>
+                    </div>
+                )}
 
                 {tab === 'overview' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>

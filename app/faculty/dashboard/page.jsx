@@ -299,8 +299,8 @@ function FacultyDashboardView({
             )}
 
             {showBacklogModal && (
-                <div className={styles.modalOverlay}>
-                    <section ref={backlogDialogRef} className={`${styles.modal} gf-fade-up`} role="dialog" aria-modal="true" aria-labelledby="faculty-backlog-title" aria-describedby="faculty-backlog-description">
+                <div className={styles.modalOverlay} onClick={closeBacklogModal}>
+                    <section ref={backlogDialogRef} className={`${styles.modal} gf-fade-up`} role="dialog" aria-modal="true" aria-labelledby="faculty-backlog-title" aria-describedby="faculty-backlog-description" onClick={(e) => e.stopPropagation()}>
                         <div className={styles.modalHeader}>
                             <div>
                                 <h2 id="faculty-backlog-title" className={styles.modalTitle}>Backlog Subjects</h2>

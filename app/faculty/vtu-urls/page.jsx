@@ -199,6 +199,7 @@ function VtuUrlManagerContent() {
                                     size="sm"
                                     style={{ padding: 'var(--space-2)' }}
                                     title="Delete URL permanently"
+                                    aria-label="Delete"
                                 >
                                     <span className="material-icons-round" style={{ fontSize: '20px' }}>delete_outline</span>
                                 </Button>

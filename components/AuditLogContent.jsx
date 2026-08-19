@@ -14,6 +14,7 @@ const S = {
 export function AuditLogContent() {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
 
@@ -23,17 +24,21 @@ export function AuditLogContent() {
 
     const fetchLogs = async () => {
         setLoading(true);
+        setError('');
         try {
-            const [auditData, { data: actData }] = await Promise.all([
-                fetchAllPaginated('audit_logs', '*', supabase, 'created_at', false).catch(() => []),
+            const [auditData, { data: actData, error: actErr }] = await Promise.all([
+                fetchAllPaginated('audit_logs', '*', supabase, 'created_at', false),
                 supabase.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(500)
             ]);
+            if (actErr) throw actErr;
             const combined = [...(auditData || []), ...(actData || [])].sort(
                 (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
             );
             setLogs(combined);
         } catch (err) {
             console.error('Audit log fetch error:', err);
+            setLogs([]);
+            setError('Failed to load audit logs. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -61,7 +66,14 @@ export function AuditLogContent() {
             </div>
             <p style={S.subtitle}>Comprehensive record of all faculty actions and system modifications.</p>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
+            {error && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', padding: '12px 16px', borderRadius: 'var(--radius-4)', marginBottom: 'var(--space-4)', background: 'var(--red-bg)', border: '1px solid var(--red)' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--red)' }}>{error}</span>
+                    <button onClick={fetchLogs} className="gf-btn gf-btn-ghost" style={{ height: '32px', padding: '0 var(--space-3)', fontSize: '12px' }}>Retry</button>
+                </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1 }}>
                     <label style={S.label}>Search Logs</label>
                     <input className="gf-input" placeholder="Search name, email, action..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '9px var(--space-3)', fontSize: '13px' }} />
@@ -94,14 +106,14 @@ export function AuditLogContent() {
                                 </td>
                             </tr>
                         )}
-                        {!loading && filtered.length === 0 && (
+                        {!loading && !error && filtered.length === 0 && (
                             <tr>
                                 <td colSpan="5" style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--tx-muted)' }}>
                                     No audit records found.
                                 </td>
                             </tr>
                         )}
-                        {!loading && filtered.map(l => (
+                        {!loading && !error && filtered.map(l => (
                             <tr key={l.id}>
                                 <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>
                                     {l.created_at ? new Date(l.created_at).toLocaleString() : '—'}

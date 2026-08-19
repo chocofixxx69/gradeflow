@@ -47,6 +47,40 @@
 }
 
 
+.tabBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-6);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabLink {
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--tx-muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tabLink:hover {
+  color: var(--tx-main);
+}
+
+.tabLinkActive {
+  color: var(--tx-main);
+  border-bottom-color: var(--primary);
+}
+
 .filterPanel,
 .panel,
 .statePanel {

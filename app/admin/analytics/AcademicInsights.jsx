@@ -12,7 +12,7 @@ import styles from './AdminAnalytics.module.css';
 // Shell / Wrapper Component
 // ---------------------------------------------------------------------------
 
-function ChartSkeleton() {
+export function ChartSkeleton() {
     const heights = ['44%', '68%', '52%', '82%', '62%', '38%'];
     return (
         <div className={styles.chartSkeleton} aria-hidden="true">
@@ -23,7 +23,7 @@ function ChartSkeleton() {
     );
 }
 
-function InsightPanel({ label, title, description, loading, error, isEmpty, onRetry, children }) {
+export function InsightPanel({ label, title, description, loading, error, isEmpty, onRetry, children }) {
     return (
         <section className={styles.panel} aria-labelledby={`${title.replaceAll(' ', '-').toLowerCase()}-title`}>
             <div className={styles.panelHeader}>
@@ -68,11 +68,7 @@ function InsightPanel({ label, title, description, loading, error, isEmpty, onRe
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getAllStudents(studentsByClass) {
-    return studentsByClass.flatMap(entry => entry.students || []);
-}
-
-const CustomTooltip = ({ active, payload, label }) => {
+export const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
         return (
             <div style={{
@@ -98,48 +94,22 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 // ---------------------------------------------------------------------------
-// Charts
+// Charts — every dataset below is rendered exactly as returned by the
+// backend; there is no client-side aggregation or fallback computation.
 // ---------------------------------------------------------------------------
 
-export function CgpaDistributionChart({ analytics, classes, studentsByClass, loading, error, isEmpty, onRetry }) {
+export function CgpaDistributionChart({ analytics, loading, error, isEmpty, onRetry }) {
     const data = useMemo(() => {
-        if (analytics?.cgpa_distribution) {
-            const dist = analytics.cgpa_distribution;
-            return [
-                { name: '< 6', Students: Number(dist.below6 || 0) },
-                { name: '6-7', Students: Number(dist['6-7'] || 0) },
-                { name: '7-8', Students: Number(dist['7-8'] || 0) },
-                { name: '8-9', Students: Number(dist['8-9'] || 0) },
-                { name: '9+', Students: Number(dist['9-10'] || 0) },
-            ].filter(row => row.Students > 0);
-        }
-
-        if (!studentsByClass.length) return [];
-        const students = getAllStudents(studentsByClass);
-        const bins = [
-            { name: '< 5', Students: 0 },
-            { name: '5-6', Students: 0 },
-            { name: '6-7', Students: 0 },
-            { name: '7-8', Students: 0 },
-            { name: '8-9', Students: 0 },
-            { name: '9+', Students: 0 },
-        ];
-        
-        let hasData = false;
-        students.forEach(s => {
-            const cgpa = Number(s.cgpa);
-            if (Number.isFinite(cgpa)) {
-                hasData = true;
-                if (cgpa < 5) bins[0].Students++;
-                else if (cgpa < 6) bins[1].Students++;
-                else if (cgpa < 7) bins[2].Students++;
-                else if (cgpa < 8) bins[3].Students++;
-                else if (cgpa < 9) bins[4].Students++;
-                else bins[5].Students++;
-            }
-        });
-        return hasData ? bins : [];
-    }, [analytics, studentsByClass]);
+        const dist = analytics?.cgpa_distribution;
+        if (!dist) return [];
+        return [
+            { name: '< 6', Students: Number(dist.below6 || 0) },
+            { name: '6-7', Students: Number(dist['6-7'] || 0) },
+            { name: '7-8', Students: Number(dist['7-8'] || 0) },
+            { name: '8-9', Students: Number(dist['8-9'] || 0) },
+            { name: '9+', Students: Number(dist['9-10'] || 0) },
+        ].filter(row => row.Students > 0);
+    }, [analytics]);
 
     return (
         <InsightPanel
@@ -164,47 +134,22 @@ export function CgpaDistributionChart({ analytics, classes, studentsByClass, loa
     );
 }
 
-export function ReadinessSummaryChart({ analytics, classes, studentsByClass, loading, error, isEmpty, onRetry }) {
+export function ReadinessSummaryChart({ analytics, loading, error, isEmpty, onRetry }) {
     const data = useMemo(() => {
-        if (analytics?.kpis) {
-            const complete = Number(analytics.kpis.total_students || 0) - Number(analytics.kpis.students_without_cgpa || 0);
-            const missingCgpa = Number(analytics.kpis.students_without_cgpa || 0);
-            const emptyClasses = Number(analytics.kpis.empty_classes || 0);
+        const kpis = analytics?.kpis;
+        if (!kpis) return [];
 
-            const results = [];
-            if (complete > 0) results.push({ name: 'Complete Profile', value: complete, color: 'var(--success)' });
-            if (missingCgpa > 0) results.push({ name: 'Missing CGPA', value: missingCgpa, color: 'var(--warm-highlight)' });
-            if (emptyClasses > 0) results.push({ name: 'Empty Classes', value: emptyClasses, color: 'var(--destructive)' });
-
-            return results;
-        }
-
-        if (!studentsByClass.length) return [];
-        const students = getAllStudents(studentsByClass);
-        if (students.length === 0) return [];
-        
-        let complete = 0;
-        let missingCgpa = 0;
-        
-        students.forEach(s => {
-            if (Number.isFinite(Number(s.cgpa))) complete++;
-            else missingCgpa++;
-        });
-
-        // Compute empty classes
-        const classCounts = new Map(studentsByClass.map(entry => [entry.classId, entry.students?.length || 0]));
-        let emptyClasses = classes.filter(cls => {
-            const count = classCounts.get(cls.id);
-            return count === 0 || Number(cls.student_count || 0) === 0;
-        }).length;
+        const complete = Number(kpis.total_students || 0) - Number(kpis.students_without_cgpa || 0);
+        const missingCgpa = Number(kpis.students_without_cgpa || 0);
+        const emptyClasses = Number(kpis.empty_classes || 0);
 
         const results = [];
         if (complete > 0) results.push({ name: 'Complete Profile', value: complete, color: 'var(--success)' });
         if (missingCgpa > 0) results.push({ name: 'Missing CGPA', value: missingCgpa, color: 'var(--warm-highlight)' });
         if (emptyClasses > 0) results.push({ name: 'Empty Classes', value: emptyClasses, color: 'var(--destructive)' });
-        
+
         return results;
-    }, [analytics, classes, studentsByClass]);
+    }, [analytics]);
 
     return (
         <InsightPanel
@@ -239,38 +184,17 @@ export function ReadinessSummaryChart({ analytics, classes, studentsByClass, loa
     );
 }
 
-export function BacklogDistributionChart({ analytics, classes, studentsByClass, loading, error, isEmpty, onRetry }) {
+export function BacklogDistributionChart({ analytics, loading, error, isEmpty, onRetry }) {
     const data = useMemo(() => {
-        if (analytics?.backlog_distribution) {
-            const dist = analytics.backlog_distribution;
-            return [
-                { name: '0 Backlogs', Students: Number(dist.clear || 0) },
-                { name: '1-2 Backlogs', Students: Number(dist['1-2'] || 0) },
-                { name: '3-5 Backlogs', Students: Number(dist['3-5'] || 0) },
-                { name: '6+ Backlogs', Students: Number(dist['6plus'] || 0) },
-            ].filter(row => row.Students > 0);
-        }
-
-        if (!studentsByClass.length) return [];
-        const students = getAllStudents(studentsByClass);
-        const bins = [
-            { name: '0 Backlogs', Students: 0 },
-            { name: '1 Backlog', Students: 0 },
-            { name: '2 Backlogs', Students: 0 },
-            { name: '3+ Backlogs', Students: 0 },
-        ];
-        
-        let hasData = false;
-        students.forEach(s => {
-            hasData = true;
-            const b = Number(s.total_backlogs || 0);
-            if (b === 0) bins[0].Students++;
-            else if (b === 1) bins[1].Students++;
-            else if (b === 2) bins[2].Students++;
-            else bins[3].Students++;
-        });
-        return hasData ? bins : [];
-    }, [analytics, studentsByClass]);
+        const dist = analytics?.backlog_distribution;
+        if (!dist) return [];
+        return [
+            { name: '0 Backlogs', Students: Number(dist.clear || 0) },
+            { name: '1-2 Backlogs', Students: Number(dist['1-2'] || 0) },
+            { name: '3-5 Backlogs', Students: Number(dist['3-5'] || 0) },
+            { name: '6+ Backlogs', Students: Number(dist['6plus'] || 0) },
+        ].filter(row => row.Students > 0);
+    }, [analytics]);
 
     return (
         <InsightPanel
@@ -295,42 +219,21 @@ export function BacklogDistributionChart({ analytics, classes, studentsByClass, 
     );
 }
 
-export function BranchPerformanceChart({ analytics, classes, studentsByClass, loading, error, isEmpty, onRetry }) {
+export function BranchPerformanceChart({ analytics, loading, error, isEmpty, onRetry }) {
     const data = useMemo(() => {
-        if (analytics?.branch_distribution) {
-            return Object.entries(analytics.branch_distribution)
-                .map(([branch, count]) => ({ name: branch, Students: Number(count || 0) }))
-                .filter(row => row.Students > 0)
-                .sort((a, b) => b.Students - a.Students);
-        }
-
-        if (!studentsByClass.length) return [];
-        const students = getAllStudents(studentsByClass);
-        const branchMap = new Map();
-        
-        students.forEach(s => {
-            const cgpa = Number(s.cgpa);
-            if (Number.isFinite(cgpa) && s.branch && s.branch !== '—') {
-                const b = s.branch;
-                if (!branchMap.has(b)) branchMap.set(b, { sum: 0, count: 0 });
-                branchMap.get(b).sum += cgpa;
-                branchMap.get(b).count++;
-            }
-        });
-        
-        const results = Array.from(branchMap.entries()).map(([branch, stats]) => ({
-            name: branch,
-            'Avg CGPA': Number((stats.sum / stats.count).toFixed(2))
-        }));
-
-        return results.sort((a, b) => b['Avg CGPA'] - a['Avg CGPA']);
-    }, [analytics, studentsByClass]);
+        const dist = analytics?.branch_distribution;
+        if (!dist) return [];
+        return Object.entries(dist)
+            .map(([branch, count]) => ({ name: branch, Students: Number(count || 0) }))
+            .filter(row => row.Students > 0)
+            .sort((a, b) => b.Students - a.Students);
+    }, [analytics]);
 
     return (
         <InsightPanel
             label="Comparative Analysis"
             title="Branch Performance"
-            description="Average CGPA aggregated by engineering branch."
+            description="Student count aggregated by engineering branch."
             loading={loading}
             error={error}
             isEmpty={isEmpty || data.length === 0}
@@ -339,10 +242,10 @@ export function BranchPerformanceChart({ analytics, classes, studentsByClass, lo
             <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                    <XAxis type="number" domain={analytics?.branch_distribution ? undefined : [0, 10]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--tx-muted)' }} />
+                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--tx-muted)' }} />
                     <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--tx-muted)' }} width={80} />
                     <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: 'var(--surface-hover)' }} />
-                    <Bar dataKey={analytics?.branch_distribution ? 'Students' : 'Avg CGPA'} fill="var(--accent)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                    <Bar dataKey="Students" fill="var(--accent)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
                 </BarChart>
             </ResponsiveContainer>
         </InsightPanel>

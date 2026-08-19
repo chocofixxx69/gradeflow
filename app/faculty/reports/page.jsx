@@ -198,14 +198,19 @@ function ReportsContent() {
                 .sort((a, b) => b.cgpa - a.cgpa)
                 .slice(0, 5);
 
-            // 8. Per-class pass rate
+            // 8. Per-class pass rate (single batched query instead of one per class)
             const classStats = [];
+            const classIds = (classes || []).map(cls => cls.id);
+            const allClassMembers = classIds.length > 0
+                ? await fetchAllRows('class_students', 'usn, class_id', 'class_id', classIds)
+                : [];
+            const usnsByClassId = {};
+            (allClassMembers || []).forEach(m => {
+                if (!usnsByClassId[m.class_id]) usnsByClassId[m.class_id] = [];
+                usnsByClassId[m.class_id].push(m.usn);
+            });
             for (const cls of (classes || [])) {
-                const { data: cm } = await supabase
-                    .from('class_students')
-                    .select('usn')
-                    .eq('class_id', cls.id);
-                const usnsInClass = (cm || []).map(m => m.usn);
+                const usnsInClass = usnsByClassId[cls.id] || [];
                 if (usnsInClass.length === 0) continue;
                 const classMarks = (scrapedMarks || []).filter(m => usnsInClass.includes(m.usn));
                 const totalSubj = classMarks.length;

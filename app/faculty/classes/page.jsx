@@ -5,7 +5,6 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recha
 const PIE_COLORS = ['#22c55e', '#ef4444', '#6366f1', '#f59e0b', '#14b8a6', '#8b5cf6', '#f97316', '#3b82f6'];
 import { supabase } from '../../../lib/supabase';
 import AuthGuard from '../../../components/AuthGuard';
-import { useRouter } from 'next/navigation';
 import { fetchByChunks } from '../../../lib/supabase-utils';
 import SemesterResults from '../../../components/SemesterResults';
 import ClassSemesterSummary from '../../../components/ClassSemesterSummary';
@@ -463,7 +462,7 @@ function ClassesContent() {
                 ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                         <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55vw' }}>{selectedClass.name}</span>
-                        <button onClick={() => { setEditName(selectedClass.name); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', padding: '2px' }}>
+                        <button onClick={() => { setEditName(selectedClass.name); setEditingName(true); }} aria-label="Edit class name" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', padding: '2px' }}>
                             <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>
                         </button>
                     </div>
@@ -876,7 +875,7 @@ function ClassesContent() {
                                     <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>delete_forever</span>
                                     Delete Student
                                 </button>
-                                <button onClick={() => setOpenStudent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)' }}>
+                                <button onClick={() => setOpenStudent(null)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)' }}>
                                     <span className="material-icons-round" style={{ fontSize: '26px' }}>close</span>
                                 </button>
                             </div>
@@ -1014,7 +1013,7 @@ function ClassesContent() {
                             <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students</h3>
                             <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>to {selectedClass?.name}</p>
                         </div>
-                        <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
+                        <button onClick={() => setShowAddModal(false)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
                             <span className="material-icons-round" style={{ fontSize: '22px' }}>close</span>
                         </button>
                     </div>
@@ -1128,7 +1127,7 @@ function ClassesContent() {
                                 <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-dim)', background: 'var(--surface-low)', padding: '2px 8px', borderRadius: '6px' }}>{transferStudent.usn}</span>
                             </div>
                         </div>
-                        <button onClick={() => setShowTransfer(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
+                        <button onClick={() => setShowTransfer(false)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
                             <span className="material-icons-round" style={{ fontSize: '22px' }}>close</span>
                         </button>
                     </div>
@@ -1247,7 +1246,7 @@ function ClassesContent() {
                                 <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>{viewingList.title}</h3>
                                 <p style={{ margin: 0, fontSize: '12px', color: 'var(--tx-muted)' }}>{viewingList.data.length} Students</p>
                             </div>
-                            <button onClick={() => setViewingList(null)} style={{ background: 'var(--surface-low)', border: 'none', borderRadius: '50%', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px' }}>
+                            <button onClick={() => setViewingList(null)} aria-label="Close" style={{ background: 'var(--surface-low)', border: 'none', borderRadius: '50%', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px' }}>
                                 <span className="material-icons-round" style={{ fontSize: '18px' }}>close</span>
                             </button>
                         </div>

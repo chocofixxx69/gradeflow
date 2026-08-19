@@ -128,6 +128,8 @@ function ClassesContent({ embedded = false }) {
     const [drawerTab, setDrawerTab] = useState('marks'); // 'marks' | 'backlogs'
     const [branches, setBranches] = useState([]);
     const [schemes] = useState(['2022', '2025']);
+    const [classesError, setClassesError] = useState('');
+    const [studentsError, setStudentsError] = useState('');
     const fileRef = useRef(null);
 
     useEffect(() => {
@@ -147,15 +149,26 @@ function ClassesContent({ embedded = false }) {
 
     const fetchClasses = async () => {
         setLoadingClasses(true);
-        try { const r = await fetch('/api/classes', { credentials: 'include' }); const j = await r.json(); if (j.success) setClasses(j.classes || []); } finally { setLoadingClasses(false); }
+        setClassesError('');
+        try {
+            const r = await fetch('/api/classes', { credentials: 'include' });
+            const j = await r.json();
+            if (j.success) setClasses(j.classes || []);
+            else setClassesError(j.error || 'Failed to load classes.');
+        } catch (err) {
+            console.error('Fetch classes error:', err);
+            setClassesError('Failed to load classes. Please check your connection and try again.');
+        } finally {
+            setLoadingClasses(false);
+        }
     };
 
     const fetchClassStudents = useCallback(async (cls) => {
-        setLoadingStudents(true); setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
+        setLoadingStudents(true); setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all'); setStudentsError('');
         try {
             const r = await fetch(`/api/class-students?class_id=${cls.id}`);
             const j = await r.json();
-            if (!j.success) return;
+            if (!j.success) { setStudentsError(j.error || 'Failed to load students for this class.'); return; }
             const studs = j.students || [];
             setStudents(studs);
             if (studs.length > 0) {
@@ -168,11 +181,14 @@ function ClassesContent({ embedded = false }) {
                     setAvailableSems(sems);
                     const last = sems[sems.length - 1];
                     setSelectedSem(last);
-                    
+
                     const remarks = await fetchAllRows('academic_remarks', 'student_usn,semester,sgpa', 'student_usn', usns);
                     computeToppers(marks, studs, last, remarks || []);
                 }
             }
+        } catch (err) {
+            console.error('Fetch class students error:', err);
+            setStudentsError('Failed to load students for this class. Please check your connection and try again.');
         } finally { setLoadingStudents(false); }
     }, []);
 
@@ -444,6 +460,12 @@ function ClassesContent({ embedded = false }) {
             </div>
 
             {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
+            {studentsError && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '12px 16px', borderRadius: 'var(--radius-4)', marginBottom: 'var(--space-4)', background: 'var(--red-bg)', border: '1px solid var(--red)' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--red)' }}>{studentsError}</span>
+                    <button style={btn('ghost')} onClick={() => fetchClassStudents(selectedClass)}>Retry</button>
+                </div>
+            )}
 
             {/* Stat cards */}
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '28px' }}>
@@ -1033,6 +1055,12 @@ function ClassesContent({ embedded = false }) {
             </div>
 
             {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
+            {classesError && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '12px 16px', borderRadius: 'var(--radius-4)', marginBottom: 'var(--space-4)', background: 'var(--red-bg)', border: '1px solid var(--red)' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--red)' }}>{classesError}</span>
+                    <button style={btn('ghost')} onClick={fetchClasses}>Retry</button>
+                </div>
+            )}
 
             {loadingClasses ? <div style={{ textAlign: 'center', padding: '80px', color: 'var(--tx-dim)' }}>Loading classes…</div>
                 : classes.length === 0 ? (
