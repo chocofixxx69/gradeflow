@@ -1,7 +1,7 @@
-# Render Blueprint — deploys ONLY the GradeFlow Swagger API.
+# Render Blueprint — deploys the GradeFlow Swagger API AND the scraper worker.
 # In Render: New + → Blueprint → pick this repo. It auto-fills the settings below.
-# Swagger UI will be live at:  https://<service>.onrender.com/docs
 services:
+  # Swagger UI will be live at:  https://<service>.onrender.com/docs
   - type: web
     name: gradeflow-api
     runtime: python
@@ -13,6 +13,24 @@ services:
       # Optional — only needed for the Toppers/Monitoring/Scraping endpoints.
       # The /calc/* endpoints work without these.
       # Set the real values in the Render dashboard (do NOT hard-code them here).
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+  # Playwright-based scraper queue worker. MUST build via the Dockerfile —
+  # that's what actually runs `playwright install chromium`. If this service's
+  # Environment is ever set to "Python" instead of "Docker" in the Render
+  # dashboard, the Dockerfile gets skipped entirely, the browser binary never
+  # gets downloaded, and every scrape job fails with:
+  #   "BrowserType.launch: Executable doesn't exist at .../ms-playwright/..."
+  - type: web
+    name: gradeflow-scraper-worker
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    envVars:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
