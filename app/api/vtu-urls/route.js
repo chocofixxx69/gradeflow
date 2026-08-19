@@ -58,21 +58,37 @@ export async function GET(req) {
             return NextResponse.json({ error: 'Faculty ID required' }, { status: 400 });
         }
 
-        // Fetch their specific URLs
+        // Fetch their specific URLs, oldest exam session first
         let { data, error } = await supabase
             .from('faculty_vtu_urls')
             .select('*')
             .eq('faculty_id', faculty_id)
-            .order('discovered', { ascending: false });
+            .order('sort_order', { ascending: true });
 
         if (error) throw error;
 
-        // Auto-seed if they have no URLs
+        // Auto-seed if they have no URLs, from the canonical BE-only scheme
+        // tables (ascending, oldest first) — falling back to the hardcoded
+        // list only if the DB is completely unreachable.
         if (!data || data.length === 0) {
-            const seedData = FALLBACK_URLS.map(u => ({
+            let seedSource = [];
+            const [s2022, s2025] = await Promise.all([
+                supabase.from('vtu_urls_2022_scheme').select('url, exam_name, sort_order').order('sort_order', { ascending: true }),
+                supabase.from('vtu_urls_2025_scheme').select('url, exam_name, sort_order').order('sort_order', { ascending: true }),
+            ]);
+            const combined = [...(s2022.data || []), ...(s2025.data || [])];
+            const seen = new Set();
+            seedSource = combined.filter(u => (seen.has(u.url) ? false : (seen.add(u.url), true)));
+
+            if (!seedSource.length) {
+                seedSource = FALLBACK_URLS.map((u, i) => ({ url: u.url, exam_name: u.exam_name, sort_order: i }));
+            }
+
+            const seedData = seedSource.map(u => ({
                 faculty_id,
                 url: u.url,
-                exam_name: u.exam_name,
+                exam_name: u.exam_name || 'Unknown Exam',
+                sort_order: u.sort_order ?? 0,
                 is_active: true // Enabled by default as requested
             }));
 
@@ -81,7 +97,7 @@ export async function GET(req) {
                 .insert(seedData)
                 .select();
 
-            if (!seedError) data = seeded;
+            if (!seedError) data = seeded?.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
         }
 
         return NextResponse.json({ success: true, urls: data || [] });

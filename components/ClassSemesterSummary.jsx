@@ -13,11 +13,11 @@ export default function ClassSemesterSummary({ students = [], allMarks = [], sel
         const fetchDynamicSubjects = async () => {
             if (!allMarks || allMarks.length === 0) return;
             const schemes = [...new Set(students.map(s => s.scheme || '2022'))];
-            const { data: subjects } = await supabase.from('subjects').select('*').in('scheme', schemes);
-            
+            const { data: subjects } = await supabase.from('subject_catalog').select('*').in('scheme', schemes);
+
             if (subjects && subjects.length > 0) {
                 const map = {};
-                subjects.forEach(s => map[`${s.scheme}_${s.code.toUpperCase()}`] = s);
+                subjects.forEach(s => map[`${s.scheme}_${s.subject_code.toUpperCase()}`] = s);
                 
                 // create a map for student usn -> scheme for quick lookup
                 const usnSchemeMap = {};

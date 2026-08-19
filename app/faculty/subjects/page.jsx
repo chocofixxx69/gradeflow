@@ -44,9 +44,13 @@ export default function SubjectsPage() {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showBranchForm, setShowBranchForm] = useState(false);
+  const [showBulkForm, setShowBulkForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState({ name: '', code: '', credits: 3, semester: 1 });
   const [branchData, setBranchData] = useState({ code: '', label: '' });
+  const [bulkText, setBulkText] = useState('');
+  const [bulkRows, setBulkRows] = useState([]);
+  const [bulkError, setBulkError] = useState('');
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'charts'
   const [searchQuery, setSearchQuery] = useState('');
@@ -200,6 +204,87 @@ export default function SubjectsPage() {
     }
   };
 
+  // ── Bulk Add ──
+  // Accepts pasted CSV-like text (code,name,credits,semester per line, header row
+  // optional) or an uploaded .csv/.xlsx with the same columns.
+  const parseBulkText = (text) => {
+    const rows = [];
+    const errors = [];
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    lines.forEach((line, i) => {
+      const parts = line.split(',').map(p => p.trim());
+      if (parts.length < 4) { errors.push(`Line ${i + 1}: expected code,name,credits,semester`); return; }
+      const [code, name, credits, semester] = parts;
+      if (/^code$/i.test(code) && /^name$/i.test(name)) return; // skip header row
+      if (!code || !name) { errors.push(`Line ${i + 1}: code and name are required`); return; }
+      const cr = Number(credits), sem = Number(semester);
+      if (!Number.isFinite(cr) || cr < 0) { errors.push(`Line ${i + 1}: invalid credits "${credits}"`); return; }
+      if (!Number.isFinite(sem) || sem < 1 || sem > 8) { errors.push(`Line ${i + 1}: invalid semester "${semester}"`); return; }
+      rows.push({ code: code.toUpperCase(), name, credits: cr, semester: sem });
+    });
+    return { rows, errors };
+  };
+
+  const handleBulkTextChange = (text) => {
+    setBulkText(text);
+    if (!text.trim()) { setBulkRows([]); setBulkError(''); return; }
+    const { rows, errors } = parseBulkText(text);
+    setBulkRows(rows);
+    setBulkError(errors.length ? errors.slice(0, 5).join(' • ') + (errors.length > 5 ? ` • +${errors.length - 5} more` : '') : '');
+  };
+
+  const handleBulkFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const text = aoa.map(row => row.join(',')).join('\n');
+        handleBulkTextChange(text);
+      } catch (err) {
+        setBulkError('Could not read file: ' + err.message);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleBulkSave = async () => {
+    if (!bulkRows.length) return alert('No valid rows to import.');
+    setSaving(true);
+    try {
+      const payload = bulkRows.map(r => ({
+        subject_code: r.code,
+        subject_name: r.name,
+        credits: r.credits,
+        semester: r.semester,
+        scheme,
+        branch,
+      }));
+      const { error } = await supabase
+        .from('subject_catalog')
+        .upsert(payload, { onConflict: 'scheme,branch,semester,subject_code' });
+      if (error) throw error;
+      await logAuditAction({
+        action_type: 'BULK_ADD_SUBJECTS',
+        entity_type: 'subject_catalog',
+        entity_id: `${scheme}_${branch}`,
+        new_values: { count: payload.length, scheme, branch },
+      });
+      fetchSubjects();
+      setShowBulkForm(false);
+      setBulkText('');
+      setBulkRows([]);
+      setBulkError('');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── Excel Export ──
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
@@ -268,6 +353,10 @@ export default function SubjectsPage() {
             <Button onClick={exportToExcel} variant="ghost">
               <span className="material-icons-round" style={{ fontSize: '17px', marginRight: 'var(--space-2)' }}>download</span>
               Export Excel
+            </Button>
+            <Button onClick={() => setShowBulkForm(true)} variant="ghost">
+              <span className="material-icons-round" style={{ fontSize: '17px', marginRight: 'var(--space-2)' }}>upload_file</span>
+              Bulk Add
             </Button>
             <Button onClick={openAdd} variant="primary">
               <span className="material-icons-round" style={{ fontSize: '17px', marginRight: 'var(--space-2)' }}>add</span>
@@ -490,6 +579,52 @@ export default function SubjectsPage() {
                 <Button onClick={()=>setShowBranchForm(false)} variant="ghost" style={{ flex: 1, justifyContent: 'center' }}>Cancel</Button>
                 <Button onClick={handleBranchSave} disabled={saving} variant="primary" style={{ flex: 1, justifyContent: 'center' }}>
                   {saving ? 'Saving...' : 'Add Branch'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Add Modal */}
+        {showBulkForm && (
+          <div style={S.modal}>
+            <div style={{ ...S.mbox, maxWidth: '640px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 900 }}>Bulk Add Subjects</h2>
+              <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginTop: '-12px' }}>
+                Adds subjects to <strong>{scheme} scheme / {displayedBranchLabel}</strong>. Paste rows or upload a CSV/Excel file with columns: <code>code, name, credits, semester</code>.
+              </p>
+              <div>
+                <Input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  label="Upload CSV/Excel"
+                  onChange={handleBulkFile}
+                />
+              </div>
+              <div>
+                <label style={S.label}>Or Paste Rows</label>
+                <textarea
+                  value={bulkText}
+                  onChange={e => handleBulkTextChange(e.target.value)}
+                  placeholder={'BCS301, Mathematics for Computer Science, 4, 3\nBCS302, Digital Design & Computer Organization, 4, 3'}
+                  rows={8}
+                  style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-3)', color: 'var(--tx-main)', fontSize: '13px', fontFamily: 'monospace', outline: 'none', resize: 'vertical' }}
+                />
+              </div>
+              {bulkError && (
+                <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: '10px', padding: '10px 14px', color: 'var(--red)', fontSize: '12px', fontWeight: 600 }}>
+                  ⚠ {bulkError}
+                </div>
+              )}
+              {bulkRows.length > 0 && (
+                <div style={{ fontSize: '13px', color: 'var(--tx-dim)', fontWeight: 700 }}>
+                  {bulkRows.length} subject{bulkRows.length === 1 ? '' : 's'} ready to import
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                <Button onClick={() => { setShowBulkForm(false); setBulkText(''); setBulkRows([]); setBulkError(''); }} variant="ghost" style={{ flex: 1, justifyContent: 'center' }}>Cancel</Button>
+                <Button onClick={handleBulkSave} disabled={saving || !bulkRows.length} variant="primary" style={{ flex: 1, justifyContent: 'center' }}>
+                  {saving ? 'Importing...' : `Import ${bulkRows.length || ''} Subject${bulkRows.length === 1 ? '' : 's'}`}
                 </Button>
               </div>
             </div>

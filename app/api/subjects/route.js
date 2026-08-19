@@ -21,14 +21,16 @@ export async function GET(req) {
     }
 
     try {
-        // Query the subjects master table (subject_master_registry never existed live).
+        // subject_catalog is the canonical subject table (also used by the faculty
+        // Subject Library UI) — subjects/subject_master_registry were parallel,
+        // inconsistent tables and are no longer written to.
         const { data, error } = await supabase
-            .from('subjects')
-            .select('code, name, credits, cie_max, see_max')
+            .from('subject_catalog')
+            .select('subject_code, subject_name, credits')
             .eq('scheme', scheme)
             .eq('branch', branch)
             .eq('semester', parseInt(semester))
-            .order('code', { ascending: true });
+            .order('subject_code', { ascending: true });
 
         if (error) {
             console.error('Database Query Error:', error);
@@ -36,11 +38,9 @@ export async function GET(req) {
         }
 
         const subjects = (data || []).map(s => ({
-            code: s.code,
-            name: s.name,
+            code: s.subject_code,
+            name: s.subject_name,
             credits: s.credits,
-            cieMax: s.cie_max,
-            seeMax: s.see_max,
         }));
 
         return NextResponse.json({ success: true, subjects });
