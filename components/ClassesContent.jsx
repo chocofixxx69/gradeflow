@@ -1,24 +1,16 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
+import { parseClassUsns } from '../lib/class-usn-import';
+import { recordFacultyAction } from '../lib/api/faculty-action';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
 
 // ── Activity Logger ─────────────────────────────────────────
 async function logActivity(faculty, action_type, target = null) {
-    if (!faculty?.id) return;
-    try {
-        await supabase.from('faculty_activity').insert({
-            faculty_id: faculty.id,
-            faculty_name: faculty.full_name || faculty.name || faculty.email || 'Faculty',
-            action_type,
-            target_usn: target || null,
-            sync_status: 'SUCCESS',
-        });
-    } catch { /* non-blocking */ }
+    await recordFacultyAction(faculty, action_type, target);
 }
 
 // ── Shared Styles ───────────────────────────────────────────
@@ -43,29 +35,6 @@ const btn = (v = 'primary') => ({ padding: '10px 20px', borderRadius: 'var(--rad
 const msgBox = ok => ({ padding: '10px 16px', borderRadius: 'var(--radius-4)', marginBottom: 'var(--space-4)', fontSize: '13px', fontWeight: 700, background: ok ? 'var(--green-bg)' : 'var(--surface-low)', color: ok ? 'var(--green)' : 'var(--tx-muted)', border: `1px solid ${ok ? 'var(--green)' : 'var(--border)'}` });
 
 // ── Parse any spreadsheet/CSV file → USN array ─────────────
-async function parseFileForUsns(file) {
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (ext === 'csv') {
-        const text = await file.text();
-        const wb = XLSX.read(text, { type: 'string' });
-        return extractUsnsFromWorkbook(wb);
-    }
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
-    return extractUsnsFromWorkbook(wb);
-}
-
-function extractUsnsFromWorkbook(wb) {
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-    if (!rows.length) return [];
-    const header = (rows[0] || []).map(h => String(h).trim().toLowerCase());
-    const usnIdx = header.findIndex(h => ['usn','usno','university seat number','roll no','rollno','roll number'].includes(h));
-    const col = usnIdx >= 0 ? usnIdx : 0;
-    return rows.slice(usnIdx >= 0 ? 1 : 0)
-        .map(r => String(r[col] || '').trim().toUpperCase())
-        .filter(Boolean);
-}
 
 const fetchAllRows = async (table, select, filterCol, filterValues) => {
     let all = [];

@@ -1,25 +1,17 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import AuthGuard from '../../../components/AuthGuard';
 import { useRouter } from 'next/navigation';
+import { parseClassUsns } from '../../../lib/class-usn-import';
+import { recordFacultyAction } from '../../../lib/api/faculty-action';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
 
 // ── Activity Logger ─────────────────────────────────────────
 async function logActivity(faculty, action_type, target = null) {
-    if (!faculty?.id) return;
-    try {
-        await supabase.from('faculty_activity').insert({
-            faculty_id: faculty.id,
-            faculty_name: faculty.full_name || faculty.name || faculty.email || 'Faculty',
-            action_type,
-            target_usn: target || null,
-            sync_status: 'SUCCESS',
-        });
-    } catch { /* non-blocking */ }
+    await recordFacultyAction(faculty, action_type, target);
 }
 
 // ── Shared Styles ───────────────────────────────────────────
@@ -273,7 +265,7 @@ function ClassesContent({ embedded = false }) {
         if (!file || !selectedClass) return;
         setFileLoading(true);
         try {
-            const raw = await parseFileForUsns(file);
+                const raw = await parseClassUsns(file);
             const valid = [], invalid = [];
             raw.forEach(u => USN_RE.test(u) ? valid.push(u) : invalid.push(u));
             let added = 0;

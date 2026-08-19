@@ -9,46 +9,15 @@ import { CoverageBar, SkeletonRows, SortButton, StatusBadge, sortRows } from './
 // Pure helpers — no new API calls, no duplicate hook logic
 // ---------------------------------------------------------------------------
 
-export function deriveClassRows(classes, studentsByClass) {
-    const byClassId = new Map(
-        studentsByClass.map(entry => [
-            entry.classId,
-            { students: entry.students ?? [], hasError: Boolean(entry.error) },
-        ])
-    );
-
+export function deriveClassRows(classes) {
     return classes.map(cls => {
-        const entry = byClassId.get(cls.id) ?? { students: [], hasError: false };
-        const students = entry.students;
-
-        const studentCount = students.length > 0
-            ? students.length
-            : Number(cls.student_count ?? 0);
-
-        const cgpaStudents = students.filter(s => Number.isFinite(Number(s.cgpa)));
-        const avgCgpa = cgpaStudents.length
-            ? cgpaStudents.reduce((sum, s) => sum + Number(s.cgpa), 0) / cgpaStudents.length
-            : Number(cls.average_cgpa || 0) > 0
-                ? Number(cls.average_cgpa)
-                : null;
-
-        const backlogCount = students.length > 0
-            ? students.filter(s => Number(s.total_backlogs ?? 0) > 0).length
-            : Number(cls.total_backlogs ?? 0);
-
-        const dataCoverage =
-            students.length > 0
-                ? Math.round((cgpaStudents.length / students.length) * 100)
-                : null;
-
+        const studentCount = Number(cls.student_count ?? cls.total_students ?? 0);
+        const avgCgpa = Number(cls.average_cgpa || 0) > 0 ? Number(cls.average_cgpa) : null;
+        const backlogCount = Number(cls.total_backlogs ?? 0);
+        const dataCoverage = cls.coverage_percentage ?? null;
         const isEmpty = studentCount === 0;
-
-        const hasPartialData =
-            !isEmpty &&
-            students.length > 0 &&
-            cgpaStudents.length < students.length;
-
-        const hasFetchError = entry.hasError;
+        const hasPartialData = false;
+        const hasFetchError = false;
 
         return {
             id: cls.id,
@@ -184,8 +153,8 @@ export function ClassIntelligence({ classes, studentsByClass, loading, error, is
     const [sortDir, setSortDir] = useState('asc');
 
     const rows = useMemo(
-        () => deriveClassRows(classes, studentsByClass),
-        [classes, studentsByClass]
+        () => deriveClassRows(classes),
+        [classes]
     );
 
     const sortedRows = useMemo(

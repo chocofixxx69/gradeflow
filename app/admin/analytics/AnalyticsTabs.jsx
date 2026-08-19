@@ -6,10 +6,13 @@ import styles from './AdminAnalytics.module.css';
 
 const TABS = [
     { href: '/admin/analytics', label: 'Overview' },
+    { href: '/admin/analytics/students', label: 'Students' },
+    { href: '/admin/analytics/classes', label: 'Classes' },
     { href: '/admin/analytics/subjects', label: 'Subjects' },
     { href: '/admin/analytics/faculty', label: 'Faculty' },
     { href: '/admin/analytics/rankings', label: 'Rankings' },
     { href: '/admin/analytics/backlogs', label: 'Backlogs' },
+    { href: '/admin/analytics/charts', label: 'Charts' },
 ];
 
 export function AnalyticsTabs() {

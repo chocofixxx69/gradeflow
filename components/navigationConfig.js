@@ -18,6 +18,8 @@ export const NAV_CONFIG = {
   ],
   admin: [
     { key: 'classes', label: 'Classes', href: '/admin/classes', icon: 'groups', group: 'Institution' },
+    { key: 'examSessions', label: 'Exam Sessions', href: '/admin/exam-sessions', icon: 'event', group: 'Institution' },
+    { key: 'facultyAssignments', label: 'Faculty Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },
     { key: 'analytics', label: 'Analytics', href: '/admin/analytics', icon: 'analytics', group: 'Institution' },
     { key: 'auditLog', label: 'Audit Log', href: '/admin/audit-log', icon: 'history', group: 'Governance' },
   ],
@@ -80,6 +82,8 @@ export const ROUTE_LABELS = {
   '/faculty/register': 'Faculty Registration',
   '/admin': 'Admin',
   '/admin/classes': 'Classes',
+  '/admin/exam-sessions': 'Exam Sessions',
+  '/admin/faculty-assignments': 'Faculty Assignments',
   '/admin/analytics': 'Analytics',
   '/admin/audit-log': 'Audit Log',
   '/admin/gateway': 'Admin Gateway',

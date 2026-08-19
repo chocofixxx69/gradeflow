@@ -9,10 +9,11 @@ import { SkeletonRows, SortButton, StatusBadge, sortRows } from './AnalyticsShar
 // Pure helpers - no new API calls, no duplicate hook logic
 // ---------------------------------------------------------------------------
 
-export function deriveStudentRows(risk) {
-    if (!Array.isArray(risk?.students)) return [];
+export function deriveStudentRows(risk, students) {
+    const source = Array.isArray(students) ? students : risk?.students;
+    if (!Array.isArray(source)) return [];
 
-    return risk.students.map(student => ({
+    return source.map(student => ({
         id: student.usn,
         usn: student.usn,
         name: student.name || '-',
@@ -20,7 +21,7 @@ export function deriveStudentRows(risk) {
         branch: student.branch || '-',
         semester: student.semester || '-',
         cgpa: Number.isFinite(Number(student.cgpa)) ? Number(student.cgpa) : null,
-        risk_level: student.risk_level,
+        risk_level: student.risk_level || (student.result_status === 'BACKLOG' ? 'MODERATE' : 'CLEAR'),
         total_backlogs: Number(student.total_backlogs ?? 0),
     }));
 }
@@ -198,7 +199,7 @@ function StudentIntelligenceTable({ rows, sortKey, sortDir, onSort, page, pageSi
 /**
  * StudentIntelligence
  */
-export function StudentIntelligence({ classes, loading, error, isEmpty, onRetry, risk }) {
+export function StudentIntelligence({ classes, loading, error, isEmpty, onRetry, risk, students }) {
     const [sortKey, setSortKey] = useState('name');
     const [sortDir, setSortDir] = useState('asc');
     const [searchQuery, setSearchQuery] = useState('');
@@ -206,8 +207,8 @@ export function StudentIntelligence({ classes, loading, error, isEmpty, onRetry,
     const [pageSize, setPageSize] = useState(10);
 
     const rows = useMemo(
-        () => deriveStudentRows(risk),
-        [risk]
+        () => deriveStudentRows(risk, students),
+        [risk, students]
     );
 
     const filteredRows = useMemo(
