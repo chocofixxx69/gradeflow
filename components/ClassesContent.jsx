@@ -43,6 +43,15 @@ export function ClassesContent({ embedded = false }) {
     const [selectedClass, setSelectedClass] = useState(null);
     const [students, setStudents] = useState([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     const router = useRouter();
     const [semFilter, setSemFilter] = useState('all');
     const [classTab, setClassTab] = useState('roster');
@@ -226,32 +235,61 @@ export function ClassesContent({ embedded = false }) {
                 {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
                     : (
                         <div style={S.tableWrap}>
-                        <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr>{['#', 'Name', 'USN', 'Sem', 'CGPA', 'Backlogs', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
-                            </thead>
-                            <tbody>
-                                {filteredStudents.map((s, idx) => (
-                                    <tr key={s.usn}>
-                                        <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
-                                        <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
-                                        <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
-                                        <td style={{ ...S.td, textAlign: 'center' }}>{s.semester || '—'}</td>
-                                        <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: s.cgpa ? 'var(--primary)' : 'var(--tx-dim)' }}>{s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}</td>
-                                        <td style={{ ...S.td, textAlign: 'center' }}>
-                                            <span style={{ fontWeight: 900, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                                                {s.total_backlogs > 0 ? s.total_backlogs : 'Clear ✓'}
-                                            </span>
-                                        </td>
-                                        <td style={{ ...S.td, textAlign: 'center' }}>
-                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
-                                                <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                            {!isMobile ? (
+                                <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr>{['#', 'Name', 'USN', 'Sem', 'CGPA', 'Backlogs', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredStudents.map((s, idx) => (
+                                            <tr key={s.usn}>
+                                                <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
+                                                <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
+                                                <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
+                                                <td style={{ ...S.td, textAlign: 'center' }}>{s.semester || '—'}</td>
+                                                <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: s.cgpa ? 'var(--primary)' : 'var(--tx-dim)' }}>{s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}</td>
+                                                <td style={{ ...S.td, textAlign: 'center' }}>
+                                                    <span style={{ fontWeight: 900, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                                                        {s.total_backlogs > 0 ? s.total_backlogs : 'Clear ✓'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ ...S.td, textAlign: 'center' }}>
+                                                    <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
+                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
+                                    {filteredStudents.map((s, idx) => (
+                                        <div key={s.usn} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {idx + 1}. {s.name}
+                                                </div>
+                                                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                    {s.usn} · Sem {s.semester || '—'}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+                                                    <span style={{ fontWeight: 800, fontSize: '11px', color: s.cgpa ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                        CGPA: {s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}
+                                                    </span>
+                                                    <span style={{ fontWeight: 800, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
+                                                        {s.total_backlogs > 0 ? `${s.total_backlogs} Backlog` : 'Clear ✓'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }}>
+                                                <span className="material-icons-round" style={{ fontSize: '20px' }}>remove_circle_outline</span>
                                             </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                        </div>
+                                    ))}
+                                    {filteredStudents.length === 0 && <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No students in roster.</div>}
+                                </div>
+                            )}
                         </div>
                     )}
             </div>

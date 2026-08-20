@@ -720,46 +720,75 @@ function AdminPanelContent() {
                         <div style={c.tableHead}>
                             <div style={c.tableTitle}>Verification Queue</div>
                         </div>
-                        <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr>{['Faculty Member', 'Employee ID', 'Department', 'Access Key', 'Action'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
-                            </thead>
-                            <tbody>
-                                {requests.map(r => (
-                                    <tr key={r.id}>
-                                        <td style={c.td}>
-                                            <div style={{ fontWeight: 800 }}>{r.full_name}</div>
-                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{r.email}</div>
-                                        </td>
-                                        <td style={c.td}>{r.employee_id || 'ID PENDING'}</td>
-                                        <td style={c.td}>{r.department}</td>
-                                        <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '11px', color: 'var(--tx-muted)' }}>
-                                            {r.generated_access_key ? (
-                                                <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => copyKey(r.generated_access_key)}>
-                                                    {r.generated_access_key}
-                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: copiedKey === r.generated_access_key ? '#16A34A' : 'var(--tx-dim)' }}>
-                                                        {copiedKey === r.generated_access_key ? 'check' : 'content_copy'}
+                        {!isMobile ? (
+                            <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>{['Faculty Member', 'Employee ID', 'Department', 'Access Key', 'Action'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
+                                </thead>
+                                <tbody>
+                                    {requests.map(r => (
+                                        <tr key={r.id}>
+                                            <td style={c.td}>
+                                                <div style={{ fontWeight: 800 }}>{r.full_name}</div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{r.email}</div>
+                                            </td>
+                                            <td style={c.td}>{r.employee_id || 'ID PENDING'}</td>
+                                            <td style={c.td}>{r.department}</td>
+                                            <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                {r.generated_access_key ? (
+                                                    <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => copyKey(r.generated_access_key)}>
+                                                        {r.generated_access_key}
+                                                        <span className="material-icons-round" style={{ fontSize: '14px', color: copiedKey === r.generated_access_key ? '#16A34A' : 'var(--tx-dim)' }}>
+                                                            {copiedKey === r.generated_access_key ? 'check' : 'content_copy'}
+                                                        </span>
                                                     </span>
-                                                </span>
-                                            ) : '—'}
-                                        </td>
-                                        <td style={c.td}>
-                                            {r.status === 'pending' ? (
-                                                <div style={{ display: 'flex', gap: '8px' }}>
-                                                    <button style={c.actionBtn(true)} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
-                                                        {actionId === r.id ? '...' : 'Approve'}
-                                                    </button>
-                                                    <button style={c.actionBtn(false)} onClick={() => rejectRequest(r.id)}>Decline</button>
-                                                </div>
-                                            ) : (
-                                                <span style={c.badge(r.status)}>{r.status?.toUpperCase()}</span>
-                                            )}
-                                        </td>
-                                    </tr>
+                                                ) : '—'}
+                                            </td>
+                                            <td style={c.td}>
+                                                {r.status === 'pending' ? (
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <button style={c.actionBtn(true)} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
+                                                            {actionId === r.id ? '...' : 'Approve'}
+                                                        </button>
+                                                        <button style={c.actionBtn(false)} onClick={() => rejectRequest(r.id)}>Decline</button>
+                                                    </div>
+                                                ) : (
+                                                    <span style={c.badge(r.status)}>{r.status?.toUpperCase()}</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {requests.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No faculty requests yet.</td></tr>}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
+                                {requests.map(r => (
+                                    <div key={r.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.full_name || 'Faculty Member'}</div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', wordBreak: 'break-all' }}>{r.email}</div>
+                                            </div>
+                                            <span style={c.badge(r.status)}>{r.status?.toUpperCase() || 'PENDING'}</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--surface)', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', border: '1px solid var(--border)' }}>
+                                            <div><span style={{ color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', fontSize: '9px' }}>Dept:</span> {r.department || '—'}</div>
+                                            <div><span style={{ color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', fontSize: '9px' }}>Emp ID:</span> {r.employee_id || 'PENDING'}</div>
+                                        </div>
+                                        {r.status === 'pending' && (
+                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                                <button style={{ ...c.actionBtn(true), flex: 1, padding: '9px' }} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
+                                                    {actionId === r.id ? '...' : 'Approve Access'}
+                                                </button>
+                                                <button style={{ ...c.actionBtn(false), flex: 1, padding: '9px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => rejectRequest(r.id)}>Decline</button>
+                                            </div>
+                                        )}
+                                    </div>
                                 ))}
-                                {requests.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No faculty requests yet.</td></tr>}
-                            </tbody>
-                        </table>
+                                {requests.length === 0 && <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No faculty requests yet.</div>}
+                            </div>
+                        )}
                     </div>
                 </>}
 
@@ -803,50 +832,80 @@ function AdminPanelContent() {
                             <div style={c.tableTitle}>All Faculty Actions</div>
                             <div style={{ fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 600 }}>{filteredActivity.length} records</div>
                         </div>
-                        <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr>{['Timestamp', 'Faculty', 'Dept', 'Action', 'Target / Detail', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
-                            </thead>
-                            <tbody>
+                        {!isMobile ? (
+                            <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>{['Timestamp', 'Faculty', 'Dept', 'Action', 'Target / Detail', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
+                                </thead>
+                                <tbody>
+                                    {filteredActivity.map((log, i) => {
+                                        const [bg, col] = getActionColor(log.action_type);
+                                        const ts = log.created_at ? new Date(log.created_at) : null;
+                                        const facultyInfo = log._faculty || {};
+                                        return (
+                                            <tr key={log.id || i} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                                <td style={{ ...c.td, fontSize: '11px', color: 'var(--tx-dim)', whiteSpace: 'nowrap' }}>
+                                                    {ts ? ts.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
+                                                    <div style={{ fontSize: '10px', marginTop: '2px' }}>{ts ? ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                                                </td>
+                                                <td style={c.td}>
+                                                    <div style={{ fontWeight: 800, fontSize: '13px' }}>{log.faculty_name || facultyInfo.full_name || 'Faculty'}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{facultyInfo.email || ''}</div>
+                                                </td>
+                                                <td style={{ ...c.td, fontSize: '12px', color: 'var(--tx-muted)' }}>{facultyInfo.department || '—'}</td>
+                                                <td style={c.td}>
+                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: col }}>
+                                                        {log.action_type || 'ACTION'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {log.target_usn || '—'}
+                                                </td>
+                                                <td style={c.td}>
+                                                    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: log.sync_status === 'SUCCESS' ? 'var(--green-bg)' : 'var(--red-bg)', color: log.sync_status === 'SUCCESS' ? 'var(--green)' : 'var(--red)' }}>
+                                                        {log.sync_status || 'OK'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filteredActivity.length === 0 && (
+                                        <tr><td colSpan="6" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No activity logs match your filters.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
                                 {filteredActivity.map((log, i) => {
                                     const [bg, col] = getActionColor(log.action_type);
                                     const ts = log.created_at ? new Date(log.created_at) : null;
                                     const facultyInfo = log._faculty || {};
                                     return (
-                                        <tr key={log.id || i} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                            <td style={{ ...c.td, fontSize: '11px', color: 'var(--tx-dim)', whiteSpace: 'nowrap' }}>
-                                                {ts ? ts.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
-                                                <div style={{ fontSize: '10px', marginTop: '2px' }}>{ts ? ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                                            </td>
-                                            <td style={c.td}>
-                                                <div style={{ fontWeight: 800, fontSize: '13px' }}>{log.faculty_name || facultyInfo.full_name || 'Faculty'}</div>
-                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{facultyInfo.email || ''}</div>
-                                            </td>
-                                            <td style={{ ...c.td, fontSize: '12px', color: 'var(--tx-muted)' }}>{facultyInfo.department || '—'}</td>
-                                            <td style={c.td}>
-                                                <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: col }}>
+                                        <div key={log.id || i} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: col }}>
                                                     {log.action_type || 'ACTION'}
                                                 </span>
-                                            </td>
-                                            <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {log.target_usn || '—'}
-                                            </td>
-                                            <td style={c.td}>
-                                                <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: log.sync_status === 'SUCCESS' ? 'var(--green-bg)' : 'var(--red-bg)', color: log.sync_status === 'SUCCESS' ? 'var(--green)' : 'var(--red)' }}>
-                                                    {log.sync_status || 'OK'}
+                                                <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>
+                                                    {ts ? ts.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
                                                 </span>
-                                            </td>
-                                        </tr>
+                                            </div>
+                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                {log.faculty_name || facultyInfo.full_name || 'Faculty Member'}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', wordBreak: 'break-word' }}>
+                                                {log.details || log.target_usn || '—'}
+                                            </div>
+                                        </div>
                                     );
                                 })}
                                 {filteredActivity.length === 0 && (
-                                    <tr><td colSpan="6" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No activity logs match your filters.</td></tr>
+                                    <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No activity records found.</div>
                                 )}
-                            </tbody>
-                        </table>
+                            </div>
+                        )}
                     </div>
-                </>
-                }
+                </>}
 
                 {tab === 'classes' && <ClassesContent embedded={true} />}
 

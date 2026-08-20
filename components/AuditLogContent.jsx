@@ -16,6 +16,15 @@ export function AuditLogContent() {
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         fetchLogs();
@@ -74,11 +83,11 @@ export function AuditLogContent() {
             )}
 
             <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 200px' }}>
                     <label style={S.label}>Search Logs</label>
                     <input className="gf-input" placeholder="Search name, email, action..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '9px var(--space-3)', fontSize: '13px' }} />
                 </div>
-                <div style={{ width: '200px' }}>
+                <div style={{ width: isMobile ? '100%' : '200px' }}>
                     <label style={S.label}>Action Type</label>
                     <select className="gf-input" value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ padding: '9px var(--space-3)', fontSize: '13px' }}>
                         <option value="all">All Actions</option>
@@ -88,64 +97,91 @@ export function AuditLogContent() {
             </div>
 
             <div className="gf-table-container">
-                <table className="gf-table">
-                    <thead>
-                        <tr>
-                            <th>Timestamp</th>
-                            <th>Faculty</th>
-                            <th>Action</th>
-                            <th>Details</th>
-                            <th>Previous State</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loading && (
+                {!isMobile ? (
+                    <table className="gf-table">
+                        <thead>
                             <tr>
-                                <td colSpan="5" style={{ textAlign: 'center', padding: 'var(--space-6)' }}>
-                                    Loading audit logs...
-                                </td>
+                                <th>Timestamp</th>
+                                <th>Faculty</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                                <th>Previous State</th>
                             </tr>
-                        )}
-                        {!loading && !error && filtered.length === 0 && (
-                            <tr>
-                                <td colSpan="5" style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--tx-muted)' }}>
-                                    No audit records found.
-                                </td>
-                            </tr>
-                        )}
+                        </thead>
+                        <tbody>
+                            {loading && (
+                                <tr>
+                                    <td colSpan="5" style={{ textAlign: 'center', padding: 'var(--space-6)' }}>
+                                        Loading audit logs...
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading && !error && filtered.length === 0 && (
+                                <tr>
+                                    <td colSpan="5" style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--tx-muted)' }}>
+                                        No audit records found.
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading && !error && filtered.map(l => (
+                                <tr key={l.id}>
+                                    <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>
+                                        {l.created_at ? new Date(l.created_at).toLocaleString() : '—'}
+                                    </td>
+                                    <td>
+                                        <div style={{ fontWeight: 700 }}>{l.faculty_name || 'System'}</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>{l.faculty_email || ''}</div>
+                                    </td>
+                                    <td>
+                                        <span className="gf-badge" style={{ background: 'var(--surface-low)', color: 'var(--tx-main)' }}>
+                                            {l.action_type}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-main)', fontWeight: 600 }}>{l.entity_type || 'Target'}: {l.target_usn || l.entity_id || '—'}</div>
+                                        {l.new_values && (
+                                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }}>
+                                                {JSON.stringify(l.new_values)}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {l.old_values ? (
+                                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
+                                                {JSON.stringify(l.old_values)}
+                                            </div>
+                                        ) : '—'}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px 0' }}>
+                        {loading && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--tx-dim)' }}>Loading audit logs...</div>}
+                        {!loading && !error && filtered.length === 0 && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--tx-muted)', fontSize: '13px' }}>No audit records found.</div>}
                         {!loading && !error && filtered.map(l => (
-                            <tr key={l.id}>
-                                <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>
-                                    {l.created_at ? new Date(l.created_at).toLocaleString() : '—'}
-                                </td>
-                                <td>
-                                    <div style={{ fontWeight: 700 }}>{l.faculty_name || 'System'}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>{l.faculty_email || ''}</div>
-                                </td>
-                                <td>
-                                    <span className="gf-badge" style={{ background: 'var(--surface-low)', color: 'var(--tx-main)' }}>
+                            <div key={l.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span className="gf-badge" style={{ background: 'var(--surface-low)', color: 'var(--tx-main)', fontSize: '10px' }}>
                                         {l.action_type}
                                     </span>
-                                </td>
-                                <td>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-main)', fontWeight: 600 }}>{l.entity_type || 'Target'}: {l.target_usn || l.entity_id || '—'}</div>
-                                    {l.new_values && (
-                                        <div style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }}>
-                                            {JSON.stringify(l.new_values)}
-                                        </div>
-                                    )}
-                                </td>
-                                <td>
-                                    {l.old_values ? (
-                                        <div style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-                                            {JSON.stringify(l.old_values)}
-                                        </div>
-                                    ) : '—'}
-                                </td>
-                            </tr>
+                                    <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>
+                                        {l.created_at ? new Date(l.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>{l.faculty_name || 'System'}</div>
+                                    {l.faculty_email && <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>{l.faculty_email}</div>}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', background: 'var(--surface-low)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', wordBreak: 'break-word' }}>
+                                    <span style={{ fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', fontSize: '9px' }}>Target: </span>
+                                    {l.entity_type || 'Target'}: {l.target_usn || l.entity_id || '—'}
+                                </div>
+                            </div>
                         ))}
-                    </tbody>
-                </table>
+                    </div>
+                )}
             </div>
         </div>
     );
