@@ -11,18 +11,45 @@ function AdminPanelContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        const applyCollapseForWidth = () => {
-            setSidebarCollapsed(window.innerWidth < 1024);
+        const handleResize = () => {
+            const mobile = window.innerWidth < 1024;
+            setIsMobile(mobile);
+            if (!mobile) {
+                setMobileMenuOpen(false);
+            }
         };
 
-        applyCollapseForWidth();
-        window.addEventListener('resize', applyCollapseForWidth);
-        return () => window.removeEventListener('resize', applyCollapseForWidth);
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    useEffect(() => {
+        if (isMobile && mobileMenuOpen) {
+            document.body.classList.add('gf-drawer-open');
+        } else {
+            document.body.classList.remove('gf-drawer-open');
+        }
+        return () => {
+            document.body.classList.remove('gf-drawer-open');
+        };
+    }, [isMobile, mobileMenuOpen]);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && mobileMenuOpen) {
+                setMobileMenuOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [mobileMenuOpen]);
     const initialTab = searchParams?.get('tab') || 'overview';
     const [tab, setTab] = useState(initialTab);
     const [students, setStudents] = useState([]);
@@ -241,8 +268,16 @@ function AdminPanelContent() {
     };
 
     const c = {
-        layout: { display: 'flex', minHeight: '100dvh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", minWidth: 0 },
-        sidebar: {
+        layout: { display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: '100dvh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", minWidth: 0, width: '100%', maxWidth: '100vw', overflowX: 'hidden' },
+        sidebar: isMobile ? {
+            position: 'fixed', left: 0, top: 0, width: 'min(85vw, 320px)', height: '100dvh',
+            background: 'var(--surface)', borderRight: '1px solid var(--border)',
+            padding: 'max(var(--space-5), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left))',
+            display: 'flex', flexDirection: 'column',
+            transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
+            transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            zIndex: 2500, boxShadow: 'var(--elevation-overlay)', overflowY: 'auto',
+        } : {
             width: sidebarCollapsed ? '72px' : '260px',
             minWidth: sidebarCollapsed ? '72px' : '260px',
             background: 'var(--surface)',
@@ -274,14 +309,14 @@ function AdminPanelContent() {
             cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
             transition: 'all 0.15s', marginBottom: '2px',
         }),
-        main: { flex: 1, padding: 'var(--page-py) var(--page-px)', overflowY: 'auto', minWidth: 0 },
+        main: { flex: 1, padding: isMobile ? 'var(--space-4)' : 'var(--page-py) var(--page-px)', overflowY: 'auto', minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' },
         pageLabel: { fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--space-2)' },
         pageTitle: { fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.03em', marginBottom: 'var(--space-7)' },
         statGrid: {},
-        statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: 'var(--space-6)' },
+        statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: isMobile ? 'var(--space-4)' : 'var(--space-6)', minWidth: 0, boxSizing: 'border-box' },
         statLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-3)' },
-        statVal: { fontSize: '40px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
-        tableWrap: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch' },
+        statVal: { fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
+        tableWrap: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', boxSizing: 'border-box' },
         tableHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border)', gap: 'var(--space-3)', flexWrap: 'wrap' },
         tableTitle: { fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' },
         searchInput: {
@@ -309,7 +344,7 @@ function AdminPanelContent() {
             fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.1s',
         }),
         overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 2000, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)', paddingLeft: 'env(safe-area-inset-left)' },
-        drawer: { width: 'min(100vw, 760px)', maxWidth: '760px', background: 'var(--surface)', maxHeight: '100dvh', overflowY: 'auto', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-5), 4vw, var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-7)', boxShadow: 'var(--shadow-lg)' },
+        drawer: { width: 'min(100vw, 760px)', maxWidth: '100vw', background: 'var(--surface)', maxHeight: '100dvh', overflowY: 'auto', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-5), 4vw, var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-7)', boxShadow: 'var(--shadow-lg)', boxSizing: 'border-box' },
         tabRow: { display: 'flex', gap: 'var(--space-1)', background: 'var(--surface-low)', padding: 'var(--space-1)', borderRadius: 'var(--radius-5)', width: '100%', maxWidth: 'fit-content', overflowX: 'auto' },
         tabBtn: (active) => ({
             padding: '8px var(--space-5)', borderRadius: 'var(--radius-3)', border: 'none',
@@ -328,13 +363,13 @@ function AdminPanelContent() {
         },
         modalCard: {
             background: 'var(--surface)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-8)', padding: 'clamp(var(--space-5), 4vw, var(--space-8))', width: '100%', maxWidth: '480px', maxHeight: 'calc(100dvh - max(var(--space-8), env(safe-area-inset-top) + env(safe-area-inset-bottom)))', overflowY: 'auto',
+            borderRadius: 'var(--radius-8)', padding: 'clamp(var(--space-5), 4vw, var(--space-8))', width: 'min(100vw - 32px, 480px)', maxWidth: '480px', maxHeight: 'calc(100dvh - max(var(--space-8), env(safe-area-inset-top) + env(safe-area-inset-bottom)))', overflowY: 'auto', boxSizing: 'border-box',
         },
         input: {
             width: '100%', background: 'var(--surface-low)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-4)', padding: '11px 14px', fontSize: '14px',
             fontWeight: 600, color: 'var(--tx-main)', outline: 'none',
-            fontFamily: 'inherit', marginBottom: 'var(--space-4)',
+            fontFamily: 'inherit', marginBottom: 'var(--space-4)', boxSizing: 'border-box',
         },
     };
 
@@ -388,43 +423,93 @@ function AdminPanelContent() {
 
     return (
         <div style={c.layout}>
+            {isMobile && (
+                <header style={{
+                    position: 'sticky', top: 0, zIndex: 1000, height: '56px',
+                    background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '0 16px', width: '100%', boxSizing: 'border-box'
+                }}>
+                    <button
+                        onClick={() => setMobileMenuOpen(true)}
+                        aria-label="Open Navigation Menu"
+                        style={{
+                            background: 'transparent', border: 'none', color: 'var(--tx-main)',
+                            minWidth: '44px', minHeight: '44px', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                        }}
+                    >
+                        <span className="material-icons-round" style={{ fontSize: '26px' }}>menu</span>
+                    </button>
+                    <div style={{ textAlign: 'center', minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {nav.find(n => n.id === tab)?.label || 'Admin Console'}
+                        </div>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            Institutional Admin
+                        </div>
+                    </div>
+                    <div style={c.logoBox}>G</div>
+                </header>
+            )}
+
+            {isMobile && mobileMenuOpen && (
+                <div
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+                        zIndex: 2400, backdropFilter: 'blur(2px)', touchAction: 'none'
+                    }}
+                />
+            )}
+
             {/* Sidebar */}
             <aside style={c.sidebar}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: '0 4px', marginBottom: '8px' }}>
-                    {!sidebarCollapsed ? (
-                        <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => setTab('overview')}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'space-between', padding: '0 4px', marginBottom: '8px' }}>
+                    {(!sidebarCollapsed || isMobile) ? (
+                        <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => { setTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>
                             <div style={c.logoBox}>G</div>
                             <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>GradeFlow</span>
                         </div>
                     ) : (
-                        <div style={{ ...c.logoBox, cursor: 'pointer' }} onClick={() => setTab('overview')}>G</div>
+                        <div style={{ ...c.logoBox, cursor: 'pointer' }} onClick={() => { setTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>G</div>
                     )}
-                    <button 
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', borderRadius: '6px' }}
-                    >
-                        <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
-                    </button>
+                    {isMobile ? (
+                        <button
+                            onClick={() => setMobileMenuOpen(false)}
+                            aria-label="Close navigation menu"
+                            style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', borderRadius: '6px' }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '24px' }}>close</span>
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', borderRadius: '6px' }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
+                        </button>
+                    )}
                 </div>
-                {!sidebarCollapsed && <span style={c.adminTag}>Institutional Admin</span>}
+                {(!sidebarCollapsed || isMobile) && <span style={c.adminTag}>Institutional Admin</span>}
                 <div style={c.sep} />
 
                 {nav.map(n => (
-                    <button 
-                        key={n.id} 
-                        style={{ 
-                            ...c.navBtn(tab === n.id), 
-                            justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                            padding: sidebarCollapsed ? '12px 0' : '11px 14px' 
-                        }} 
-                        onClick={() => setTab(n.id)}
-                        title={sidebarCollapsed ? n.label : undefined}
+                    <button
+                        key={n.id}
+                        style={{
+                            ...c.navBtn(tab === n.id),
+                            justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
+                            padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
+                        }}
+                        onClick={() => { setTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
+                        title={sidebarCollapsed && !isMobile ? n.label : undefined}
                     >
                         <span className="material-icons-round" style={{ fontSize: '18px' }}>{n.icon}</span>
-                        {!sidebarCollapsed && <span>{n.label}</span>}
+                        {(!sidebarCollapsed || isMobile) && <span>{n.label}</span>}
                         {n.id === 'requests' && stats.pending > 0 && (
-                            <span style={{ marginLeft: sidebarCollapsed ? '0' : 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
+                            <span style={{ marginLeft: (sidebarCollapsed && !isMobile) ? '0' : 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
                                 {stats.pending}
                             </span>
                         )}
@@ -432,26 +517,26 @@ function AdminPanelContent() {
                 ))}
 
                 <div style={{ ...c.sep, marginTop: 'auto' }} />
-                {!sidebarCollapsed && (
+                {(!sidebarCollapsed || isMobile) && (
                     <div style={{ padding: '0 8px 12px' }}>
                         <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: '14px', border: '1px solid var(--border)' }}>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)' }}>{adminUser?.email || 'Admin Account'}</div>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{adminUser?.email || 'Admin Account'}</div>
                             <div style={{ fontSize: '9px', color: 'var(--tx-dim)', textTransform: 'uppercase', marginTop: '2px', fontWeight: 700 }}>Full Access Active</div>
                         </div>
                     </div>
                 )}
-                <button 
-                    style={{ 
-                        ...c.navBtn(false), 
+                <button
+                    style={{
+                        ...c.navBtn(false),
                         color: 'var(--red)',
-                        justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                        padding: sidebarCollapsed ? '12px 0' : '11px 14px'
-                    }} 
-                    onClick={() => { localStorage.removeItem('admin_session'); router.push('/admin/gateway'); }}
-                    title={sidebarCollapsed ? "Terminate Session" : undefined}
+                        justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
+                        padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
+                    }}
+                    onClick={() => { localStorage.removeItem('admin_session'); if (isMobile) setMobileMenuOpen(false); router.push('/admin/gateway'); }}
+                    title={sidebarCollapsed && !isMobile ? "Terminate Session" : undefined}
                 >
                     <span className="material-icons-round" style={{ fontSize: '18px' }}>logout</span>
-                    {!sidebarCollapsed && <span>Terminate Session</span>}
+                    {(!sidebarCollapsed || isMobile) && <span>Terminate Session</span>}
                 </button>
             </aside>
 
