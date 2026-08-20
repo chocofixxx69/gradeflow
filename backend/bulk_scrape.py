@@ -55,12 +55,27 @@ def main() -> None:
             if args.filename.lower().endswith(".csv"):
                 import csv
                 with open(args.filename, "r", encoding="utf-8-sig") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        for key in row.keys():
-                            if key and "usn" in key.lower():
-                                usn_list.append(row[key].strip().upper())
-                                break
+                    content = f.read()
+                    f.seek(0)
+                    # Check if standard header present
+                    has_header = "usn" in content.splitlines()[0].lower() if content.splitlines() else False
+                    if has_header:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            for key in row.keys():
+                                if key and "usn" in str(key).lower():
+                                    val = row[key]
+                                    if val and str(val).strip():
+                                        usn_list.append(str(val).strip().upper())
+                                    break
+                    else:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            for cell in row:
+                                cell_str = str(cell).strip().upper()
+                                if cell_str:
+                                    usn_list.append(cell_str)
+                                    break
             else:
                 with open(args.filename, "r", encoding="utf-8") as f:
                     file_usns = [line.strip().upper() for line in f if line.strip()]
@@ -73,6 +88,10 @@ def main() -> None:
     seen = set()
     usn_list = [u for u in usn_list if not (u in seen or seen.add(u))]
 
+    if not usn_list:
+        print("[ERROR] No valid USNs found to scrape.", file=sys.stderr)
+        sys.exit(1)
+
     results_summary = []
     
     for i, usn in enumerate(usn_list):
@@ -81,14 +100,14 @@ def main() -> None:
             found = scrape_all_semesters(usn)
             results_summary.append({
                 "usn": usn,
-                "status": "✅ SUCCESS" if found else "❌ NO DATA",
+                "status": "SUCCESS" if found else "NO DATA",
                 "time": time.strftime("%H:%M:%S")
             })
         except Exception as exc:
             print(f"[ERROR] Unexpected failure for {usn}: {exc}", file=sys.stderr)
             results_summary.append({
                 "usn": usn,
-                "status": "💥 ERROR",
+                "status": "ERROR",
                 "time": time.strftime("%H:%M:%S")
             })
         
@@ -100,13 +119,13 @@ def main() -> None:
     print("\n\n" + "="*50)
     print("         BULK SCRAPE FINAL SUMMARY")
     print("="*50)
-    print(f"║ {'USN':<12} ║ {'Status':<12} ║ {'Finish Time':<12} ║")
-    print("╠" + "═"*14 + "╬" + "═"*14 + "╬" + "═"*15 + "╣")
+    print(f"| {'USN':<12} | {'Status':<12} | {'Finish Time':<12} |")
+    print("|" + "-"*14 + "|" + "-"*14 + "|" + "-"*15 + "|")
     for res in results_summary:
-        print(f"║ {res['usn']:<12} ║ {res['status']:<12} ║ {res['time']:<12} ║")
-    print("╚" + "═"*14 + "╩" + "═"*14 + "╩" + "═"*15 + "╝")
+        print(f"| {res['usn']:<12} | {res['status']:<12} | {res['time']:<12} |")
+    print("="*50)
     print(f"\nTotal Students: {len(results_summary)}")
-    print(f"Successes: {sum(1 for r in results_summary if 'SUCCESS' in r['status'])}")
+    print(f"Successes: {sum(1 for r in results_summary if r['status'] == 'SUCCESS')}")
     print("="*50)
 
 
