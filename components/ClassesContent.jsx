@@ -102,8 +102,10 @@ export function ClassesContent({ embedded = false }) {
     };
 
     useEffect(() => {
-        const s = localStorage.getItem('admin_session');
-        if (s) setFaculty(JSON.parse(s));
+        const s = localStorage.getItem('faculty_session') || localStorage.getItem('admin_session');
+        if (s) {
+            try { setFaculty(JSON.parse(s)); } catch (e) {}
+        }
         fetchClasses();
     }, []);
 
@@ -160,10 +162,40 @@ export function ClassesContent({ embedded = false }) {
 
     const createClass = async () => {
         if (!newClass.name.trim()) { setMsg('Class name required.'); return; }
-        const r = await fetch('/api/classes', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newClass, faculty_id: faculty?.id }) });
+        
+        let facId = faculty?.id || faculty?.sub;
+        if (!facId) {
+            try {
+                const facSess = localStorage.getItem('faculty_session') || localStorage.getItem('admin_session');
+                if (facSess) {
+                    const parsed = JSON.parse(facSess);
+                    facId = parsed.id || parsed.sub;
+                }
+            } catch (e) {}
+        }
+
+        const r = await fetch('/api/classes', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(facId ? { 'x-faculty-id': facId } : {})
+            },
+            body: JSON.stringify({
+                ...newClass,
+                faculty_id: facId
+            })
+        });
         const j = await r.json();
-        if (j.success) { setShowCreate(false); setNewClass({ name: '', branch: 'CS', semester: 3, scheme: '2022' }); setMsg('✓ Class created.'); await logActivity(faculty, 'CLASS_CREATE', newClass.name); fetchClasses(); }
-        else setMsg(j.error || 'Failed.');
+        if (j.success) {
+            setShowCreate(false);
+            setNewClass({ name: '', branch: 'CS', semester: 3, scheme: '2022' });
+            setMsg('✓ Class created.');
+            await logActivity(faculty, 'CLASS_CREATE', newClass.name);
+            fetchClasses();
+        } else {
+            setMsg(j.error || 'Failed to create class.');
+        }
     };
 
     const renameClass = async () => {
