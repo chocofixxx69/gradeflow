@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { supabase } from '../../../lib/supabase';
+import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 
 function BatchUploadContent() {
@@ -137,13 +137,7 @@ function BatchUploadContent() {
 
             // Log activity
             if (faculty?.id) {
-                await supabase.from('faculty_activity').insert({
-                    faculty_id: faculty.id,
-                    faculty_name: faculty.full_name || faculty.name || 'Faculty',
-                    action_type: 'BATCH_SGPA_UPLOAD',
-                    target_usn: `${inserted} records`,
-                    sync_status: 'SUCCESS',
-                });
+                await recordFacultyAction(faculty, 'BATCH_SGPA_UPLOAD', `${inserted} records`);
             }
         } catch (err) {
             console.error('Batch SGPA error:', err);
@@ -219,13 +213,7 @@ function BatchUploadContent() {
             setPreviewData(null);
 
             if (faculty?.id) {
-                await supabase.from('faculty_activity').insert({
-                    faculty_id: faculty.id,
-                    faculty_name: faculty.full_name || faculty.name || 'Faculty',
-                    action_type: 'BATCH_COPO_UPLOAD',
-                    target_usn: `${inserted} mappings`,
-                    sync_status: 'SUCCESS',
-                });
+                await recordFacultyAction(faculty, 'BATCH_COPO_UPLOAD', `${inserted} mappings`);
             }
         } catch (err) {
             console.error('Attainment upload error:', err);

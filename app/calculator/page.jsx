@@ -11,7 +11,7 @@ import {
     VTU_BRANCHES
 } from '../../lib/vtuGrades';
 import PDFUpload from '../../components/PDFUpload';
-import { supabase } from '@/lib/supabase';
+import { apiRequest } from '@/lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
@@ -118,22 +118,17 @@ function CalculatorContent() {
                 sync_source: 'MANUAL_ENTRY'
             }));
 
-            // 3. Upsert marks linked by primary key and composite unique key
-            const { error: mErr } = await supabase
-                .from('marks')
-                .upsert(marksData, { onConflict: 'student_id,subject_code,semester' });
-
-            if (mErr) throw mErr;
-
-            // 4. Update academic remarks (SGPA/CGPA)
             const stats = calculateSGPA(subjects, scheme);
-            await supabase.from('academic_remarks').upsert({
-                student_id: student.id,
-                student_usn: student.usn,
-                semester,
-                sgpa: stats.sgpa,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'student_id,semester' });
+            await apiRequest('/api/student/results', {
+                method: 'POST',
+                headers: { 'x-student-usn': student.usn },
+                body: JSON.stringify({
+                    student_id: student.id,
+                    semester,
+                    sgpa: stats.sgpa,
+                    marks: marksData
+                })
+            }).catch(() => null);
 
             setSuccess(`Sync successful. Your records are now part of the institutional vault.`);
         } catch (err) {

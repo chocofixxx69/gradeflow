@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
+import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
@@ -516,40 +516,12 @@ function DashboardContent() {
     const loadStudentData = useCallback(async (usn, session) => {
         setLoading(true);
         try {
-            let { data: profile, error: pErr } = await supabase
-                .from('students')
-                .select('*')
-                .eq('usn', usn)
-                .maybeSingle();
-
-            if (pErr) throw pErr;
-
-            if (!profile) {
-                const branchMatch = usn.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,3})\d{3}$/);
-                const detectedBranch = branchMatch ? branchMatch[1] : '';
-                const normalizedBranch = detectedBranch === 'CS' ? 'CSE' : detectedBranch;
-
-                const { data: newProfile, error: insertErr } = await supabase
-                    .from('students')
-                    .insert({
-                        usn,
-                        name: session.name || usn,
-                        scheme: session.scheme || '2022',
-                        branch: session.branch || normalizedBranch,
-                    })
-                    .select()
-                    .single();
-                if (insertErr) throw insertErr;
-                profile = newProfile;
-            }
-
+            const data = await apiRequest('/api/student/dashboard', { query: { usn } });
+            const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
             setStudent(profile);
 
-            // 1. Get all marks from ALL sources
-            const [{ data: studentMarks }, { data: resultMarks }] = await Promise.all([
-                supabase.from('marks').select('*').eq('student_id', profile.id),
-                supabase.from('subject_marks').select(`*, results ( exam_name )`).eq('usn', usn),
-            ]);
+            const studentMarks = [];
+            const resultMarks = data?.recentResults || [];
 
             // 2. Normalize and Combine
             const pool = [];
@@ -873,9 +845,11 @@ function DashboardContent() {
                 // Update if name is missing, is just the USN, or too short
                 if (!currentName || currentName === student.usn || currentName.length < 3) {
                     try {
-                        await supabase.from('students')
-                            .update({ name: pdfName, updated_at: new Date().toISOString() })
-                            .eq('usn', student.usn);
+                        await apiRequest('/api/student/profile', {
+                            method: 'PATCH',
+                            headers: { 'x-student-usn': student.usn },
+                            body: JSON.stringify({ name: pdfName })
+                        });
                         // Update local state immediately
                         setStudent(prev => ({ ...prev, name: pdfName }));
 

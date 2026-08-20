@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { ResponsiveGrid, Stack } from '@/components/ui/Foundation';
@@ -80,10 +80,9 @@ function AnalyticsContent() {
     const fetchStudentAnalytics = async (usn) => {
         setLoading(true);
         try {
-            const [{ data: marks1 }, { data: marks2 }] = await Promise.all([
-                supabase.from('marks').select('*').eq('student_usn', usn),
-                supabase.from('subject_marks').select(`*, results ( exam_name )`).eq('usn', usn),
-            ]);
+            const res = await apiRequest('/api/student/results', { headers: { 'x-student-usn': usn } });
+            const marks1 = [];
+            const marks2 = res?.subjectMarks || [];
 
             // Combine all sources
             const allRaw = [

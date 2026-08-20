@@ -1,26 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { apiRequest } from '../../../lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
-
-// Helper to fetch all rows beyond 1000 (no filter version)
-async function fetchAllRows(table, select, orderCol = 'created_at', ascending = false) {
-    const PAGE = 1000;
-    let all = [];
-    let from = 0;
-    while (true) {
-        let { data, error } = await supabase.from(table).select(select).order(orderCol, { ascending }).range(from, from + PAGE - 1);
-        if (error) throw error;
-        all = all.concat(data || []);
-        if (!data || data.length < PAGE) break;
-        from += PAGE;
-    }
-    return all;
-}
 
 function AdminPanelContent() {
     const router = useRouter();
@@ -74,37 +59,30 @@ function AdminPanelContent() {
         setLoading(true);
         setLoadError('');
         try {
-            const [studs, { data: reqs, error: rErr }, { data: marksCount, error: mErr }, { data: logs, error: lErr }, { data: facultyList, error: fErr }] = await Promise.all([
-                fetchAllRows('students', '*', 'created_at', false),
-                supabase.from('faculty_onboarding').select('*').order('created_at', { ascending: false }),
-                supabase.from('marks').select('id', { count: 'exact', head: true }),
-                supabase.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(300),
-                supabase.from('faculty_onboarding').select('id, full_name, email, department'),
-            ]);
-            
-            if (rErr) console.error('Requests fetch error:', rErr);
-            if (mErr) console.error('Marks count error:', mErr);
-            if (lErr) console.error('Logs fetch error:', lErr);
-            if (fErr) console.error('Faculty fetch error:', fErr);
+            const resData = await apiRequest('/api/admin/terminal/data');
+            const s = resData?.students || [];
+            const r = resData?.facultyOnboarding || [];
+            const l = resData?.facultyActivity || [];
+            const fList = resData?.facultyList || [];
 
-            const s = studs || [], r = reqs || [], l = logs || [];
-            // Enrich logs with faculty info
             const facultyMap = {};
-            (facultyList || []).forEach(f => { facultyMap[f.id] = f; });
+            fList.forEach(f => { facultyMap[f.id] = f; });
             const enrichedLogs = l.map(log => ({
                 ...log,
                 _faculty: facultyMap[log.faculty_id] || null,
             }));
+
             setStudents(s);
             setRequests(r);
             setActivityLogs(enrichedLogs);
+
             const todayStr = new Date().toISOString().slice(0, 10);
             const todayCount = l.filter(x => x.created_at?.startsWith(todayStr)).length;
             setStats({
-                students: s.length,
+                students: resData?.counts?.totalStudents || s.length,
                 pending: r.filter(x => x.status === 'pending').length,
                 faculty: r.filter(x => x.status === 'approved').length,
-                totalMarks: marksCount?.length || 0,
+                totalMarks: resData?.counts?.totalMarksRecords || 0,
                 activityToday: todayCount,
             });
         } catch (err) {
@@ -116,15 +94,11 @@ function AdminPanelContent() {
     }, []);
 
     const openStudent = async (student) => {
-
         setSelectedStudent(student);
         setDetailTab('marks');
         try {
-            const [{ data: marks }, { data: docs }] = await Promise.all([
-                supabase.from('marks').select('*').eq('student_id', student.id).order('semester', { ascending: true }),
-                supabase.from('documents').select('*').eq('student_id', student.id).order('created_at', { ascending: false }),
-            ]);
-            setStudentDetails({ marks: marks || [], docs: docs || [] });
+            const data = await apiRequest('/api/admin/terminal/data', { query: { student_id: student.id } });
+            setStudentDetails({ marks: data?.marks || [], docs: data?.documents || [] });
         } catch (err) {
             console.error('Error fetching student details:', err);
             setStudentDetails({ marks: [], docs: [] });
@@ -181,15 +155,16 @@ function AdminPanelContent() {
         }
         setAddError('');
         try {
-            const { error } = await supabase.from('students').upsert({
-                usn: newStudent.usn.toUpperCase(),
-                name: newStudent.name || newStudent.usn.toUpperCase(),
-                branch: newStudent.branch,
-                scheme: newStudent.scheme,
-                semester: newStudent.semester,
-                updated_at: new Date().toISOString(),
-            }, { onConflict: 'usn' });
-            if (error) throw error;
+            await apiRequest('/api/admin/terminal/data', {
+                method: 'POST',
+                body: JSON.stringify({
+                    usn: newStudent.usn.toUpperCase(),
+                    name: newStudent.name || newStudent.usn.toUpperCase(),
+                    branch: newStudent.branch,
+                    scheme: newStudent.scheme,
+                    semester: newStudent.semester,
+                })
+            });
             setShowAddStudent(false);
             setNewStudent({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
             await loadData();

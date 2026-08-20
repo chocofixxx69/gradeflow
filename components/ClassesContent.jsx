@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
@@ -34,19 +34,7 @@ const S = {
 const btn = (v = 'primary') => ({ padding: '10px 20px', borderRadius: 'var(--radius-4)', fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: v === 'primary' ? 'var(--primary)' : v === 'danger' ? 'var(--red-bg)' : 'var(--surface-low)', color: v === 'primary' ? 'var(--bg)' : v === 'danger' ? 'var(--red)' : 'var(--tx-main)', ...(v !== 'primary' && { border: `1px solid ${v === 'danger' ? 'var(--red)' : 'var(--border)'}` }) });
 const msgBox = ok => ({ padding: '10px 16px', borderRadius: 'var(--radius-4)', marginBottom: 'var(--space-4)', fontSize: '13px', fontWeight: 700, background: ok ? 'var(--green-bg)' : 'var(--surface-low)', color: ok ? 'var(--green)' : 'var(--tx-muted)', border: `1px solid ${ok ? 'var(--green)' : 'var(--border)'}` });
 
-// ── Parse any spreadsheet/CSV file → USN array ─────────────
 
-const fetchAllRows = async (table, select, filterCol, filterValues) => {
-    let all = [];
-    const CHUNK_SIZE = 15;
-    for (let i = 0; i < filterValues.length; i += CHUNK_SIZE) {
-        const chunk = filterValues.slice(i, i + CHUNK_SIZE);
-        const { data, error } = await supabase.from(table).select(select).in(filterCol, chunk);
-        if (error) throw error;
-        all = all.concat(data || []);
-    }
-    return all;
-};
 
 export function ClassesContent({ embedded = false }) {
     const [faculty, setFaculty] = useState(null);
@@ -100,8 +88,8 @@ export function ClassesContent({ embedded = false }) {
     }, []);
 
     const fetchBranches = async () => {
-        const { data } = await supabase.from('branches').select('*').order('label');
-        if (data) setBranches(data);
+        const data = await apiRequest('/api/system/meta').catch(() => null);
+        if (data?.branches) setBranches(data.branches);
     };
 
     useEffect(() => {
@@ -124,18 +112,10 @@ export function ClassesContent({ embedded = false }) {
             const studs = j.students || [];
             setStudents(studs);
             if (studs.length > 0) {
-                const usns = studs.map(s => s.usn);
-                const marks = await fetchAllRows('subject_marks', 'usn,subject_code,subject_name,total,semester', 'usn', usns);
-                if (marks?.length) {
-                    setAllMarks(marks);
-                    const parsedSem = Number(cls.semester) || 1;
-                    const sems = Array.from({ length: parsedSem }, (_, i) => i + 1);
-                    setAvailableSems(sems);
-                    const last = sems[sems.length - 1];
-                    setSelectedSem(last);
-                    const remarks = await fetchAllRows('academic_remarks', 'student_usn,semester,sgpa', 'student_usn', usns);
-                    computeToppers(marks, studs, last, remarks || []);
-                }
+                const parsedSem = Number(cls.semester) || 1;
+                const sems = Array.from({ length: parsedSem }, (_, i) => i + 1);
+                setAvailableSems(sems);
+                setSelectedSem(sems[sems.length - 1]);
             }
         } finally { setLoadingStudents(false); }
     }, []);

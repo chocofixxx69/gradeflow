@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { apiRequest } from '@/lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
 import { Button } from '@/components/ui/Foundation';
@@ -123,9 +123,11 @@ function BatchUploadContent() {
                             // Update student name if found
                             const firstName = data.studentInfo?.name;
                             if (firstName && firstName !== usn && firstName.length > 2) {
-                                await supabase.from('students')
-                                    .update({ name: firstName, scheme })
-                                    .eq('usn', usn);
+                                await apiRequest('/api/student/profile', {
+                                    method: 'PATCH',
+                                    headers: { 'x-student-usn': usn },
+                                    body: JSON.stringify({ name: firstName, scheme })
+                                });
                             }
                         }
                     } catch (saveErr) {

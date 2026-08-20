@@ -1,6 +1,6 @@
 'use client';
 
-import { supabase } from '../../../lib/supabase';
+import { apiRequest } from '../../../lib/api/client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
@@ -29,15 +29,13 @@ function FacultyAdminContent() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [{ data: pending }, { data: approved }, { data: logs }] = await Promise.all([
-                supabase.from('faculty_onboarding').select('*').eq('status', 'pending'),
-                supabase.from('faculty_onboarding').select('*').eq('status', 'approved'),
-                supabase.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(10),
-            ]);
+            const data = await apiRequest('/api/admin/terminal/data').catch(() => null);
+            const onboarding = data?.facultyOnboarding || [];
+            const logs = data?.facultyActivity || [];
 
-            setRequests(pending || []);
-            setProcessed(approved || []);
-            setActivities(logs || []);
+            setRequests(onboarding.filter(o => o.status === 'pending'));
+            setProcessed(onboarding.filter(o => o.status === 'approved'));
+            setActivities(logs.slice(0, 10));
             setLoadError(null);
         } catch (err) {
             console.error('Failed to load admin data:', err);
@@ -48,16 +46,14 @@ function FacultyAdminContent() {
     };
 
     const handleApprove = async (id) => {
-        const newKey = `VTU-FK-${Math.floor(Math.random() * 900000) + 100000}`;
-        const { error } = await supabase
-            .from('faculty_onboarding')
-            .update({ status: 'approved', generated_access_key: newKey })
-            .eq('id', id);
-
-        if (error) {
-            console.error('Approval failed:', error);
-        } else {
+        try {
+            await apiRequest('/api/admin/approve-faculty', {
+                method: 'POST',
+                body: JSON.stringify({ id, action: 'approve' })
+            });
             fetchData();
+        } catch (err) {
+            console.error('Approval failed:', err);
         }
     };
 

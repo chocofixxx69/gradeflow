@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { apiRequest } from '../../../lib/api/client';
 import { logAuditAction } from '../../../lib/audit-logger';
 import AuthGuard from '../../../components/AuthGuard';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -55,13 +55,12 @@ export default function SubjectsPage() {
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'charts'
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── BRANCH DATA ───────────────────────────────────────────────────────────
   const fetchBranches = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('branches').select('*').order('code');
-      if (error) throw error;
-      setBranches(data || []);
-      if (data?.length && !branch) setBranch(data[0].code);
+      const data = await apiRequest('/api/system/meta').catch(() => null);
+      const branchList = data?.branches || [];
+      setBranches(branchList);
+      if (branchList.length && !branch) setBranch(branchList[0].code);
     } catch (e) {
       console.error('Error fetching branches:', e);
     }
@@ -158,7 +157,10 @@ export default function SubjectsPage() {
 
       let res;
       if (editing) {
-        res = await supabase.from('subject_catalog').update(payload).eq('id', editing.id).select().single();
+        await apiRequest('/api/subjects', {
+          method: 'PUT',
+          body: JSON.stringify({ id: editing.id, ...payload })
+        });
         await logAuditAction({
           action_type: 'EDIT_SUBJECT',
           entity_type: 'subject_catalog',
@@ -167,15 +169,17 @@ export default function SubjectsPage() {
           new_values: payload
         });
       } else {
-        res = await supabase.from('subject_catalog').insert(payload).select().single();
+        const created = await apiRequest('/api/subjects', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
         await logAuditAction({
           action_type: 'ADD_SUBJECT',
           entity_type: 'subject_catalog',
-          entity_id: res.data?.id || 'NEW',
+          entity_id: created?.id || 'NEW',
           new_values: payload
         });
       }
-      if (res.error) throw res.error;
       fetchSubjects();
       setShowForm(false);
     } catch (err) {
@@ -189,11 +193,13 @@ export default function SubjectsPage() {
     if (!branchData.code?.trim() || !branchData.label?.trim()) return alert('Code and Label are required.');
     setSaving(true);
     try {
-      const { error } = await supabase.from('branches').insert({
-        code: branchData.code.trim().toUpperCase(),
-        label: branchData.label.trim()
-      });
-      if (error) throw error;
+      await apiRequest('/api/system/meta', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: branchData.code.trim().toUpperCase(),
+          label: branchData.label.trim()
+        })
+      }).catch(() => null);
       await fetchBranches();
       setShowBranchForm(false);
       setBranchData({ code: '', label: '' });

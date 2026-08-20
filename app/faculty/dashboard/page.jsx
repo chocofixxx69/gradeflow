@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { apiRequest } from '../../../lib/api/client';
+import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradePoint, getGradeRank, unifyGrade } from '../../../lib/vtuGrades';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
@@ -481,22 +482,12 @@ function FacultyDashboardContent() {
         setMessage('');
 
         try {
-            let { data: profile } = await supabase.from('students').select('*').eq('usn', cleanUSN).maybeSingle();
-
-            if (!profile && !silent) {
-                setMessage(`USN ${cleanUSN} not found. Creating profile...`);
-                const { data: newP } = await supabase.from('students').insert({ usn: cleanUSN, name: cleanUSN }).select().single();
-                profile = newP;
-            }
-
-            if (!profile) return;
+            const resData = await apiRequest('/api/faculty/dashboard', { query: { search_usn: cleanUSN } });
+            const profile = resData?.profile || { usn: cleanUSN, name: cleanUSN };
             setStudent(profile);
 
-            // Fetch both manual marks and scraped subject_marks
-            const [{ data: studentMarks }, { data: resultMarks }] = await Promise.all([
-                supabase.from('marks').select('*').eq('student_usn', cleanUSN).order('semester', { ascending: true }),
-                supabase.from('subject_marks').select(`*, results ( exam_name )`).eq('usn', cleanUSN).order('semester', { ascending: true }),
-            ]);
+            const studentMarks = [];
+            const resultMarks = resData?.recentResults || [];
 
             // Combine and Dedup (Taking best grade across all sources)
             const formatExamAlias = text => {
@@ -558,10 +549,8 @@ function FacultyDashboardContent() {
             try {
                 const codes = [...new Set(Object.values(bestByCode).map(m => m.subject_code || m.code))];
                 if (codes.length > 0) {
-                    const [catRes, masterRes] = await Promise.all([
-                        supabase.from('subject_catalog').select('subject_code, credits').in('subject_code', codes),
-                        supabase.from('subject_master_registry').select('subject_code, credits').in('subject_code', codes)
-                    ]);
+                    const catRes = await apiRequest('/api/system/meta').catch(() => null);
+                    const masterRes = { data: [] };
 
                     const creditMap = {};
                     // Master registry as base
@@ -611,13 +600,7 @@ function FacultyDashboardContent() {
             setCgpa(tC > 0 ? tW / tC : 0);
 
             // Audit Log
-            await supabase.from('faculty_activity').insert({
-                faculty_id: faculty?.id || null,
-                faculty_name: faculty?.full_name || faculty?.name || 'Faculty',
-                target_usn: cleanUSN,
-                action_type: 'VIEW_RECORD',
-                sync_status: 'SUCCESS',
-            }).catch(() => { });
+            await recordFacultyAction(faculty, 'VIEW_RECORD', cleanUSN);
 
             if (!silent) {
                 const totalSubs = Object.values(groupedBySem).flat().length;

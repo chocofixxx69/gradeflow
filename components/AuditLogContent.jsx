@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { fetchAllPaginated } from '../lib/supabase-utils';
+import { apiRequest } from '../lib/api/client';
 import AuthGuard from './AuthGuard';
 
 const S = {
@@ -26,11 +25,12 @@ export function AuditLogContent() {
         setLoading(true);
         setError('');
         try {
-            const [auditData, { data: actData, error: actErr }] = await Promise.all([
-                fetchAllPaginated('audit_logs', '*', supabase, 'created_at', false),
-                supabase.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(500)
+            const [auditRes, termRes] = await Promise.all([
+                apiRequest('/api/admin/audit-logs').catch(() => null),
+                apiRequest('/api/admin/terminal/data').catch(() => null)
             ]);
-            if (actErr) throw actErr;
+            const auditData = auditRes?.logs || [];
+            const actData = termRes?.facultyActivity || [];
             const combined = [...(auditData || []), ...(actData || [])].sort(
                 (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
             );

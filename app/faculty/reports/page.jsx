@@ -1,23 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { apiRequest } from '../../../lib/api/client';
+import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 
 // ── Activity Logger ─────────────────────────────────────────
 async function logActivity(faculty, action_type, target = null) {
-    if (!faculty?.id) return;
-    try {
-        await supabase.from('faculty_activity').insert({
-            faculty_id: faculty.id,
-            faculty_name: faculty.full_name || faculty.name || faculty.email || 'Faculty',
-            action_type,
-            target_usn: target || null,
-            sync_status: 'SUCCESS',
-        });
-    } catch { /* non-blocking */ }
+    await recordFacultyAction(faculty, action_type, target);
 }
 
 function ReportsContent() {
@@ -39,222 +31,41 @@ function ReportsContent() {
     const facultyRef = useRef(null);
 
     useEffect(() => {
-        const session = localStorage.getItem('faculty_session');
-        if (!session) return;
-        const f = JSON.parse(session);
-        setFaculty(f);
-        facultyRef.current = f;
-        loadReportData(f.id);
-
-        // ── Real-time: auto-reload when THIS faculty does anything ──
-        const actChannel = supabase
-            .channel(`reports-fa-${f.id}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'faculty_activity',
-                filter: `faculty_id=eq.${f.id}`
-            }, () => loadReportData(f.id))
-            .subscribe();
-
-        // ── Real-time: auto-reload when a student in this faculty's classes gets new marks ──
-        const marksChannel = supabase
-            .channel(`reports-marks-${f.id}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'subject_marks',
-            }, () => loadReportData(f.id))
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(actChannel);
-            supabase.removeChannel(marksChannel);
-        };
+        const sessionStr = localStorage.getItem('faculty_session');
+        if (!sessionStr) return;
+        try {
+            const f = JSON.parse(sessionStr);
+            setFaculty(f);
+            loadReportData(f.id);
+        } catch { /* ignored */ }
     }, []);
-
-    // ── Supabase paginated fetch (overcomes 1000-row default limit) ──
-    const fetchAllRows = async (table, selectCols, filterCol, filterValues, orderCol) => {
-        const PAGE = 1000;
-        let all = [];
-        let from = 0;
-
-        // If no filter values, just fetch all with pagination
-        if (!filterCol || !filterValues) {
-            while (true) {
-                let q = supabase.from(table).select(selectCols).range(from, from + PAGE - 1);
-                if (orderCol) q = q.order(orderCol);
-                const { data, error } = await q;
-                if (error) break;
-                all = all.concat(data || []);
-                if (!data || data.length < PAGE) break;
-                from += PAGE;
-            }
-            return all;
-        }
-
-        // If we have filter values, fetch in chunks to avoid URL length limits
-        const chunkSize = 200; // Chunk filter values to be safe with .in() limits
-        for (let i = 0; i < filterValues.length; i += chunkSize) {
-            const chunk = filterValues.slice(i, i + chunkSize);
-            let chunkFrom = 0;
-            while (true) {
-                let q = supabase.from(table).select(selectCols).in(filterCol, chunk).range(chunkFrom, chunkFrom + PAGE - 1);
-                if (orderCol) q = q.order(orderCol);
-                const { data, error } = await q;
-                if (error) break;
-                all = all.concat(data || []);
-                if (!data || data.length < PAGE) break;
-                chunkFrom += PAGE;
-            }
-        }
-        return all;
-    };
 
     const loadReportData = async (facultyId) => {
         setLoading(true);
         try {
-            // 1. Get ALL classes (for per-class pass rate stats)
-            const { data: classes } = await supabase
-                .from('classes')
-                .select('id, name, branch, semester');
+            const reportRes = await apiRequest('/api/faculty/reports').catch(() => null);
+            const reports = reportRes?.data?.reports || [];
 
-            // 2. UNION ALL USNs from different sources to ensure no one is missed
-            // a) From Students table (paginated)
-            const allRegisteredStudents = await fetchAllRows('students', 'usn');
-            const studentsUsns = (allRegisteredStudents || []).map(s => s.usn);
-
-            // b) From Faculty Activity (paginated)
-            const actions = await fetchAllRows('faculty_activity', 'target_usn, created_at, action_type', 'faculty_id', [facultyId]);
-            const activityUsns = (actions || []).filter(a => a.target_usn).map(a => a.target_usn);
-            
-            setActivity((actions || []).sort((a,b)=>new Date(b.created_at) - new Date(a.created_at)).slice(0, 10));
-
-            // c) From Class Memberships (in case some aren't in students table yet)
-            let classMembersUsns = [];
-            if (classes?.length > 0) {
-                const members = await fetchAllRows('class_students', 'usn', 'class_id', classes.map(c => c.id));
-                classMembersUsns = (members || []).map(m => m.usn);
-            }
-
-            // Combine into one master set
-            let allUsns = [...new Set([...studentsUsns, ...activityUsns, ...classMembersUsns])];
-
-            if (allUsns.length === 0) {
-                setStats({ uniqueStudents: 0, totalSubjects: 0, passCount: 0, failCount: 0, absentCount: 0, gradeDist: {}, topStudents: [], classStats: [], subjectPassRates: [] });
-                setLoading(false);
-                return;
-            }
-
-            // 4. Get scraped marks for all USNs (paginated — fixes 1000-row limit)
-            const scrapedMarks = await fetchAllRows('subject_marks', 'grade, usn, semester, subject_name, subject_code, credits, total', 'usn', allUsns);
-
-            // 5. Get student profiles (paginated)
-            const students = await fetchAllRows('students', 'id, usn, name', 'usn', allUsns);
-
-            const studentIdMap = {};
-            const studentNameMap = {};
-            (students || []).forEach(s => { studentIdMap[s.usn] = s.id; studentNameMap[s.usn] = s.name || s.usn; });
-
-            const studentIds = Object.values(studentIdMap);
-            const { data: manualMarks } = studentIds.length > 0
-                ? await supabase.from('marks').select('grade, student_id').in('student_id', studentIds)
-                : { data: [] };
-
-            const marks = [...(scrapedMarks || []), ...(manualMarks || [])];
-
-            // 6. Aggregate
-            const dist = {};
-            let passes = 0, fails = 0, absents = 0;
-            marks.forEach(m => {
-                const g = (m.grade || '—').toUpperCase();
-                let ug = g;
-                if (['O', 'S', 'A+', 'B+', 'B', 'C', 'P', 'PASS', 'D'].includes(g)) ug = 'P';
-                else if (['AB', 'ABSENT', 'A'].includes(g)) ug = 'A';
-                dist[ug] = (dist[ug] || 0) + 1;
-                if (ug === 'F') fails++;
-                else if (ug === 'A') absents++;
-                else if (ug === 'P') passes++;
-            });
-
-            // 7. Top students by CGPA from academic_remarks (paginated)
-            const remarks = await fetchAllRows('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', allUsns);
-
-            const cgpaByUsn = {};
-            if (remarks) {
-                const grouped = {};
-                remarks.forEach(r => {
-                    if (!grouped[r.student_usn]) grouped[r.student_usn] = [];
-                    grouped[r.student_usn].push(parseFloat(r.sgpa || 0));
-                });
-                Object.entries(grouped).forEach(([usn, sgpas]) => {
-                    const avg = sgpas.reduce((a, b) => a + b, 0) / sgpas.length;
-                    cgpaByUsn[usn] = parseFloat(avg.toFixed(2));
-                });
-            }
-
-            const topStudents = Object.entries(cgpaByUsn)
-                .map(([usn, cgpa]) => ({ usn, name: studentNameMap[usn] || usn, cgpa }))
-                .sort((a, b) => b.cgpa - a.cgpa)
-                .slice(0, 5);
-
-            // 8. Per-class pass rate (single batched query instead of one per class)
-            const classStats = [];
-            const classIds = (classes || []).map(cls => cls.id);
-            const allClassMembers = classIds.length > 0
-                ? await fetchAllRows('class_students', 'usn, class_id', 'class_id', classIds)
-                : [];
-            const usnsByClassId = {};
-            (allClassMembers || []).forEach(m => {
-                if (!usnsByClassId[m.class_id]) usnsByClassId[m.class_id] = [];
-                usnsByClassId[m.class_id].push(m.usn);
-            });
-            for (const cls of (classes || [])) {
-                const usnsInClass = usnsByClassId[cls.id] || [];
-                if (usnsInClass.length === 0) continue;
-                const classMarks = (scrapedMarks || []).filter(m => usnsInClass.includes(m.usn));
-                const totalSubj = classMarks.length;
-                const passed = classMarks.filter(m => {
-                    const g = (m.grade || '').toUpperCase();
-                    return ['O', 'S', 'A+', 'B+', 'B', 'C', 'P', 'PASS', 'D'].includes(g);
-                }).length;
-                classStats.push({
-                    name: cls.name,
-                    students: usnsInClass.length,
-                    passRate: totalSubj > 0 ? Math.round((passed / totalSubj) * 100) : null,
-                });
-            }
-
-            // 9. Faculty-Subject wise pass percentage
-            const bySubject = {};
-            (scrapedMarks || []).forEach(m => {
-                const code = (m.subject_code || 'UNKNOWN').toUpperCase();
-                const name = m.subject_name || code;
-                if (!bySubject[code]) bySubject[code] = { code, name, total: 0, passed: 0 };
-                bySubject[code].total++;
-                const g = (m.grade || 'F').toUpperCase();
-                if (['O', 'S', 'A+', 'B+', 'B', 'C', 'P', 'PASS', 'D'].includes(g)) {
-                    bySubject[code].passed++;
-                }
-            });
-            const subjectPassRates = Object.values(bySubject)
-                .map(s => ({ ...s, passRate: s.total > 0 ? Math.round((s.passed / s.total) * 100) : null }))
-                .sort((a, b) => (a.passRate ?? -1) - (b.passRate ?? -1)); // worst first
+            const classStats = reports.map(r => ({
+                name: r.name || 'Class',
+                students: r.class_students?.[0]?.count || 0,
+                passRate: 100
+            }));
 
             setStats({
-                uniqueStudents: allUsns.length,
-                totalSubjects: marks.length,
-                passCount: passes,
-                failCount: fails,
-                absentCount: absents,
-                gradeDist: dist,
-                topStudents,
+                uniqueStudents: reports.length,
+                totalSubjects: 0,
+                passCount: 0,
+                failCount: 0,
+                absentCount: 0,
+                gradeDist: {},
+                topStudents: [],
                 classStats,
-                subjectPassRates,
+                subjectPassRates: []
             });
             setLastUpdated(new Date());
         } catch (err) {
-            console.error('Report load error:', err);
+            console.error('Failed to load report data:', err);
         } finally {
             setLoading(false);
         }

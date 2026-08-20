@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { apiRequest } from '@/lib/api/client';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, Stack } from '@/components/ui/Foundation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -86,46 +86,25 @@ function SettingsContent() {
             const identifier = userType === 'student' ? session.usn?.toLowerCase() : session.id || 'faculty';
             const path = `photos/${identifier}.${ext}`;
 
-            // Try Supabase Storage first
-            const { error: uploadError } = await supabase.storage
-                .from('student-photos')
-                .upload(path, file, { upsert: true });
-
-            if (!uploadError) {
-                // Get public URL
-                const { data: urlData } = supabase.storage
-                    .from('student-photos')
-                    .getPublicUrl(path);
-                const publicUrl = urlData.publicUrl;
-
-                await supabase
-                    .from(userType === 'student' ? 'students' : 'faculty_onboarding')
-                    .update({ photo_url: publicUrl })
-                    .eq(userType === 'student' ? 'usn' : 'id', userType === 'student' ? session.usn.toUpperCase() : session.id);
-
-                setPhotoUrl(publicUrl);
-                const updated = { ...session, photo_url: publicUrl };
-                localStorage.setItem(userType === 'student' ? 'student_session' : 'faculty_session', JSON.stringify(updated));
-                setMessage('✓ Photo uploaded successfully!');
-                window.dispatchEvent(new Event('storage'));
-            } else {
-                // Fallback: Convert to base64 and store in DB
-                const reader = new FileReader();
-                reader.onload = async (ev) => {
-                    const base64 = ev.target.result;
-                    await supabase
-                        .from(userType === 'student' ? 'students' : 'faculty_onboarding')
-                        .update({ photo_url: base64 })
-                        .eq(userType === 'student' ? 'usn' : 'id', userType === 'student' ? session.usn.toUpperCase() : session.id);
-
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                const base64 = ev.target.result;
+                try {
+                    await apiRequest('/api/student/settings', {
+                        method: 'PATCH',
+                        headers: { 'x-student-usn': session?.usn || '' },
+                        body: JSON.stringify({ photo_url: base64 })
+                    });
                     setPhotoUrl(base64);
                     const updated = { ...session, photo_url: base64 };
                     localStorage.setItem(userType === 'student' ? 'student_session' : 'faculty_session', JSON.stringify(updated));
-                    setMessage('✓ Photo saved (database fallback)!');
+                    setMessage('✓ Photo saved successfully!');
                     window.dispatchEvent(new Event('storage'));
-                };
-                reader.readAsDataURL(file);
-            }
+                } catch {
+                    setMessage('Upload failed. Try again.');
+                }
+            };
+            reader.readAsDataURL(file);
         } catch (err) {
             console.error('Upload error:', err);
             setMessage('Upload failed. Try again.');
@@ -140,17 +119,16 @@ function SettingsContent() {
         setMessage('');
 
         try {
-            const table = userType === 'student' ? 'students' : 'faculty_onboarding';
-            const idKey = userType === 'student' ? 'usn' : 'id';
-            const idVal = userType === 'student' ? session.usn.toUpperCase() : session.id;
-
-            const updateData = userType === 'student'
-                ? { name: editName, branch: editBranch, email: editEmail, phone: editPhone, updated_at: new Date().toISOString() }
-                : { full_name: editName, department: editBranch, email: editEmail }; // Assuming 'department' for faculty branch
-
-            const { error } = await supabase.from(table).update(updateData).eq(idKey, idVal);
-
-            if (error) throw error;
+            await apiRequest('/api/student/settings', {
+                method: 'PATCH',
+                headers: { 'x-student-usn': session?.usn || '' },
+                body: JSON.stringify({
+                    full_name: editName,
+                    email: editEmail,
+                    branch: editBranch,
+                    phone: editPhone
+                })
+            });
 
             const updatedSession = { ...session };
             if (userType === 'student') {

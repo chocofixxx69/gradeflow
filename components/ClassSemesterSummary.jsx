@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { processStudentResults } from '../lib/semester-utils';
 import { exportToExcel } from '../lib/export-utils';
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiRequest } from '../lib/api/client';
 
 export default function ClassSemesterSummary({ students = [], allMarks = [], selectedSem }) {
     const [dynamicMarks, setDynamicMarks] = useState([]);
@@ -12,8 +12,8 @@ export default function ClassSemesterSummary({ students = [], allMarks = [], sel
     useEffect(() => {
         const fetchDynamicSubjects = async () => {
             if (!allMarks || allMarks.length === 0) return;
-            const schemes = [...new Set(students.map(s => s.scheme || '2022'))];
-            const { data: subjects } = await supabase.from('subject_catalog').select('*').in('scheme', schemes);
+            const data = await apiRequest('/api/system/meta').catch(() => null);
+            const subjects = data?.subjects || [];
 
             if (subjects && subjects.length > 0) {
                 const map = {};
