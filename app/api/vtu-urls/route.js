@@ -10,43 +10,7 @@ const supabase = createClient(
 export const dynamic = 'force-dynamic';
 
 // Helper to provide a fallback list if none exists for the faculty
-const FALLBACK_URLS = [
-    { exam_name: "Dec 25/Jan 26 Regular (NEP)", url: "https://results.vtu.ac.in/indexD5J6.php" },
-    { exam_name: "Jun/Jul 25 Regular (NEP)", url: "https://results.vtu.ac.in/indexJJ25.php" },
-    { exam_name: "Dec 24/Jan 25 Regular (NEP)", url: "https://results.vtu.ac.in/indexD4J5.php" },
-    { exam_name: "Jun/Jul 24 Regular (NEP)", url: "https://results.vtu.ac.in/indexJJ24.php" },
-    { exam_name: "Dec 23/Jan 24 Regular (NEP)", url: "https://results.vtu.ac.in/indexD3J4.php" },
-    { exam_name: "Makeup 25", url: "https://results.vtu.ac.in/MAKEUPEcbcS25/index.php" },
-    { exam_name: "Dec 25/Jan 26 Regular", url: "https://results.vtu.ac.in/D25J26Ecbcs/index.php" },
-    { exam_name: "Jun/Jul 25 Regular", url: "https://results.vtu.ac.in/JJEcbcs25/index.php" },
-    { exam_name: "Jun/Jul 25 Reval", url: "https://results.vtu.ac.in/JJRVcbcs25/index.php" },
-    { exam_name: "Jun/Jul 25 MakeUp", url: "https://results.vtu.ac.in/MakeUpEcbcs25/index.php" },
-    { exam_name: "Jun/Jul 25 Summer", url: "https://results.vtu.ac.in/SEcbcs25/index.php" },
-    { exam_name: "Jun/Jul 25 Summer Reval", url: "https://results.vtu.ac.in/SERVcbcs25/index.php" },
-    { exam_name: "Dec 24/Jan 25 Regular", url: "https://results.vtu.ac.in/DJcbcs25/index.php" },
-    { exam_name: "Dec 24/Jan 25 Reval", url: "https://results.vtu.ac.in/DJRVcbcs25/index.php" },
-    { exam_name: "Jun/Jul 24 Makeup", url: "https://results.vtu.ac.in/MakeUpEcbcs24/index.php" },
-    { exam_name: "Jun/Jul 24 Regular", url: "https://results.vtu.ac.in/JJEcbcs24/index.php" },
-    { exam_name: "Jun/Jul 24 Reval", url: "https://results.vtu.ac.in/JJRVcbcs24/index.php" },
-    { exam_name: "Dec 23/Jan 24 Regular", url: "https://results.vtu.ac.in/DJcbcs24/index.php" },
-    { exam_name: "Dec 23/Jan 24 Reval", url: "https://results.vtu.ac.in/DJRVcbcs24/index.php" },
-    { exam_name: "Jun/Jul 23 Regular", url: "https://results.vtu.ac.in/JJEcbcs23/index.php" },
-    { exam_name: "Jun/Jul 23 Reval", url: "https://results.vtu.ac.in/JJRVcbcs23/index.php" },
-    { exam_name: "Jun/Jul 23 Makeup", url: "https://results.vtu.ac.in/MakeUpEcbcs23/index.php" },
-    { exam_name: "Dec 22/Jan 23 Regular", url: "https://results.vtu.ac.in/JFEcbcs23/index.php" },
-    { exam_name: "Dec 22/Jan 23 Reval", url: "https://results.vtu.ac.in/JFRVcbcs23/index.php" },
-    { exam_name: "VTU ONLINE DEGREE PROGRAMS PROVISIONAL RESULTS", url: "https://results.vtu.ac.in/indexCDOE.php" },
-    { exam_name: "May/June-2026 Examination", url: "https://results.vtu.ac.in/indexMJ26.php" },
-    { exam_name: "Summer Semester Examination-2025", url: "https://results.vtu.ac.in/indexSUMU25.php" },
-    { exam_name: "Silver Jubilee July 2025 Examination", url: "https://results.vtu.ac.in/indexSJSEJJ25.php" },
-    { exam_name: "Ph.D./M.S(Research) Course-Work Reval Nov/Dec-2024", url: "https://results.vtu.ac.in/NDPhDRV24/index.php" },
-    { exam_name: "January-2025 Special Examination", url: "https://results.vtu.ac.in/SplJcbcs25/index.php" },
-    { exam_name: "Jan-2024 Special Exam [B.E] Revaluation", url: "https://results.vtu.ac.in/JanSplRVEnoncbcs24/index.php" },
-    { exam_name: "January-2024 Special Exam [B.E & PG]", url: "https://results.vtu.ac.in/JanSplEnoncbcs24/index.php" },
-    { exam_name: "Dec 25/Jan 26 Revaluation", url: "https://results.vtu.ac.in/D25J26RVcbcs/index.php" },
-    { exam_name: "May/June 2026 Revaluation", url: "https://results.vtu.ac.in/MJ26rvcbcs/index.php" },
-    { exam_name: "May/June 2026 Regular", url: "https://results.vtu.ac.in/MJ26cbcs/index.php" },
-];
+const FALLBACK_URLS = [];
 
 // GET — List all VTU result URLs for a specific faculty
 export async function GET(req) {
