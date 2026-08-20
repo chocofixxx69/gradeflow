@@ -444,9 +444,9 @@ def scrape_all_semesters(usn: str, faculty_id=None):
         
     if found_count > 0:
         _recalculate_remarks(usn)
-        print(f"✅ {usn}: Success")
+        print(f"[SUCCESS] {usn}: Success")
     else:
-        print(f"⚠ {usn}: No results")
+        print(f"[WARNING] {usn}: No results")
     return found_count > 0
 
 def _get_true_grade_point(grade, tot_m, ext_m=None):
