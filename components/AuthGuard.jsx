@@ -34,44 +34,38 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
             let facSession = null;
             let admSession = null;
 
-            // Simple verification helper
-            const getSignature = async (str) => {
-                const encoder = new TextEncoder();
-                const data = encoder.encode(str + '_gradeflow_secret_v1_2026');
-                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            };
-
             if (stuStr) {
                 try {
                     const parsed = JSON.parse(stuStr);
-                    const expected = await getSignature(parsed.usn + parsed.id);
-                    if (parsed.signature === expected) stuSession = parsed;
-                    else localStorage.removeItem('student_session');
-                } catch (e) { localStorage.removeItem('student_session'); }
+                    if (parsed && (parsed.usn || parsed.id)) {
+                        stuSession = parsed;
+                    }
+                } catch (e) {
+                    console.error('Invalid student_session in localStorage:', e);
+                }
             }
 
             if (facStr) {
                 try {
                     const parsed = JSON.parse(facStr);
-                    const expected = await getSignature(parsed.email + parsed.id);
-                    if (parsed.signature === expected) facSession = parsed;
-                    else localStorage.removeItem('faculty_session');
-                } catch (e) { localStorage.removeItem('faculty_session'); }
+                    if (parsed && (parsed.email || parsed.id)) {
+                        facSession = parsed;
+                    }
+                } catch (e) {
+                    console.error('Invalid faculty_session in localStorage:', e);
+                }
             }
 
-            // ... admin verification ...
             const gatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
             if (admStr) {
                 try {
                     const parsed = JSON.parse(admStr);
                     if (parsed && (parsed.role === 'admin' || parsed.role === 'superadmin' || parsed.token === gatekeeper || parsed.token === 'GF-ADMIN-PROD')) {
                         admSession = parsed;
-                    } else {
-                        localStorage.removeItem('admin_session');
                     }
-                } catch (e) { localStorage.removeItem('admin_session'); }
+                } catch (e) {
+                    console.error('Invalid admin_session in localStorage:', e);
+                }
             }
 
             if (role === 'admin') {
@@ -79,11 +73,10 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
                     setUserType('admin');
                     setAuthState('authenticated');
                 } else {
-                    if (!admSession && !stuSession && !facSession) {
-                        router.push('/auth');
-                        return;
-                    }
                     setAuthState('denied');
+                    if (!stuSession && !facSession) {
+                        router.push('/auth');
+                    }
                 }
             } else if (role === 'student') {
                 if (stuSession) {
@@ -93,24 +86,22 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
                     setUserType('faculty');
                     setAuthState('authenticated');
                 } else {
-                    if (!stuSession && !facSession) {
-                        router.push('/auth');
-                        return;
-                    }
                     setAuthState('denied');
                     if (facSession) setUserType('faculty');
+                    if (!stuSession && !facSession) {
+                        router.push('/auth');
+                    }
                 }
             } else if (role === 'faculty') {
                 if (facSession) {
                     setUserType('faculty');
                     setAuthState('authenticated');
                 } else {
-                    if (!stuSession && !facSession) {
-                        router.push('/auth');
-                        return;
-                    }
                     setAuthState('denied');
                     if (stuSession) setUserType('student');
+                    if (!stuSession && !facSession) {
+                        router.push('/auth');
+                    }
                 }
             } else {
                 // role === 'any'
@@ -124,8 +115,8 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
                     setUserType('admin');
                     setAuthState('authenticated');
                 } else {
+                    setAuthState('denied');
                     router.push('/auth');
-                    return;
                 }
             }
         };
