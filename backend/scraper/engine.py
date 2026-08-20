@@ -186,11 +186,6 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
                 return None
             
             captcha_bytes = captcha_img.screenshot()
-            
-            # Save captcha bytes to check what Playwright grabbed
-            debug_img = f"debug_{usn}_{url_short}_attempt_{attempt+1}.png"
-            with open(debug_img, "wb") as f:
-                f.write(captcha_bytes)
         except:
             print(f"    [!] {url_short}: Screen capture failed.", file=sys.stderr)
             return None
@@ -369,16 +364,6 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
                 print(f"      {bot}", file=sys.stderr)
                 if backlogs_found:
                     print(f"      ⚠️  BACKLOGS ALERT: {', '.join(backlogs_found)}", file=sys.stderr)
-
-                # Save for training
-                try:
-                    train_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "training_data")
-                    os.makedirs(train_dir, exist_ok=True)
-                    # filename format: LABEL_TIMESTAMP.png
-                    train_img_path = os.path.join(train_dir, f"{captcha_text}_{int(time.time())}.png")
-                    with open(train_img_path, "wb") as f_train:
-                        f_train.write(captcha_bytes)
-                except: pass
 
                 return {"url_short": url_short, "name": name, "semester": sem, "subjects": subjects}
 
