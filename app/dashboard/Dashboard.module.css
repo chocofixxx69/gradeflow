@@ -40,7 +40,7 @@
   background: var(--surface-low);
   padding: var(--space-6);
   text-align: left;
-  box-shadow: var(--elevation-flat);
+  box-shadow: var(--shadow-sm);
 }
 
 .statButton {
@@ -206,10 +206,11 @@
   gap: var(--space-6);
   margin-bottom: var(--space-8);
   border: 1px solid var(--border);
-  border-radius: var(--radius-4);
-  background: var(--surface-low);
+  border-radius: var(--radius-5);
+  background: var(--surface);
   padding: var(--space-6);
   color: var(--tx-main);
+  box-shadow: var(--shadow-sm);
 }
 
 .summaryLabel,
@@ -253,7 +254,7 @@
 .semesterChip {
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
-  background: var(--surface);
+  background: var(--surface-low);
   color: var(--tx-main);
   padding: var(--space-1) var(--space-2);
   font-size: 10px;
@@ -264,9 +265,10 @@
   margin-bottom: var(--space-8);
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-4);
-  background: var(--surface-low);
+  border-radius: var(--radius-5);
+  background: var(--surface);
   padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
 }
 
 .panelPadded {
@@ -304,8 +306,8 @@
   padding: var(--space-3) var(--space-5);
   color: var(--tx-dim);
   font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-align: left;
   text-transform: uppercase;
   white-space: nowrap;
@@ -314,9 +316,9 @@
 .table td,
 .table tbody th {
   border-bottom: 1px solid var(--border);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-5);
   color: var(--tx-main);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   vertical-align: middle;
   text-align: left;
@@ -332,7 +334,7 @@
 
 .table tr:hover td,
 .table tr:hover th {
-  background: var(--surface-low);
+  background: #FDF6ED;
 }
 
 .center {
@@ -360,7 +362,8 @@
   justify-content: space-between;
   gap: var(--space-4);
   border-bottom: 1px solid var(--border);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
 }
 
 .semesterTitleGroup {
@@ -388,7 +391,7 @@
   gap: var(--space-2);
   border-top: 1px solid var(--border);
   background: var(--surface-low);
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-5);
 }
 
 .historyTitle {
@@ -411,6 +414,7 @@
   border-radius: var(--radius-3);
   background: var(--surface);
   padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-sm);
 }
 
 .historyName {
@@ -442,9 +446,10 @@
   margin-top: var(--space-8);
   border: 1px solid var(--red);
   border-left-width: 4px;
-  border-radius: var(--radius-6);
+  border-radius: var(--radius-5);
   background: var(--surface);
   padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
 }
 
 .alertHeader {
