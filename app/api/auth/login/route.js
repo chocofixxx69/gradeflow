@@ -123,6 +123,43 @@ async function loginFaculty({ email, password }) {
     );
 }
 
+async function loginStudent({ usn, email, password }) {
+    const rawInput = String(email || usn || '').trim();
+    const cleanUSN = (rawInput.includes('@') ? rawInput.split('@')[0] : rawInput).toUpperCase();
+
+    if (!cleanUSN) return failureResponse('USN or email is required.', 400);
+
+    const supabase = getSupabaseAdmin();
+    const { data: student, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('usn', cleanUSN)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!student) return failureResponse('USN not found. Please activate your account first.', 404);
+    if (!student.password_hash) return failureResponse('Account not activated yet. Please activate your account.', 400);
+
+    const hashedInput = hashLocalSessionSignature(password);
+    if (student.password_hash !== hashedInput && student.password_hash !== password) {
+        return failureResponse('Incorrect password. Please try again.', 401);
+    }
+
+    const localSession = {
+        usn: student.usn,
+        id: student.id,
+        name: student.name,
+        branch: student.branch,
+        scheme: student.scheme,
+        role: 'student',
+    };
+
+    return successResponse(
+        { success: true, role: 'student', session: localSession },
+        { sub: student.id, usn: student.usn, role: 'student' }
+    );
+}
+
 export async function POST(req) {
     try {
         const body = await req.json();
@@ -133,6 +170,10 @@ export async function POST(req) {
 
         if (body?.role === 'faculty') {
             return await loginFaculty(body);
+        }
+
+        if (body?.role === 'student' || body?.usn) {
+            return await loginStudent(body);
         }
 
         return failureResponse('Invalid login role.', 400);

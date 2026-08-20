@@ -103,9 +103,15 @@ function StudentAuthContent() {
         setSuccess('');
 
         try {
-            const cleanUSN = email.toUpperCase().trim();
+            const rawInput = email.trim();
+            const cleanUSN = (rawInput.includes('@') ? rawInput.split('@')[0] : rawInput).toUpperCase();
 
-            // 1. Check if student exists already (could have been created by admin/faculty)
+            if (!cleanUSN) {
+                setError('Please enter a valid USN.');
+                return;
+            }
+
+            // 1. Check if student exists already (could have been created by scraper/admin/faculty)
             let { data: existing, error: existErr } = await supabase
                 .from('students')
                 .select('*')
@@ -117,7 +123,7 @@ function StudentAuthContent() {
             const passwordHash = await hashPassword(password);
 
             if (existing) {
-                // Student exists (auto-created by faculty or admin) — just set password
+                // Student exists (auto-created by scraper or faculty) — set password and recovery pin
                 if (existing.password_hash) {
                     setError('This USN is already activated. Please use "Sign In" instead.');
                     setMode('login');
@@ -142,7 +148,7 @@ function StudentAuthContent() {
                     .from('students')
                     .select('*')
                     .eq('usn', cleanUSN)
-                    .single();
+                    .maybeSingle();
 
                 if (freshProfile) {
                     localStorage.removeItem('faculty_session');
@@ -168,7 +174,7 @@ function StudentAuthContent() {
                 setConfirmPassword('');
             } else {
                 // Student doesn't exist — create new profile
-                const branchMatch = cleanUSN.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,3})\d{3}$/);
+                const branchMatch = cleanUSN.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,4})\d{3}$/);
                 let detectedBranch = branchMatch ? branchMatch[1] : '';
                 if (detectedBranch === 'CS') detectedBranch = 'CSE';
                 if (detectedBranch === 'IS') detectedBranch = 'ISE';
@@ -218,7 +224,7 @@ function StudentAuthContent() {
 
         } catch (err) {
             console.error('Activation error:', err);
-            setError('Something went wrong during activation. Please try again.');
+            setError(err?.message || 'Something went wrong during activation. Please try again.');
         } finally {
             setLoading(false);
         }
