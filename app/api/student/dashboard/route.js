@@ -137,8 +137,8 @@ export async function GET(req) {
             }
         });
 
-        // Recent results (latest 10)
-        const recentResults = pool.slice(0, 10);
+        // All results
+        const recentResults = pool;
 
         return ok({
             profile: studentProfile || { usn },

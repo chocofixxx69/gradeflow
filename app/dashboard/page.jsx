@@ -138,68 +138,13 @@ function StudentDashboardView({
                     )}
                 </ResponsiveGrid>
 
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    className={styles.srOnly}
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handlePdfUpload}
-                />
-                <button
-                    className={`${styles.uploadZone} ${pdfLoading ? styles.uploadZoneActive : ''}`}
-                    type="button"
-                    disabled={pdfLoading}
-                    aria-busy={pdfLoading}
-                    onClick={() => !pdfLoading && fileInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--surface)'; }}
-                    onDragLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface-low)'; }}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.style.borderColor = 'var(--border)';
-                        e.currentTarget.style.background = 'var(--surface-low)';
-                        if (e.dataTransfer.files?.[0]) {
-                            const dt = new DataTransfer();
-                            dt.items.add(e.dataTransfer.files[0]);
-                            if (fileInputRef.current) {
-                                fileInputRef.current.files = dt.files;
-                                handlePdfUpload({ target: { files: dt.files } });
-                            }
-                        }
-                    }}
-                >
-                    <span className={`material-icons-round ${styles.uploadIcon} ${pdfLoading ? styles.uploadIconActive : ''}`} aria-hidden="true">
-                        {pdfLoading ? 'sync' : 'upload_file'}
-                    </span>
-                    <span className={styles.uploadTitle}>
-                        {pdfLoading ? 'Processing your file...' : 'Upload VTU Result PDF or Image'}
-                    </span>
-                    <span className={styles.uploadHelp}>
-                        Drag and drop your VTU result PDF or image here, or click to browse.<br />
-                        <span className={styles.uploadHelpStrong}>Supports official VTU grade cards · Max 30MB · Only your results are accepted</span>
-                    </span>
-                </button>
-
-                {pdfMsg && (
-                    <div className={`${styles.message} ${isInfoMessage ? styles.messageInfo : styles.messageSuccess}`} role="status" aria-live="polite">
-                        {pdfMsg}
-                    </div>
-                )}
-                {pdfError && (
-                    <div className={`${styles.message} ${styles.messageError}`} role="alert">
-                        {pdfError}
-                    </div>
-                )}
-
-                <Inline className={styles.actions} stackMobile>
-                    <Button variant="secondary" iconStart="edit_note" onClick={() => router.push('/calculator')}>
-                        Enter Marks Manually
-                    </Button>
-                    {totalSubjects > 0 && (
+                {totalSubjects > 0 && (
+                    <Inline className={styles.actions} stackMobile>
                         <Button variant="secondary" iconStart="picture_as_pdf" onClick={downloadPDF} disabled={pdfLoading} loading={pdfLoading}>
                             {pdfLoading ? 'Generating...' : 'Download PDF Transcript'}
                         </Button>
-                    )}
-                </Inline>
+                    </Inline>
+                )}
 
                 {semesterCount > 0 ? (
                     <>
@@ -562,11 +507,12 @@ function DashboardContent() {
                 const code = m.subject_code;
                 if (!code) return;
 
-                // Derive correct semester from code (BCS304 -> 3)
-                let targetSem = m.semester;
-                const semMatch = code.match(/^[0-9]{2,3}[A-Z]{2,3}(\d)\d/i) || code.match(/^[A-Z]{2,3}(\d)\d/i);
-                if (semMatch && semMatch[1]) {
-                    targetSem = parseInt(semMatch[1], 10);
+                let targetSem = Number(m.semester) || 1;
+                if (!targetSem || targetSem < 1 || targetSem > 8) {
+                    const semMatch = code.match(/^[0-9A-Z]{2,6}?(\d)\d{2}[A-Z]?$/i) || code.match(/^[A-Z]+(\d)\d/i);
+                    if (semMatch && semMatch[1]) {
+                        targetSem = parseInt(semMatch[1], 10);
+                    }
                 }
                 m.semester = targetSem;
 

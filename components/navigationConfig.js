@@ -1,10 +1,7 @@
 export const NAV_CONFIG = {
   student: [
     { key: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: 'space_dashboard', group: 'Academic Home' },
-    { key: 'calculator', label: 'Calculator', href: '/calculator', icon: 'calculate', group: 'Academic Tools' },
-    { key: 'vault', label: 'Results Upload', href: '/vault', icon: 'drive_folder_upload', group: 'Records' },
     { key: 'analytics', label: 'Analytics', href: '/analytics', icon: 'insights', group: 'Academic Tools' },
-    { key: 'guide', label: 'Guide', href: '/guide', icon: 'menu_book', group: 'Support' },
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   faculty: [
