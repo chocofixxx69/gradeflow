@@ -391,11 +391,17 @@ export function ClassesContent({ embedded = false }) {
                                                 <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
                                                 <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
                                                 <td style={{ ...S.td, textAlign: 'center' }}>{s.semester || '—'}</td>
-                                                <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: s.cgpa ? 'var(--primary)' : 'var(--tx-dim)' }}>{s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}</td>
+                                                <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: (s.has_data && s.cgpa) ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                    {s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}
+                                                </td>
                                                 <td style={{ ...S.td, textAlign: 'center' }}>
-                                                    <span style={{ fontWeight: 900, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                                                        {s.total_backlogs > 0 ? s.total_backlogs : 'Clear ✓'}
-                                                    </span>
+                                                    {s.has_data && s.total_backlogs != null ? (
+                                                        <span style={{ fontWeight: 900, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                                                            {s.total_backlogs > 0 ? s.total_backlogs : 'Clear ✓'}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
+                                                    )}
                                                 </td>
                                                 <td style={{ ...S.td, textAlign: 'center' }}>
                                                     <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
@@ -418,12 +424,16 @@ export function ClassesContent({ embedded = false }) {
                                                     {s.usn} · Sem {s.semester || '—'}
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
-                                                    <span style={{ fontWeight: 800, fontSize: '11px', color: s.cgpa ? 'var(--primary)' : 'var(--tx-dim)' }}>
-                                                        CGPA: {s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}
+                                                    <span style={{ fontWeight: 800, fontSize: '11px', color: (s.has_data && s.cgpa) ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                        CGPA: {s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}
                                                     </span>
-                                                    <span style={{ fontWeight: 800, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                                                        {s.total_backlogs > 0 ? `${s.total_backlogs} Backlog` : 'Clear ✓'}
-                                                    </span>
+                                                    {s.has_data && s.total_backlogs != null ? (
+                                                        <span style={{ fontWeight: 800, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
+                                                            {s.total_backlogs > 0 ? `${s.total_backlogs} Backlog` : 'Clear ✓'}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>No result data</span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }}>

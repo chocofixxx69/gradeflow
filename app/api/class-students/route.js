@@ -51,19 +51,30 @@ export async function GET(req) {
             backlogMap[usn] = computeBacklogs(marksByUsn[usn] || []).totalBacklogs;
         });
 
-        const profileMap = {};
-        (profiles || []).forEach(p => { profileMap[p.usn] = p; });
+        const hasResultsMap = {};
+        usns.forEach(usn => {
+            const hasR = Boolean(
+                (remarksByUsn[usn] && remarksByUsn[usn].length > 0) ||
+                (marksByUsn[usn] && marksByUsn[usn].length > 0) ||
+                (creditsMap[usn] && Object.keys(creditsMap[usn]).length > 0)
+            );
+            hasResultsMap[usn] = hasR;
+        });
 
-        const students = members.map(m => ({
-            id: m.id,
-            usn: m.usn,
-            name: profileMap[m.usn]?.name || m.usn,
-            branch: profileMap[m.usn]?.branch || '—',
-            semester: profileMap[m.usn]?.semester || '—',
-            cgpa: cgpaMap[m.usn] ?? null,
-            total_backlogs: backlogMap[m.usn] ?? 0,
-            added_at: m.created_at,
-        }));
+        const students = members.map(m => {
+            const hasData = hasResultsMap[m.usn] || false;
+            return {
+                id: m.id,
+                usn: m.usn,
+                name: profileMap[m.usn]?.name || m.usn,
+                branch: profileMap[m.usn]?.branch || '—',
+                semester: profileMap[m.usn]?.semester || '—',
+                cgpa: hasData && cgpaMap[m.usn] != null ? cgpaMap[m.usn] : null,
+                total_backlogs: hasData ? (backlogMap[m.usn] ?? 0) : null,
+                has_data: hasData,
+                added_at: m.created_at,
+            };
+        });
 
         return NextResponse.json({ success: true, students });
     } catch (err) {
