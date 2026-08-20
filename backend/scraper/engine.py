@@ -524,15 +524,16 @@ def _save_db(usn, name, sem, url, subs):
                 if code in already_passed and s["grade"] in ("F", "A", "X", "NE"): # type: ignore
                     print(f"      - Skipping {code} (Student already has a PASS record for this sem)")
                     continue
-                filtered_subs.append({**s, "result_id": r_id, "usn": usn, "semester": sem})
+                s_clean = {k: v for k, v in s.items() if k != 'announced_date' or v}
+                filtered_subs.append({**s_clean, "result_id": r_id, "usn": usn, "semester": sem})
 
             if filtered_subs:
                 supabase.table("subject_marks").upsert(filtered_subs, on_conflict="usn,subject_code,semester").execute()
-                print(f"      💾 DB Saved Sem {sem}: {len(filtered_subs)} subjects | SGPA: {sgpa}")
+                print(f"      [SAVED] DB Saved Sem {sem}: {len(filtered_subs)} subjects | SGPA: {sgpa}")
             else:
-                print(f"      ℹ️ Sem {sem}: No new data to update (already updated with passing marks)")
+                print(f"      [INFO] Sem {sem}: No new data to update (already updated with passing marks)")
     except Exception as e:
-        print(f"      ❌ DB Error: {e}")
+        print(f"      [ERROR] DB Error: {e}")
 
 def _recalculate_remarks(usn):
     try:
