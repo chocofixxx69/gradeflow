@@ -268,7 +268,7 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-5);
-  background: var(--surface);
+  background: var(--surface-low);
   padding: var(--space-5);
   box-shadow: var(--shadow-sm);
 }
@@ -304,7 +304,7 @@
 
 .table th {
   border-bottom: 1px solid var(--border);
-  background: var(--surface-low);
+  background: transparent;
   padding: var(--space-3) var(--space-5);
   color: var(--tx-dim);
   font-size: 10px;
@@ -365,7 +365,7 @@
   gap: var(--space-4);
   border-bottom: 1px solid var(--border);
   padding: var(--space-4) var(--space-5);
-  background: var(--surface);
+  background: transparent;
 }
 
 .semesterTitleGroup {
