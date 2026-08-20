@@ -64,7 +64,8 @@ function AnalyticsContent() {
             const grade = (m.grade || '').trim().toUpperCase();
             const unified = unifyGrade(grade);
             const credits = Number(m.credits) || 3;
-            const gp = getGradePoint(grade, '2022', m.total_marks || m.total, m.see_marks ?? m.external ?? null);
+            const totalScore = m.total_marks ?? m.total ?? m.marks ?? null;
+            const gp = getGradePoint(grade, '2022', totalScore, m.see_marks ?? m.external ?? null);
             totalCredits += credits;
             totalCreditPoints += gp * credits;
             if (unified !== 'P') backlogs++;
@@ -105,7 +106,7 @@ function AnalyticsContent() {
                 ...(marks2 || []).map(m => ({
                     ...m,
                     source: 'scraped',
-                    total_marks: m.total,
+                    total_marks: m.total_marks ?? m.total ?? m.marks ?? null,
                     subject_code: m.subject_code || m.code,
                     subject_name: m.subject_name || m.name
                 }))
