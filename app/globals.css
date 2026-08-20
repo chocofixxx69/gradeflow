@@ -254,9 +254,10 @@ body.gf-drawer-open {
   grid-row: 1 / -1;
   width: var(--sidebar-w);
   height: 100dvh;
-  position: sticky;
+  position: fixed;
   top: 0;
-  align-self: start;
+  left: 0;
+  bottom: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
