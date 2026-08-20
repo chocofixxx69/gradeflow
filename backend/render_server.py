@@ -28,10 +28,14 @@ def run_scraper_worker():
     print("  Ready to process requests from the portal...", flush=True)
     print("=" * 60, flush=True)
     
+    env = os.environ.copy()
+    env["MALLOC_ARENA_MAX"] = "2"
+    env["PYTHONUNBUFFERED"] = "1"
+    
     while True:
         try:
-            # Run the scraper queue securely
-            subprocess.run([sys.executable, "-m", "scraper.process_queue", "--quiet"], check=False)
+            # Run the scraper queue securely with memory constraints
+            subprocess.run([sys.executable, "-m", "scraper.process_queue", "--quiet"], env=env, check=False)
         except Exception as e:
             print(f"[RenderWorker Error]: {e}", flush=True)
             
