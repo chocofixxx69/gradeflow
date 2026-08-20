@@ -694,23 +694,28 @@ function FacultyDashboardContent() {
 
                         if (!job) {
                             // Job mysteriously vanished or was wiped manually
-                            stopScraping();
+                            stopScraping(true);
+                            setMessage('Scan job completed or removed.');
+                            await lookupStudent(cleanUSN);
                         } else if (job?.status === 'finished') {
-                            stopScraping();
+                            stopScraping(true);
                             setMessage('All portals scanned successfully!');
+                            await lookupStudent(cleanUSN);
                         } else if (job?.status === 'error' || job?.status === 'no_result') {
-                            stopScraping();
+                            stopScraping(true);
                             setMessage(job?.status === 'error' ? (job.error || 'Scrape failed') : 'Scan complete. No new results found.');
+                            await lookupStudent(cleanUSN);
                         } else if (attempts > 180) { // 15 mins max
-                            stopScraping();
+                            stopScraping(true);
                             setMessage('Scan timed out. Some records might still be processing.');
+                            await lookupStudent(cleanUSN);
                         }
                     } catch (e) {
                         // Silent catch inside polling
                     }
                 }, 5000);
             } else {
-                setMessage(json.error || 'Unable to process.');
+                setMessage(typeof json.error === 'object' ? (json.error.message || 'Unable to process.') : (json.error || 'Unable to process.'));
                 setScraping(false);
                 setScrapeProgress('');
             }

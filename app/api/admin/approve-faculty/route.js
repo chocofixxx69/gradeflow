@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '../../../../lib/server-session';
 
 const supabaseAdmin = createClient(
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,6 +8,9 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(req) {
+    const { error: authError } = requireAdmin(req);
+    if (authError) return authError;
+
     try {
         const body = await req.json();
         const { id, action } = body;

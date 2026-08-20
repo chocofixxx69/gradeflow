@@ -96,7 +96,7 @@ export async function POST(req) {
         const { error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        const { class_id, usn, faculty_id } = await req.json();
+        const { class_id, usn } = await req.json();
         if (!class_id || !usn) return NextResponse.json({ error: 'class_id and usn required.' }, { status: 400 });
 
         let rawUsns = Array.isArray(usn) ? usn : [usn];
@@ -110,15 +110,20 @@ export async function POST(req) {
 
         const toInsert = usns.filter(u => !existingSet.has(u)).map(u => ({ usn: u, name: u }));
         if (toInsert.length > 0) {
-            // chunk the insert just in case, using upsert to avoid chunk failure
+            // chunk the insert just in case, using upsert to avoid chunk failure.
+            // Supabase's query builder isn't a real Promise (no .catch method) —
+            // it must be awaited inside try/catch, not chained.
             for (let i = 0; i < toInsert.length; i += 100) {
-                await supabaseAdmin.from('students')
-                    .upsert(toInsert.slice(i, i + 100), { onConflict: 'usn', ignoreDuplicates: true })
-                    .catch(() => { });
+                try {
+                    await supabaseAdmin.from('students')
+                        .upsert(toInsert.slice(i, i + 100), { onConflict: 'usn', ignoreDuplicates: true });
+                } catch { /* best-effort: class_students insert below will surface real failures */ }
             }
         }
 
-        const rows = usns.map(u => ({ class_id, usn: u, added_by: faculty_id || null }));
+        // class_students has no added_by column — writing one would fail the
+        // upsert with a schema-cache error, silently blocking every add.
+        const rows = usns.map(u => ({ class_id, usn: u }));
         let addedCount = 0;
 
         for (let i = 0; i < rows.length; i += 100) {

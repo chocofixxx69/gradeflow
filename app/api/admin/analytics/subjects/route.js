@@ -18,9 +18,10 @@ const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
  * Subject Analysis — per-subject-code aggregate: appeared/passed/failed/pass%,
  * internal/external/total averages, highest/lowest marks, grade distribution,
  * faculty attribution (via faculty_subject_assignments, "Unassigned" fallback).
- * Subject name/credits are self-derived from subject_marks rows — the
- * subjects catalog table is currently unpopulated, so it's used only as an
- * optional enrichment when present, never a hard dependency.
+ * Subject name/credits prefer the subjects catalog table (canonical) when a
+ * matching code+branch+semester+scheme row exists there; otherwise they fall
+ * back to whatever subject_marks recorded, since the catalog may be sparsely
+ * populated for some scheme/branch/semester combinations.
  * Filters: ?academicYear=&examSession=&branch=&semester=&classId=&section=
  */
 export async function GET(req) {
@@ -64,10 +65,12 @@ export async function GET(req) {
             const assignment = findFacultyAssignment(dataset.facultyAssignments, { subjectCode: code, branch, semester, scheme });
             const facultyName = assignment ? (dataset.facultyById[assignment.faculty_id]?.full_name || 'Unassigned') : 'Unassigned';
 
+            const catalogEntry = dataset.lookupSubjectCatalog({ code, branch, semester, scheme });
+
             return {
                 subject_code: code,
-                subject_name: marks[0]?.subject_name || code,
-                credits: marks[0]?.credits ?? null,
+                subject_name: catalogEntry?.name || marks[0]?.subject_name || code,
+                credits: catalogEntry?.credits ?? marks[0]?.credits ?? null,
                 faculty: facultyName,
                 branch: branch || null,
                 semester: semester ?? null,

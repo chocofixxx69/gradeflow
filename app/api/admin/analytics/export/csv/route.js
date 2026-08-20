@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../../../lib/server-session';
-import { getAdminClient, getStudentAnalytics } from '../../../../../../lib/analytics-data';
+import { getAdminClient, getStudentAnalytics, parseFiltersFromBody } from '../../../../../../lib/analytics-data';
 
 export const dynamic = 'force-dynamic';
 
 const COLUMNS = [
-    'usn', 'name', 'branch', 'semester', 'section', 'batch', 'cgpa', 'sgpa',
+    'usn', 'name', 'branch', 'semester', 'class_name', 'section', 'batch', 'cgpa', 'sgpa',
     'total_credits', 'earned_credits', 'total_backlogs', 'classification',
     'result_status', 'has_results', 'lateral_entry',
 ];
@@ -23,15 +23,16 @@ function toCSV(rows) {
 /**
  * POST /api/admin/analytics/export/csv
  * Exports the (role-scoped, optionally filtered) student analytics as a CSV download.
- * Body (optional): { "branch": "CSE", "semester": 6, "classId": "<uuid>" }
+ * Body (optional): { academicYear, examSession, branch, semester, classId, section }
  */
 export async function POST(req) {
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        let filters = {};
-        try { filters = (await req.json()) || {}; } catch { filters = {}; }
+        let body = {};
+        try { body = (await req.json()) || {}; } catch { body = {}; }
+        const filters = parseFiltersFromBody(body);
 
         const { students } = await getStudentAnalytics(getAdminClient(), {
             role: session.role, facultyId: session.sub, filters,

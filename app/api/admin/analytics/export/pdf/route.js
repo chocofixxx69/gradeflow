@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { requireStaff } from '../../../../../../lib/server-session';
-import { getAdminClient, loadResultAnalysisDataset, buildStudentRow } from '../../../../../../lib/analytics-data';
+import { getAdminClient, loadResultAnalysisDataset, buildStudentRow, parseFiltersFromBody } from '../../../../../../lib/analytics-data';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,15 +15,16 @@ const avg = (nums) => nums.length ? Math.round((nums.reduce((a, b) => a + b, 0) 
  * Full faculty Result Analysis report: dashboard KPIs + class + subject
  * breakdowns, as a downloadable PDF (jsPDF + jspdf-autotable — already in
  * package.json, same stack used client-side by lib/export-utils.js).
- * Body (optional): { "branch": "CSE", "semester": 6, "classId": "<uuid>", "section": "A" }
+ * Body (optional): { academicYear, examSession, branch, semester, classId, section }
  */
 export async function POST(req) {
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        let filters = {};
-        try { filters = (await req.json()) || {}; } catch { filters = {}; }
+        let body = {};
+        try { body = (await req.json()) || {}; } catch { body = {}; }
+        const filters = parseFiltersFromBody(body);
 
         const dataset = await loadResultAnalysisDataset(getAdminClient(), {
             role: session.role, facultyId: session.sub, filters,

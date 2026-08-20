@@ -1,22 +1,23 @@
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { requireStaff } from '../../../../../../lib/server-session';
-import { getAdminClient, getStudentAnalytics } from '../../../../../../lib/analytics-data';
+import { getAdminClient, getStudentAnalytics, parseFiltersFromBody } from '../../../../../../lib/analytics-data';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/admin/analytics/export/excel
  * Exports the (role-scoped, optionally filtered) student analytics as an .xlsx download.
- * Body (optional): { "branch": "CSE", "semester": 6, "classId": "<uuid>" }
+ * Body (optional): { academicYear, examSession, branch, semester, classId, section }
  */
 export async function POST(req) {
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        let filters = {};
-        try { filters = (await req.json()) || {}; } catch { filters = {}; }
+        let body = {};
+        try { body = (await req.json()) || {}; } catch { body = {}; }
+        const filters = parseFiltersFromBody(body);
 
         const { students } = await getStudentAnalytics(getAdminClient(), {
             role: session.role, facultyId: session.sub, filters,
@@ -27,6 +28,7 @@ export async function POST(req) {
             Name: s.name,
             Branch: s.branch,
             Semester: s.semester,
+            Class: s.class_name || '',
             Section: s.section || '',
             Batch: s.batch || '',
             CGPA: s.cgpa,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../../lib/server-session';
-import { getAdminClient, getStudentAnalytics } from '../../../../../lib/analytics-data';
+import { getAdminClient, getStudentAnalytics, parseFilters } from '../../../../../lib/analytics-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,8 @@ function classifyRisk(s) {
 /**
  * GET /api/admin/analytics/risk
  * Advanced analytics — student risk analysis based on backlog load.
- * Auth: staff (admin = all, faculty = own classes). Filters: ?branch=&semester=&classId=
+ * Auth: staff (admin = all, faculty = own classes).
+ * Filters: ?academicYear=&examSession=&branch=&semester=&classId=&section=
  */
 export async function GET(req) {
     try {
@@ -28,11 +29,7 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const filters = {
-            branch: searchParams.get('branch') || undefined,
-            semester: searchParams.get('semester') || undefined,
-            classId: searchParams.get('classId') || undefined,
-        };
+        const filters = parseFilters(searchParams);
 
         const { students } = await getStudentAnalytics(getAdminClient(), {
             role: session.role, facultyId: session.sub, filters,
@@ -46,6 +43,7 @@ export async function GET(req) {
             if (level !== 'SAFE') {
                 atRisk.push({
                     usn: s.usn, name: s.name, branch: s.branch, semester: s.semester,
+                    class_name: s.class_name, section: s.section,
                     cgpa: s.cgpa, total_backlogs: s.total_backlogs,
                     max_semester_backlogs: s.max_semester_backlogs, risk_level: level,
                 });

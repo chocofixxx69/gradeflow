@@ -1,71 +1,123 @@
 import { NextResponse } from 'next/server';
-import { requireStaff } from '../../../../lib/server-session';
+import { requireAdmin } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
-import { fetchAllPaginated } from '../../../../lib/supabase-utils';
 
 export const dynamic = 'force-dynamic';
 
-const ok = (data) => NextResponse.json({ success: true, data });
-const fail = (message, code, status = 400) => NextResponse.json({ success: false, error: { code, message } }, { status });
-
-function normalize(input) {
-    const value = input || {};
-    return {
-        faculty_id: typeof value.faculty_id === 'string' ? value.faculty_id : '',
-        subject_code: typeof value.subject_code === 'string' ? value.subject_code.trim() : '',
-        branch: typeof value.branch === 'string' ? value.branch.trim() : '',
-        semester: Number(value.semester),
-        scheme: typeof value.scheme === 'string' ? value.scheme.trim() : '',
-        class_id: value.class_id || null,
-    };
+function ok(data) { return NextResponse.json({ success: true, data }); }
+function fail(message, code, status = 400, details = {}) {
+    return NextResponse.json({ success: false, error: { code, message, details } }, { status });
 }
 
+/**
+ * GET /api/admin/faculty-assignments
+ * Lists faculty↔subject assignments, joined with faculty name and class info
+ * for display. Optional filter: ?facultyId=<uuid>
+ * Auth: admin only.
+ */
 export async function GET(req) {
     try {
-        const { error } = requireStaff(req, ['admin']);
-        if (error) return error;
+        const { error: authError } = requireAdmin(req);
+        if (authError) return authError;
+
+        const { searchParams } = new URL(req.url);
+        const facultyId = searchParams.get('facultyId') || undefined;
+
         const client = getAdminClient();
-        const [assignments, faculty, classes, subjects] = await Promise.all([
-            fetchAllPaginated('faculty_subject_assignments', '*', client),
-            fetchAllPaginated('faculty_onboarding', 'id, full_name, email, department', client, 'full_name', true),
-            fetchAllPaginated('classes', 'id, name, branch, semester, scheme', client, 'name', true),
-            fetchAllPaginated('subject_catalog', 'id, subject_code, subject_name, branch, semester, scheme', client, 'subject_code', true),
-        ]);
-        return ok({ assignments, faculty, classes, subjects });
+        let query = client
+            .from('faculty_subject_assignments')
+            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at, faculty_onboarding(full_name, email), classes(name, branch, semester, section)')
+            .order('created_at', { ascending: false });
+
+        if (facultyId) query = query.eq('faculty_id', facultyId);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        return ok({ assignments: data || [] });
     } catch (err) {
         console.error('[GET /api/admin/faculty-assignments]', err);
-        return fail('Failed to load faculty assignments.', 'FACULTY_ASSIGNMENTS_LOAD_ERROR', 500);
+        return fail('Failed to load faculty assignments.', 'FACULTY_ASSIGNMENTS_ERROR', 500, { error: String(err?.message || err) });
     }
 }
 
+/**
+ * POST /api/admin/faculty-assignments
+ * Assigns a faculty member to a subject (optionally scoped to branch/semester/
+ * scheme/class). Body: { faculty_id, subject_code, branch?, semester?, scheme?, class_id? }
+ * Duplicate prevention: a pre-check plus a DB-level unique index
+ * (idx_fsa_unique_assignment, see supabase/migrations) both reject the same
+ * faculty+subject+branch+semester+scheme+class combination being assigned twice.
+ * Auth: admin only.
+ */
 export async function POST(req) {
     try {
-        const { error } = requireStaff(req, ['admin']);
-        if (error) return error;
-        const assignment = normalize(await req.json());
-        if (!assignment.faculty_id || !assignment.subject_code || !assignment.branch || !Number.isInteger(assignment.semester) || !assignment.scheme) {
-            return fail('Faculty, subject, branch, semester, and scheme are required.', 'VALIDATION_ERROR');
+        const { error: authError } = requireAdmin(req);
+        if (authError) return authError;
+
+        const body = await req.json().catch(() => ({}));
+        const facultyId = typeof body.faculty_id === 'string' ? body.faculty_id.trim() : '';
+        const subjectCode = typeof body.subject_code === 'string' ? body.subject_code.trim() : '';
+        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : null;
+        const scheme = typeof body.scheme === 'string' && body.scheme.trim() ? body.scheme.trim() : null;
+        const classId = typeof body.class_id === 'string' && body.class_id.trim() ? body.class_id.trim() : null;
+
+        let semester = null;
+        if (body.semester !== undefined && body.semester !== null && body.semester !== '') {
+            semester = parseInt(body.semester, 10);
+            if (!Number.isFinite(semester)) {
+                return fail('semester must be a number.', 'VALIDATION_ERROR', 400);
+            }
         }
-        const { data, error: dbError } = await getAdminClient().from('faculty_subject_assignments').insert(assignment).select().single();
-        if (dbError) throw dbError;
+
+        if (!facultyId) return fail('faculty_id is required.', 'VALIDATION_ERROR', 400);
+        if (!subjectCode) return fail('subject_code is required.', 'VALIDATION_ERROR', 400);
+
+        const client = getAdminClient();
+
+        const { data: existingFaculty, error: facultyLookupError } = await client
+            .from('faculty_onboarding')
+            .select('id')
+            .eq('id', facultyId)
+            .maybeSingle();
+        if (facultyLookupError) throw facultyLookupError;
+        if (!existingFaculty) return fail('faculty_id does not reference an existing faculty record.', 'FACULTY_NOT_FOUND', 404);
+
+        let existingDuplicateQuery = client
+            .from('faculty_subject_assignments')
+            .select('id')
+            .eq('faculty_id', facultyId)
+            .eq('subject_code', subjectCode);
+        existingDuplicateQuery = branch ? existingDuplicateQuery.eq('branch', branch) : existingDuplicateQuery.is('branch', null);
+        existingDuplicateQuery = semester !== null ? existingDuplicateQuery.eq('semester', semester) : existingDuplicateQuery.is('semester', null);
+        existingDuplicateQuery = scheme ? existingDuplicateQuery.eq('scheme', scheme) : existingDuplicateQuery.is('scheme', null);
+        existingDuplicateQuery = classId ? existingDuplicateQuery.eq('class_id', classId) : existingDuplicateQuery.is('class_id', null);
+
+        const { data: duplicate, error: duplicateLookupError } = await existingDuplicateQuery.maybeSingle();
+        if (duplicateLookupError) throw duplicateLookupError;
+        if (duplicate) {
+            return fail('This faculty is already assigned to this subject for the given scope.', 'DUPLICATE_ASSIGNMENT', 409);
+        }
+
+        const { data, error } = await client
+            .from('faculty_subject_assignments')
+            .insert({ faculty_id: facultyId, subject_code: subjectCode, branch, semester, scheme, class_id: classId })
+            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at')
+            .single();
+
+        if (error) {
+            if (error.code === '23505') {
+                return fail('This faculty is already assigned to this subject for the given scope.', 'DUPLICATE_ASSIGNMENT', 409);
+            }
+            if (error.code === '23503') {
+                return fail('faculty_id or class_id does not reference an existing row.', 'INVALID_REFERENCE', 400);
+            }
+            throw error;
+        }
+
         return ok({ assignment: data });
     } catch (err) {
         console.error('[POST /api/admin/faculty-assignments]', err);
-        return fail('Failed to create faculty assignment.', 'FACULTY_ASSIGNMENT_CREATE_ERROR', 500);
-    }
-}
-
-export async function DELETE(req) {
-    try {
-        const { error } = requireStaff(req, ['admin']);
-        if (error) return error;
-        const { id } = await req.json();
-        if (!id) return fail('Assignment ID is required.', 'VALIDATION_ERROR');
-        const { error: dbError } = await getAdminClient().from('faculty_subject_assignments').delete().eq('id', id);
-        if (dbError) throw dbError;
-        return ok({ id });
-    } catch (err) {
-        console.error('[DELETE /api/admin/faculty-assignments]', err);
-        return fail('Failed to delete faculty assignment.', 'FACULTY_ASSIGNMENT_DELETE_ERROR', 500);
+        return fail('Failed to create faculty assignment.', 'FACULTY_ASSIGNMENTS_ERROR', 500, { error: String(err?.message || err) });
     }
 }
