@@ -379,9 +379,17 @@ export function ClassesContent({ embedded = false }) {
             {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
 
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-                <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
-                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{filteredStudents.length} students</div>
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportPDF({ selectedClass, students, subjectToppers })}>
+                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
+                        </button>
+                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
+                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
+                        </button>
+                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginLeft: '4px' }}>{filteredStudents.length} students</div>
+                    </div>
                 </div>
                 {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
                     : (
