@@ -256,6 +256,7 @@ body.gf-drawer-open {
   height: 100dvh;
   position: sticky;
   top: 0;
+  align-self: start;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
