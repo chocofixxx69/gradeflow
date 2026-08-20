@@ -33,7 +33,7 @@ export default function RootLayout({ children }) {
                     rel="stylesheet"
                 />
             </head>
-            <body className={jakarta.className}>
+            <body className={jakarta.className} suppressHydrationWarning>
                 <ThemeProvider>
                     <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
                 </ThemeProvider>
