@@ -579,28 +579,63 @@ function AdminPanelContent() {
                             <div style={c.tableTitle}>Recent Registrations</div>
                             <button style={c.actionBtn(true)} onClick={() => setTab('students')}>View All Students</button>
                         </div>
-                        <table style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr>{['Student', 'USN', 'Branch', 'Scheme', 'Registered'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
-                            </thead>
-                            <tbody>
+                        {!isMobile ? (
+                            <table style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>{['Student', 'USN', 'Branch', 'Scheme', 'Registered'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
+                                </thead>
+                                <tbody>
+                                    {students.slice(0, 5).map(s => (
+                                        <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openStudent(s)} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                            <td style={c.td}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
+                                                    <span style={{ fontWeight: 800 }}>{s.name || 'Student'}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '12px', color: 'var(--tx-muted)' }}>{s.usn}</td>
+                                            <td style={c.td}>{s.branch || '—'}</td>
+                                            <td style={c.td}>{s.scheme || '2022'}</td>
+                                            <td style={{ ...c.td, color: 'var(--tx-dim)', fontSize: '12px' }}>{s.created_at ? new Date(s.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</td>
+                                        </tr>
+                                    ))}
+                                    {students.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No students registered yet.</td></tr>}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
                                 {students.slice(0, 5).map(s => (
-                                    <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openStudent(s)} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                        <td style={c.td}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
-                                                <span style={{ fontWeight: 800 }}>{s.name || 'Student'}</span>
+                                    <div
+                                        key={s.id}
+                                        onClick={() => openStudent(s)}
+                                        style={{
+                                            background: 'var(--surface-low)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '12px',
+                                            padding: '12px 14px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '12px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                            <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Student'}</div>
+                                                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn} · {s.branch || 'Unassigned'}</div>
                                             </div>
-                                        </td>
-                                        <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '12px', color: 'var(--tx-muted)' }}>{s.usn}</td>
-                                        <td style={c.td}>{s.branch || '—'}</td>
-                                        <td style={c.td}>{s.scheme || '2022'}</td>
-                                        <td style={{ ...c.td, color: 'var(--tx-dim)', fontSize: '12px' }}>{s.created_at ? new Date(s.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</td>
-                                    </tr>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                            <span style={c.badge(s.activated_at ? 'active' : 'pending')}>{s.activated_at ? 'Active' : 'Awaiting'}</span>
+                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>Sem {s.semester || '—'}</span>
+                                        </div>
+                                    </div>
                                 ))}
-                                {students.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No students registered yet.</td></tr>}
-                            </tbody>
-                        </table>
+                                {students.length === 0 && <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No students registered yet.</div>}
+                            </div>
+                        )}
                     </div>
                 </>}
 
@@ -618,28 +653,63 @@ function AdminPanelContent() {
                             </div>
                             <input style={{ ...c.searchInput, flex: '1 1 220px' }} placeholder="Search USN or Name..." value={search} onChange={e => setSearch(e.target.value)} />
                         </div>
-                        <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr>{['Student', 'USN', 'Semester', 'Branch', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
-                            </thead>
-                            <tbody>
+                        {!isMobile ? (
+                            <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>{['Student', 'USN', 'Semester', 'Branch', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
+                                </thead>
+                                <tbody>
+                                    {filtered.map(s => (
+                                        <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openStudent(s)} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                            <td style={c.td}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
+                                                    <span style={{ fontWeight: 800 }}>{s.name || 'Student'}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ ...c.td, fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn}</td>
+                                            <td style={c.td}>Sem {s.semester || '—'}</td>
+                                            <td style={c.td}>{s.branch || '—'}</td>
+                                            <td style={c.td}><span style={c.badge(s.activated_at ? 'active' : 'pending')}>{s.activated_at ? 'Active' : 'Awaiting'}</span></td>
+                                        </tr>
+                                    ))}
+                                    {filtered.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)', fontStyle: 'italic' }}>No matching students found.</td></tr>}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
                                 {filtered.map(s => (
-                                    <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openStudent(s)} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                        <td style={c.td}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
-                                                <span style={{ fontWeight: 800 }}>{s.name || 'Student'}</span>
+                                    <div
+                                        key={s.id}
+                                        onClick={() => openStudent(s)}
+                                        style={{
+                                            background: 'var(--surface-low)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '12px',
+                                            padding: '12px 14px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '12px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                            <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Student'}</div>
+                                                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn} · {s.branch || 'Unassigned'}</div>
                                             </div>
-                                        </td>
-                                        <td style={{ ...c.td, fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn}</td>
-                                        <td style={c.td}>Sem {s.semester || '—'}</td>
-                                        <td style={c.td}>{s.branch || '—'}</td>
-                                        <td style={c.td}><span style={c.badge(s.activated_at ? 'active' : 'pending')}>{s.activated_at ? 'Active' : 'Awaiting'}</span></td>
-                                    </tr>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                            <span style={c.badge(s.activated_at ? 'active' : 'pending')}>{s.activated_at ? 'Active' : 'Awaiting'}</span>
+                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>Sem {s.semester || '—'}</span>
+                                        </div>
+                                    </div>
                                 ))}
-                                {filtered.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)', fontStyle: 'italic' }}>No matching students found.</td></tr>}
-                            </tbody>
-                        </table>
+                                {filtered.length === 0 && <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px', fontStyle: 'italic' }}>No matching students found.</div>}
+                            </div>
+                        )}
                     </div>
                 </>}
 
@@ -831,33 +901,34 @@ function AdminPanelContent() {
             {selectedStudent && (
                 <div style={c.overlay} onClick={e => { if (e.target === e.currentTarget) setSelectedStudent(null); }}>
                     <div style={c.drawer} className="gf-fade-up">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', minWidth: 0, flex: '1 1 260px' }}>
-                                <div style={{ ...c.avatar, width: '64px', height: '64px', fontSize: '22px', borderRadius: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '20px', minWidth: 0, flex: 1 }}>
+                                <div style={{ ...c.avatar, width: isMobile ? '48px' : '64px', height: isMobile ? '48px' : '64px', fontSize: isMobile ? '18px' : '22px', borderRadius: '14px' }}>
                                     {((selectedStudent.name || selectedStudent.usn || '?')[0]).toUpperCase()}
                                 </div>
-                                <div>
-                                    <h2 style={{ fontSize: '24px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em' }}>{selectedStudent.name || 'Student'}</h2>
-                                    <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedStudent.name || 'Student'}</h2>
+                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
                                         {selectedStudent.usn} · {selectedStudent.branch || 'Unassigned'} · Sem {selectedStudent.semester || '—'}
                                     </div>
                                     <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
                                         Status: <span style={c.badge(selectedStudent.activated_at ? 'active' : 'pending')}>{selectedStudent.activated_at ? 'Activated' : 'Pending'}</span>
                                     </div>
-                                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                        <button style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '10px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)' }} onClick={resetStudentCredentials}>
-                                            <span className="material-icons-round" style={{ fontSize: '12px', verticalAlign: 'middle', marginRight: '4px' }}>lock_reset</span>
-                                            Reset Password
-                                        </button>
-                                        <button style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '10px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)' }} onClick={deleteStudentEntirely}>
-                                            <span className="material-icons-round" style={{ fontSize: '12px', verticalAlign: 'middle', marginRight: '4px' }}>delete_forever</span>
-                                            Delete Student
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }} onClick={() => setSelectedStudent(null)}>
-                                <span className="material-icons-round" style={{ fontSize: '28px' }}>close</span>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }} onClick={() => setSelectedStudent(null)}>
+                                <span className="material-icons-round" style={{ fontSize: '24px' }}>close</span>
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
+                            <button style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial' }} onClick={resetStudentCredentials}>
+                                <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>lock_reset</span>
+                                Reset Password
+                            </button>
+                            <button style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial' }} onClick={deleteStudentEntirely}>
+                                <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>delete_forever</span>
+                                Delete Student
                             </button>
                         </div>
 
@@ -878,33 +949,54 @@ function AdminPanelContent() {
                                                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>Semester {sem}</div>
                                                 <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>SGPA: {calcSGPA(marks)}</div>
                                             </div>
-                                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                                            <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                                                <thead>
-                                                    <tr>{['Subject', 'CIE', 'SEE', 'Total', 'Grade'].map(h => <th key={h} style={{ ...c.th, padding: '10px 16px' }}>{h}</th>)}</tr>
-                                                </thead>
-                                                <tbody>
+                                            {!isMobile ? (
+                                                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                                    <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                                                        <thead>
+                                                            <tr>{['Subject', 'CIE', 'SEE', 'Total', 'Grade'].map(h => <th key={h} style={{ ...c.th, padding: '10px 16px' }}>{h}</th>)}</tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {marks.map(m => (
+                                                                <tr key={m.id}>
+                                                                    <td style={{ ...c.td, padding: '12px 16px' }}>
+                                                                        <div style={{ fontWeight: 700, fontSize: '12px' }}>{m.subject_name}</div>
+                                                                        <div style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)' }}>{m.subject_code}</div>
+                                                                    </td>
+                                                                    <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center' }}>{m.cie_marks ?? m.internal ?? '—'}</td>
+                                                                    <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center' }}>{m.see_marks ?? m.external ?? '—'}</td>
+                                                                    <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center', fontWeight: 800 }}>{m.total_marks ?? m.total ?? '—'}</td>
+                                                                    <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center' }}>
+                                                                        <span style={c.badge(m.grade === 'F' ? 'rejected' : 'approved')}>{m.grade}</span>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     {marks.map(m => (
-                                                        <tr key={m.id}>
-                                                            <td style={{ ...c.td, padding: '12px 16px' }}>
-                                                                <div style={{ fontWeight: 700, fontSize: '12px' }}>{m.subject_name}</div>
-                                                                <div style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)' }}>{m.subject_code}</div>
-                                                            </td>
-                                                            <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center' }}>{m.cie_marks ?? m.internal ?? '—'}</td>
-                                                            <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center' }}>{m.see_marks ?? m.external ?? '—'}</td>
-                                                            <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center', fontWeight: 800 }}>{m.total_marks ?? m.total ?? '—'}</td>
-                                                            <td style={{ ...c.td, padding: '12px 16px', textAlign: 'center' }}>
+                                                        <div key={m.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                                                <div>
+                                                                    <div style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)', fontWeight: 800 }}>{m.subject_code}</div>
+                                                                    <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', wordBreak: 'break-word' }}>{m.subject_name}</div>
+                                                                </div>
                                                                 <span style={c.badge(m.grade === 'F' ? 'rejected' : 'approved')}>{m.grade}</span>
-                                                            </td>
-                                                        </tr>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--surface)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', border: '1px solid var(--border)' }}>
+                                                                <div><span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>CIE:</span> {m.cie_marks ?? m.internal ?? '—'}</div>
+                                                                <div><span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>SEE:</span> {m.see_marks ?? m.external ?? '—'}</div>
+                                                                <div><span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Total:</span> <strong>{m.total_marks ?? m.total ?? '—'}</strong></div>
+                                                            </div>
+                                                        </div>
                                                     ))}
-                                                </tbody>
-                                            </table>
-                                            </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ))
                                 ) : (
-                                    <div style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No marks synced for this student.</div>
+                                    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No marks synced for this student.</div>
                                 )}
                             </div>
                         ) : (
