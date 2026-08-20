@@ -177,31 +177,7 @@
   }
 }
 
-[data-theme="dark"] {
-  --bg: #111110;
-  --surface: #1C1917;
-  --surface-low: #28211E;
-  --surface-hover: var(--surface-low);
-  --primary: #E7E5E4;
-  --primary-hover: #F5F5F2;
-  --primary-bg: var(--surface-low);
-  --primary-low: var(--surface-low);
-  --primary-glow: var(--surface-low);
-  --blue: var(--primary);
-  --blue-bg: var(--surface-low);
-  --tx-main: #F5F5F2;
-  --tx-muted: #A8A29E;
-  --tx-dim: #57534E;
-  --border: #292524;
-  --border-strong: #3C3835;
-  --border-low: var(--border);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-base: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.36);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.42);
-  --shadow: var(--shadow-base);
-}
+
 
 * {
   box-sizing: border-box;
@@ -921,7 +897,7 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
     position: fixed;
     left: 0;
     top: 0;
-    width: min(var(--sidebar-w), calc(100vw - max(var(--space-4), env(safe-area-inset-right))));
+    width: min(85vw, 320px);
     max-width: 100vw;
     height: 100dvh;
     padding: max(var(--space-5), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left));
@@ -939,6 +915,12 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
 
   .gf-sidebar.active {
     transform: translateX(0);
+  }
+
+  body.gf-drawer-open .gf-mobile-menu-btn {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .gf-mobile-close {
@@ -1193,20 +1175,10 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
     radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.05) 0, transparent 50%);
 }
 
-[data-theme="dark"] .gf-mesh-bg {
-  background: radial-gradient(at 0% 0%, rgba(231, 229, 228, 0.02) 0, transparent 50%),
-    radial-gradient(at 50% 0%, rgba(168, 162, 158, 0.03) 0, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.03) 0, transparent 50%);
-}
-
 .gf-glass {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-}
-
-[data-theme="dark"] .gf-glass {
-  background: rgba(28, 25, 23, 0.7);
 }
 
 .gf-glow {

@@ -36,7 +36,6 @@ export default function Navbar() {
     const router = useRouter();
     const pathname = usePathname();
     const [user, setUser] = useState(null);
-    const [dark, setDark] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [sessionRole, setSessionRole] = useState('student');
     const [collapsed, setCollapsed] = useState(false);
@@ -53,10 +52,7 @@ export default function Navbar() {
     }, []);
 
     useEffect(() => {
-        const stored = localStorage.getItem('theme');
-        const nextDark = stored === 'dark';
-        setDark(nextDark);
-        document.documentElement.setAttribute('data-theme', nextDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', 'light');
 
         const isCollapsed = localStorage.getItem('gf_sidebar_collapsed') === 'true';
         setCollapsed(isCollapsed);
@@ -187,12 +183,6 @@ export default function Navbar() {
         return user.usn || user.email || 'Student';
     }, [activeRole, user]);
 
-    const toggleTheme = useCallback(() => {
-        const next = dark ? 'light' : 'dark';
-        setDark(!dark);
-        localStorage.setItem('theme', next);
-        document.documentElement.setAttribute('data-theme', next);
-    }, [dark]);
 
     const logout = useCallback(() => {
         localStorage.removeItem('student_session');
@@ -281,17 +271,6 @@ export default function Navbar() {
                 </nav>
 
                 <div className="gf-sidebar-footer">
-                    <button
-                        onClick={toggleTheme}
-                        className="gf-nav-link"
-                        title={collapsed ? (dark ? 'Light Mode' : 'Dark Mode') : undefined}
-                    >
-                        <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">
-                            {dark ? 'light_mode' : 'dark_mode'}
-                        </span>
-                        {!collapsed && <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>}
-                    </button>
-
                     {user && (
                         <div className="gf-sidebar-user">
                             <div className="gf-avatar" aria-hidden="true">
@@ -354,16 +333,6 @@ export default function Navbar() {
                         {getRoleLabel(activeRole)}
                     </div>
                 </div>
-
-                <button
-                    onClick={toggleTheme}
-                    className="gf-mobile-theme-btn"
-                    aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-                >
-                    <span className="material-icons-round" style={{ fontSize: '22px' }} aria-hidden="true">
-                        {dark ? 'light_mode' : 'dark_mode'}
-                    </span>
-                </button>
             </header>
 
             <div className="gf-shell-topbar" role="banner">
@@ -393,15 +362,6 @@ export default function Navbar() {
                 </div>
 
                 <div className="gf-topbar-actions">
-                    <button
-                        onClick={toggleTheme}
-                        className="gf-topbar-btn"
-                        aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-                    >
-                        <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">
-                            {dark ? 'light_mode' : 'dark_mode'}
-                        </span>
-                    </button>
                     {user && (
                         <div className="gf-topbar-user">
                             <div className="gf-topbar-user-info">

@@ -4,28 +4,14 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 
 export default function LandingPage() {
-    const [dark, setDark] = useState(false);
-
-    useEffect(() => {
-        const stored = localStorage.getItem('theme');
-        if (stored === 'dark') { setDark(true); document.documentElement.setAttribute('data-theme', 'dark'); }
-    }, []);
-
-    const toggleTheme = () => {
-        const next = dark ? 'light' : 'dark';
-        setDark(!dark);
-        localStorage.setItem('theme', next);
-        document.documentElement.setAttribute('data-theme', next);
-    };
-
-    const bg = dark ? '#171412' : '#FAFAF8';
-    const border = dark ? '#2A2623' : '#E7E5E4';
-    const txt = dark ? '#E8E3DF' : '#1C1917';
-    const muted = dark ? '#6B6560' : '#78716C';
-    const featureBg = dark ? '#171412' : '#FAFAF8';
+    const bg = '#FAFAF8';
+    const border = '#E7E5E4';
+    const txt = '#1C1917';
+    const muted = '#78716C';
+    const featureBg = '#FAFAF8';
 
     const s = {
-        page: { minHeight: '100vh', background: bg, display: 'flex', flexDirection: 'column', color: txt, transition: 'background 0.3s, color 0.3s' },
+        page: { minHeight: '100vh', background: bg, display: 'flex', flexDirection: 'column', color: txt },
         logo: { display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' },
         logoBox: {
             width: '34px', height: '34px', background: txt,
@@ -35,11 +21,6 @@ export default function LandingPage() {
         logoText: { fontWeight: 800, fontSize: '18px', color: txt, letterSpacing: '-0.03em' },
 
         navRight: { display: 'flex', alignItems: 'center', gap: '6px' },
-        themeToggle: {
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: muted, fontSize: '13px', padding: '8px', borderRadius: '8px',
-            transition: 'color 0.2s', lineHeight: 1,
-        },
         ghostBtn: {
             padding: '9px 20px', borderRadius: '10px', background: 'transparent',
             border: `1px solid ${border}`, fontWeight: 700, fontSize: '13px',
@@ -93,17 +74,6 @@ export default function LandingPage() {
                     <span style={s.logoText}>GradeFlow</span>
                 </a>
                 <div style={s.navRight}>
-                    <button
-                        style={s.themeToggle}
-                        onClick={toggleTheme}
-                        title={dark ? 'Switch to light' : 'Switch to dark'}
-                        aria-label="Toggle theme"
-                    >
-                        <span className="material-icons-round" style={{ fontSize: '17px', display: 'block' }}>
-                            {dark ? 'light_mode' : 'dark_mode'}
-                        </span>
-                    </button>
-
                     <Link href="/auth" style={s.ghostBtn}>Sign in</Link>
                 </div>
             </nav>

@@ -26,17 +26,11 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
     return (
-        <html lang="en" suppressHydrationWarning>
+        <html lang="en" data-theme="light" suppressHydrationWarning>
             <head>
                 <link
                     href="https://fonts.googleapis.com/icon?family=Material+Icons+Round"
                     rel="stylesheet"
-                />
-                {/* Instantly apply saved theme before React hydration to prevent flicker */}
-                <script
-                    dangerouslySetInnerHTML={{
-                        __html: `(function(){try{var t=localStorage.getItem('theme');if(!t){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
-                    }}
                 />
             </head>
             <body className={jakarta.className}>

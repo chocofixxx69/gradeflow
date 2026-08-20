@@ -127,26 +127,26 @@ function VtuUrlManagerContent() {
                 <PageHeaderSubtitle>Manage the specific VTU result URLs that the system uses to scrape student marks. Add new links as they are released by the university.</PageHeaderSubtitle>
             </PageHeader>
 
-            <Card style={{ padding: 'var(--space-8)' }}>
-                <div style={{ marginBottom: 'var(--space-8)' }}>
+            <Card style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-6))' }}>
+                <div style={{ marginBottom: 'var(--space-6)' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: 'var(--space-4)' }}>Add New Result Portal</h3>
                     {message && <div style={c.msg(message.includes('✓'))}>{message}</div>}
                     <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                        <div style={{ flex: 2, minWidth: '240px' }}>
+                        <div style={{ flex: '2 1 240px', minWidth: '200px' }}>
                             <Input label="VTU URL" placeholder="https://results.vtu.ac.in/..." value={newUrl} onChange={e => setNewUrl(e.target.value)} />
                         </div>
-                        <div style={{ flex: 1, minWidth: '180px' }}>
+                        <div style={{ flex: '1 1 180px', minWidth: '150px' }}>
                             <Input label="Exam Name" placeholder="e.g. Jun/July 2025" value={newExamName} onChange={e => setNewExamName(e.target.value)} />
                         </div>
-                        <div style={{ alignSelf: 'flex-end' }}>
-                            <Button variant="primary" style={{ opacity: loading ? 0.7 : 1 }} onClick={addVtuUrl} disabled={loading || !newUrl}>
+                        <div style={{ alignSelf: 'flex-end', minWidth: '120px' }}>
+                            <Button variant="primary" style={{ width: '100%', minHeight: '44px', opacity: loading ? 0.7 : 1 }} onClick={addVtuUrl} disabled={loading || !newUrl}>
                                 {loading ? 'Adding...' : 'Register URL'}
                             </Button>
                         </div>
                     </div>
                 </div>
 
-                <div style={{ height: '1px', background: 'var(--border)', margin: 'var(--space-8) 0' }} />
+                <div style={{ height: '1px', background: 'var(--border)', margin: 'var(--space-6) 0' }} />
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)' }}>Configured Portals ({vtuUrls.length})</h3>
