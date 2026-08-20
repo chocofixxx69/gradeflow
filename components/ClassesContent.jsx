@@ -5,6 +5,7 @@ import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
+import { exportClassReportPDF, exportClassReportCSV } from '../lib/export-utils';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
@@ -364,6 +365,12 @@ export function ClassesContent({ embedded = false }) {
                     </button>
                     <button style={btn('ghost')} onClick={() => { setShowAddModal(true); setAddTab('csv'); setMsg(''); setTimeout(() => fileRef.current?.click(), 100); }}>
                         <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>upload_file</span>Import CSV
+                    </button>
+                    <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportPDF({ selectedClass, students, subjectToppers })}>
+                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
+                    </button>
+                    <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
+                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
                     </button>
                     <button style={btn('danger')} onClick={() => deleteClass(selectedClass.id)}>Delete Class</button>
                 </div>
