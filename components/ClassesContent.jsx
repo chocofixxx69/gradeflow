@@ -213,11 +213,37 @@ export function ClassesContent({ embedded = false }) {
     };
 
     const addStudent = async () => {
-        const u = addUsn.trim().toUpperCase(); if (!u) return;
-        const r = await fetch('/api/class-students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ class_id: selectedClass.id, usn: u, faculty_id: faculty?.id }) });
+        const raw = addUsn.trim();
+        if (!raw) { setMsg('Please enter at least one USN.'); return; }
+
+        let facId = faculty?.id || faculty?.sub;
+        if (!facId) {
+            try {
+                const facSess = localStorage.getItem('faculty_session') || localStorage.getItem('admin_session');
+                if (facSess) facId = JSON.parse(facSess).id;
+            } catch (e) {}
+        }
+
+        const r = await fetch('/api/class-students', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                class_id: selectedClass.id,
+                usn: raw,
+                faculty_id: facId
+            })
+        });
         const j = await r.json();
-        if (j.success) { setAddUsn(''); setShowAddModal(false); setMsg('✓ Student added.'); await logActivity(faculty, 'CLASS_ADD_STUDENT', u); fetchClassStudents(selectedClass); fetchClasses(); }
-        else setMsg(j.error || 'Failed to add student. Check USN and try again.');
+        if (j.success) {
+            setAddUsn('');
+            setShowAddModal(false);
+            setMsg(`✓ ${j.added || 1} student(s) added successfully.`);
+            await logActivity(faculty, 'CLASS_ADD_STUDENT', raw);
+            fetchClassStudents(selectedClass);
+            fetchClasses();
+        } else {
+            setMsg(j.error || 'Failed to add student. Check USN and try again.');
+        }
     };
 
     const removeStudent = async usn => {
@@ -411,6 +437,39 @@ export function ClassesContent({ embedded = false }) {
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
                 </div>
             </div>}
+
+            {/* Add Students Modal */}
+            {showAddModal && selectedClass && (
+                <div style={S.modal} onClick={() => setShowAddModal(false)}>
+                    <div style={S.mbox('520px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div style={{ marginBottom: '16px' }}>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Enter student USN(s) to add them to {selectedClass.name}.</p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={S.label}>Student USN(s)</label>
+                                <textarea
+                                    style={{ ...S.input, minHeight: '110px', resize: 'vertical', fontFamily: 'monospace' }}
+                                    placeholder="Enter USN (e.g. 2AB23CS001) or multiple USNs separated by commas/newlines"
+                                    value={addUsn}
+                                    onChange={e => setAddUsn(e.target.value)}
+                                    autoFocus
+                                />
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    Tip: You can paste multiple USNs separated by commas or newlines.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowAddModal(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={addStudent}>Add Students</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

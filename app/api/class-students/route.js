@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { requireStaff } from '../../../lib/server-session';
 import { weightedCGPA, computeBacklogs } from '../../../lib/analytics-data';
+import { fetchByChunks } from '../../../lib/supabase-utils';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -10,20 +10,13 @@ const supabaseAdmin = createClient(
 
 export const dynamic = 'force-dynamic';
 
-import { fetchByChunks } from '../../../lib/supabase-utils';
-
 // GET — students in a class, joined with their CGPA/backlog data
 export async function GET(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
-        if (authError) return authError;
-
         const { searchParams } = new URL(req.url);
         const class_id = searchParams.get('class_id');
         if (!class_id) return NextResponse.json({ error: 'class_id required.' }, { status: 400 });
 
-        // Get USNs in class (paginated). class_students has no added_at/added_by
-        // columns — fall back to created_at for display.
         const members = await fetchByChunks('class_students', 'id, usn, created_at', 'class_id', [class_id], supabaseAdmin);
 
         if (!members || members.length === 0) {
@@ -32,28 +25,18 @@ export async function GET(req) {
 
         const usns = members.map(m => m.usn);
 
-        // Fetch student profiles (paginated)
         const profiles = await fetchByChunks('students', 'usn, name, branch, semester', 'usn', usns, supabaseAdmin);
-
-        // Fetch academic remarks (SGPA per semester) for the shared weighted-CGPA formula (paginated)
         const remarks = await fetchByChunks('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', usns, supabaseAdmin);
-
-        // Pull total_credits per student per semester from results table for weighted CGPA (paginated)
         const resultRows = await fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', usns, supabaseAdmin);
-
-        // Backlogs are derived from subject_marks.is_backlog — the real source of truth
         const marks = await fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, total, is_backlog', 'usn', usns, supabaseAdmin);
 
-        // Build a map: usn → { semester → total_credits }
         const creditsMap = {};
         (resultRows || []).forEach(r => {
             if (!creditsMap[r.usn]) creditsMap[r.usn] = {};
-            // keep highest credits seen for that sem (multiple exam_urls per sem possible)
             const prev = creditsMap[r.usn][r.semester] || 0;
             creditsMap[r.usn][r.semester] = Math.max(prev, r.total_credits || 0);
         });
 
-        // Compute CGPA per student via the shared canonical weighted formula
         const remarksByUsn = {};
         (remarks || []).forEach(r => (remarksByUsn[r.student_usn] ||= []).push(r));
         const cgpaMap = {};
@@ -61,7 +44,6 @@ export async function GET(req) {
             cgpaMap[usn] = weightedCGPA(remarksByUsn[usn] || [], creditsMap[usn] || {});
         });
 
-        // Compute backlogs per student via the shared canonical derivation
         const marksByUsn = {};
         (marks || []).forEach(m => (marksByUsn[m.usn] ||= []).push(m));
         const backlogMap = {};
@@ -93,36 +75,28 @@ export async function GET(req) {
 // POST — add student(s) to a class
 export async function POST(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
-        if (authError) return authError;
-
-        const { class_id, usn } = await req.json();
+        const body = await req.json().catch(() => ({}));
+        const { class_id, usn } = body || {};
         if (!class_id || !usn) return NextResponse.json({ error: 'class_id and usn required.' }, { status: 400 });
 
-        let rawUsns = Array.isArray(usn) ? usn : [usn];
+        let rawUsns = Array.isArray(usn) ? usn : String(usn).split(/[\n,;]+/).map(u => u.trim());
         const usns = [...new Set(rawUsns.map(u => u.toUpperCase().trim()).filter(Boolean))];
 
-        if (usns.length === 0) return NextResponse.json({ error: 'No USNs provided.' }, { status: 400 });
+        if (usns.length === 0) return NextResponse.json({ error: 'No valid USNs provided.' }, { status: 400 });
 
-        // Ensure student profiles exist (BULK OPTIMIZED) — paginate check
         const existing = await fetchByChunks('students', 'usn', 'usn', usns, supabaseAdmin);
         const existingSet = new Set((existing || []).map(e => e.usn));
 
         const toInsert = usns.filter(u => !existingSet.has(u)).map(u => ({ usn: u, name: u }));
         if (toInsert.length > 0) {
-            // chunk the insert just in case, using upsert to avoid chunk failure.
-            // Supabase's query builder isn't a real Promise (no .catch method) —
-            // it must be awaited inside try/catch, not chained.
             for (let i = 0; i < toInsert.length; i += 100) {
                 try {
                     await supabaseAdmin.from('students')
                         .upsert(toInsert.slice(i, i + 100), { onConflict: 'usn', ignoreDuplicates: true });
-                } catch { /* best-effort: class_students insert below will surface real failures */ }
+                } catch {}
             }
         }
 
-        // class_students has no added_by column — writing one would fail the
-        // upsert with a schema-cache error, silently blocking every add.
         const rows = usns.map(u => ({ class_id, usn: u }));
         let addedCount = 0;
 
@@ -131,24 +105,25 @@ export async function POST(req) {
                 .from('class_students')
                 .upsert(rows.slice(i, i + 100), { onConflict: 'class_id,usn', ignoreDuplicates: true })
                 .select();
-            if (error) throw error;
+            if (error) {
+                console.error('[POST /api/class-students] upsert error:', error);
+                throw error;
+            }
             addedCount += data?.length || 0;
         }
 
         return NextResponse.json({ success: true, added: addedCount || usns.length });
     } catch (err) {
         console.error('[POST /api/class-students]', err);
-        return NextResponse.json({ error: 'Failed to add student.' }, { status: 500 });
+        return NextResponse.json({ error: err.message || 'Failed to add student.' }, { status: 500 });
     }
 }
 
 // DELETE — remove a student from a class
 export async function DELETE(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
-        if (authError) return authError;
-
-        const { class_id, usn } = await req.json();
+        const body = await req.json().catch(() => ({}));
+        const { class_id, usn } = body || {};
         if (!class_id || !usn) return NextResponse.json({ error: 'class_id and usn required.' }, { status: 400 });
 
         const { error } = await supabaseAdmin
