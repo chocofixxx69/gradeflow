@@ -334,7 +334,7 @@
 
 .table tr:hover td,
 .table tr:hover th {
-  background: #FDF6ED;
+  background: rgba(23, 75, 77, 0.035);
 }
 
 .center {

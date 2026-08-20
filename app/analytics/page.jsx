@@ -43,33 +43,36 @@ function AnalyticsContent() {
     const calcSGPA = (subjects) => {
         const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
 
-        // Use a pool to ensure we only count one result per code in this semester
+        // Deduplicate per subject code — keep best grade
         const subjectsPool = {};
         subjects.forEach(m => {
-            const code = m.subject_code || m.code;
-            if (!subjectsPool[code]) subjectsPool[code] = m;
+            const code = (m.subject_code || m.code || '').trim().toUpperCase();
+            if (!code) return;
+            const existing = subjectsPool[code];
+            if (!existing) { subjectsPool[code] = m; return; }
+            const newRank = getGradeRank(m.grade);
+            const oldRank = getGradeRank(existing.grade);
+            if (newRank > oldRank) subjectsPool[code] = m;
         });
 
         const poolItems = Object.values(subjectsPool);
         const validSubs = poolItems.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
 
-        let pts = 0, backlogs = 0;
+        // Credit-weighted SGPA — same formula as Dashboard
+        let totalCredits = 0, totalCreditPoints = 0, backlogs = 0;
         validSubs.forEach(m => {
             const grade = (m.grade || '').trim().toUpperCase();
             const unified = unifyGrade(grade);
-            const gp = getGradePoint(m.grade || '', '2022', m.total_marks || m.total, m.see_marks ?? m.external ?? null);
-            pts += gp;
+            const credits = Number(m.credits) || 3;
+            const gp = getGradePoint(grade, '2022', m.total_marks || m.total, m.see_marks ?? m.external ?? null);
+            totalCredits += credits;
+            totalCreditPoints += gp * credits;
             if (unified !== 'P') backlogs++;
         });
 
-        const count = validSubs.length;
-        const sgpa = count > 0 ? (pts / count) : 0;
+        const sgpa = totalCredits > 0 ? totalCreditPoints / totalCredits : 0;
 
-        return {
-            sgpa,
-            totalCredits: 20,
-            backlogs
-        };
+        return { sgpa, totalCredits: totalCredits || 20, backlogs };
     };
 
     useEffect(() => {
@@ -419,33 +422,55 @@ function AnalyticsContent() {
                     </Stack>
 
                     <Stack size="md">
-                        {/* Grade Insights Histogram */}
+                        {/* Semester-wise SGPA Bar Histogram */}
                         <div style={s.chartCard}>
-                            <div style={s.chartTitle}>
-                                <span className="material-icons-round" style={{ color: 'var(--primary)' }}>bar_chart</span>
-                                Grade Distribution Histogram
+                            <div style={s.chartHeader}>
+                                <div style={s.chartTitle}>
+                                    <span className="material-icons-round" style={{ color: 'var(--primary)' }}>bar_chart</span>
+                                    Semester-wise SGPA Histogram
+                                </div>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>Credit-weighted · Synced with Dashboard</span>
                             </div>
-                            <div style={{ height: '260px', width: '100%', marginTop: '16px' }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart
-                                        data={Object.entries(gradeDistribution).map(([g, count]) => ({ grade: g, count })).sort((a, b) => b.count - a.count)}
-                                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                                        <XAxis dataKey="grade" stroke="var(--tx-dim)" fontSize={12} tickLine={false} />
-                                        <YAxis stroke="var(--tx-dim)" fontSize={12} allowDecimals={false} tickLine={false} />
-                                        <Tooltip
-                                            contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--tx-main)', fontWeight: 700 }}
-                                            formatter={(value) => [`${value} subject(s)`, 'Count']}
-                                        />
-                                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                                            {Object.entries(gradeDistribution).map(([g], index) => (
-                                                <Cell key={`cell-${index}`} fill={g === 'F' || g === 'Ab' ? '#DC2626' : gradeColors[g] || '#174B4D'} />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
+                            {semesterData.length > 0 ? (
+                                <div style={{ height: '260px', width: '100%', marginTop: '8px' }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                            data={semesterData.map(s => ({
+                                                name: `Sem ${s.semester}`,
+                                                sgpa: Number(s.sgpa.toFixed(2)),
+                                                backlogs: s.backlogs
+                                            }))}
+                                            margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                                            <XAxis dataKey="name" stroke="var(--tx-dim)" fontSize={12} tickLine={false} />
+                                            <YAxis domain={[0, 10]} stroke="var(--tx-dim)" fontSize={12} tickLine={false} ticks={[0,2,4,6,8,10]} />
+                                            <Tooltip
+                                                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--tx-main)', fontWeight: 700 }}
+                                                formatter={(value, name) => name === 'sgpa' ? [`${value} SGPA`, 'Credit-Weighted SGPA'] : [`${value}`, 'Backlogs']}
+                                            />
+                                            <Bar dataKey="sgpa" radius={[6, 6, 0, 0]} maxBarSize={56}>
+                                                {semesterData.map((entry, index) => (
+                                                    <Cell
+                                                        key={`cell-sem-${index}`}
+                                                        fill={entry.backlogs > 0 ? '#DC2626' : entry.sgpa >= 8 ? '#16A34A' : entry.sgpa >= 6 ? '#174B4D' : '#D97706'}
+                                                    />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>No semester data found.</div>
+                            )}
+                            {semesterData.length > 0 && (
+                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '12px', fontSize: '11px', fontWeight: 700 }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#16A34A', display: 'inline-block' }} /> SGPA ≥ 8.0</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#174B4D', display: 'inline-block' }} /> SGPA 6–8</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#D97706', display: 'inline-block' }} /> SGPA &lt; 6</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#DC2626', display: 'inline-block' }} /> Has Backlogs</span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Top Performers */}
