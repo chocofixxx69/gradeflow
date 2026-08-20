@@ -25,8 +25,8 @@ const S = {
     label: { display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.06em' },
     th: { padding: '10px var(--space-4)', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'left' },
     td: { padding: '13px var(--space-4)', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: 600, color: 'var(--tx-main)' },
-    modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(var(--space-4), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-4), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left))', overflowY: 'auto' },
-    mbox: (w = '480px') => ({ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-8)', width: '100%', maxWidth: w, padding: 'var(--space-7)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxHeight: 'calc(100dvh - max(var(--space-8), env(safe-area-inset-top) + env(safe-area-inset-bottom)))', overflowY: 'auto' }),
+    modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' },
+    mbox: (w = '540px') => ({ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', width: '100%', maxWidth: `min(92vw, ${w})`, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '88vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)', margin: 'auto' }),
     tableWrap: { overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
     drawer: { position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: '720px', background: 'var(--surface)', borderLeft: '1px solid var(--border)', zIndex: 1100, overflowY: 'hidden', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-6),4vw,var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-lg)' },
     overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1050 },
@@ -358,8 +358,11 @@ export function ClassesContent({ embedded = false }) {
                     <p style={S.subtitle}>{selectedClass.branch} · Sem {selectedClass.semester} · {selectedClass.scheme} Scheme · {students.length} students</p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('single'); setMsg(''); }}>
+                    <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('manual'); setMsg(''); }}>
                         <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>person_add</span>Add Students
+                    </button>
+                    <button style={btn('ghost')} onClick={() => { setShowAddModal(true); setAddTab('csv'); setMsg(''); setTimeout(() => fileRef.current?.click(), 100); }}>
+                        <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>upload_file</span>Import CSV
                     </button>
                     <button style={btn('danger')} onClick={() => deleteClass(selectedClass.id)}>Delete Class</button>
                 </div>
