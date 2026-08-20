@@ -413,23 +413,7 @@ def scrape_all_semesters(usn: str, faculty_id=None):
                 "--allow-running-insecure-content",
                 "--disable-dev-shm-usage",
                 "--no-sandbox",
-                "--disable-gpu",
-                "--single-process",
-                "--no-zygote",
-                "--renderer-process-limit=1",
-                "--disable-accelerated-2d-canvas",
-                "--no-first-run",
-                "--disable-background-networking",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-breakpad",
-                "--disable-component-extensions-with-background-pages",
-                "--disable-extensions",
-                "--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints",
-                "--disable-ipc-flooding-protection",
-                "--disable-renderer-backgrounding",
-                "--memory-pressure-off",
-                '--js-flags=--max-old-space-size=128'
+                "--disable-gpu"
             ]
         )
         context = browser.new_context(user_agent="Mozilla/5.0")
