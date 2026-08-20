@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
@@ -25,8 +26,8 @@ const S = {
     label: { display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.06em' },
     th: { padding: '10px var(--space-4)', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'left' },
     td: { padding: '13px var(--space-4)', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: 600, color: 'var(--tx-main)' },
-    modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' },
-    mbox: (w = '540px') => ({ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', width: '100%', maxWidth: `min(92vw, ${w})`, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '88vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)', margin: 'auto' }),
+    modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box' },
+    mbox: (w = '540px') => ({ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: `min(94vw, ${w})`, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', margin: 'auto' }),
     tableWrap: { overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
     drawer: { position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: '720px', background: 'var(--surface)', borderLeft: '1px solid var(--border)', zIndex: 1100, overflowY: 'hidden', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-6),4vw,var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-lg)' },
     overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1050 },
@@ -34,9 +35,8 @@ const S = {
 const btn = (v = 'primary') => ({ padding: '10px 20px', borderRadius: 'var(--radius-4)', fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: v === 'primary' ? 'var(--primary)' : v === 'danger' ? 'var(--red-bg)' : 'var(--surface-low)', color: v === 'primary' ? 'var(--bg)' : v === 'danger' ? 'var(--red)' : 'var(--tx-main)', ...(v !== 'primary' && { border: `1px solid ${v === 'danger' ? 'var(--red)' : 'var(--border)'}` }) });
 const msgBox = ok => ({ padding: '10px 16px', borderRadius: 'var(--radius-4)', marginBottom: 'var(--space-4)', fontSize: '13px', fontWeight: 700, background: ok ? 'var(--green-bg)' : 'var(--surface-low)', color: ok ? 'var(--green)' : 'var(--tx-muted)', border: `1px solid ${ok ? 'var(--green)' : 'var(--border)'}` });
 
-
-
 export function ClassesContent({ embedded = false }) {
+    const [mounted, setMounted] = useState(false);
     const [faculty, setFaculty] = useState(null);
     const [classes, setClasses] = useState([]);
     const [loadingClasses, setLoadingClasses] = useState(true);
@@ -46,6 +46,7 @@ export function ClassesContent({ embedded = false }) {
     const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
         if (typeof window === 'undefined') return;
         const handleResize = () => setIsMobile(window.innerWidth < 768);
         handleResize();
@@ -437,8 +438,8 @@ export function ClassesContent({ embedded = false }) {
                     )}
             </div>
 
-            {/* Add Students Modal */}
-            {showAddModal && selectedClass && (
+            {/* Add Students Modal (Portal Rendered) */}
+            {mounted && showAddModal && selectedClass && createPortal(
                 <div style={S.modal} onClick={() => setShowAddModal(false)}>
                     <div style={S.mbox('620px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -550,7 +551,8 @@ export function ClassesContent({ embedded = false }) {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
@@ -607,37 +609,40 @@ export function ClassesContent({ embedded = false }) {
                     </div>
                 )}
 
-            {/* Create Class Modal */}
-            {showCreate && <div style={S.modal} onClick={() => setShowCreate(false)}>
-                <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                    <div><h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>New Class</h3><p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>All faculty can view and manage this class.</p></div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div><label style={S.label}>Class Name</label><input style={S.input} placeholder="e.g. CSE-A 2023 Batch" value={newClass.name} onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                            <div>
-                                <label style={S.label}>Branch</label>
-                                <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
-                                    {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label}</option>)}
-                                    {branches.length === 0 && <option value="CS">CSE (Default)</option>}
-                                </select>
+            {/* Create Class Modal (Portal Rendered) */}
+            {mounted && showCreate && createPortal(
+                <div style={S.modal} onClick={() => setShowCreate(false)}>
+                    <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div><h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>New Class</h3><p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>All faculty can view and manage this class.</p></div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div><label style={S.label}>Class Name</label><input style={S.input} placeholder="e.g. CSE-A 2023 Batch" value={newClass.name} onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Branch</label>
+                                    <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
+                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label}</option>)}
+                                        {branches.length === 0 && <option value="CS">CSE (Default)</option>}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Semester</label>
+                                    <select style={S.sel} value={newClass.semester} onChange={e => setNewClass(p => ({ ...p, semester: parseInt(e.target.value) }))}>
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                    </select>
+                                </div>
                             </div>
                             <div>
-                                <label style={S.label}>Semester</label>
-                                <select style={S.sel} value={newClass.semester} onChange={e => setNewClass(p => ({ ...p, semester: parseInt(e.target.value) }))}>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                <label style={S.label}>Scheme</label>
+                                <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
+                                    {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
                                 </select>
                             </div>
                         </div>
-                        <div>
-                            <label style={S.label}>Scheme</label>
-                            <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
-                                {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
-                            </select>
-                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
-                </div>
-            </div>}
+                </div>,
+                document.body
+            )}
         </div>
     );
 }
