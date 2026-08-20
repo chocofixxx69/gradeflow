@@ -254,11 +254,11 @@ function StudentAuthContent() {
                 return;
             }
             if (!student.recovery_pin) {
-                setError('This account does not have a Recovery PIN. Please contact Admin.');
+                setError('This account does not have a Recovery PIN set. Please click "Activate" to setup your account.');
                 return;
             }
 
-            if (student.recovery_pin !== pin) {
+            if (String(student.recovery_pin).trim() !== String(pin).trim()) {
                 setError('Incorrect Recovery PIN.');
                 return;
             }
@@ -284,7 +284,7 @@ function StudentAuthContent() {
             }, 2000);
         } catch (err) {
             console.error('Reset error:', err);
-            setError('Something went wrong. Please try again.');
+            setError(err?.message || 'Something went wrong. Please try again.');
         } finally {
             setLoading(false);
         }
