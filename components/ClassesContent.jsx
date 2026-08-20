@@ -351,6 +351,39 @@ export function ClassesContent({ embedded = false }) {
                         </div>
                     )}
             </div>
+
+            {/* Add Students Modal */}
+            {showAddModal && selectedClass && (
+                <div style={S.modal} onClick={() => setShowAddModal(false)}>
+                    <div style={S.mbox('520px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div style={{ marginBottom: '16px' }}>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Enter student USN(s) to add them to {selectedClass.name}.</p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={S.label}>Student USN(s)</label>
+                                <textarea
+                                    style={{ ...S.input, minHeight: '110px', resize: 'vertical', fontFamily: 'monospace' }}
+                                    placeholder="Enter USN (e.g. 2AB23CS001) or multiple USNs separated by commas/newlines"
+                                    value={addUsn}
+                                    onChange={e => setAddUsn(e.target.value)}
+                                    autoFocus
+                                />
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    Tip: You can paste multiple USNs separated by commas or newlines.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowAddModal(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={addStudent}>Add Students</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -437,39 +470,6 @@ export function ClassesContent({ embedded = false }) {
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
                 </div>
             </div>}
-
-            {/* Add Students Modal */}
-            {showAddModal && selectedClass && (
-                <div style={S.modal} onClick={() => setShowAddModal(false)}>
-                    <div style={S.mbox('520px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                        <div style={{ marginBottom: '16px' }}>
-                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students</h3>
-                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Enter student USN(s) to add them to {selectedClass.name}.</p>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div>
-                                <label style={S.label}>Student USN(s)</label>
-                                <textarea
-                                    style={{ ...S.input, minHeight: '110px', resize: 'vertical', fontFamily: 'monospace' }}
-                                    placeholder="Enter USN (e.g. 2AB23CS001) or multiple USNs separated by commas/newlines"
-                                    value={addUsn}
-                                    onChange={e => setAddUsn(e.target.value)}
-                                    autoFocus
-                                />
-                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
-                                    Tip: You can paste multiple USNs separated by commas or newlines.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                            <button style={btn('ghost')} onClick={() => setShowAddModal(false)}>Cancel</button>
-                            <button style={btn('primary')} onClick={addStudent}>Add Students</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
