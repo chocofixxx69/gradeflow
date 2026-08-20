@@ -47,6 +47,9 @@ FALLBACK_URLS = [
     "https://results.vtu.ac.in/SplJcbcs25/index.php",   # January-2025 Special Examination
     "https://results.vtu.ac.in/JanSplRVEnoncbcs24/index.php", # Jan-2024 Special Exam [B.E] Revaluation
     "https://results.vtu.ac.in/JanSplEnoncbcs24/index.php",   # January-2024 Special Exam [B.E & PG]
+    "https://results.vtu.ac.in/D25J26RVcbcs/index.php",       # Dec 25/Jan 26 Revaluation
+    "https://results.vtu.ac.in/MJ26rvcbcs/index.php",         # May/June 2026 Revaluation
+    "https://results.vtu.ac.in/MJ26cbcs/index.php",           # May/June 2026 Regular
 ]
 
 def get_vtu_urls(faculty_id=None, scheme=None):

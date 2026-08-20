@@ -43,6 +43,9 @@ const FALLBACK_URLS = [
     { exam_name: "January-2025 Special Examination", url: "https://results.vtu.ac.in/SplJcbcs25/index.php" },
     { exam_name: "Jan-2024 Special Exam [B.E] Revaluation", url: "https://results.vtu.ac.in/JanSplRVEnoncbcs24/index.php" },
     { exam_name: "January-2024 Special Exam [B.E & PG]", url: "https://results.vtu.ac.in/JanSplEnoncbcs24/index.php" },
+    { exam_name: "Dec 25/Jan 26 Revaluation", url: "https://results.vtu.ac.in/D25J26RVcbcs/index.php" },
+    { exam_name: "May/June 2026 Revaluation", url: "https://results.vtu.ac.in/MJ26rvcbcs/index.php" },
+    { exam_name: "May/June 2026 Regular", url: "https://results.vtu.ac.in/MJ26cbcs/index.php" },
 ];
 
 // GET — List all VTU result URLs for a specific faculty
