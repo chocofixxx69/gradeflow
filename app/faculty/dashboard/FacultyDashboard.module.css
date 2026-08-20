@@ -3,6 +3,10 @@
     flex-direction: column;
     gap: var(--space-6);
     --layout-page-max: var(--layout-content-default);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 .section,
@@ -11,6 +15,10 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-5);
     padding: var(--space-6);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 .sectionHeader,
@@ -251,12 +259,14 @@
     margin-top: var(--space-5);
     overflow-x: auto;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
 }
 
 .table {
     border-collapse: collapse;
-    min-width: 600px;
+    min-width: 500px;
     width: 100%;
 }
 
@@ -289,7 +299,7 @@
 }
 
 .subjectTable {
-    min-width: 760px;
+    min-width: 600px;
 }
 
 .center {
@@ -426,4 +436,93 @@
         align-items: stretch;
         flex-direction: column;
     }
+
+    .tableWrap {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        box-sizing: border-box;
+    }
+
+    .table,
+    .subjectTable {
+        min-width: 480px;
+        width: 100%;
+    }
+
+    .table th,
+    .table td {
+        padding: 8px 6px;
+        font-size: 11px;
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    .subjectName {
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    .tableWrap {
+        display: none !important;
+    }
+
+    .mobileSubjectList {
+        display: flex !important;
+    }
+}
+
+.mobileSubjectList {
+    display: none;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+}
+
+.mobileSubjectCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-4);
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.mobileSubjectHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.mobileSubjectTitleGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.mobileSubjectStats {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface-low);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    padding: var(--space-2) var(--space-3);
+    font-size: 12px;
+}
+
+.mobileStatItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.statMiniLabel {
+    color: var(--tx-dim);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
 }

@@ -182,41 +182,72 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                             </table>
                         </div>
                     ) : (
-                        <div className="gf-table-wrap">
-                            <table className="gf-table">
-                                <thead>
-                                    <tr>
-                                        <th>Subject</th>
-                                        <th>Internal</th>
-                                        <th>External</th>
-                                        <th>Total</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {grouped[selectedSem].map((m, idx) => {
-                                        const unified = unifyGrade(m.grade);
-                                        const isFail = unified === 'F' || unified === 'A';
-                                        return (
-                                            <tr key={idx}>
-                                                <td>
-                                                    <div style={{ fontWeight: 700, fontSize: '13px' }}>{m.subject_name || m.name}</div>
-                                                    <div style={{ fontSize: '10px', color: 'var(--tx-dim)', fontFamily: 'monospace' }}>{m.subject_code || m.code}</div>
-                                                </td>
-                                                <td>{m.internal ?? m.cie_marks ?? '—'}</td>
-                                                <td>{m.external ?? m.see_marks ?? '—'}</td>
-                                                <td style={{ fontWeight: 800 }}>{m.total ?? m.total_marks ?? '—'}</td>
-                                                <td>
-                                                    <span className={`gf-badge ${isFail ? 'gf-badge-red' : 'gf-badge-stone'}`}>
-                                                        {unified}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                        <>
+                            <div className="gf-table-wrap gf-desktop-table-wrap">
+                                <table className="gf-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Subject</th>
+                                            <th>Internal</th>
+                                            <th>External</th>
+                                            <th>Total</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {grouped[selectedSem].map((m, idx) => {
+                                            const unified = unifyGrade(m.grade);
+                                            const isFail = unified === 'F' || unified === 'A';
+                                            return (
+                                                <tr key={idx}>
+                                                    <td>
+                                                        <div style={{ fontWeight: 700, fontSize: '13px' }}>{m.subject_name || m.name}</div>
+                                                        <div style={{ fontSize: '10px', color: 'var(--tx-dim)', fontFamily: 'monospace' }}>{m.subject_code || m.code}</div>
+                                                    </td>
+                                                    <td>{m.internal ?? m.cie_marks ?? '—'}</td>
+                                                    <td>{m.external ?? m.see_marks ?? '—'}</td>
+                                                    <td style={{ fontWeight: 800 }}>{m.total ?? m.total_marks ?? '—'}</td>
+                                                    <td>
+                                                        <span className={`gf-badge ${isFail ? 'gf-badge-red' : 'gf-badge-stone'}`}>
+                                                            {unified}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="gf-mobile-subject-list">
+                                {grouped[selectedSem].map((m, idx) => {
+                                    const unified = unifyGrade(m.grade);
+                                    const isFail = unified === 'F' || unified === 'A';
+                                    return (
+                                        <div key={idx} className="gf-mobile-subject-card">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                                <div>
+                                                    <div style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--tx-dim)' }}>
+                                                        {m.subject_code || m.code}
+                                                    </div>
+                                                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', wordBreak: 'break-word' }}>
+                                                        {m.subject_name || m.name}
+                                                    </div>
+                                                </div>
+                                                <span className={`gf-badge ${isFail ? 'gf-badge-red' : 'gf-badge-stone'}`}>
+                                                    {unified}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--surface-low)', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', marginTop: '8px' }}>
+                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>CIE:</span> {m.internal ?? m.cie_marks ?? '—'}</div>
+                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>SEE:</span> {m.external ?? m.see_marks ?? '—'}</div>
+                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Total:</span> <strong>{m.total ?? m.total_marks ?? '—'}</strong></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
                     )}
                 </div>
 

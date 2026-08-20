@@ -268,6 +268,34 @@ function FacultyDashboardView({
                                                     </tbody>
                                                 </table>
                                             </div>
+
+                                            <div className={styles.mobileSubjectList}>
+                                                {subjects.map((mark, index) => (
+                                                    <div key={mark.id || `${sem}-${index}`} className={styles.mobileSubjectCard}>
+                                                        <div className={styles.mobileSubjectHeader}>
+                                                            <div className={styles.mobileSubjectTitleGroup}>
+                                                                <span className={styles.code}>{mark.subject_code || mark.code || '—'}</span>
+                                                                <span className={styles.subjectName}>{mark.subject_name || mark.name}</span>
+                                                            </div>
+                                                            <GradeBadge grade={mark.grade} />
+                                                        </div>
+                                                        <div className={styles.mobileSubjectStats}>
+                                                            <div className={styles.mobileStatItem}>
+                                                                <span className={styles.statMiniLabel}>CIE:</span>
+                                                                <span>{mark.cie_marks ?? mark.internal ?? '—'}</span>
+                                                            </div>
+                                                            <div className={styles.mobileStatItem}>
+                                                                <span className={styles.statMiniLabel}>SEE:</span>
+                                                                <span>{mark.see_marks ?? mark.external ?? '—'}</span>
+                                                            </div>
+                                                            <div className={styles.mobileStatItem}>
+                                                                <span className={styles.statMiniLabel}>Total:</span>
+                                                                <strong>{mark.total_marks ?? mark.total ?? '—'}</strong>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </article>
                                     ))}
                                 </div>

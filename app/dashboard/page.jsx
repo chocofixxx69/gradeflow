@@ -266,6 +266,34 @@ function StudentDashboardView({
                                     </table>
                                 </div>
 
+                                <div className={styles.mobileSubjectList}>
+                                    {subjects.map((m, idx) => (
+                                        <div key={m.id || idx} className={styles.mobileSubjectCard}>
+                                            <div className={styles.mobileSubjectHeader}>
+                                                <div className={styles.mobileSubjectTitleGroup}>
+                                                    <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
+                                                    <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
+                                                </div>
+                                                <GradeBadge grade={m.grade} />
+                                            </div>
+                                            <div className={styles.mobileSubjectStats}>
+                                                <div className={styles.mobileStatItem}>
+                                                    <span className={styles.statMiniLabel}>CIE:</span>
+                                                    <span>{m.cie_marks ?? m.internal ?? '—'}</span>
+                                                </div>
+                                                <div className={styles.mobileStatItem}>
+                                                    <span className={styles.statMiniLabel}>SEE:</span>
+                                                    <span>{m.see_marks ?? m.external ?? '—'}</span>
+                                                </div>
+                                                <div className={styles.mobileStatItem}>
+                                                    <span className={styles.statMiniLabel}>Total:</span>
+                                                    <strong>{m.total_marks ?? m.total ?? '—'}</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
                                 {student?.history?.[sem] && student.history[sem].length > 0 && (
                                     <div className={styles.historyPanel}>
                                         <div className={styles.historyTitle}>
