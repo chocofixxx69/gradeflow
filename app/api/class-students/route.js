@@ -76,27 +76,60 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const body = await req.json().catch(() => ({}));
-        const { class_id, usn } = body || {};
-        if (!class_id || !usn) return NextResponse.json({ error: 'class_id and usn required.' }, { status: 400 });
+        const { class_id, usn, students: rawStudentObjects } = body || {};
+        if (!class_id) return NextResponse.json({ error: 'class_id required.' }, { status: 400 });
 
-        let rawUsns = Array.isArray(usn) ? usn : String(usn).split(/[\n,;]+/).map(u => u.trim());
-        const usns = [...new Set(rawUsns.map(u => u.toUpperCase().trim()).filter(Boolean))];
+        let parsedStudents = [];
 
-        if (usns.length === 0) return NextResponse.json({ error: 'No valid USNs provided.' }, { status: 400 });
+        if (Array.isArray(rawStudentObjects) && rawStudentObjects.length > 0) {
+            parsedStudents = rawStudentObjects
+                .filter(s => s && (s.usn || s.USN))
+                .map(s => ({
+                    usn: String(s.usn || s.USN).toUpperCase().trim(),
+                    name: (s.name || s.Name || s.student_name || '').trim() || String(s.usn || s.USN).toUpperCase().trim(),
+                    branch: (s.branch || s.Branch || '').trim() || null,
+                    semester: parseInt(s.semester || s.Semester) || null
+                }));
+        } else if (usn) {
+            let rawUsns = Array.isArray(usn) ? usn : String(usn).split(/[\n,;]+/).map(u => u.trim());
+            parsedStudents = rawUsns
+                .map(u => u.toUpperCase().trim())
+                .filter(Boolean)
+                .map(u => ({ usn: u, name: u }));
+        }
 
-        const existing = await fetchByChunks('students', 'usn', 'usn', usns, supabaseAdmin);
-        const existingSet = new Set((existing || []).map(e => e.usn));
+        if (parsedStudents.length === 0) {
+            return NextResponse.json({ error: 'No valid USN or student data provided.' }, { status: 400 });
+        }
 
-        const toInsert = usns.filter(u => !existingSet.has(u)).map(u => ({ usn: u, name: u }));
-        if (toInsert.length > 0) {
-            for (let i = 0; i < toInsert.length; i += 100) {
-                try {
-                    await supabaseAdmin.from('students')
-                        .upsert(toInsert.slice(i, i + 100), { onConflict: 'usn', ignoreDuplicates: true });
-                } catch {}
+        // Deduplicate by USN
+        const usnMap = new Map();
+        parsedStudents.forEach(s => {
+            if (s.usn && !usnMap.has(s.usn)) {
+                usnMap.set(s.usn, s);
+            }
+        });
+        const uniqueStudents = Array.from(usnMap.values());
+        const usns = uniqueStudents.map(s => s.usn);
+
+        // Upsert student profiles into `students` table
+        const toUpsert = uniqueStudents.map(s => {
+            const row = { usn: s.usn, name: s.name || s.usn };
+            if (s.branch) row.branch = s.branch;
+            if (s.semester) row.semester = s.semester;
+            return row;
+        });
+
+        for (let i = 0; i < toUpsert.length; i += 100) {
+            try {
+                await supabaseAdmin.from('students')
+                    .upsert(toUpsert.slice(i, i + 100), { onConflict: 'usn' });
+            } catch (e) {
+                console.error('[POST /api/class-students] student upsert error:', e);
             }
         }
 
+        // Insert into `class_students` linking class_id and usn
         const rows = usns.map(u => ({ class_id, usn: u }));
         let addedCount = 0;
 
@@ -106,7 +139,7 @@ export async function POST(req) {
                 .upsert(rows.slice(i, i + 100), { onConflict: 'class_id,usn', ignoreDuplicates: true })
                 .select();
             if (error) {
-                console.error('[POST /api/class-students] upsert error:', error);
+                console.error('[POST /api/class-students] class_students upsert error:', error);
                 throw error;
             }
             addedCount += data?.length || 0;

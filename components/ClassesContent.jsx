@@ -212,9 +212,92 @@ export function ClassesContent({ embedded = false }) {
         setSelectedClass(null); fetchClasses();
     };
 
+    const [csvPreview, setCsvPreview] = useState([]);
+
+    const downloadCsvTemplate = () => {
+        const csvContent = "USN,Name,Semester,Branch\n2AB23CS001,Mohammed Ainan Armar,3,CS\n2AB23CS002,Sample Student 2,3,CS";
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'sample_class_roster.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleCsvFile = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setFileLoading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const text = event.target?.result || '';
+                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                if (lines.length === 0) { setMsg('CSV file is empty.'); setFileLoading(false); return; }
+
+                const parsed = [];
+                let startIdx = 0;
+                const firstLine = lines[0].toLowerCase();
+                const hasHeader = firstLine.includes('usn') || firstLine.includes('name');
+                if (hasHeader) startIdx = 1;
+
+                for (let i = startIdx; i < lines.length; i++) {
+                    const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+                    if (cols.length > 0 && cols[0]) {
+                        const usn = cols[0].toUpperCase();
+                        const name = cols[1] || usn;
+                        const semester = cols[2] ? parseInt(cols[2]) : null;
+                        const branch = cols[3] || null;
+                        if (usn) parsed.push({ usn, name, semester, branch });
+                    }
+                }
+
+                if (parsed.length > 0) {
+                    setCsvPreview(parsed);
+                    setMsg(`✓ Parsed ${parsed.length} student(s) from CSV.`);
+                } else {
+                    setMsg('No valid USNs found in CSV file.');
+                }
+            } catch (err) {
+                setMsg('Failed to read CSV file.');
+            } finally {
+                setFileLoading(false);
+            }
+        };
+        reader.readAsText(file);
+    };
+
     const addStudent = async () => {
-        const raw = addUsn.trim();
-        if (!raw) { setMsg('Please enter at least one USN.'); return; }
+        let payload = null;
+
+        if (addTab === 'csv' && csvPreview.length > 0) {
+            payload = {
+                class_id: selectedClass.id,
+                students: csvPreview
+            };
+        } else {
+            const raw = addUsn.trim();
+            if (!raw) { setMsg('Please enter student USN(s).'); return; }
+
+            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const parsed = [];
+            lines.forEach(line => {
+                const parts = line.split(',').map(p => p.trim());
+                if (parts[0]) {
+                    parsed.push({
+                        usn: parts[0].toUpperCase(),
+                        name: parts[1] || parts[0]
+                    });
+                }
+            });
+
+            payload = {
+                class_id: selectedClass.id,
+                students: parsed
+            };
+        }
 
         let facId = faculty?.id || faculty?.sub;
         if (!facId) {
@@ -224,25 +307,24 @@ export function ClassesContent({ embedded = false }) {
             } catch (e) {}
         }
 
+        payload.faculty_id = facId;
+
         const r = await fetch('/api/class-students', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                class_id: selectedClass.id,
-                usn: raw,
-                faculty_id: facId
-            })
+            body: JSON.stringify(payload)
         });
         const j = await r.json();
         if (j.success) {
             setAddUsn('');
+            setCsvPreview([]);
             setShowAddModal(false);
             setMsg(`✓ ${j.added || 1} student(s) added successfully.`);
-            await logActivity(faculty, 'CLASS_ADD_STUDENT', raw);
+            await logActivity(faculty, 'CLASS_ADD_STUDENT', selectedClass.name);
             fetchClassStudents(selectedClass);
             fetchClasses();
         } else {
-            setMsg(j.error || 'Failed to add student. Check USN and try again.');
+            setMsg(j.error || 'Failed to add student. Please check USNs and try again.');
         }
     };
 
@@ -355,31 +437,114 @@ export function ClassesContent({ embedded = false }) {
             {/* Add Students Modal */}
             {showAddModal && selectedClass && (
                 <div style={S.modal} onClick={() => setShowAddModal(false)}>
-                    <div style={S.mbox('520px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                        <div style={{ marginBottom: '16px' }}>
-                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students</h3>
-                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Enter student USN(s) to add them to {selectedClass.name}.</p>
+                    <div style={S.mbox('620px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students to {selectedClass.name}</h3>
+                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Import students manually or bulk upload via CSV file.</p>
+                            </div>
+                            <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={downloadCsvTemplate}>
+                                <span className="material-icons-round" style={{ fontSize: '15px' }}>download</span>CSV Template
+                            </button>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div>
-                                <label style={S.label}>Student USN(s)</label>
-                                <textarea
-                                    style={{ ...S.input, minHeight: '110px', resize: 'vertical', fontFamily: 'monospace' }}
-                                    placeholder="Enter USN (e.g. 2AB23CS001) or multiple USNs separated by commas/newlines"
-                                    value={addUsn}
-                                    onChange={e => setAddUsn(e.target.value)}
-                                    autoFocus
-                                />
-                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
-                                    Tip: You can paste multiple USNs separated by commas or newlines.
+                        {/* Modal Tab Bar */}
+                        <div style={{ display: 'flex', gap: '8px', background: 'var(--surface-low)', padding: '4px', borderRadius: '8px', marginBottom: '16px' }}>
+                            <button
+                                style={{ flex: 1, padding: '8px 12px', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', background: addTab === 'manual' ? 'var(--surface)' : 'transparent', color: addTab === 'manual' ? 'var(--primary)' : 'var(--tx-muted)', boxShadow: addTab === 'manual' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
+                                onClick={() => { setAddTab('manual'); setMsg(''); }}
+                            >
+                                ✏️ Manual Entry
+                            </button>
+                            <button
+                                style={{ flex: 1, padding: '8px 12px', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', background: addTab === 'csv' ? 'var(--surface)' : 'transparent', color: addTab === 'csv' ? 'var(--primary)' : 'var(--tx-muted)', boxShadow: addTab === 'csv' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
+                                onClick={() => { setAddTab('csv'); setMsg(''); }}
+                            >
+                                📄 CSV Upload
+                            </button>
+                        </div>
+
+                        {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
+
+                        {addTab === 'manual' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                <div>
+                                    <label style={S.label}>Student USN & Name List</label>
+                                    <textarea
+                                        style={{ ...S.input, minHeight: '130px', resize: 'vertical', fontFamily: 'monospace' }}
+                                        placeholder={"Enter USN or line-by-line format:\n2AB23CS001, Student Name\n2AB23CS002, Another Student\n2AB23CS003"}
+                                        value={addUsn}
+                                        onChange={e => setAddUsn(e.target.value)}
+                                        autoFocus
+                                    />
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '6px' }}>
+                                        Format: <code style={{ background: 'var(--surface-low)', padding: '2px 4px', borderRadius: '4px' }}>USN, Name</code> (or just USNs separated by commas/newlines).
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                <div
+                                    onClick={() => fileRef.current?.click()}
+                                    style={{ border: '2px dashed var(--border)', borderRadius: '12px', padding: '24px', textAlign: 'center', cursor: 'pointer', background: 'var(--surface-low)', transition: 'background 0.2s' }}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '36px', color: 'var(--primary)', marginBottom: '8px' }}>upload_file</span>
+                                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                        {fileLoading ? 'Reading CSV...' : 'Click or Drag CSV File Here'}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                                        Supports CSV files with columns: <strong>USN, Name, Semester, Branch</strong>
+                                    </div>
+                                    <input
+                                        ref={fileRef}
+                                        type="file"
+                                        accept=".csv,text/csv"
+                                        onChange={handleCsvFile}
+                                        style={{ display: 'none' }}
+                                    />
+                                </div>
+
+                                {csvPreview.length > 0 && (
+                                    <div>
+                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Parsed Preview ({csvPreview.length} Students)</span>
+                                            <span style={{ color: 'var(--primary)', fontWeight: 900 }}>Ready to Import</span>
+                                        </div>
+                                        <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                                                <thead>
+                                                    <tr style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }}>
+                                                        <th style={{ padding: '6px 10px', textAlign: 'left' }}>USN</th>
+                                                        <th style={{ padding: '6px 10px', textAlign: 'left' }}>Name</th>
+                                                        <th style={{ padding: '6px 10px', textAlign: 'center' }}>Sem</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {csvPreview.slice(0, 10).map((st, i) => (
+                                                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                            <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700 }}>{st.usn}</td>
+                                                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>{st.name}</td>
+                                                            <td style={{ padding: '6px 10px', textAlign: 'center' }}>{st.semester || selectedClass.semester}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                            {csvPreview.length > 10 && (
+                                                <div style={{ padding: '6px', textAlign: 'center', fontSize: '10px', color: 'var(--tx-dim)', background: 'var(--surface-low)' }}>
+                                                    + {csvPreview.length - 10} more students
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                            <button style={btn('ghost')} onClick={() => setShowAddModal(false)}>Cancel</button>
-                            <button style={btn('primary')} onClick={addStudent}>Add Students</button>
+                            <button style={btn('ghost')} onClick={() => { setShowAddModal(false); setCsvPreview([]); }}>Cancel</button>
+                            <button style={btn('primary')} onClick={addStudent}>
+                                {addTab === 'csv' ? `Import ${csvPreview.length} Students` : 'Add Students'}
+                            </button>
                         </div>
                     </div>
                 </div>
