@@ -566,7 +566,7 @@ def _recalculate_remarks(usn):
             
             supabase.table("academic_remarks").upsert({"student_id": sid, "student_usn": usn, "semester": s, "sgpa": sgpa, "backlog_count": len(backlogs), "is_all_clear": len(backlogs) == 0}, on_conflict="student_id,semester").execute()
     except Exception as e:
-        print(f"      ⚠ Remarks Error: {e}")
+        print(f"      [WARNING] Remarks Error: {e}")
 
 if __name__ == "__main__":
     import sys
