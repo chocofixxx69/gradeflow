@@ -6,6 +6,18 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { ResponsiveGrid, Stack } from '@/components/ui/Foundation';
 import { getGradePoint, getGradeRank, unifyGrade } from '../../lib/vtuGrades';
+import {
+    ResponsiveContainer,
+    AreaChart,
+    Area,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    Tooltip,
+    CartesianGrid,
+    Cell
+} from 'recharts';
 import { assessYearBackRisk } from '../../lib/semester-utils';
 
 function AnalyticsContent() {
@@ -96,7 +108,7 @@ function AnalyticsContent() {
                 }))
             ];
 
-            // ── DEDUPLICATION (The "Accurate Data" Fix) ──
+            // ── DEDUPLICATION ──
             const bestByCode = {};
             allRaw.forEach(m => {
                 const code = (m.subject_code || '').trim().toUpperCase();
@@ -114,7 +126,6 @@ function AnalyticsContent() {
                 if (newRank > oldRank) {
                     bestByCode[code] = m;
                 } else if (newRank === oldRank) {
-                    // Tie-breaker: Take higher marks or newer record
                     const newTotal = Number(m.total_marks || 0);
                     const oldTotal = Number(existing.total_marks || 0);
                     if (newTotal > oldTotal) {
@@ -150,7 +161,7 @@ function AnalyticsContent() {
 
             setSemesterData(semData);
 
-            // Grade Density (from deduped best results)
+            // Grade Density
             const gradeDist = {};
             deduplicated.forEach(m => {
                 const g = m.grade || 'Unknown';
@@ -185,7 +196,7 @@ function AnalyticsContent() {
             setYearBackRisk(assessYearBackRisk(semStatsForRisk, deduplicated));
 
             // Projection
-            const remainingCr = remainingSems * 20; // Use 20 as per user's logic
+            const remainingCr = remainingSems * 20;
             const req = ((targetCgpa * (totalCr + remainingCr)) - (currentCgpa * totalCr)) / remainingCr;
             setRequiredSgpa(req);
 
@@ -218,31 +229,31 @@ function AnalyticsContent() {
     };
 
     const gradeColors = {
-        'O': '#16a34a', 'S': '#16a34a', 'A+': '#16a34a', 'A': '#2563eb',
-        'B+': 'var(--primary)', 'B': '#d97706', 'C': '#0891b2', 'P': '#78716c',
-        'F': '#dc2626', 'Ab': '#dc2626', 'Unknown': '#a8a29e'
+        'O': '#16A34A', 'S': '#16A34A', 'A+': '#16A34A', 'A': '#174B4D',
+        'B+': 'var(--primary)', 'B': '#D97706', 'C': '#0891B2', 'P': '#78716C',
+        'F': '#DC2626', 'Ab': '#DC2626', 'Unknown': '#A8A29E'
     };
 
     const maxGradeCount = Math.max(...Object.values(gradeDistribution), 1);
 
     const s = {
-        header: { marginBottom: '48px', position: 'relative' },
+        header: { marginBottom: '32px', position: 'relative' },
         label: { fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '8px', display: 'block' },
         title: { fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', marginBottom: '8px' },
         subtitle: { fontSize: 'clamp(13px, 2vw, 16px)', fontWeight: 500, color: 'var(--tx-muted)', maxWidth: '600px', lineHeight: 1.6 },
 
         card: {
-            background: 'var(--surface)', borderRadius: '24px', padding: '28px',
+            background: 'var(--surface-low)', borderRadius: '12px', padding: '24px',
             border: '1px solid var(--border)', transition: 'transform 0.2s',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01), 0 2px 4px -1px rgba(0,0,0,0.01)'
+            boxShadow: 'var(--elevation-flat)'
         },
         cardLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' },
-        cardVal: { fontSize: '40px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
+        cardVal: { fontSize: '36px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
         cardSub: { fontSize: '13px', fontWeight: 700, color: 'var(--tx-muted)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' },
 
-        chartCard: { background: 'var(--surface)', borderRadius: '24px', padding: 'clamp(20px, 4vw, 32px)', border: '1px solid var(--border)', marginBottom: '32px', minWidth: 0 },
-        chartHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', gap: 'var(--space-3)', flexWrap: 'wrap' },
-        chartTitle: { fontSize: '18px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0 },
+        chartCard: { background: 'var(--surface-low)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border)', marginBottom: '24px', minWidth: 0 },
+        chartHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: 'var(--space-3)', flexWrap: 'wrap' },
+        chartTitle: { fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0 },
 
         col: {},
 
@@ -252,8 +263,8 @@ function AnalyticsContent() {
         miniTd: { padding: '14px 16px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, color: 'var(--tx-main)' },
 
         goalInput: {
-            background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px',
-            padding: '4px 8px', minHeight: '44px', fontSize: '13px', fontWeight: 800, width: '56px', color: 'var(--primary)',
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px',
+            padding: '4px 8px', minHeight: '36px', fontSize: '13px', fontWeight: 800, width: '64px', color: 'var(--primary)',
             textAlign: 'center', marginLeft: '8px', boxSizing: 'border-box'
         }
     };
@@ -285,12 +296,11 @@ function AnalyticsContent() {
                     {/* Summary Matrix */}
                     <ResponsiveGrid size="md" style={{ marginBottom: 'var(--space-8)' }}>
                         <div style={{ ...s.card, background: 'var(--primary)', border: 'none', position: 'relative', overflow: 'hidden' }}>
-                            {/* Subtle Glow Effect */}
                             <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-                            <div style={{ ...s.cardLabel, color: 'var(--bg)', opacity: 0.6, position: 'relative' }}>Current CGPA</div>
+                            <div style={{ ...s.cardLabel, color: 'var(--bg)', opacity: 0.8, position: 'relative' }}>Current CGPA</div>
                             <div style={{ ...s.cardVal, color: 'var(--bg)', position: 'relative' }}>{cgpa > 0 ? cgpa.toFixed(2) : '0.00'}</div>
-                            <div style={{ ...s.cardSub, color: 'var(--bg)', opacity: 0.8, position: 'relative' }}>
+                            <div style={{ ...s.cardSub, color: 'var(--bg)', opacity: 0.9, position: 'relative' }}>
                                 <span className="material-icons-round" style={{ fontSize: '14px' }}>stars</span>
                                 {classification}
                             </div>
@@ -302,25 +312,25 @@ function AnalyticsContent() {
                         </div>
                         <div style={s.card}>
                             <div style={s.cardLabel}>Academic Standing</div>
-                            <div style={{ ...s.cardVal, color: cgpa >= 8.5 ? '#10b981' : cgpa >= 7.5 ? 'var(--primary)' : 'var(--tx-main)' }}>
+                            <div style={{ ...s.cardVal, color: cgpa >= 8.5 ? '#16A34A' : cgpa >= 7.5 ? 'var(--primary)' : 'var(--tx-main)' }}>
                                 {cgpa >= 9 ? 'S' : cgpa >= 8 ? 'A+' : cgpa >= 7 ? 'A' : cgpa >= 6 ? 'B+' : 'C'}
                             </div>
                             <div style={s.cardSub}>Rank Percentile</div>
                         </div>
                         <div style={s.card}>
                             <div style={s.cardLabel}>Backlogs</div>
-                            <div style={{ ...s.cardVal, color: backlogCount > 0 ? '#ef4444' : '#10b981' }}>{backlogCount}</div>
+                            <div style={{ ...s.cardVal, color: backlogCount > 0 ? '#DC2626' : '#16A34A' }}>{backlogCount}</div>
                             <div style={s.cardSub}>{backlogCount === 0 ? 'Consistent Standing' : 'Needs attention'}</div>
                         </div>
                     </ResponsiveGrid>
 
                     {/* Year-Back Risk Assessment */}
                     {yearBackRisk.hasRisk && (
-                        <div style={{ ...s.chartCard, borderLeft: `4px solid ${yearBackRisk.level === 'CRITICAL' ? '#ef4444' : yearBackRisk.level === 'HIGH' ? '#f59e0b' : '#3b82f6'}`, marginBottom: '32px' }}>
+                        <div style={{ ...s.chartCard, borderLeft: `4px solid ${yearBackRisk.level === 'CRITICAL' ? '#DC2626' : yearBackRisk.level === 'HIGH' ? '#D97706' : '#2563EB'}`, marginBottom: '24px' }}>
                             <div style={s.chartTitle}>
-                                <span className="material-icons-round" style={{ color: yearBackRisk.level === 'CRITICAL' ? '#ef4444' : '#f59e0b' }}>warning</span>
+                                <span className="material-icons-round" style={{ color: yearBackRisk.level === 'CRITICAL' ? '#DC2626' : '#D97706' }}>warning</span>
                                 Year-Back Risk Analysis
-                                <span style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: 900, padding: '4px 12px', borderRadius: '8px', background: yearBackRisk.level === 'CRITICAL' ? '#fef2f2' : yearBackRisk.level === 'HIGH' ? '#fffbeb' : '#eff6ff', color: yearBackRisk.level === 'CRITICAL' ? '#ef4444' : yearBackRisk.level === 'HIGH' ? '#f59e0b' : '#3b82f6' }}>
+                                <span style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: 900, padding: '4px 12px', borderRadius: '8px', background: yearBackRisk.level === 'CRITICAL' ? '#FEF2F2' : yearBackRisk.level === 'HIGH' ? '#FFFBEB' : '#EFF6FF', color: yearBackRisk.level === 'CRITICAL' ? '#DC2626' : yearBackRisk.level === 'HIGH' ? '#D97706' : '#2563EB' }}>
                                     {yearBackRisk.level}
                                 </span>
                             </div>
@@ -329,7 +339,7 @@ function AnalyticsContent() {
                                     Total Active Backlogs: <strong style={{ color: 'var(--red)' }}>{yearBackRisk.totalActiveBacklogs}</strong>
                                 </div>
                                 {yearBackRisk.risks.map((risk, i) => (
-                                    <div key={i} style={{ padding: '12px 16px', background: risk.severity === 'HIGH' ? 'var(--red-bg)' : 'var(--surface-low)', borderRadius: '12px', border: `1px solid ${risk.severity === 'HIGH' ? 'var(--red)' : 'var(--border)'}` }}>
+                                    <div key={i} style={{ padding: '12px 16px', background: risk.severity === 'HIGH' ? 'var(--red-bg)' : 'var(--surface)', borderRadius: '8px', border: `1px solid ${risk.severity === 'HIGH' ? 'var(--red)' : 'var(--border)'}` }}>
                                         <div style={{ fontSize: '12px', fontWeight: 700, color: risk.severity === 'HIGH' ? 'var(--red)' : 'var(--tx-main)' }}>{risk.message}</div>
                                     </div>
                                 ))}
@@ -338,32 +348,34 @@ function AnalyticsContent() {
                     )}
 
                     <Stack size="md">
-                        {/* SGPA Trends */}
+                        {/* SGPA Trends Line Chart */}
                         <div style={s.chartCard}>
                             <div style={s.chartHeader}>
                                 <div style={s.chartTitle}>
                                     <span className="material-icons-round" style={{ color: 'var(--primary)' }}>show_chart</span>
-                                    Semester Trajectory
+                                    Semester SGPA Progression Trajectory
                                 </div>
                             </div>
                             {semesterData.length > 0 ? (
-                                <div style={{ height: '260px', display: 'flex', alignItems: 'flex-end', gap: '20px', padding: '0 12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                                    {semesterData.map((sem, i) => (
-                                        <div key={i} style={{ flex: '1 0 44px', minWidth: '44px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                                            <span style={{ fontSize: '13px', fontWeight: 900, color: 'var(--tx-main)' }}>{sem.sgpa.toFixed(2)}</span>
-                                            <div style={{
-                                                width: '100%',
-                                                height: `${(sem.sgpa / 10) * 200}px`,
-                                                background: sem.sgpa >= (semesterData[i - 1]?.sgpa || 0) ? 'var(--primary)' : 'var(--tx-dim)',
-                                                borderRadius: '12px',
-                                                transition: 'all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                                                position: 'relative',
-                                            }}>
-                                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.1)', opacity: 0, transition: 'opacity 0.2s', borderRadius: 'inherit' }} />
-                                            </div>
-                                            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>S{sem.semester}</span>
-                                        </div>
-                                    ))}
+                                <div style={{ height: '280px', width: '100%', marginTop: '12px' }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={semesterData.map(s => ({ name: `Sem ${s.semester}`, sgpa: Number(s.sgpa.toFixed(2)) }))} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id="sgpaGradient" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#174B4D" stopOpacity={0.4}/>
+                                                    <stop offset="95%" stopColor="#174B4D" stopOpacity={0.0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                                            <XAxis dataKey="name" stroke="var(--tx-dim)" fontSize={12} tickLine={false} />
+                                            <YAxis domain={[0, 10]} stroke="var(--tx-dim)" fontSize={12} tickLine={false} />
+                                            <Tooltip
+                                                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--tx-main)', fontWeight: 700 }}
+                                                formatter={(value) => [`${value} SGPA`, 'Performance']}
+                                            />
+                                            <Area type="monotone" dataKey="sgpa" stroke="#174B4D" strokeWidth={3} fillOpacity={1} fill="url(#sgpaGradient)" dot={{ r: 6, fill: '#174B4D' }} activeDot={{ r: 8 }} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
                                 </div>
                             ) : (
                                 <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>No longitudinal data found.</div>
@@ -373,10 +385,10 @@ function AnalyticsContent() {
                         {/* Projection Card */}
                         <div style={s.chartCard}>
                             <div style={s.chartTitle}>
-                                <span className="material-icons-round" style={{ color: '#F59E0B' }}>auto_awesome</span>
-                                Goal Projection
+                                <span className="material-icons-round" style={{ color: '#D97706' }}>auto_awesome</span>
+                                Goal Projection Calculator
                             </div>
-                            <div style={{ marginTop: '24px' }}>
+                            <div style={{ marginTop: '20px' }}>
                                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--tx-muted)', marginBottom: '16px' }}>
                                     Set your target CGPA:
                                     <input
@@ -393,9 +405,9 @@ function AnalyticsContent() {
                                     />
                                 </div>
 
-                                <div style={{ padding: '24px', background: 'var(--surface-low)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                                <div style={{ padding: '20px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                                     <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '8px' }}>Required SGPA</div>
-                                    <div style={{ fontSize: '32px', fontWeight: 900, color: requiredSgpa > 10 ? '#EF4444' : 'var(--primary)' }}>
+                                    <div style={{ fontSize: '32px', fontWeight: 900, color: requiredSgpa > 10 ? '#DC2626' : 'var(--primary)' }}>
                                         {requiredSgpa > 10 ? 'Unattainable' : requiredSgpa > 0 ? requiredSgpa.toFixed(2) : '—'}
                                     </div>
                                     <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '8px', lineHeight: 1.5 }}>
@@ -407,19 +419,32 @@ function AnalyticsContent() {
                     </Stack>
 
                     <Stack size="md">
-                        {/* Grade Insights */}
+                        {/* Grade Insights Histogram */}
                         <div style={s.chartCard}>
-                            <div style={s.chartTitle}>Grade Density</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '20px' }}>
-                                {Object.entries(gradeDistribution).sort((a, b) => b[1] - a[1]).map(([g, count]) => (
-                                    <div key={g} style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                        <span style={{ width: '30px', fontSize: '11px', fontWeight: 900, color: gradeColors[g] || '#9ca3af' }}>{g}</span>
-                                        <div style={{ flex: 1, height: '8px', background: 'var(--surface-low)', borderRadius: '4px', overflow: 'hidden' }}>
-                                            <div style={{ height: '100%', width: `${(count / maxGradeCount) * 100}%`, background: gradeColors[g] || '#9ca3af', borderRadius: '4px' }} />
-                                        </div>
-                                        <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)' }}>{count}</span>
-                                    </div>
-                                ))}
+                            <div style={s.chartTitle}>
+                                <span className="material-icons-round" style={{ color: 'var(--primary)' }}>bar_chart</span>
+                                Grade Distribution Histogram
+                            </div>
+                            <div style={{ height: '260px', width: '100%', marginTop: '16px' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={Object.entries(gradeDistribution).map(([g, count]) => ({ grade: g, count })).sort((a, b) => b.count - a.count)}
+                                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                                        <XAxis dataKey="grade" stroke="var(--tx-dim)" fontSize={12} tickLine={false} />
+                                        <YAxis stroke="var(--tx-dim)" fontSize={12} allowDecimals={false} tickLine={false} />
+                                        <Tooltip
+                                            contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--tx-main)', fontWeight: 700 }}
+                                            formatter={(value) => [`${value} subject(s)`, 'Count']}
+                                        />
+                                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                                            {Object.entries(gradeDistribution).map(([g], index) => (
+                                                <Cell key={`cell-${index}`} fill={g === 'F' || g === 'Ab' ? '#DC2626' : gradeColors[g] || '#174B4D'} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
 
@@ -429,7 +454,7 @@ function AnalyticsContent() {
                             <div style={{ marginTop: '20px' }}>
                                 {topSubjects.map((sub, i) => (
                                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
-                                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 900, color: 'var(--primary)' }}>
+                                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 900, color: 'var(--primary)' }}>
                                             {sub.grade}
                                         </div>
                                         <div>
