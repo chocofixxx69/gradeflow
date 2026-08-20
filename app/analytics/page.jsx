@@ -385,41 +385,6 @@ function AnalyticsContent() {
                                 <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>No longitudinal data found.</div>
                             )}
                         </div>
-
-                        {/* Projection Card */}
-                        <div style={s.chartCard}>
-                            <div style={s.chartTitle}>
-                                <span className="material-icons-round" style={{ color: '#D97706' }}>auto_awesome</span>
-                                Goal Projection Calculator
-                            </div>
-                            <div style={{ marginTop: '20px' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--tx-muted)', marginBottom: '16px' }}>
-                                    Set your target CGPA:
-                                    <input
-                                        type="number" step="0.1" max="10" min="0"
-                                        style={s.goalInput}
-                                        value={targetCgpa}
-                                        onChange={e => {
-                                            const val = parseFloat(e.target.value);
-                                            setTargetCgpa(val);
-                                            const remainingCr = remainingSems * 24;
-                                            const req = ((val * (totalCredits + remainingCr)) - (cgpa * totalCredits)) / remainingCr;
-                                            setRequiredSgpa(req);
-                                        }}
-                                    />
-                                </div>
-
-                                <div style={{ padding: '20px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '8px' }}>Required SGPA</div>
-                                    <div style={{ fontSize: '32px', fontWeight: 900, color: requiredSgpa > 10 ? '#DC2626' : 'var(--primary)' }}>
-                                        {requiredSgpa > 10 ? 'Unattainable' : requiredSgpa > 0 ? requiredSgpa.toFixed(2) : '—'}
-                                    </div>
-                                    <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '8px', lineHeight: 1.5 }}>
-                                        To reach <strong>{targetCgpa} CGPA</strong> in <strong>{remainingSems}</strong> semesters, you need to maintain an average of <strong>{requiredSgpa.toFixed(2)}</strong> SGPA.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
                     </Stack>
 
                     <Stack size="md">
