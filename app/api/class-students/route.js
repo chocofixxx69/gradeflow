@@ -51,6 +51,9 @@ export async function GET(req) {
             backlogMap[usn] = computeBacklogs(marksByUsn[usn] || []).totalBacklogs;
         });
 
+        const profileMap = {};
+        (profiles || []).forEach(p => { profileMap[p.usn] = p; });
+
         const hasResultsMap = {};
         usns.forEach(usn => {
             const hasR = Boolean(
@@ -140,23 +143,28 @@ export async function POST(req) {
             }
         }
 
-        // Insert into `class_students` linking class_id and usn
-        const rows = usns.map(u => ({ class_id, usn: u }));
-        let addedCount = 0;
+        // Fetch existing members for this class to avoid duplicates
+        const { data: existingMembers } = await supabaseAdmin
+            .from('class_students')
+            .select('usn')
+            .eq('class_id', class_id);
 
-        for (let i = 0; i < rows.length; i += 100) {
-            const { data, error } = await supabaseAdmin
-                .from('class_students')
-                .upsert(rows.slice(i, i + 100), { onConflict: 'class_id,usn', ignoreDuplicates: true })
-                .select();
-            if (error) {
-                console.error('[POST /api/class-students] class_students upsert error:', error);
-                throw error;
+        const existingSet = new Set((existingMembers || []).map(m => m.usn.toUpperCase()));
+        const newUsnsToInsert = usns.filter(u => !existingSet.has(u));
+
+        if (newUsnsToInsert.length > 0) {
+            const rows = newUsnsToInsert.map(u => ({ class_id, usn: u }));
+            for (let i = 0; i < rows.length; i += 100) {
+                const { error: insErr } = await supabaseAdmin
+                    .from('class_students')
+                    .insert(rows.slice(i, i + 100));
+                if (insErr) {
+                    console.error('[POST /api/class-students] class_students insert error:', insErr);
+                }
             }
-            addedCount += data?.length || 0;
         }
 
-        return NextResponse.json({ success: true, added: addedCount || usns.length });
+        return NextResponse.json({ success: true, added: newUsnsToInsert.length || usns.length });
     } catch (err) {
         console.error('[POST /api/class-students]', err);
         return NextResponse.json({ error: err.message || 'Failed to add student.' }, { status: 500 });
