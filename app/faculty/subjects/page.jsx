@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { logAuditAction } from '../../../lib/audit-logger';
+import { supabase } from '../../../lib/supabase';
 import AuthGuard from '../../../components/AuthGuard';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
