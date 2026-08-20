@@ -390,7 +390,7 @@ export default function SubjectsPage() {
           <div>
             <label style={S.label}>Branch</label>
             <select value={branch} onChange={e => setBranch(e.target.value)} style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-3)', color: 'var(--tx-main)', fontSize: '14px', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}>
-              {branches.map(b => <option key={b.code} value={b.code}>{b.label}</option>)}
+              {branches.map(b => <option key={b.code} value={b.code}>{b.name || b.label}</option>)}
             </select>
           </div>
           <div>
