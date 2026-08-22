@@ -503,7 +503,7 @@ export function ClassesContent({ embedded = false }) {
         setStudents(p => p.filter(s => s.usn !== usn)); fetchClasses();
     };
 
-    const filteredStudents = semFilter === 'all' ? students : students.filter(s => String(s.semester) === String(semFilter));
+    const filteredStudents = students;
     const top10 = [...students].filter(s => s.cgpa !== null).sort((a, b) => b.cgpa - a.cgpa).slice(0, 10);
     const totalBacklogs = students.reduce((s, st) => s + (st.total_backlogs || 0), 0);
     const withCgpa = students.filter(s => s.cgpa !== null);
