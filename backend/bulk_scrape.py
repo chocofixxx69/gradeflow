@@ -66,6 +66,10 @@ def main() -> None:
         help="Number of parallel worker threads to speed up scraping (default: 3)."
     )
     parser.add_argument(
+        "-b", "--branch", dest="branch", type=str, default=None,
+        help="Filter scraping strictly to a specific branch code (e.g. CS, CD, EC)."
+    )
+    parser.add_argument(
         "--skip-existing", dest="skip_existing", action="store_true", default=True,
         help="Skip USNs already saved in Supabase (default: True)."
     )
@@ -117,6 +121,17 @@ def main() -> None:
     # Deduplicate preserving order
     seen = set()
     usn_list = [u for u in usn_list if not (u in seen or seen.add(u))]
+
+    if args.branch:
+        target_b = args.branch.strip().upper()
+        filtered = []
+        for u in usn_list:
+            if len(u) >= 7 and target_b in u[5:7].upper():
+                filtered.append(u)
+            elif target_b in u:
+                filtered.append(u)
+        usn_list = filtered
+        print(f"[INFO] Filtered to {len(usn_list)} USNs matching branch '{target_b}'.", file=sys.stderr)
 
     if not usn_list:
         print("[ERROR] No valid USNs found to scrape.", file=sys.stderr)
