@@ -11,8 +11,14 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
 
 // ── Activity Logger ─────────────────────────────────────────
-async function logActivity(faculty, action_type, target = null) {
-    await recordFacultyAction(faculty, action_type, target);
+async function logActivity(action_type, target = null) {
+    try {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('gradeflow_faculty') : null;
+        const fac = stored ? JSON.parse(stored) : null;
+        await recordFacultyAction(fac, action_type, target);
+    } catch (e) {
+        // Safe failover
+    }
 }
 
 // ── Shared Styles ───────────────────────────────────────────
@@ -370,7 +376,7 @@ export function ClassesContent({ embedded = false }) {
                 if (selectedClass && selectedClass.id === editClassForm.id) {
                     setSelectedClass(prev => ({ ...prev, ...j.class }));
                 }
-                await logActivity(faculty, 'CLASS_EDIT', editClassForm.name);
+                logActivity('CLASS_EDIT', editClassForm.name);
                 fetchClasses();
             } else {
                 setMsg(j.error || 'Failed to update class.');
@@ -443,9 +449,14 @@ export function ClassesContent({ embedded = false }) {
         } else {
             usns = Array.from(selectedUsns);
             if (usns.length === 0) {
-                setMsg('No students selected to transfer.');
-                return;
+                transferAll = true;
+                usns = students.map(s => s.usn);
             }
+        }
+
+        if (usns.length === 0) {
+            setMsg('No students found to transfer.');
+            return;
         }
 
         setTransferLoading(true);
@@ -469,14 +480,25 @@ export function ClassesContent({ embedded = false }) {
                 setSelectedUsns(new Set());
                 const actionVerb = transferMode === 'move' ? 'Transferred' : 'Copied';
                 setMsg(`✓ ${actionVerb} ${j.transferred_count} student(s) to "${targetClassObj?.name || 'target class'}".`);
-                await logActivity(faculty, 'CLASS_STUDENTS_TRANSFER', `${selectedClass.name} -> ${targetClassObj?.name} (${j.transferred_count} students)`);
+
+                // Optimistic instant state update
+                if (transferMode === 'move') {
+                    if (transferAll) {
+                        setStudents([]);
+                    } else {
+                        const transferredSet = new Set(usns);
+                        setStudents(prev => prev.filter(s => !transferredSet.has(s.usn)));
+                    }
+                }
+                logActivity('CLASS_STUDENTS_TRANSFER', `${selectedClass.name} -> ${targetClassObj?.name} (${j.transferred_count} students)`);
                 fetchClassStudents(selectedClass);
                 fetchClasses();
             } else {
                 setMsg(j.error || 'Failed to transfer students.');
             }
         } catch (err) {
-            setMsg('Failed to transfer students.');
+            console.error('[executeTransfer error]', err);
+            setMsg('Failed to transfer students. Please try again.');
         } finally {
             setTransferLoading(false);
         }
@@ -498,7 +520,7 @@ export function ClassesContent({ embedded = false }) {
 
     const deleteClass = async id => {
         if (!confirm('Delete this class?')) return;
-        await logActivity(faculty, 'CLASS_DELETE', selectedClass?.name);
+        logActivity('CLASS_DELETE', selectedClass?.name);
         await fetch('/api/classes', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setSelectedClass(null); fetchClasses();
     };
