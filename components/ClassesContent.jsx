@@ -543,7 +543,17 @@ export function ClassesContent({ embedded = false }) {
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                     <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <select
+                            value={semFilter}
+                            onChange={e => setSemFilter(e.target.value)}
+                            style={{ ...S.sel, width: 'auto', padding: '6px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer' }}
+                        >
+                            <option value="all">🌐 All Semesters (Overall CGPA)</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                                <option key={s} value={s}>Semester {s} (SGPA View)</option>
+                            ))}
+                        </select>
                         <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={openPdfExportModal}>
                             <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
                         </button>
@@ -559,65 +569,86 @@ export function ClassesContent({ embedded = false }) {
                             {!isMobile ? (
                                 <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr>{['#', 'Name', 'USN', 'Sem', 'CGPA', 'Backlogs', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                                        <tr>{['#', 'Name', 'USN', 'Sem', semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`, semFilter === 'all' ? 'Total Backlogs' : `Backlogs (S${semFilter})`, ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
                                     </thead>
                                     <tbody>
-                                        {filteredStudents.map((s, idx) => (
-                                            <tr key={s.usn}>
-                                                <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
-                                                <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
-                                                <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
-                                                <td style={{ ...S.td, textAlign: 'center' }}>{s.semester || '—'}</td>
-                                                <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: (s.has_data && s.cgpa) ? 'var(--primary)' : 'var(--tx-dim)' }}>
-                                                    {s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}
-                                                </td>
-                                                <td style={{ ...S.td, textAlign: 'center' }}>
-                                                    {s.has_data && s.total_backlogs != null ? (
-                                                        <span style={{ fontWeight: 900, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                                                            {s.total_backlogs > 0 ? s.total_backlogs : 'Clear ✓'}
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ ...S.td, textAlign: 'center' }}>
-                                                    <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
-                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {filteredStudents.map((s, idx) => {
+                                            const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
+                                            const displayScore = semFilter !== 'all'
+                                                ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
+                                                : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
+
+                                            const displayBacklogs = semFilter !== 'all'
+                                                ? (semData ? semData.backlogs : null)
+                                                : (s.has_data ? s.total_backlogs : null);
+
+                                            return (
+                                                <tr key={s.usn}>
+                                                    <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
+                                                    <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
+                                                    <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
+                                                    <td style={{ ...S.td, textAlign: 'center' }}>{s.semester || '—'}</td>
+                                                    <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                        {displayScore}
+                                                    </td>
+                                                    <td style={{ ...S.td, textAlign: 'center' }}>
+                                                        {displayBacklogs != null ? (
+                                                            <span style={{ fontWeight: 900, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                                                                {displayBacklogs > 0 ? displayBacklogs : 'Clear ✓'}
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ ...S.td, textAlign: 'center' }}>
+                                                        <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
+                                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-                                    {filteredStudents.map((s, idx) => (
-                                        <div key={s.usn} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                                            <div style={{ minWidth: 0, flex: 1 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {idx + 1}. {s.name}
-                                                </div>
-                                                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                    {s.usn} · Sem {s.semester || '—'}
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
-                                                    <span style={{ fontWeight: 800, fontSize: '11px', color: (s.has_data && s.cgpa) ? 'var(--primary)' : 'var(--tx-dim)' }}>
-                                                        CGPA: {s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—'}
-                                                    </span>
-                                                    {s.has_data && s.total_backlogs != null ? (
-                                                        <span style={{ fontWeight: 800, color: s.total_backlogs > 0 ? 'var(--red)' : 'var(--green)', background: s.total_backlogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                                                            {s.total_backlogs > 0 ? `${s.total_backlogs} Backlog` : 'Clear ✓'}
+                                    {filteredStudents.map((s, idx) => {
+                                        const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
+                                        const displayScore = semFilter !== 'all'
+                                            ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
+                                            : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
+                                        const displayBacklogs = semFilter !== 'all'
+                                            ? (semData ? semData.backlogs : null)
+                                            : (s.has_data ? s.total_backlogs : null);
+
+                                        return (
+                                            <div key={s.usn} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                    <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {idx + 1}. {s.name}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                        {s.usn} · Sem {s.semester || '—'}
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+                                                        <span style={{ fontWeight: 800, fontSize: '11px', color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                            {semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`}: {displayScore}
                                                         </span>
-                                                    ) : (
-                                                        <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>No result data</span>
-                                                    )}
+                                                        {displayBacklogs != null ? (
+                                                            <span style={{ fontWeight: 800, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
+                                                                {displayBacklogs > 0 ? `${displayBacklogs} Backlog` : 'Clear ✓'}
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>No result data</span>
+                                                        )}
+                                                    </div>
                                                 </div>
+                                                <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }}>
+                                                    <span className="material-icons-round" style={{ fontSize: '20px' }}>remove_circle_outline</span>
+                                                </button>
                                             </div>
-                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }}>
-                                                <span className="material-icons-round" style={{ fontSize: '20px' }}>remove_circle_outline</span>
-                                            </button>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                     {filteredStudents.length === 0 && <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No students in roster.</div>}
                                 </div>
                             )}

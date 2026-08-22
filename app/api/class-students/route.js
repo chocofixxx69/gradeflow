@@ -74,13 +74,37 @@ export async function GET(req) {
         const classSem = Number(classData?.semester) || 1;
 
         const maxSemByUsn = {};
+        const semDataByUsn = {};
+        usns.forEach(usn => { semDataByUsn[usn] = {}; });
+
         (remarks || []).forEach(r => {
             const s = Number(r.semester);
-            if (s) maxSemByUsn[r.student_usn] = Math.max(maxSemByUsn[r.student_usn] || 0, s);
+            if (s) {
+                maxSemByUsn[r.student_usn] = Math.max(maxSemByUsn[r.student_usn] || 0, s);
+                if (!semDataByUsn[r.student_usn][s]) semDataByUsn[r.student_usn][s] = { backlogs: 0 };
+                semDataByUsn[r.student_usn][s].sgpa = Number(r.sgpa) || 0;
+            }
         });
+
+        (resultRows || []).forEach(r => {
+            const s = Number(r.semester);
+            if (s) {
+                maxSemByUsn[r.usn] = Math.max(maxSemByUsn[r.usn] || 0, s);
+                if (!semDataByUsn[r.usn][s]) semDataByUsn[r.usn][s] = { backlogs: 0 };
+                if (semDataByUsn[r.usn][s].sgpa == null && r.sgpa) semDataByUsn[r.usn][s].sgpa = Number(r.sgpa) || 0;
+                semDataByUsn[r.usn][s].total_credits = Number(r.total_credits) || 0;
+            }
+        });
+
         (marks || []).forEach(m => {
             const s = Number(m.semester);
-            if (s) maxSemByUsn[m.usn] = Math.max(maxSemByUsn[m.usn] || 0, s);
+            if (s) {
+                maxSemByUsn[m.usn] = Math.max(maxSemByUsn[m.usn] || 0, s);
+                if (!semDataByUsn[m.usn][s]) semDataByUsn[m.usn][s] = { backlogs: 0 };
+                if (m.is_backlog || m.grade === 'F' || m.grade === 'A' || (m.total != null && Number(m.total) < 40)) {
+                    semDataByUsn[m.usn][s].backlogs = (semDataByUsn[m.usn][s].backlogs || 0) + 1;
+                }
+            }
         });
 
         const students = members.map(m => {
@@ -94,6 +118,7 @@ export async function GET(req) {
                 semester: computedSem,
                 cgpa: hasData && cgpaMap[m.usn] != null ? cgpaMap[m.usn] : null,
                 total_backlogs: hasData ? (backlogMap[m.usn] ?? 0) : null,
+                semester_data: semDataByUsn[m.usn] || {},
                 has_data: hasData,
                 added_at: m.created_at,
             };
