@@ -274,8 +274,14 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
              return None
 
         # 4. Success Check
-        # If we see "Semester :" or a substantial number of TD elements, it's a success
-        if has_table or page.locator("td").count() > 15:
+        # If we see "Semester :" or a substantial number of TD elements, AND we are no longer on the form
+        is_still_on_form = False
+        try:
+            is_still_on_form = captcha_img.is_visible(timeout=100)
+        except:
+            pass
+
+        if not is_still_on_form and (has_table or page.locator("td").count() > 15):
             print(f"    [+] {url_short}: Result found! Parsing...", file=sys.stderr)
             
             # Find the student name
@@ -471,8 +477,22 @@ def _save_db(usn, name, sem, url, subs):
         updates = {"usn": usn, "name": name, "semester": sem}
         if branch: updates["branch"] = branch
         
-        supabase.table("students").upsert(updates, on_conflict="usn").execute()
-        
+        # Dynamic Catalog Sync: Fetch subject_catalog credits for these subject codes
+        codes = [s["subject_code"] for s in subs if s.get("subject_code")]
+        catalog_credits = {}
+        if codes:
+            try:
+                c_resp = supabase.table("subject_catalog").select("subject_code, credits").in_("subject_code", codes).execute()
+                if c_resp.data:
+                    catalog_credits = {r["subject_code"]: r["credits"] for r in c_resp.data if r.get("credits") is not None}
+            except Exception:
+                pass
+
+        for s in subs:
+            code = s.get("subject_code")
+            if code and code in catalog_credits:
+                s["credits"] = catalog_credits[code]
+
         # Calc SGPA with Credits and True Points!
         tc = 0
         tcp = 0

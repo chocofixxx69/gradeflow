@@ -19,6 +19,7 @@ import {
     Cell
 } from 'recharts';
 import { assessYearBackRisk } from '../../lib/semester-utils';
+import styles from './Analytics.module.css';
 
 function AnalyticsContent() {
     const router = useRouter();
@@ -240,39 +241,6 @@ function AnalyticsContent() {
 
     const maxGradeCount = Math.max(...Object.values(gradeDistribution), 1);
 
-    const s = {
-        header: { marginBottom: '32px', position: 'relative' },
-        label: { fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '8px', display: 'block' },
-        title: { fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', marginBottom: '8px' },
-        subtitle: { fontSize: 'clamp(13px, 2vw, 16px)', fontWeight: 500, color: 'var(--tx-muted)', maxWidth: '600px', lineHeight: 1.6 },
-
-        card: {
-            background: 'var(--surface-low)', borderRadius: '12px', padding: '24px',
-            border: '1px solid var(--border)', transition: 'transform 0.2s',
-            boxShadow: 'var(--elevation-flat)'
-        },
-        cardLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' },
-        cardVal: { fontSize: '36px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
-        cardSub: { fontSize: '13px', fontWeight: 700, color: 'var(--tx-muted)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' },
-
-        chartCard: { background: 'var(--surface-low)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border)', marginBottom: '24px', minWidth: 0 },
-        chartHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: 'var(--space-3)', flexWrap: 'wrap' },
-        chartTitle: { fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0 },
-
-        col: {},
-
-        miniTableWrap: { marginTop: '24px', maxHeight: '400px', overflow: 'auto', WebkitOverflowScrolling: 'touch' },
-        miniTable: { width: '100%', minWidth: '680px', borderCollapse: 'collapse' },
-        miniTh: { textAlign: 'left', padding: '12px 16px', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 850, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' },
-        miniTd: { padding: '14px 16px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, color: 'var(--tx-main)' },
-
-        goalInput: {
-            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px',
-            padding: '4px 8px', minHeight: '36px', fontSize: '13px', fontWeight: 800, width: '64px', color: 'var(--primary)',
-            textAlign: 'center', marginLeft: '8px', boxSizing: 'border-box'
-        }
-    };
-
     if (loading) return (
         <div className="gf-page gf-page-wide" style={{ textAlign: 'center', paddingBlock: '120px' }}>
             <span className="material-icons-round gf-spin" style={{ fontSize: '48px', color: 'var(--primary)' }}>sync</span>
@@ -284,54 +252,54 @@ function AnalyticsContent() {
     const classification = cgpa >= 7.75 ? 'First Class Distinction' : cgpa >= 6.75 ? 'First Class' : cgpa >= 5.0 ? 'Pass' : 'Failed';
 
     return (
-        <div className="gf-page gf-page-wide gf-fade-up">
-            <header style={s.header}>
-                <span style={s.label}>{userType === 'faculty' ? 'Institutional Intelligence' : 'Personal Academic Matrix'}</span>
-                <h1 style={s.title}>Performance Analytics</h1>
-                <p style={s.subtitle}>
-                    {userType === 'faculty'
-                        ? 'High-level institutional monitoring, faculty engagement patterns, and resource allocation insights.'
-                        : `Advanced trend analysis for ${studentName}. Track your trajectory and achieve your academic goals.`}
-                </p>
+        <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
+            <header className={styles.sectionHeader} style={{ marginBottom: 'var(--space-8)' }}>
+                <div>
+                    <span className={styles.eyebrow}>{userType === 'faculty' ? 'Institutional Intelligence' : 'Personal Academic Matrix'}</span>
+                    <h1 className={styles.title}>Performance Analytics</h1>
+                    <p className={styles.subtitle}>
+                        {userType === 'faculty'
+                            ? 'High-level institutional monitoring, faculty engagement patterns, and resource allocation insights.'
+                            : `Advanced trend analysis for ${studentName}. Track your trajectory and achieve your academic goals.`}
+                    </p>
+                </div>
             </header>
 
             {userType === 'student' && (
                 <>
                     {/* Summary Matrix */}
-                    <ResponsiveGrid size="md" style={{ marginBottom: 'var(--space-8)' }}>
-                        <div style={{ ...s.card, background: 'var(--primary)', border: 'none', position: 'relative', overflow: 'hidden' }}>
-                            <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)', pointerEvents: 'none' }} />
-
-                            <div style={{ ...s.cardLabel, color: 'var(--bg)', opacity: 0.8, position: 'relative' }}>Current CGPA</div>
-                            <div style={{ ...s.cardVal, color: 'var(--bg)', position: 'relative' }}>{cgpa > 0 ? cgpa.toFixed(2) : '0.00'}</div>
-                            <div style={{ ...s.cardSub, color: 'var(--bg)', opacity: 0.9, position: 'relative' }}>
-                                <span className="material-icons-round" style={{ fontSize: '14px' }}>stars</span>
+                    <ResponsiveGrid size="sm" className={styles.statsGrid} style={{ marginBottom: 'var(--space-8)' }}>
+                        <div className={styles.statCard} style={{ background: 'var(--primary)', color: 'white', border: 'none' }}>
+                            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.7)' }}>Current CGPA</div>
+                            <div className={styles.statValue} style={{ color: 'white' }}>{cgpa > 0 ? cgpa.toFixed(2) : '0.00'}</div>
+                            <div className={styles.meta} style={{ color: 'rgba(255,255,255,0.9)' }}>
+                                <span className="material-icons-round" style={{ fontSize: '14px', marginRight: '4px', verticalAlign: 'middle' }}>stars</span>
                                 {classification}
                             </div>
                         </div>
-                        <div style={s.card}>
-                            <div style={s.cardLabel}>Average %</div>
-                            <div style={s.cardVal}>{percentage > 0 ? `${percentage.toFixed(1)}%` : '—'}</div>
-                            <div style={s.cardSub}>VTU Equivalence</div>
+                        <div className={styles.statCard}>
+                            <div className={styles.statLabel}>Average %</div>
+                            <div className={styles.statValue}>{percentage > 0 ? `${percentage.toFixed(1)}%` : '—'}</div>
+                            <div className={styles.meta}>VTU Equivalence</div>
                         </div>
-                        <div style={s.card}>
-                            <div style={s.cardLabel}>Academic Standing</div>
-                            <div style={{ ...s.cardVal, color: cgpa >= 8.5 ? '#16A34A' : cgpa >= 7.5 ? 'var(--primary)' : 'var(--tx-main)' }}>
+                        <div className={styles.statCard}>
+                            <div className={styles.statLabel}>Academic Standing</div>
+                            <div className={`${styles.statValue} ${cgpa >= 8.5 ? styles.successText : cgpa >= 7.5 ? '' : ''}`}>
                                 {cgpa >= 9 ? 'S' : cgpa >= 8 ? 'A+' : cgpa >= 7 ? 'A' : cgpa >= 6 ? 'B+' : 'C'}
                             </div>
-                            <div style={s.cardSub}>Rank Percentile</div>
+                            <div className={styles.meta}>Rank Percentile</div>
                         </div>
-                        <div style={s.card}>
-                            <div style={s.cardLabel}>Backlogs</div>
-                            <div style={{ ...s.cardVal, color: backlogCount > 0 ? '#DC2626' : '#16A34A' }}>{backlogCount}</div>
-                            <div style={s.cardSub}>{backlogCount === 0 ? 'Consistent Standing' : 'Needs attention'}</div>
+                        <div className={styles.statCard}>
+                            <div className={styles.statLabel}>Backlogs</div>
+                            <div className={`${styles.statValue} ${backlogCount > 0 ? styles.dangerText : styles.successText}`}>{backlogCount}</div>
+                            <div className={styles.meta}>{backlogCount === 0 ? 'Consistent Standing' : 'Needs attention'}</div>
                         </div>
                     </ResponsiveGrid>
 
                     {/* Year-Back Risk Assessment */}
                     {yearBackRisk.hasRisk && (
-                        <div style={{ ...s.chartCard, borderLeft: `4px solid ${yearBackRisk.level === 'CRITICAL' ? '#DC2626' : yearBackRisk.level === 'HIGH' ? '#D97706' : '#2563EB'}`, marginBottom: '24px' }}>
-                            <div style={s.chartTitle}>
+                        <div className={styles.section} style={{ borderLeft: `4px solid ${yearBackRisk.level === 'CRITICAL' ? '#DC2626' : yearBackRisk.level === 'HIGH' ? '#D97706' : '#2563EB'}`, marginBottom: '24px' }}>
+                            <div className={styles.sectionTitle}>
                                 <span className="material-icons-round" style={{ color: yearBackRisk.level === 'CRITICAL' ? '#DC2626' : '#D97706' }}>warning</span>
                                 Year-Back Risk Analysis
                                 <span style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: 900, padding: '4px 12px', borderRadius: '8px', background: yearBackRisk.level === 'CRITICAL' ? '#FEF2F2' : yearBackRisk.level === 'HIGH' ? '#FFFBEB' : '#EFF6FF', color: yearBackRisk.level === 'CRITICAL' ? '#DC2626' : yearBackRisk.level === 'HIGH' ? '#D97706' : '#2563EB' }}>
@@ -340,11 +308,11 @@ function AnalyticsContent() {
                             </div>
                             <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--tx-muted)', marginBottom: '8px' }}>
-                                    Total Active Backlogs: <strong style={{ color: 'var(--red)' }}>{yearBackRisk.totalActiveBacklogs}</strong>
+                                    Total Active Backlogs: <strong className={styles.dangerText}>{yearBackRisk.totalActiveBacklogs}</strong>
                                 </div>
                                 {yearBackRisk.risks.map((risk, i) => (
-                                    <div key={i} style={{ padding: '12px 16px', background: risk.severity === 'HIGH' ? 'var(--red-bg)' : 'var(--surface)', borderRadius: '8px', border: `1px solid ${risk.severity === 'HIGH' ? 'var(--red)' : 'var(--border)'}` }}>
-                                        <div style={{ fontSize: '12px', fontWeight: 700, color: risk.severity === 'HIGH' ? 'var(--red)' : 'var(--tx-main)' }}>{risk.message}</div>
+                                    <div key={i} className={`${styles.notice} ${risk.severity === 'HIGH' ? styles.noticeError : styles.noticeInfo}`}>
+                                        {risk.message}
                                     </div>
                                 ))}
                             </div>
@@ -353,9 +321,9 @@ function AnalyticsContent() {
 
                     <Stack size="md">
                         {/* SGPA Trends Line Chart */}
-                        <div style={s.chartCard}>
-                            <div style={s.chartHeader}>
-                                <div style={s.chartTitle}>
+                        <div className={styles.section}>
+                            <div className={styles.sectionHeader}>
+                                <div className={styles.sectionTitle}>
                                     <span className="material-icons-round" style={{ color: 'var(--primary)' }}>show_chart</span>
                                     Semester SGPA Progression Trajectory
                                 </div>
@@ -389,9 +357,9 @@ function AnalyticsContent() {
 
                     <Stack size="md">
                         {/* Semester-wise SGPA Bar Histogram */}
-                        <div style={s.chartCard}>
-                            <div style={s.chartHeader}>
-                                <div style={s.chartTitle}>
+                        <div className={styles.section}>
+                            <div className={styles.sectionHeader}>
+                                <div className={styles.sectionTitle}>
                                     <span className="material-icons-round" style={{ color: 'var(--primary)' }}>bar_chart</span>
                                     Semester-wise SGPA Histogram
                                 </div>
@@ -440,8 +408,8 @@ function AnalyticsContent() {
                         </div>
 
                         {/* Top Performers */}
-                        <div style={s.chartCard}>
-                            <div style={s.chartTitle}>Highest Achievements</div>
+                        <div className={styles.section}>
+                            <div className={styles.sectionTitle}>Highest Achievements</div>
                             <div style={{ marginTop: '20px' }}>
                                 {topSubjects.map((sub, i) => (
                                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
@@ -463,53 +431,53 @@ function AnalyticsContent() {
             {userType === 'faculty' && (
                 <>
                     {/* Faculty Usage Matrix */}
-                    <ResponsiveGrid size="md" style={{ marginBottom: 'var(--space-8)' }}>
-                        <div style={{ ...s.card, background: 'var(--primary)', color: '#fff', border: 'none' }}>
-                            <div style={{ ...s.cardLabel, color: 'rgba(255,255,255,0.6)' }}>Institutional Lookups</div>
-                            <div style={{ ...s.cardVal, color: '#fff' }}>{facultyActivity.length}</div>
-                            <div style={{ ...s.cardSub, color: 'rgba(255,255,255,0.7)' }}>Total Queries Run</div>
+                    <ResponsiveGrid size="sm" className={styles.statsGrid} style={{ marginBottom: 'var(--space-8)' }}>
+                        <div className={styles.statCard} style={{ background: 'var(--primary)', color: '#fff', border: 'none' }}>
+                            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.6)' }}>Institutional Lookups</div>
+                            <div className={styles.statValue} style={{ color: '#fff' }}>{facultyActivity.length}</div>
+                            <div className={styles.meta} style={{ color: 'rgba(255,255,255,0.7)' }}>Total Queries Run</div>
                         </div>
-                        <div style={s.card}>
-                            <div style={s.cardLabel}>Success Rate</div>
-                            <div style={s.cardVal}>
+                        <div className={styles.statCard}>
+                            <div className={styles.statLabel}>Success Rate</div>
+                            <div className={styles.statValue}>
                                 {facultyActivity.length > 0
                                     ? ((facultyActivity.filter(a => a.sync_status === 'SUCCESS').length / facultyActivity.length) * 100).toFixed(0) + '%' : '—'}
                             </div>
-                            <div style={s.cardSub}>Portal Reliability</div>
+                            <div className={styles.meta}>Portal Reliability</div>
                         </div>
-                        <div style={s.card}>
-                            <div style={s.cardLabel}>Active Evaluators</div>
-                            <div style={s.cardVal}>{new Set(facultyActivity.map(l => l.faculty_name)).size}</div>
-                            <div style={s.cardSub}>Unique Faculty ID</div>
+                        <div className={styles.statCard}>
+                            <div className={styles.statLabel}>Active Evaluators</div>
+                            <div className={styles.statValue}>{new Set(facultyActivity.map(l => l.faculty_name)).size}</div>
+                            <div className={styles.meta}>Unique Faculty ID</div>
                         </div>
-                        <div style={s.card}>
-                            <div style={s.cardLabel}>Global USNs</div>
-                            <div style={s.cardVal}>{new Set(facultyActivity.map(l => l.target_usn)).size}</div>
-                            <div style={s.cardSub}>Student Coverage</div>
+                        <div className={styles.statCard}>
+                            <div className={styles.statLabel}>Global USNs</div>
+                            <div className={styles.statValue}>{new Set(facultyActivity.map(l => l.target_usn)).size}</div>
+                            <div className={styles.meta}>Student Coverage</div>
                         </div>
                     </ResponsiveGrid>
 
                     <Stack size="md">
-                        <div style={s.chartCard}>
-                            <div style={s.chartTitle}>Recent Audit Log</div>
-                            <div style={s.miniTableWrap}>
-                                <table style={s.miniTable}>
+                        <div className={styles.section}>
+                            <div className={styles.sectionTitle}>Recent Audit Log</div>
+                            <div className={styles.tableWrap}>
+                                <table className={styles.table}>
                                     <thead>
-                                        <tr>{['Evaluator', 'Target USN', 'Status', 'Timestamp'].map(h => <th key={h} style={s.miniTh}>{h}</th>)}</tr>
+                                        <tr>{['Evaluator', 'Target USN', 'Status', 'Timestamp'].map(h => <th key={h} scope="col">{h}</th>)}</tr>
                                     </thead>
                                     <tbody>
                                         {facultyActivity.map((log, i) => (
                                             <tr key={i}>
-                                                <td style={s.miniTd}>{log.faculty_name}</td>
-                                                <td style={{ ...s.miniTd, fontFamily: 'monospace' }}>{log.target_usn}</td>
-                                                <td style={s.miniTd}>
+                                                <td>{log.faculty_name}</td>
+                                                <td className={styles.code}>{log.target_usn}</td>
+                                                <td>
                                                     <span style={{
                                                         fontSize: '9px', fontWeight: 900, padding: '2px 8px', borderRadius: '4px',
                                                         background: log.sync_status === 'SUCCESS' ? 'var(--green-bg)' : 'var(--red-bg)',
                                                         color: log.sync_status === 'SUCCESS' ? 'var(--green)' : 'var(--red)'
                                                     }}>{log.sync_status}</span>
                                                 </td>
-                                                <td style={{ ...s.miniTd, fontSize: '11px', color: 'var(--tx-dim)' }}>{new Date(log.created_at).toLocaleString()}</td>
+                                                <td className={styles.nowrap}>{new Date(log.created_at).toLocaleString()}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -517,8 +485,8 @@ function AnalyticsContent() {
                             </div>
                         </div>
 
-                        <div style={s.chartCard}>
-                            <div style={s.chartTitle}>Resource Utilization</div>
+                        <div className={styles.section}>
+                            <div className={styles.sectionTitle}>Resource Utilization</div>
                             <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>
                                 <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '16px' }}>insights</span>
                                 <p>Cluster analytics will manifest as more data arrives.</p>
@@ -527,8 +495,8 @@ function AnalyticsContent() {
                     </Stack>
 
                     {/* Faculty-Subject Wise Pass Percentage */}
-                    <div style={s.chartCard}>
-                        <div style={s.chartTitle}>
+                    <div className={styles.section}>
+                        <div className={styles.sectionTitle}>
                             <span className="material-icons-round" style={{ color: 'var(--primary)' }}>assessment</span>
                             Faculty-Subject Wise Pass Percentage
                         </div>

@@ -112,6 +112,14 @@ export async function POST(req) {
                 .map(u => ({ usn: u, name: u }));
         }
 
+        const isValidUsnFormat = (str) => {
+            if (!str || str.length < 7 || str.length > 12) return false;
+            const val = str.toUpperCase();
+            return /[A-Z]/.test(val) && /[0-9]/.test(val);
+        };
+
+        parsedStudents = parsedStudents.filter(s => isValidUsnFormat(s.usn));
+
         if (parsedStudents.length === 0) {
             return NextResponse.json({ error: 'No valid USN or student data provided.' }, { status: 400 });
         }

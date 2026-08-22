@@ -5,7 +5,13 @@ import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
-import { exportClassReportPDF, exportClassReportCSV } from '../lib/export-utils';
+import { createClient } from '@supabase/supabase-js';
+import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF } from '../lib/export-utils';
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
@@ -107,6 +113,10 @@ export function ClassesContent({ embedded = false }) {
     const [drawerTab, setDrawerTab] = useState('marks');
     const [branches, setBranches] = useState([]);
     const [schemes] = useState(['2022', '2025']);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportType, setExportType] = useState('consolidated');
+    const [facultyMap, setFacultyMap] = useState({});
+    const [classSubjects, setClassSubjects] = useState([]);
     const fileRef = useRef(null);
 
     useEffect(() => {
@@ -117,6 +127,74 @@ export function ClassesContent({ embedded = false }) {
         const data = await apiRequest('/api/system/meta').catch(() => null);
         if (data?.branches) setBranches(data.branches);
         if (data?.faculty) setFacultyList(data.faculty);
+    };
+
+    const openPdfExportModal = async () => {
+        if (!selectedClass) return;
+        setMsg('');
+        setShowExportModal(true);
+
+        const parsedSem = Number(selectedClass.semester) || 4;
+        const usnList = students.map(s => s.usn);
+
+        try {
+            const saved = localStorage.getItem(`gf_faculty_map_${selectedClass.id}`);
+            if (saved) setFacultyMap(JSON.parse(saved));
+        } catch (e) {}
+
+        if (usnList.length > 0) {
+            try {
+                const { data: marksData } = await supabase
+                    .from('subject_marks')
+                    .select('*')
+                    .in('usn', usnList)
+                    .eq('semester', parsedSem);
+                if (marksData) setAllMarks(marksData);
+
+                const { data: catData } = await supabase
+                    .from('subject_catalog')
+                    .select('id, subject_code, subject_name, credits')
+                    .eq('scheme', selectedClass.scheme || '2022')
+                    .eq('branch', selectedClass.branch || 'CS')
+                    .eq('semester', parsedSem);
+
+                if (catData && catData.length > 0) {
+                    const formatted = catData.map(c => ({ id: c.id, code: c.subject_code, name: c.subject_name, credits: c.credits }));
+                    setClassSubjects(formatted);
+                } else if (marksData && marksData.length > 0) {
+                    const codes = Array.from(new Set(marksData.map(m => m.subject_code)));
+                    setClassSubjects(codes.map(c => ({ code: c, name: c })));
+                }
+            } catch (e) {
+                console.error('Failed to load export data:', e);
+            }
+        }
+    };
+
+    const handleGeneratePdf = () => {
+        try {
+            localStorage.setItem(`gf_faculty_map_${selectedClass.id}`, JSON.stringify(facultyMap));
+        } catch (e) {}
+
+        if (exportType === 'consolidated') {
+            exportConsolidatedReportPDF({
+                selectedClass,
+                students,
+                allMarks,
+                subjects: classSubjects,
+                facultyMap,
+                institutionInfo: {
+                    collegeName: 'Anjuman Institute of Technology and Management',
+                    department: `Department of ${selectedClass.branch || 'CSE'}`,
+                    batch: `Sem ${selectedClass.semester || 4} - ${selectedClass.name}`,
+                    ay: 'AY -2025-26 (EVEN Semester)'
+                },
+                fileName: `${(selectedClass.name || 'Class').replace(/\s+/g, '_')}_Consolidated_Report.pdf`
+            });
+        } else {
+            exportClassReportPDF({ selectedClass, students, subjectToppers });
+        }
+        setShowExportModal(false);
     };
 
     useEffect(() => {
@@ -276,19 +354,55 @@ export function ClassesContent({ embedded = false }) {
                 if (lines.length === 0) { setMsg('CSV file is empty.'); setFileLoading(false); return; }
 
                 const parsed = [];
+                const headers = lines[0].split(',').map(c => c.trim().replace(/^"|"$/g, '').toLowerCase());
+
+                let usnIdx = -1;
+                let nameIdx = -1;
+                let semIdx = -1;
+                let branchIdx = -1;
+
+                headers.forEach((h, idx) => {
+                    if (h === 'usn' || h.includes('usn')) usnIdx = idx;
+                    else if (h.includes('name') || h.includes('student')) nameIdx = idx;
+                    else if (h.includes('sem')) semIdx = idx;
+                    else if (h.includes('branch')) branchIdx = idx;
+                });
+
                 let startIdx = 0;
-                const firstLine = lines[0].toLowerCase();
-                const hasHeader = firstLine.includes('usn') || firstLine.includes('name');
-                if (hasHeader) startIdx = 1;
+                if (usnIdx !== -1) {
+                    startIdx = 1;
+                } else {
+                    usnIdx = 0;
+                    nameIdx = 1;
+                    semIdx = 2;
+                    branchIdx = 3;
+                    startIdx = 0;
+                }
+
+                const isValidUsnFormat = (str) => {
+                    if (!str || str.length < 7 || str.length > 12) return false;
+                    const val = str.toUpperCase();
+                    return /[A-Z]/.test(val) && /[0-9]/.test(val);
+                };
 
                 for (let i = startIdx; i < lines.length; i++) {
                     const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-                    if (cols.length > 0 && cols[0]) {
-                        const usn = cols[0].toUpperCase();
-                        const name = cols[1] || usn;
-                        const semester = cols[2] ? parseInt(cols[2]) : null;
-                        const branch = cols[3] || null;
-                        if (usn) parsed.push({ usn, name, semester, branch });
+                    if (cols.length > usnIdx && cols[usnIdx]) {
+                        const usn = cols[usnIdx].toUpperCase();
+                        if (usn === 'USN') continue;
+                        if (!isValidUsnFormat(usn)) continue;
+
+                        const rawName = nameIdx !== -1 && cols[nameIdx] ? cols[nameIdx] : usn;
+                        const name = rawName && !isValidUsnFormat(rawName) ? rawName : usn;
+                        const semester = semIdx !== -1 && cols[semIdx] ? parseInt(cols[semIdx]) : null;
+                        const branch = branchIdx !== -1 && cols[branchIdx] ? cols[branchIdx] : null;
+
+                        parsed.push({
+                            usn,
+                            name: name || usn,
+                            semester: isNaN(semester) ? null : semester,
+                            branch
+                        });
                     }
                 }
 
@@ -414,7 +528,7 @@ export function ClassesContent({ embedded = false }) {
                 <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                     <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportPDF({ selectedClass, students, subjectToppers })}>
+                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={openPdfExportModal}>
                             <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
                         </button>
                         <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
@@ -605,6 +719,80 @@ export function ClassesContent({ embedded = false }) {
                             <button style={btn('ghost')} onClick={() => { setShowAddModal(false); setCsvPreview([]); }}>Cancel</button>
                             <button style={btn('primary')} onClick={addStudent}>
                                 {addTab === 'csv' ? `Import ${csvPreview.length} Students` : 'Add Students'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* PDF Export Modal (Portal Rendered) */}
+            {mounted && showExportModal && selectedClass && createPortal(
+                <div style={S.modal} onClick={() => setShowExportModal(false)}>
+                    <div style={S.mbox('680px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Export PDF Report — {selectedClass.name}</h3>
+                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Configure report options and assign faculty names for subjects before downloading.</p>
+                            </div>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }} onClick={() => setShowExportModal(false)}>
+                                <span className="material-icons-round">close</span>
+                            </button>
+                        </div>
+
+                        {/* Format Selection Tab */}
+                        <div style={{ display: 'flex', gap: '8px', background: 'var(--surface-low)', padding: '4px', borderRadius: '8px', marginBottom: '16px' }}>
+                            <button
+                                style={{ flex: 1, padding: '10px 14px', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', background: exportType === 'consolidated' ? 'var(--surface)' : 'transparent', color: exportType === 'consolidated' ? 'var(--primary)' : 'var(--tx-muted)', boxShadow: exportType === 'consolidated' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
+                                onClick={() => setExportType('consolidated')}
+                            >
+                                📄 Institutional Consolidated Report (5-Page PDF)
+                            </button>
+                            <button
+                                style={{ flex: 1, padding: '10px 14px', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', background: exportType === 'roster' ? 'var(--surface)' : 'transparent', color: exportType === 'roster' ? 'var(--primary)' : 'var(--tx-muted)', boxShadow: exportType === 'roster' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
+                                onClick={() => setExportType('roster')}
+                            >
+                                📋 Standard Student Roster PDF
+                            </button>
+                        </div>
+
+                        {exportType === 'consolidated' && (
+                            <div>
+                                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Assign Faculty Names for Subjects (Sem {selectedClass.semester})
+                                </div>
+                                <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px' }}>
+                                    {classSubjects.length > 0 ? (
+                                        classSubjects.map((sub) => (
+                                            <div key={sub.code} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 4px', borderBottom: '1px solid var(--border)' }}>
+                                                <div style={{ width: '100px', fontWeight: 800, fontSize: '12px', fontFamily: 'monospace', color: 'var(--primary)' }}>
+                                                    {sub.code}
+                                                </div>
+                                                <div style={{ flex: 1, fontSize: '12px', color: 'var(--tx-main)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {sub.name}
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Faculty Name (e.g. Mrs. Madhura)"
+                                                    value={facultyMap[sub.code] || ''}
+                                                    onChange={(e) => setFacultyMap({ ...facultyMap, [sub.code]: e.target.value })}
+                                                    style={{ ...S.input, width: '220px', padding: '6px 10px', fontSize: '12px' }}
+                                                />
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div style={{ padding: '16px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '12px' }}>
+                                            Loading class subjects...
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowExportModal(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={handleGeneratePdf}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>picture_as_pdf</span>Generate & Download PDF
                             </button>
                         </div>
                     </div>

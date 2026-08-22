@@ -16,10 +16,28 @@ import sys
 import os
 import json
 import time
+import concurrent.futures
 
 # Ensure Python can find the 'scraper' package
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scraper.engine import scrape_all_semesters  # type: ignore
+
+
+def _scrape_worker(usn: str) -> dict:
+    try:
+        found = scrape_all_semesters(usn)
+        return {
+            "usn": usn,
+            "status": "SUCCESS" if found else "NO DATA",
+            "time": time.strftime("%H:%M:%S")
+        }
+    except Exception as exc:
+        print(f"[ERROR] Unexpected failure for {usn}: {exc}", file=sys.stderr)
+        return {
+            "usn": usn,
+            "status": "ERROR",
+            "time": time.strftime("%H:%M:%S")
+        }
 
 
 def scrape_one(usn: str) -> None:
@@ -42,6 +60,18 @@ def main() -> None:
     parser.add_argument(
         "-f", "--file", dest="filename",
         help="Path to a text file containing USNs, one per line."
+    )
+    parser.add_argument(
+        "-w", "--workers", dest="workers", type=int, default=3,
+        help="Number of parallel worker threads to speed up scraping (default: 3)."
+    )
+    parser.add_argument(
+        "--skip-existing", dest="skip_existing", action="store_true", default=True,
+        help="Skip USNs already saved in Supabase (default: True)."
+    )
+    parser.add_argument(
+        "--force", dest="force", action="store_true",
+        help="Force re-scraping all USNs even if already saved in Supabase."
     )
     args = parser.parse_args()
 
@@ -92,28 +122,48 @@ def main() -> None:
         print("[ERROR] No valid USNs found to scrape.", file=sys.stderr)
         sys.exit(1)
 
+    existing_usns = set()
+    if not args.force:
+        try:
+            from scraper.config import supabase
+            resp = supabase.table("students").select("usn").execute()
+            if resp.data:
+                existing_usns = {r["usn"].upper() for r in resp.data if r.get("usn")}
+            print(f"[INFO] Found {len(existing_usns)} existing student records in Supabase.", file=sys.stderr)
+        except Exception as err:
+            print(f"[WARNING] Could not fetch existing student USNs from Supabase: {err}", file=sys.stderr)
+
     results_summary = []
+    to_scrape = []
     
     for i, usn in enumerate(usn_list):
-        try:
-            print(f"\n[{i+1}/{len(usn_list)}] Processing {usn}...", file=sys.stderr)
-            found = scrape_all_semesters(usn)
+        if not args.force and usn in existing_usns:
+            print(f"[{i+1}/{len(usn_list)}] Skipping {usn} (Already exists in Supabase)", file=sys.stderr)
             results_summary.append({
                 "usn": usn,
-                "status": "SUCCESS" if found else "NO DATA",
+                "status": "SKIPPED",
                 "time": time.strftime("%H:%M:%S")
             })
-        except Exception as exc:
-            print(f"[ERROR] Unexpected failure for {usn}: {exc}", file=sys.stderr)
-            results_summary.append({
-                "usn": usn,
-                "status": "ERROR",
-                "time": time.strftime("%H:%M:%S")
-            })
+        else:
+            to_scrape.append(usn)
+
+    if to_scrape:
+        workers = max(1, args.workers)
+        print(f"\n[INFO] Scraping {len(to_scrape)} USNs using {workers} parallel worker(s)...\n", file=sys.stderr)
         
-        # Polite delay
-        if i < len(usn_list) - 1:
-            time.sleep(2)
+        if workers == 1:
+            for i, usn in enumerate(to_scrape):
+                print(f"[{i+1}/{len(to_scrape)}] Processing {usn}...", file=sys.stderr)
+                res = _scrape_worker(usn)
+                results_summary.append(res)
+                if i < len(to_scrape) - 1:
+                    time.sleep(1)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                future_to_usn = {executor.submit(_scrape_worker, usn): usn for usn in to_scrape}
+                for future in concurrent.futures.as_completed(future_to_usn):
+                    res = future.result()
+                    results_summary.append(res)
 
     # Final Summary Table
     print("\n\n" + "="*50)
@@ -126,6 +176,7 @@ def main() -> None:
     print("="*50)
     print(f"\nTotal Students: {len(results_summary)}")
     print(f"Successes: {sum(1 for r in results_summary if r['status'] == 'SUCCESS')}")
+    print(f"Skipped:   {sum(1 for r in results_summary if r['status'] == 'SKIPPED')}")
     print("="*50)
 
 
