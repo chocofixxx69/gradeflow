@@ -50,7 +50,7 @@ export default function LandingPage() {
                 </h1>
 
                 <p className={styles.heroSubtitle}>
-                    GradeFlow calculates your SGPA and CGPA semester by semester, surfaces every pending backlog in real time, and turns VTU raw marks into actionable intelligence. Built specifically for VTU engineering students and faculty.
+                    GradeFlow calculates your SGPA and CGPA with official VTU formulas, tracks backlogs, parses marksheet PDFs, and auto-fetches results directly from VTU portals. Built for VTU students and faculty.
                 </p>
 
                 <div className={styles.heroCtaGroup}>
@@ -89,29 +89,29 @@ export default function LandingPage() {
                         <div className={styles.pillarIconWrap}>
                             <span className="material-icons-round">calculate</span>
                         </div>
-                        <h3 className={styles.pillarTitle}>Live SGPA & CGPA Engine</h3>
+                        <h3 className={styles.pillarTitle}>VTU 2022 & 2025 NEP Logic</h3>
                         <p className={styles.pillarDesc}>
-                            Official VTU credit formulas for 2022 NEP, 2021, and 2018 schemes. Automatic weighted credit point calculations with zero manual math.
+                            Accurate SGPA/CGPA with official weighted credit points, external passing thresholds, and percentage formula ((CGPA - 0.75) × 10).
                         </p>
                     </div>
 
                     <div className={styles.pillarCard}>
                         <div className={styles.pillarIconWrap}>
-                            <span className="material-icons-round">gpp_maybe</span>
+                            <span className="material-icons-round">fact_check</span>
                         </div>
-                        <h3 className={styles.pillarTitle}>Zero-Backlog Assurance</h3>
+                        <h3 className={styles.pillarTitle}>Automated Backlog Tracking</h3>
                         <p className={styles.pillarDesc}>
-                            Every failed (F), absent (A), or uncredited subject is audited across all semesters before registration cycles catch you off guard.
+                            Instantly flags failed (F) and absent (A) subjects across all semesters, with deduplication that prioritizes your best passing attempt.
                         </p>
                     </div>
 
                     <div className={styles.pillarCard}>
                         <div className={styles.pillarIconWrap}>
-                            <span className="material-icons-round">insights</span>
+                            <span className="material-icons-round">cloud_sync</span>
                         </div>
-                        <h3 className={styles.pillarTitle}>Institutional Analytics</h3>
+                        <h3 className={styles.pillarTitle}>Real-Time VTU Scraper</h3>
                         <p className={styles.pillarDesc}>
-                            Class-wide counselor dashboards, section SGPA averages, and fast VTU marksheet PDF parsing for streamlined department reviews.
+                            Direct result lookup from official VTU result portals with automated extraction, job queues, and real-time database sync.
                         </p>
                     </div>
                 </div>
@@ -122,9 +122,9 @@ export default function LandingPage() {
                 <div className={styles.sectionInner}>
                     <div className={styles.sectionHeader}>
                         <span className={styles.sectionEyebrow}>CHOOSE YOUR WORKSPACE</span>
-                        <h2 className={styles.sectionTitle}>Two Portals. One Intelligent Engine.</h2>
+                        <h2 className={styles.sectionTitle}>Two Portals. One Unified Platform.</h2>
                         <p className={styles.sectionSubtitle}>
-                            Dedicated environments designed specifically for student progress tracking and institutional faculty administration.
+                            Dedicated environments built specifically for student academic tracking and institutional faculty administration.
                         </p>
                     </div>
 
@@ -140,25 +140,25 @@ export default function LandingPage() {
                                 </div>
                                 <h3 className={styles.portalCardTitle}>Student Academic Hub</h3>
                                 <p className={styles.portalCardDesc}>
-                                    Sign in with your official USN to access your complete semester scorecard, track cumulative CGPA, and project target grades.
+                                    Sign in with your USN to access your complete semester scorecard, track cumulative CGPA, and analyze your subject performance.
                                 </p>
 
                                 <ul className={styles.portalFeatureList}>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Instant SGPA & CGPA calculation per semester
+                                        Official VTU 2022/2025 NEP SGPA & CGPA logic
                                     </li>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Real-time backlog & arrears alert radar
+                                        Backlog status and attempt history tracking
                                     </li>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Upload & parse VTU result PDF marksheets
+                                        Upload & parse VTU provisional result PDFs
                                     </li>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        One-click export to PDF, Excel, and Sheets
+                                        Export grade card to PDF and Excel (.xlsx)
                                     </li>
                                 </ul>
                             </div>
@@ -185,27 +185,27 @@ export default function LandingPage() {
                                         <span className="material-icons-round">groups</span>
                                     </div>
                                 </div>
-                                <h3 className={styles.portalCardTitle}>Faculty & Staff Suite</h3>
+                                <h3 className={styles.portalCardTitle}>Faculty Command Center</h3>
                                 <p className={styles.portalCardDesc}>
-                                    Institutional management for professors, proctors, and HODs to monitor batch performance, analyze distributions, and export NAAC reports.
+                                    Institutional portal for instructors, proctors, and HODs to look up USNs, view class analytics, and manage student groups.
                                 </p>
 
                                 <ul className={styles.portalFeatureList}>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Section-wide SGPA and pass percentage metrics
+                                        Deep-link student USN lookup & result fetching
                                     </li>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Subject-wise pass/fail & difficulty analysis
+                                        Class-wide average CGPA & backlog counts
                                     </li>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Batch result upload & automated VTU scraping
+                                        Class creation, enrollment & student transfers
                                     </li>
                                     <li className={styles.portalFeatureItem}>
                                         <span className={`material-icons-round ${styles.portalFeatureCheck}`}>check_circle</span>
-                                        Class counseling logs & student audit trails
+                                        Export class results and analytics to Excel
                                     </li>
                                 </ul>
                             </div>
@@ -230,10 +230,10 @@ export default function LandingPage() {
             <section id="features" className={styles.featuresSection}>
                 <div className={styles.sectionInner}>
                     <div className={styles.sectionHeader}>
-                        <span className={styles.sectionEyebrow}>PRECISION CAPABILITIES</span>
-                        <h2 className={styles.sectionTitle}>Everything You Need for Academic Tracking.</h2>
+                        <span className={styles.sectionEyebrow}>SYSTEM CAPABILITIES</span>
+                        <h2 className={styles.sectionTitle}>Built for VTU Academic Tracking</h2>
                         <p className={styles.sectionSubtitle}>
-                            Built to handle the intricacies of VTU grading schemes, credit matrices, and institutional record requirements.
+                            Core tools and automated workflows built directly into the GradeFlow engine.
                         </p>
                     </div>
 
@@ -242,12 +242,12 @@ export default function LandingPage() {
                             <div className={styles.featureHeader}>
                                 <span className={styles.featureNum}>01</span>
                                 <div className={styles.featureIconWrap}>
-                                    <span className="material-icons-round">auto_awesome</span>
+                                    <span className="material-icons-round">calculate</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>VTU Scheme Compliant</h3>
+                            <h3 className={styles.featureTitle}>VTU 2022 & 2025 NEP Engine</h3>
                             <p className={styles.featureText}>
-                                Built-in support for 2022 NEP, 2021, and 2018 credit schemes. Pre-configured grading scales (O, A+, A, B+, B, C, P, F) with precise grade points.
+                                Implements exact VTU grading criteria with minimum external threshold rules (18 marks SEE) and weighted credit point sums.
                             </p>
                         </div>
 
@@ -255,12 +255,12 @@ export default function LandingPage() {
                             <div className={styles.featureHeader}>
                                 <span className={styles.featureNum}>02</span>
                                 <div className={styles.featureIconWrap}>
-                                    <span className="material-icons-round">radar</span>
+                                    <span className="material-icons-round">fact_check</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Smart Backlog Radar</h3>
+                            <h3 className={styles.featureTitle}>Backlog & Attempt Tracking</h3>
                             <p className={styles.featureText}>
-                                Automatically isolates uncleared subjects, tracks re-attempt histories, and shows exact credit deficits before graduation requirements.
+                                Automatically flags failed (F) and absent (A) subjects, deduplicating multiple re-attempts to keep your best passing score.
                             </p>
                         </div>
 
@@ -271,9 +271,9 @@ export default function LandingPage() {
                                     <span className="material-icons-round">picture_as_pdf</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Fast PDF Parsing</h3>
+                            <h3 className={styles.featureTitle}>Python PDF Marksheet Parser</h3>
                             <p className={styles.featureText}>
-                                Drag and drop official VTU provisional result PDFs to populate your marks table instantly without typing a single subject code.
+                                Backend Python bridge extracts subject codes, internals, externals, and grades directly from official VTU marksheet PDFs.
                             </p>
                         </div>
 
@@ -281,12 +281,12 @@ export default function LandingPage() {
                             <div className={styles.featureHeader}>
                                 <span className={styles.featureNum}>04</span>
                                 <div className={styles.featureIconWrap}>
-                                    <span className="material-icons-round">menu_book</span>
+                                    <span className="material-icons-round">cloud_sync</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Branch Curriculum Matrix</h3>
+                            <h3 className={styles.featureTitle}>Real-Time VTU Portal Scraper</h3>
                             <p className={styles.featureText}>
-                                Complete curriculum directories for CSE, ISE, ECE, ME, Civil, and allied engineering streams with syllabus codes and credit distributions.
+                                Connects to live VTU result portals to fetch semester marks directly by USN, with automated captcha resolution and sync.
                             </p>
                         </div>
 
@@ -294,12 +294,12 @@ export default function LandingPage() {
                             <div className={styles.featureHeader}>
                                 <span className={styles.featureNum}>05</span>
                                 <div className={styles.featureIconWrap}>
-                                    <span className="material-icons-round">trending_up</span>
+                                    <span className="material-icons-round">analytics</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Performance Trajectory</h3>
+                            <h3 className={styles.featureTitle}>Faculty Analytics & Class Intel</h3>
                             <p className={styles.featureText}>
-                                Visualize semester-by-semester SGPA trends, cumulative CGPA progression curves, and identify academic velocity over time.
+                                Institutional dashboard for faculty to view class average CGPA, track backlog numbers, and monitor student academic standing.
                             </p>
                         </div>
 
@@ -307,12 +307,12 @@ export default function LandingPage() {
                             <div className={styles.featureHeader}>
                                 <span className={styles.featureNum}>06</span>
                                 <div className={styles.featureIconWrap}>
-                                    <span className="material-icons-round">table_chart</span>
+                                    <span className="material-icons-round">file_download</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Instant Report Export</h3>
+                            <h3 className={styles.featureTitle}>PDF & Excel Export</h3>
                             <p className={styles.featureText}>
-                                Generate beautiful print-ready PDF scorecards, export clean Excel datasets, or sync directly into Google Sheets for institutional filing.
+                                One-click export for students to download formatted PDF grade sheets, and for faculty to export class records to Excel (.xlsx).
                             </p>
                         </div>
                     </div>
@@ -323,9 +323,9 @@ export default function LandingPage() {
             <section className={styles.calcBannerSection}>
                 <div className={styles.calcBanner}>
                     <div className={styles.calcBannerContent}>
-                        <h3 className={styles.calcBannerTitle}>Want a Quick Grade Estimate?</h3>
+                        <h3 className={styles.calcBannerTitle}>Want to Quickly Calculate Your SGPA?</h3>
                         <p className={styles.calcBannerDesc}>
-                            Use our open VTU SGPA & CGPA Calculator to estimate your scores, simulate grade points, or calculate percentage equivalents without logging in.
+                            Use the open VTU SGPA & CGPA calculator to test subjects, enter internal/external marks, and estimate your scores without logging in.
                         </p>
                     </div>
                     <Button
