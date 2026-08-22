@@ -26,9 +26,11 @@ export default function LandingPage() {
                 </nav>
 
                 <div className={styles.navRight}>
-                    <Button as={Link} href="/auth" variant="ghost" size="sm">
-                        Sign In
-                    </Button>
+                    <div className={styles.navBtnGhost}>
+                        <Button as={Link} href="/auth" variant="ghost" size="sm">
+                            Sign In
+                        </Button>
+                    </div>
                     <Button as={Link} href="/auth/student" variant="primary" size="sm" iconEnd="arrow_forward">
                         Student Access
                     </Button>
@@ -39,7 +41,8 @@ export default function LandingPage() {
             <section className={`${styles.hero} gf-fade-up`}>
                 <div className={styles.eyebrowBadge}>
                     <span className={`material-icons-round ${styles.eyebrowIcon}`}>verified</span>
-                    VTU CGPA · SGPA · Academic Intelligence Platform
+                    <span className={styles.eyebrowDesktop}>VTU CGPA · SGPA · Academic Intelligence Platform</span>
+                    <span className={styles.eyebrowMobile}>VTU Academic Intelligence</span>
                 </div>
 
                 <h1 className={styles.heroTitle}>
@@ -57,7 +60,8 @@ export default function LandingPage() {
                         variant="primary"
                         size="lg"
                         iconEnd="arrow_forward"
-                        style={{ padding: '0 28px', height: '48px', fontSize: '15px' }}
+                        className={styles.heroCtaBtn}
+                        style={{ height: '46px', fontSize: '14.5px' }}
                     >
                         Sign in as Student
                     </Button>
@@ -67,15 +71,16 @@ export default function LandingPage() {
                         variant="secondary"
                         size="lg"
                         iconStart="school"
-                        style={{ padding: '0 28px', height: '48px', fontSize: '15px' }}
+                        className={styles.heroCtaBtn}
+                        style={{ height: '46px', fontSize: '14.5px' }}
                     >
                         Faculty Access
                     </Button>
                 </div>
 
                 <Link href="/calculator" className={styles.heroQuickLink}>
-                    <span className="material-icons-round" style={{ fontSize: '16px' }}>calculate</span>
-                    Need a quick calculation? Try Open SGPA Calculator →
+                    <span className="material-icons-round" style={{ fontSize: '16px', flexShrink: 0 }}>calculate</span>
+                    <span>Need a quick calculation? Try Open SGPA Calculator →</span>
                 </Link>
 
                 {/* 3 Spotlight Feature Pillars */}
