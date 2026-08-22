@@ -153,9 +153,6 @@ function StudentDashboardView({
                                     {pdfLoading ? 'Generating...' : 'PDF Transcript'}
                                 </Button>
                             )}
-                            <Button iconStart="upload_file" onClick={() => fileInputRef.current?.click()} density="compact">
-                                Upload PDF
-                            </Button>
                         </div>
                     </div>
 
@@ -439,17 +436,7 @@ function StudentDashboardView({
                         variant="panel"
                         icon="school"
                         title="No Academic Records Yet"
-                        description="Upload your VTU result PDF above or enter marks manually to get started."
-                        actions={(
-                            <div className={styles.profileActions}>
-                                <Button iconStart="upload_file" onClick={() => fileInputRef.current?.click()}>
-                                    Upload Result PDF
-                                </Button>
-                                <Button variant="secondary" iconStart="edit_note" onClick={() => router.push('/calculator')}>
-                                    Manual Entry
-                                </Button>
-                            </div>
-                        )}
+                        description="Your VTU exam marks and results will appear here once announced or scraped."
                     />
                 )}
             </div>
