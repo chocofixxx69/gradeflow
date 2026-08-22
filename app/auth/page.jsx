@@ -7,70 +7,135 @@ import { Card, CardTitle } from '@/components/ui/Card';
 export default function PortalEntry() {
     const s = {
         page: {
-            minHeight: '100vh', background: 'var(--bg)',
-            display: 'flex', flexDirection: 'column',
+            minHeight: '100vh',
+            background: 'var(--bg)',
+            backgroundImage: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(23, 75, 77, 0.08) 0%, rgba(253, 246, 237, 0.5) 50%, transparent 85%)',
+            display: 'flex',
+            flexDirection: 'column',
         },
         nav: {
-            padding: '0 var(--page-px)', height: '72px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0 var(--page-px)',
+            height: '68px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
             borderBottom: '1px solid var(--border)',
+            background: 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 'var(--z-topbar)',
         },
-        logo: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', textDecoration: 'none' },
+        logo: { display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' },
         logoBox: {
-            width: '34px', height: '34px', background: 'var(--primary)',
-            borderRadius: 'var(--radius-3)', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', color: 'var(--bg)', fontWeight: 900, fontSize: '16px',
+            width: '36px',
+            height: '36px',
+            background: 'var(--primary)',
+            borderRadius: 'var(--radius-3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#FFFFFF',
+            fontWeight: 900,
+            fontSize: '17px',
+            boxShadow: '0 2px 6px rgba(23, 75, 77, 0.2)',
         },
-        logoText: { fontWeight: 800, fontSize: '18px', color: 'var(--tx-main)', letterSpacing: '-0.03em' },
+        logoText: { fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.03em', lineHeight: 1.15 },
+        logoBadge: { fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' },
 
         main: {
-            flex: 1, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', padding: 'var(--space-10) var(--page-px)',
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'clamp(36px, 6vw, 64px) var(--page-px)',
         },
         container: { maxWidth: '960px', width: '100%' },
 
         eyebrow: {
-            fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)',
-            textTransform: 'uppercase', letterSpacing: '0.12em',
-            marginBottom: 'var(--space-5)', display: 'block', textAlign: 'center',
+            fontSize: '11px',
+            fontWeight: 800,
+            color: 'var(--primary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            marginBottom: 'var(--space-3)',
+            display: 'block',
+            textAlign: 'center',
         },
         heading: {
-            fontSize: 'clamp(28px, 6vw, 48px)', fontWeight: 900, color: 'var(--tx-main)',
-            letterSpacing: '-0.04em', lineHeight: 1.05,
-            textAlign: 'center', marginBottom: 'var(--space-3)',
+            fontSize: 'clamp(28px, 5vw, 44px)',
+            fontWeight: 900,
+            color: 'var(--tx-main)',
+            letterSpacing: '-0.04em',
+            lineHeight: 1.08,
+            textAlign: 'center',
+            marginBottom: 'var(--space-3)',
         },
         subheading: {
-            fontSize: 'clamp(14px, 2.5vw, 17px)', fontWeight: 500, color: 'var(--tx-muted)',
-            textAlign: 'center', marginBottom: 'var(--space-8)', lineHeight: 1.6,
+            fontSize: 'clamp(14px, 2vw, 17px)',
+            fontWeight: 500,
+            color: 'var(--tx-muted)',
+            textAlign: 'center',
+            marginBottom: 'clamp(32px, 5vw, 48px)',
+            lineHeight: 1.6,
+            maxWidth: '560px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
         },
         cardTag: {
-            fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)',
-            textTransform: 'uppercase', letterSpacing: '0.1em',
-            marginBottom: 'var(--space-4)', display: 'block',
+            fontSize: '11px',
+            fontWeight: 800,
+            color: 'var(--primary)',
+            background: 'var(--surface-low)',
+            padding: '4px 12px',
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid var(--border)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            marginBottom: 'var(--space-4)',
+            display: 'inline-block',
+            alignSelf: 'flex-start',
         },
         cardDesc: {
-            fontSize: '14px', fontWeight: 500, color: 'var(--tx-muted)',
-            lineHeight: 1.6, marginBottom: 'var(--space-6)',
+            fontSize: '14px',
+            fontWeight: 500,
+            color: 'var(--tx-muted)',
+            lineHeight: 1.65,
+            marginBottom: 'var(--space-6)',
         },
         divider: { height: '1px', background: 'var(--border)', margin: 'var(--space-6) 0' },
-        footer: {
-            padding: 'var(--space-6) var(--page-px)',
-            textAlign: 'center',
-            borderTop: '1px solid var(--border)',
-        },
-        footerText: { fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 500 },
     };
 
     return (
         <div style={s.page}>
             <nav style={s.nav}>
-                <a href="/" style={s.logo}>
+                <Link href="/" style={s.logo}>
                     <div style={s.logoBox}>G</div>
-                    <span style={s.logoText}>GradeFlow</span>
-                </a>
-                <span style={{ fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 600 }}>
-                    Academic Intelligence System
-                </span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={s.logoText}>GradeFlow</span>
+                        <span style={s.logoBadge}>Academic Intelligence</span>
+                    </div>
+                </Link>
+                <Link
+                    href="/"
+                    style={{
+                        fontSize: '13px',
+                        color: 'var(--primary)',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-2)',
+                        background: 'var(--surface-low)',
+                        border: '1px solid var(--border)',
+                    }}
+                >
+                    <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
+                    <span>Back to Home</span>
+                </Link>
             </nav>
 
             <main style={s.main} className="gf-fade-up">
@@ -78,40 +143,80 @@ export default function PortalEntry() {
                     <span style={s.eyebrow}>Choose your role</span>
                     <h1 style={s.heading}>Where would you like to go?</h1>
                     <p style={s.subheading}>
-                        Students can sign straight in. Faculty members can request access and we'll review it personally.
+                        Students can sign straight in with USN. Faculty members can access the institutional command center.
                     </p>
 
-                    <div className="gf-auth-grid">
+                    <div className="gf-auth-grid" style={{ alignItems: 'stretch' }}>
                         {/* Student Card */}
-                        <Card style={{ padding: 'clamp(28px, 4vw, 48px)', boxShadow: 'var(--shadow-base)' }}>
-                            <span style={s.cardTag}>For Students</span>
-                            <CardTitle style={{ fontSize: 'clamp(20px, 3vw, 26px)', marginBottom: 'var(--space-2)' }}>Your academic record awaits.</CardTitle>
-                            <p style={s.cardDesc}>
-                                Sign in with your official @anjuman.edu.in email to view marks, calculate your SGPA, and track your semester progress.
-                            </p>
-                            <div style={s.divider}></div>
-                            <Button as={Link} href="/auth/student?mode=login" fullWidth variant="primary">
-                                Sign in as a student
-                            </Button>
-                            <Button as={Link} href="/auth/student?mode=activate" fullWidth variant="ghost" style={{ marginTop: 'var(--space-3)' }}>
-                                First time? Activate your profile
-                            </Button>
+                        <Card style={{
+                            padding: 'clamp(28px, 4vw, 44px)',
+                            boxShadow: 'var(--shadow-base)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            height: '100%',
+                        }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                <span style={s.cardTag}>For Students</span>
+                                <CardTitle style={{
+                                    fontSize: 'clamp(20px, 2.5vw, 24px)',
+                                    marginBottom: 'var(--space-3)',
+                                    lineHeight: 1.2,
+                                    minHeight: '56px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                }}>
+                                    Your academic record awaits.
+                                </CardTitle>
+                                <p style={s.cardDesc}>
+                                    Sign in with your official USN to view semester marks, calculate live SGPA & CGPA, and track your backlog clearance.
+                                </p>
+                            </div>
+                            <div style={{ marginTop: 'auto' }}>
+                                <div style={s.divider}></div>
+                                <Button as={Link} href="/auth/student?mode=login" fullWidth variant="primary" iconEnd="arrow_forward">
+                                    Sign in as student
+                                </Button>
+                                <Button as={Link} href="/auth/student?mode=activate" fullWidth variant="ghost" style={{ marginTop: 'var(--space-3)' }}>
+                                    First time? Activate profile
+                                </Button>
+                            </div>
                         </Card>
 
                         {/* Faculty Card */}
-                        <Card style={{ padding: 'clamp(28px, 4vw, 48px)', boxShadow: 'var(--shadow-base)' }}>
-                            <span style={s.cardTag}>For Faculty</span>
-                            <CardTitle style={{ fontSize: 'clamp(20px, 3vw, 26px)', marginBottom: 'var(--space-2)' }}>Institutional faculty access.</CardTitle>
-                            <p style={s.cardDesc}>
-                                Faculty members can sign in once approved, or send a request if you're joining for the first time. We review every request personally.
-                            </p>
-                            <div style={s.divider}></div>
-                            <Button as={Link} href="/faculty/login" fullWidth variant="primary">
-                                Sign in as faculty
-                            </Button>
-                            <Button as={Link} href="/faculty/register" fullWidth variant="ghost" style={{ marginTop: 'var(--space-3)' }}>
-                                Request faculty access
-                            </Button>
+                        <Card style={{
+                            padding: 'clamp(28px, 4vw, 44px)',
+                            boxShadow: 'var(--shadow-base)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            height: '100%',
+                        }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                <span style={s.cardTag}>For Faculty</span>
+                                <CardTitle style={{
+                                    fontSize: 'clamp(20px, 2.5vw, 24px)',
+                                    marginBottom: 'var(--space-3)',
+                                    lineHeight: 1.2,
+                                    minHeight: '56px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                }}>
+                                    Institutional faculty access.
+                                </CardTitle>
+                                <p style={s.cardDesc}>
+                                    Instructors and proctors can sign in to view class averages, perform deep USN result lookups, and export student reports.
+                                </p>
+                            </div>
+                            <div style={{ marginTop: 'auto' }}>
+                                <div style={s.divider}></div>
+                                <Button as={Link} href="/faculty/login" fullWidth variant="primary" iconEnd="login">
+                                    Sign in as faculty
+                                </Button>
+                                <Button as={Link} href="/faculty/register" fullWidth variant="ghost" style={{ marginTop: 'var(--space-3)' }}>
+                                    Request faculty access
+                                </Button>
+                            </div>
                         </Card>
                     </div>
                 </div>
@@ -119,34 +224,51 @@ export default function PortalEntry() {
 
             <footer style={{
                 textAlign: 'center',
-                padding: '24px 20px',
+                padding: '32px 20px',
                 borderTop: '1px solid var(--border)',
                 background: 'var(--surface)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '8px'
+                gap: '10px'
             }}>
                 <div style={{
                     display: 'inline-flex',
                     flexWrap: 'wrap',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '6px 10px',
-                    fontSize: '12px',
-                    color: 'var(--tx-muted)',
-                    fontWeight: 600
+                    gap: '8px 12px',
+                    padding: '8px 18px',
+                    background: 'var(--surface-low)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-full)',
+                    boxShadow: 'var(--shadow-sm)'
                 }}>
-                    <span>Developed by</span>
-                    <strong style={{ color: 'var(--tx-main)' }}>Mohammed Ainan Armar</strong>
-                    <span style={{ color: 'var(--primary)' }}>&</span>
-                    <strong style={{ color: 'var(--tx-main)' }}>Rawahah Ruknuddin</strong>
-                    <span>· Powered by</span>
+                    <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        Engineered by
+                    </span>
+                    <span style={{ fontSize: '12.5px', color: 'var(--tx-main)', fontWeight: 800 }}>
+                        Mohammed Ainan Armar
+                    </span>
+                    <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '13px' }}>&</span>
+                    <span style={{ fontSize: '12.5px', color: 'var(--tx-main)', fontWeight: 800 }}>
+                        Rawahah Ruknuddin
+                    </span>
+                </div>
+
+                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                    Powered by{' '}
                     <a
                         href="https://automaticxai.online"
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ color: 'var(--primary)', fontWeight: 800, textDecoration: 'underline' }}
+                        style={{
+                            color: 'var(--primary)',
+                            textDecoration: 'none',
+                            fontWeight: 800,
+                            borderBottom: '1.5px solid var(--primary)',
+                            paddingBottom: '1px'
+                        }}
                     >
                         automaticxai.online
                     </a>
