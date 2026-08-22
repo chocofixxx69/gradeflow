@@ -10,17 +10,32 @@ const supabaseAdmin = createClient(
 
 export const dynamic = 'force-dynamic';
 
-// GET — all classes with student count
+// GET — all classes with student count and faculty info
 export async function GET(req) {
     try {
         const classes = await fetchAllPaginated('classes', '*, class_students(count)', supabaseAdmin, 'created_at', false);
 
-        const result = (classes || []).map(c => ({
-            ...c,
-            student_count: c.class_students?.[0]?.count ?? 0,
-        }));
+        // Fetch approved faculty members so all faculty and admins can see who manages each class
+        const { data: facultyList } = await supabaseAdmin
+            .from('faculty_onboarding')
+            .select('id, full_name, email, department')
+            .eq('status', 'approved')
+            .order('full_name', { ascending: true });
 
-        return NextResponse.json({ success: true, classes: result });
+        const facultyMap = new Map((facultyList || []).map(f => [f.id, f]));
+
+        const result = (classes || []).map(c => {
+            const fac = c.faculty_id ? facultyMap.get(c.faculty_id) : null;
+            return {
+                ...c,
+                student_count: c.class_students?.[0]?.count ?? 0,
+                faculty_name: fac?.full_name || (c.faculty_id ? 'Assigned Faculty' : 'All Faculty (Shared)'),
+                faculty_email: fac?.email || null,
+                faculty_department: fac?.department || null,
+            };
+        });
+
+        return NextResponse.json({ success: true, classes: result, faculty: facultyList || [] });
     } catch (err) {
         console.error('[GET /api/classes]', err);
         return NextResponse.json({ error: 'Failed to fetch classes.' }, { status: 500 });
@@ -38,8 +53,8 @@ export async function POST(req) {
         }
 
         const staff = getStaffSession(req);
-        if (!faculty_id) {
-            faculty_id = staff?.sub || req.headers?.get?.('x-faculty-id');
+        if (!faculty_id || faculty_id === 'all' || faculty_id === 'shared') {
+            faculty_id = staff?.sub || req.headers?.get?.('x-faculty-id') || null;
         }
 
         // Fallback for faculty_id if missing from client
@@ -63,7 +78,7 @@ export async function POST(req) {
                 semester: parseInt(semester) || 3,
                 scheme: scheme || '2022',
                 faculty_id,
-                section: section || null,
+                section: section ? section.trim().toUpperCase() : null,
                 batch: batch || null,
                 academic_year: academic_year || null,
             })

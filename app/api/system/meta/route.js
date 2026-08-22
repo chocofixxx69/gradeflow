@@ -38,8 +38,20 @@ export async function GET() {
         const branches = dbBranches.length > 0 ? dbBranches : fallbackBranches;
         const schemes = ['2022', '2021', '2018', '2017', '2015'];
         const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
-        const sections = ['A', 'B', 'C', 'D', 'E'];
+        const sections = ['A', 'B', 'C', 'D', 'E', 'F'];
         const academicYears = ['2025-2026', '2024-2025', '2023-2024', '2022-2023'];
+
+        let facultyList = [];
+        try {
+            const { data: facs } = await supabaseAdmin
+                .from('faculty_onboarding')
+                .select('id, full_name, email, department')
+                .eq('status', 'approved')
+                .order('full_name', { ascending: true });
+            if (facs) facultyList = facs;
+        } catch {
+            // non-critical
+        }
 
         return ok({
             branches,
@@ -47,12 +59,14 @@ export async function GET() {
             semesters,
             sections,
             academicYears,
+            faculty: facultyList,
             formLookups: {
                 branches,
                 schemes,
                 semesters,
                 sections,
-                academicYears
+                academicYears,
+                faculty: facultyList
             }
         });
     } catch (err) {

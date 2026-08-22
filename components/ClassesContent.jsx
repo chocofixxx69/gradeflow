@@ -77,7 +77,22 @@ export function ClassesContent({ embedded = false }) {
     const [vtuUrls, setVtuUrls] = useState([]);
     const [loadingUrls, setLoadingUrls] = useState(false);
     const [newUrlInput, setNewUrlInput] = useState({ url: '', exam_name: '' });
-    const [newClass, setNewClass] = useState({ name: '', branch: 'CS', semester: 3, scheme: '2022' });
+    const [facultyList, setFacultyList] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [facultyFilter, setFacultyFilter] = useState('all');
+    const [branchFilter, setBranchFilter] = useState('all');
+    const [sectionFilter, setSectionFilter] = useState('all');
+    const [semesterFilter, setSemesterFilter] = useState('all');
+
+    const [newClass, setNewClass] = useState({
+        name: '',
+        branch: 'CS',
+        semester: 3,
+        scheme: '2022',
+        section: 'A',
+        faculty_id: 'all',
+        academic_year: '2024-2025'
+    });
     const [addUsn, setAddUsn] = useState('');
     const [bulkUsns, setBulkUsns] = useState('');
     const [fileLoading, setFileLoading] = useState(false);
@@ -101,6 +116,7 @@ export function ClassesContent({ embedded = false }) {
     const fetchBranches = async () => {
         const data = await apiRequest('/api/system/meta').catch(() => null);
         if (data?.branches) setBranches(data.branches);
+        if (data?.faculty) setFacultyList(data.faculty);
     };
 
     useEffect(() => {
@@ -113,7 +129,16 @@ export function ClassesContent({ embedded = false }) {
 
     const fetchClasses = async () => {
         setLoadingClasses(true);
-        try { const r = await fetch('/api/classes', { credentials: 'include' }); const j = await r.json(); if (j.success) setClasses(j.classes || []); } finally { setLoadingClasses(false); }
+        try {
+            const r = await fetch('/api/classes', { credentials: 'include' });
+            const j = await r.json();
+            if (j.success) {
+                setClasses(j.classes || []);
+                if (j.faculty) setFacultyList(j.faculty);
+            }
+        } finally {
+            setLoadingClasses(false);
+        }
     };
 
     const fetchClassStudents = useCallback(async (cls) => {
@@ -165,15 +190,18 @@ export function ClassesContent({ embedded = false }) {
     const createClass = async () => {
         if (!newClass.name.trim()) { setMsg('Class name required.'); return; }
         
-        let facId = faculty?.id || faculty?.sub;
-        if (!facId) {
-            try {
-                const facSess = localStorage.getItem('faculty_session') || localStorage.getItem('admin_session');
-                if (facSess) {
-                    const parsed = JSON.parse(facSess);
-                    facId = parsed.id || parsed.sub;
-                }
-            } catch (e) {}
+        let facId = newClass.faculty_id;
+        if (!facId || facId === 'all' || facId === 'current') {
+            facId = faculty?.id || faculty?.sub;
+            if (!facId) {
+                try {
+                    const facSess = localStorage.getItem('faculty_session') || localStorage.getItem('admin_session');
+                    if (facSess) {
+                        const parsed = JSON.parse(facSess);
+                        facId = parsed.id || parsed.sub;
+                    }
+                } catch (e) {}
+            }
         }
 
         const r = await fetch('/api/classes', {
@@ -191,8 +219,16 @@ export function ClassesContent({ embedded = false }) {
         const j = await r.json();
         if (j.success) {
             setShowCreate(false);
-            setNewClass({ name: '', branch: 'CS', semester: 3, scheme: '2022' });
-            setMsg('✓ Class created.');
+            setNewClass({
+                name: '',
+                branch: 'CS',
+                semester: 3,
+                scheme: '2022',
+                section: 'A',
+                faculty_id: 'all',
+                academic_year: '2024-2025'
+            });
+            setMsg('✓ Class created successfully. Visible to all faculty & administrators.');
             await logActivity(faculty, 'CLASS_CREATE', newClass.name);
             fetchClasses();
         } else {
@@ -357,7 +393,9 @@ export function ClassesContent({ embedded = false }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '28px' }}>
                 <div>
                     <h1 style={S.title}>{selectedClass.name}</h1>
-                    <p style={S.subtitle}>{selectedClass.branch} · Sem {selectedClass.semester} · {selectedClass.scheme} Scheme · {students.length} students</p>
+                    <p style={S.subtitle}>
+                        {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section} ` : ''}· {selectedClass.scheme} Scheme · 👨‍🏫 {selectedClass.faculty_name || 'All Faculty (Shared)'} · {students.length} students
+                    </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('manual'); setMsg(''); }}>
@@ -464,7 +502,7 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                             <div>
                                 <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Add Students to {selectedClass.name}</h3>
-                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Import students manually or bulk upload via CSV file.</p>
+                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Import students manually or bulk upload via CSV file. All faculty can view enrolled students.</p>
                             </div>
                             <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={downloadCsvTemplate}>
                                 <span className="material-icons-round" style={{ fontSize: '15px' }}>download</span>CSV Template
@@ -576,6 +614,30 @@ export function ClassesContent({ embedded = false }) {
         </div>
     );
 
+    const displayedClasses = classes.filter(cls => {
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            const matchName = (cls.name || '').toLowerCase().includes(q);
+            const matchBranch = (cls.branch || '').toLowerCase().includes(q);
+            const matchSection = (cls.section || '').toLowerCase().includes(q);
+            const matchFaculty = (cls.faculty_name || '').toLowerCase().includes(q);
+            if (!matchName && !matchBranch && !matchSection && !matchFaculty) return false;
+        }
+        if (facultyFilter !== 'all') {
+            if (cls.faculty_id !== facultyFilter) return false;
+        }
+        if (branchFilter !== 'all') {
+            if (cls.branch !== branchFilter) return false;
+        }
+        if (semesterFilter !== 'all') {
+            if (String(cls.semester) !== String(semesterFilter)) return false;
+        }
+        if (sectionFilter !== 'all') {
+            if ((cls.section || 'A').toUpperCase() !== sectionFilter.toUpperCase()) return false;
+        }
+        return true;
+    });
+
     return (
         <div style={S.page} className="gf-fade-up">
             {!embedded && (
@@ -587,41 +649,132 @@ export function ClassesContent({ embedded = false }) {
                 </div>
             )}
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '36px', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                    <div style={S.eyebrow}>Institutional Admin</div>
-                    <h1 style={S.title}>Classes</h1>
-                    <p style={S.subtitle}>Create and manage classes. All faculty and admins can view and edit class data.</p>
+                    <div style={S.eyebrow}>Institutional Academic Management</div>
+                    <h1 style={S.title}>Classes & Sections</h1>
+                    <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
                 </div>
                 <button style={btn('primary')} onClick={() => setShowCreate(true)}>
                     <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class
                 </button>
             </div>
 
+            {/* Filter and Search Bar */}
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
+                <div style={{ flex: '1 1 240px', position: 'relative' }}>
+                    <input
+                        style={{ ...S.input, paddingLeft: '36px' }}
+                        placeholder="Search classes, sections, or faculty..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                    />
+                    <span className="material-icons-round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--tx-dim)', fontSize: '18px', pointerEvents: 'none' }}>
+                        search
+                    </span>
+                </div>
+
+                <select style={{ ...S.sel, width: 'auto', minWidth: '150px' }} value={facultyFilter} onChange={e => setFacultyFilter(e.target.value)}>
+                    <option value="all">👨‍🏫 All Faculty ({facultyList.length})</option>
+                    {facultyList.map(f => (
+                        <option key={f.id} value={f.id}>{f.full_name}</option>
+                    ))}
+                </select>
+
+                <select style={{ ...S.sel, width: 'auto', minWidth: '130px' }} value={semesterFilter} onChange={e => setSemesterFilter(e.target.value)}>
+                    <option value="all">All Semesters</option>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                        <option key={s} value={s}>Semester {s}</option>
+                    ))}
+                </select>
+
+                <select style={{ ...S.sel, width: 'auto', minWidth: '120px' }} value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
+                    <option value="all">All Branches</option>
+                    {branches.map(b => (
+                        <option key={b.code} value={b.code}>{b.code}</option>
+                    ))}
+                </select>
+
+                <select style={{ ...S.sel, width: 'auto', minWidth: '110px' }} value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
+                    <option value="all">All Sections</option>
+                    {['A', 'B', 'C', 'D', 'E', 'F'].map(sec => (
+                        <option key={sec} value={sec}>Section {sec}</option>
+                    ))}
+                </select>
+            </div>
+
             {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
 
             {loadingClasses ? <div style={{ textAlign: 'center', padding: '80px', color: 'var(--tx-dim)' }}>Loading classes…</div>
-                : classes.length === 0 ? (
+                : displayedClasses.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--tx-dim)' }}>
                         <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '12px', display: 'block', opacity: 0.25 }}>groups</span>
-                        <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>No classes yet</div>
-                        <div style={{ fontSize: '13px' }}>Create your first class to get started.</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>
+                            {classes.length === 0 ? 'No classes yet' : 'No classes match your filter'}
+                        </div>
+                        <div style={{ fontSize: '13px' }}>
+                            {classes.length === 0 ? 'Create your first class to get started.' : 'Try adjusting your search or faculty filter.'}
+                        </div>
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: '16px' }}>
-                        {classes.map(cls => (
-                            <div key={cls.id} onClick={() => selectClass(cls)} className="gf-hover-lift" style={{ ...S.card, cursor: 'pointer', transition: 'transform 0.2s,box-shadow 0.2s' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                                    <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span className="material-icons-round" style={{ fontSize: '22px', color: 'var(--tx-dim)' }}>groups</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' }}>
+                        {displayedClasses.map(cls => (
+                            <div
+                                key={cls.id}
+                                onClick={() => selectClass(cls)}
+                                className="gf-hover-lift"
+                                style={{
+                                    ...S.card,
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s, box-shadow 0.2s',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                    position: 'relative'
+                                }}
+                            >
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                Sem {cls.semester}
+                                            </span>
+                                            {cls.section && (
+                                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-main)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                    Sec {cls.section}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>
+                                            {cls.scheme} Scheme
+                                        </span>
                                     </div>
-                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', background: 'var(--surface-low)', padding: '3px 10px', borderRadius: '6px' }}>Sem {cls.semester}</div>
+
+                                    <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+                                        {cls.name}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginBottom: '14px' }}>
+                                        {cls.branch} {cls.academic_year ? `· ${cls.academic_year}` : ''}
+                                    </div>
+
+                                    <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
+                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                            <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Faculty In-Charge</div>
+                                            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {cls.faculty_name || 'All Faculty (Shared)'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: '17px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em', marginBottom: '4px' }}>{cls.name}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginBottom: '20px' }}>{cls.branch} · {cls.scheme} Scheme</div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--tx-main)' }}>{cls.student_count ?? 0} <span style={{ fontWeight: 500, color: 'var(--tx-dim)' }}>students</span></div>
-                                    <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>arrow_forward</span>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                        {cls.student_count ?? 0} <span style={{ fontWeight: 500, color: 'var(--tx-dim)' }}>students</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
+                                        View Class <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_forward</span>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -632,15 +785,27 @@ export function ClassesContent({ embedded = false }) {
             {mounted && showCreate && createPortal(
                 <div style={S.modal} onClick={() => setShowCreate(false)}>
                     <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                        <div><h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>New Class</h3><p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>All faculty can view and manage this class.</p></div>
+                        <div>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Create New Class & Section</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Created classes will be accessible by all faculty members in the college.</p>
+                        </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div><label style={S.label}>Class Name</label><input style={S.input} placeholder="e.g. CSE-A 2023 Batch" value={newClass.name} onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
+                            <div>
+                                <label style={S.label}>Class / Section Name *</label>
+                                <input
+                                    style={S.input}
+                                    placeholder="e.g. 6th Sem CSE - Section A"
+                                    value={newClass.name}
+                                    onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))}
+                                    autoFocus
+                                />
+                            </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Branch</label>
                                     <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
-                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label}</option>)}
-                                        {branches.length === 0 && <option value="CS">CSE (Default)</option>}
+                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
+                                        {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
                                     </select>
                                 </div>
                                 <div>
@@ -650,14 +815,41 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Section</label>
+                                    <select style={S.sel} value={newClass.section} onChange={e => setNewClass(p => ({ ...p, section: e.target.value }))}>
+                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
+                                            <option key={sec} value={sec}>Section {sec}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Scheme</label>
+                                    <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
+                                        {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
+                                    </select>
+                                </div>
+                            </div>
                             <div>
-                                <label style={S.label}>Scheme</label>
-                                <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
-                                    {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
+                                <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
+                                <select style={S.sel} value={newClass.faculty_id} onChange={e => setNewClass(p => ({ ...p, faculty_id: e.target.value }))}>
+                                    <option value="all">🌐 All Faculty (Institutional Shared Class)</option>
+                                    {facultyList.map(f => (
+                                        <option key={f.id} value={f.id}>
+                                            👨‍🏫 {f.full_name} ({f.department || 'Faculty'}{f.email ? ` · ${f.email}` : ''})
+                                        </option>
+                                    ))}
                                 </select>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    Assign a faculty in-charge or share across all faculty members in the department.
+                                </div>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}><button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button><button style={btn('primary')} onClick={createClass}>Create Class</button></div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={createClass}>Create Class</button>
+                        </div>
                     </div>
                 </div>,
                 document.body
