@@ -24,45 +24,57 @@ export async function GET(req) {
             return NextResponse.json({ success: true, students: [] });
         }
 
-        const usns = members.map(m => m.usn);
+        // Collect BOTH the raw USN and the uppercase form — query with both to
+        // guarantee we match regardless of case stored in each table.
+        const rawUsns = members.map(m => m.usn);
+        const upperUsns = rawUsns.map(u => (u || '').toUpperCase().trim());
+        const allQueryUsns = [...new Set([...rawUsns, ...upperUsns])];
 
-        const profiles = await fetchByChunks('students', 'usn, name, branch, semester', 'usn', usns, supabaseAdmin);
-        const remarks = await fetchByChunks('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', usns, supabaseAdmin);
-        const resultRows = await fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', usns, supabaseAdmin);
-        const marks = await fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, internal, external, total, is_backlog, result', 'usn', usns, supabaseAdmin);
+        const [profiles, remarks, resultRows, marks] = await Promise.all([
+            fetchByChunks('students', 'usn, name, branch, semester', 'usn', allQueryUsns, supabaseAdmin),
+            fetchByChunks('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', allQueryUsns, supabaseAdmin),
+            fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', allQueryUsns, supabaseAdmin),
+            fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, internal, external, total, credits, is_backlog, announced_date, result_id', 'usn', allQueryUsns, supabaseAdmin),
+        ]);
+
+        // ── ALL index maps are keyed by UPPERCASE USN ──
+        // This is the single normalization point — every lookup below uses norm().
+        const norm = usn => (usn || '').toUpperCase().trim();
 
         const creditsMap = {};
         (resultRows || []).forEach(r => {
-            if (!creditsMap[r.usn]) creditsMap[r.usn] = {};
-            const prev = creditsMap[r.usn][r.semester] || 0;
-            creditsMap[r.usn][r.semester] = Math.max(prev, r.total_credits || 0);
+            const u = norm(r.usn);
+            if (!creditsMap[u]) creditsMap[u] = {};
+            const prev = creditsMap[u][r.semester] || 0;
+            creditsMap[u][r.semester] = Math.max(prev, r.total_credits || 0);
         });
 
         const remarksByUsn = {};
-        (remarks || []).forEach(r => (remarksByUsn[r.student_usn] ||= []).push(r));
+        (remarks || []).forEach(r => (remarksByUsn[norm(r.student_usn)] ||= []).push(r));
+
         const cgpaMap = {};
-        usns.forEach(usn => {
-            cgpaMap[usn] = weightedCGPA(remarksByUsn[usn] || [], creditsMap[usn] || {});
+        upperUsns.forEach(u => {
+            cgpaMap[u] = weightedCGPA(remarksByUsn[u] || [], creditsMap[u] || {});
         });
 
         const marksByUsn = {};
-        (marks || []).forEach(m => (marksByUsn[m.usn] ||= []).push(m));
+        (marks || []).forEach(m => (marksByUsn[norm(m.usn)] ||= []).push(m));
+
         const backlogMap = {};
-        usns.forEach(usn => {
-            backlogMap[usn] = computeBacklogs(marksByUsn[usn] || []).totalBacklogs;
+        upperUsns.forEach(u => {
+            backlogMap[u] = computeBacklogs(marksByUsn[u] || []).totalBacklogs;
         });
 
         const profileMap = {};
-        (profiles || []).forEach(p => { profileMap[p.usn] = p; });
+        (profiles || []).forEach(p => { profileMap[norm(p.usn)] = p; });
 
         const hasResultsMap = {};
-        usns.forEach(usn => {
-            const hasR = Boolean(
-                (remarksByUsn[usn] && remarksByUsn[usn].length > 0) ||
-                (marksByUsn[usn] && marksByUsn[usn].length > 0) ||
-                (creditsMap[usn] && Object.keys(creditsMap[usn]).length > 0)
+        upperUsns.forEach(u => {
+            hasResultsMap[u] = Boolean(
+                (remarksByUsn[u] && remarksByUsn[u].length > 0) ||
+                (marksByUsn[u] && marksByUsn[u].length > 0) ||
+                (creditsMap[u] && Object.keys(creditsMap[u]).length > 0)
             );
-            hasResultsMap[usn] = hasR;
         });
 
         // Fetch class metadata to fallback to class semester if needed
@@ -76,14 +88,14 @@ export async function GET(req) {
 
         const maxSemByUsn = {};
         const semDataByUsn = {};
-        usns.forEach(usn => { semDataByUsn[usn.toUpperCase()] = {}; });
+        upperUsns.forEach(u => { semDataByUsn[u] = {}; });
 
         const excludeGrades = new Set(['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE']);
 
         // 1. Group marks by uppercase USN and semester
         const marksGrouped = {};
         (marks || []).forEach(m => {
-            const u = (m.usn || '').toUpperCase().trim();
+            const u = norm(m.usn);
             const s = Number(m.semester);
             if (u && s) {
                 maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
@@ -107,8 +119,10 @@ export async function GET(req) {
                     const g = (m.grade || 'F').trim().toUpperCase();
                     const tot = Number(m.total) || 0;
                     const ext = Number(m.external) || 0;
-                    const resStr = (m.result || m.result_status || '').trim().toUpperCase();
-                    const isFail = m.is_backlog || g === 'F' || g === 'A' || g === 'FAIL' || g === 'ABSENT' || g === 'NP' || g === 'NE' || g === 'X' || (ext > 0 && ext < 18) || (tot > 0 && tot < 40) || resStr.includes('F');
+                    const isFail = m.is_backlog === true || m.is_backlog === 'true'
+                        || g === 'F' || g === 'A' || g === 'FAIL' || g === 'ABSENT'
+                        || g === 'NP' || g === 'NE' || g === 'X'
+                        || (ext > 0 && ext < 18) || (tot > 0 && tot < 40);
                     if (isFail) bCount++;
 
                     if (excludeGrades.has(g)) return;
@@ -129,7 +143,7 @@ export async function GET(req) {
 
         // 3. Fallback to academic_remarks & results if marks not present for a semester
         (remarks || []).forEach(r => {
-            const u = (r.student_usn || '').toUpperCase().trim();
+            const u = norm(r.student_usn);
             const s = Number(r.semester);
             if (u && s) {
                 maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
@@ -142,7 +156,7 @@ export async function GET(req) {
         });
 
         (resultRows || []).forEach(r => {
-            const u = (r.usn || '').toUpperCase().trim();
+            const u = norm(r.usn);
             const s = Number(r.semester);
             if (u && s) {
                 maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
@@ -154,19 +168,20 @@ export async function GET(req) {
             }
         });
 
+        // ── Build final student list — ALL lookups via norm(usn) ──
         const students = members.map(m => {
-            const normUsn = (m.usn || '').toUpperCase().trim();
-            const hasData = hasResultsMap[normUsn] || hasResultsMap[m.usn] || false;
-            const computedSem = maxSemByUsn[normUsn] || Number(profileMap[normUsn]?.semester || profileMap[m.usn]?.semester) || classSem;
+            const u = norm(m.usn);
+            const hasData = hasResultsMap[u] || false;
+            const computedSem = maxSemByUsn[u] || Number(profileMap[u]?.semester) || classSem;
             return {
                 id: m.id,
                 usn: m.usn,
-                name: profileMap[normUsn]?.name || profileMap[m.usn]?.name || m.usn,
-                branch: profileMap[normUsn]?.branch || profileMap[m.usn]?.branch || classData?.branch || '—',
+                name: profileMap[u]?.name || m.usn,
+                branch: profileMap[u]?.branch || classData?.branch || '—',
                 semester: computedSem,
-                cgpa: hasData && cgpaMap[m.usn] != null ? cgpaMap[m.usn] : null,
-                total_backlogs: hasData ? (backlogMap[m.usn] ?? 0) : null,
-                semester_data: semDataByUsn[normUsn] || semDataByUsn[m.usn] || {},
+                cgpa: hasData && cgpaMap[u] != null ? cgpaMap[u] : null,
+                total_backlogs: hasData ? (backlogMap[u] ?? 0) : null,
+                semester_data: semDataByUsn[u] || {},
                 has_data: hasData,
                 added_at: m.created_at,
             };
