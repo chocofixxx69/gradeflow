@@ -490,19 +490,23 @@ function DashboardContent() {
                     .trim();
             };
 
-            const normalize = (m, source) => ({
-                id: m.id,
-                subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
-                subject_name: (m.subject_name || m.name || '').trim(),
-                cie_marks: m.cie_marks ?? m.internal ?? 0,
-                see_marks: m.see_marks ?? m.external ?? 0,
-                total_marks: m.total_marks ?? m.total ?? 0,
-                grade: (m.grade || '').trim().toUpperCase(),
-                credits: Number(m.credits) || 3,
-                semester: Number(m.semester) || 1,
-                exam_date: m.announced_date || formatExamAlias(m.results?.exam_name || (source === 'manual' ? 'Manual Entry' : 'Scraped Record')),
-                source
-            });
+            const normalize = (m, source) => {
+                const dateVal = m.announced_date || (m.exam_date && m.exam_date !== 'Scraped Record' && m.exam_date !== 'Manual Entry' ? m.exam_date : null);
+                return {
+                    id: m.id,
+                    subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
+                    subject_name: (m.subject_name || m.name || '').trim(),
+                    cie_marks: m.cie_marks ?? m.internal ?? 0,
+                    see_marks: m.see_marks ?? m.external ?? 0,
+                    total_marks: m.total_marks ?? m.total ?? 0,
+                    grade: (m.grade || '').trim().toUpperCase(),
+                    credits: Number(m.credits) || 3,
+                    semester: Number(m.semester) || 1,
+                    announced_date: dateVal,
+                    exam_date: dateVal || formatExamAlias(m.results?.exam_name || (source === 'manual' ? 'Manual Entry' : 'N/A')),
+                    source
+                };
+            };
 
             if (studentMarks) studentMarks.forEach(m => pool.push(normalize(m, 'manual')));
             if (resultMarks) resultMarks.forEach(m => pool.push(normalize(m, 'scraper')));

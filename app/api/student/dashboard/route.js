@@ -88,6 +88,7 @@ export async function GET(req) {
                 grade: (m.grade || '').trim().toUpperCase(),
                 credits: Number(m.credits) || 3,
                 semester: Number(m.semester) || 1,
+                announced_date: m.announced_date || m.exam_date || null,
                 exam_date: m.announced_date || 'Manual Entry',
                 source: 'manual'
             }));
@@ -104,7 +105,8 @@ export async function GET(req) {
                 grade: (m.grade || '').trim().toUpperCase(),
                 credits: Number(m.credits) || 3,
                 semester: Number(m.semester) || 1,
-                exam_date: formatExamAlias(m.results?.exam_name || 'Scraped Record'),
+                announced_date: m.announced_date || null,
+                exam_date: m.announced_date || formatExamAlias(m.results?.exam_name || 'Scraped Record'),
                 source: 'scraper',
                 is_backlog: m.is_backlog || false
             }));
