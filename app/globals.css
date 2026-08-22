@@ -14,8 +14,10 @@
   --primary-hover: #1A494B;
   --secondary: #3A6A6D;
   --accent: #789397;
-  --success: #A1BC98;
-  --warm-highlight: #DCCFC0;
+  --success: #166534;
+  --success-bg: #E8F5E9;
+  --success-border: #A5D6A7;
+  --warm-highlight: #B45309;
 
   --bg: #F6F6F6;
   --surface-low: #FDF6ED;
@@ -37,17 +39,21 @@
   --blue-bg: var(--surface-low);
 
   /* Destructive */
-  --destructive: #B05A5A;
-  --destructive-hover: #964848;
-  --destructive-bg: #F8ECEC;
+  --destructive: #B91C1C;
+  --destructive-hover: #991B1B;
+  --destructive-bg: #FFEBEE;
+  --destructive-border: #FFCDD2;
 
   /* Legacy states mapping */
-  --amber: var(--warm-highlight);
-  --amber-bg: #FDF6ED;
-  --red: var(--destructive);
-  --red-bg: var(--destructive-bg);
-  --green: var(--success);
-  --green-bg: #FDF6ED;
+  --amber: #B45309;
+  --amber-bg: #FFF8E1;
+  --amber-border: #FFE082;
+  --red: #B91C1C;
+  --red-bg: #FFEBEE;
+  --red-border: #FFCDD2;
+  --green: #166534;
+  --green-bg: #E8F5E9;
+  --green-border: #A5D6A7;
 
   /* Spacing (Rhythm: 4, 8, 12, 16, 24, 32, 48, 64) */
   --space-0: 0;

@@ -71,18 +71,33 @@ function StudentDashboardView({
     student,
     totalSubjects,
 }) {
-    const gradeTone = (grade) => {
+    const GradeBadge = ({ grade }) => {
         const unified = unifyGrade(grade);
-        if (unified === 'F' || unified === 'A') return 'danger';
-        if (unified === 'P') return 'success';
-        return 'info';
+        const isFail = unified === 'F' || unified === 'A' || unified === 'FAIL' || unified === 'ABSENT' || (grade || '').toUpperCase() === 'F' || (grade || '').toUpperCase() === 'A';
+        const isPass = unified === 'P' || unified === 'PASS' || ['O', 'A+', 'A', 'B+', 'B', 'C', 'P'].includes((grade || '').toUpperCase());
+        const tone = isFail ? 'danger' : isPass ? 'success' : 'info';
+        const displayText = unified === 'P' ? 'P' : unified === 'F' ? 'F' : unified === 'A' ? 'AB' : unified;
+        return (
+            <Badge
+                tone={tone}
+                size="sm"
+                style={{
+                    fontWeight: 900,
+                    minWidth: '28px',
+                    height: '24px',
+                    padding: '0 8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: '11px',
+                    letterSpacing: '0.04em'
+                }}
+            >
+                {displayText}
+            </Badge>
+        );
     };
-
-    const GradeBadge = ({ grade }) => (
-        <Badge tone={gradeTone(grade)} size="sm">
-            {unifyGrade(grade)}
-        </Badge>
-    );
 
     const StatContent = ({ label, value, sub, tone, actionable = false }) => (
         <>
