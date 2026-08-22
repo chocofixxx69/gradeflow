@@ -59,17 +59,28 @@ function FacultyDashboardView({
         );
     };
 
+    const latestSem = sortedSemesters.length > 0 ? sortedSemesters[sortedSemesters.length - 1][0] : null;
     const [expandedSemesters, setExpandedSemesters] = useState({});
 
-    const toggleSemester = (sem) => {
-        setExpandedSemesters(prev => ({
-            ...prev,
-            [sem]: prev[sem] === undefined ? false : !prev[sem]
-        }));
+    const isExpanded = (sem) => {
+        if (expandedSemesters[sem] !== undefined) {
+            return expandedSemesters[sem];
+        }
+        // Default: Only the most recent semester is open, others closed
+        return sem === latestSem;
     };
 
-    const isExpanded = (sem) => expandedSemesters[sem] !== false;
-    const allExpanded = sortedSemesters.every(([sem]) => isExpanded(sem));
+    const toggleSemester = (sem) => {
+        setExpandedSemesters(prev => {
+            const currentlyOpen = isExpanded(sem);
+            return {
+                ...prev,
+                [sem]: !currentlyOpen
+            };
+        });
+    };
+
+    const allExpanded = sortedSemesters.length > 0 && sortedSemesters.every(([sem]) => isExpanded(sem));
 
     const toggleAll = () => {
         const nextState = !allExpanded;
