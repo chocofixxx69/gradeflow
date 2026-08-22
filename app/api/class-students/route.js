@@ -107,7 +107,8 @@ export async function GET(req) {
                     const g = (m.grade || 'F').trim().toUpperCase();
                     const tot = Number(m.total) || 0;
                     const ext = Number(m.external) || 0;
-                    const isFail = m.is_backlog || g === 'F' || g === 'A' || (m.total != null && tot < 40);
+                    const resStr = (m.result || m.result_status || '').trim().toUpperCase();
+                    const isFail = m.is_backlog || g === 'F' || g === 'A' || g === 'FAIL' || g === 'ABSENT' || g === 'NP' || g === 'NE' || g === 'X' || (ext > 0 && ext < 18) || (tot > 0 && tot < 40) || resStr.includes('F');
                     if (isFail) bCount++;
 
                     if (excludeGrades.has(g)) return;

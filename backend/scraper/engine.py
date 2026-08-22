@@ -128,13 +128,18 @@ def _parse_row(texts):
     PASS_GRADES  = {"O", "S", "A+", "B+", "B", "C", "D", "P", "PASS"}
     ABSENT_MARKS = {"AB", "ABSENT"}
     
+    raw_res = (result_str or '').strip().upper()
+    is_res_fail = "F" in raw_res or "FAIL" in raw_res
+    is_ext_fail = (ext_m > 0 and ext_m < 18)
+    is_tot_fail = (tot_m > 0 and tot_m < 40)
+
     if parsed_grade in ("W", "X", "NE"):
         final_grade = parsed_grade
     elif parsed_grade in ABSENT_MARKS:
         final_grade = "A"
-    elif parsed_grade == "F" or parsed_grade == "FAIL":
+    elif parsed_grade == "F" or parsed_grade == "FAIL" or is_res_fail or is_ext_fail or is_tot_fail:
         final_grade = "F"
-    elif parsed_grade in PASS_GRADES:
+    elif parsed_grade in PASS_GRADES and not (is_ext_fail or is_tot_fail or is_res_fail):
         final_grade = "P"
     elif parsed_grade == "A":
         if ext_m == 0 and tot_m < 40:
@@ -145,7 +150,7 @@ def _parse_row(texts):
             final_grade = "A"
         else:
             final_grade = "F"
-    elif tot_m >= 40 and (ext_m >= 18 or ext_m == 0):
+    elif tot_m >= 40 and (ext_m >= 18 or ext_m == 0) and not is_res_fail:
         final_grade = "P"
     else:
         final_grade = "F"
