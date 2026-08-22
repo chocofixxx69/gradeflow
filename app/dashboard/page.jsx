@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradePoint, getGradeRank, unifyGrade } from '../../lib/vtuGrades';
+import { getOfficialCredit } from '../../lib/vtu-curriculum-catalog';
 import styles from './Dashboard.module.css';
 
-function calcSGPA(subjects) {
+function calcSGPA(subjects, scheme = '2022') {
     const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
     // Only include subjects that are not in the exclude list
     const validSubs = subjects.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
@@ -19,41 +20,42 @@ function calcSGPA(subjects) {
     let backlogs = 0;
 
     validSubs.forEach(m => {
+        const code = (m.subject_code || m.code || '').trim().toUpperCase();
         const grade = (m.grade || '').trim().toUpperCase();
         const unified = unifyGrade(grade);
-        const credits = Number(m.credits) || 3;
         const ext = Number(m.see_marks ?? m.external) || 0;
         const tot = Number(m.total_marks ?? m.total) || 0;
         const resStr = (m.result || '').trim().toUpperCase();
-        const gp = getGradePoint(grade, '2022', m.total_marks || m.total, m.see_marks ?? m.external ?? null);
+        
+        const offCr = getOfficialCredit(code, scheme);
+        const credits = offCr !== null ? offCr : (Number(m.credits) || 0);
+
+        if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga)
+
+        const gp = getGradePoint(grade, scheme, m.total_marks || m.total, m.see_marks ?? m.external ?? null);
 
         totalCredits += credits;
-
-        // Sum up weighted grade points (Grade Point * Credits)
         totalCreditPoints += (gp * credits);
 
-        // Canonical isFail — mirrors computeBacklogs() in lib/analytics-data.js.
-        // Catches: grade F/A, is_backlog flag, ext < 18 (SEE minimum threshold),
-        // total < 40 (pass minimum), and VTU result string 'F' or 'FAIL'.
         const isFail = m.is_backlog === true
             || grade === 'F' || unified === 'A'
             || (ext > 0 && ext < 18)
             || (tot > 0 && tot < 40)
             || resStr === 'F' || resStr.includes('FAIL');
 
-        if (!isFail) {
+        if (!isFail && gp > 0) {
             earnedCredits += credits;
         } else {
             backlogs++;
         }
     });
 
-    const sgpa = totalCredits > 0 ? (totalCreditPoints / totalCredits) : 0;
+    const sgpa = totalCredits > 0 ? Number((totalCreditPoints / totalCredits).toFixed(2)) : 0;
 
     return {
         sgpa,
         totalCredits,
-        earnedCredits,  // FIXED: always return numeric value — was causing empty data for sem 2,3,4
+        earnedCredits: backlogs === 0 && totalCredits > 0 ? totalCredits : earnedCredits,
         backlogs,
         gradePoints: totalCreditPoints
     };

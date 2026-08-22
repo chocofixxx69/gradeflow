@@ -5,6 +5,7 @@ import { apiRequest } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradePoint, getGradeRank, unifyGrade } from '../../../lib/vtuGrades';
+import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
 import styles from './FacultyDashboard.module.css';
 
@@ -507,11 +508,12 @@ function FacultyDashboardContent() {
 
     const calcSGPA = (subjects) => {
         const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
+        const scheme = student?.scheme || '2022';
 
         // Group by code to handle multiple attempts for same subject
         const subjectsPool = {};
         subjects.forEach(m => {
-            const code = m.subject_code || m.code;
+            const code = (m.subject_code || m.code || '').trim().toUpperCase();
             if (!subjectsPool[code]) subjectsPool[code] = m;
         });
 
@@ -524,27 +526,35 @@ function FacultyDashboardContent() {
         let backlogs = 0;
 
         validSubs.forEach(m => {
+            const code = (m.subject_code || m.code || '').trim().toUpperCase();
             const grade = (m.grade || '').trim().toUpperCase();
             const unified = unifyGrade(grade);
-            const credits = Number(m.credits) || 3;
-            const gp = getGradePoint(grade, '2022', m.total_marks || m.total, m.see_marks ?? m.external ?? null);
+            const ext = Number(m.see_marks ?? m.external) || 0;
+            const tot = Number(m.total_marks ?? m.total) || 0;
+            const offCr = getOfficialCredit(code, scheme);
+            const credits = offCr !== null ? offCr : (Number(m.credits) || 0);
+
+            if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga)
+
+            const gp = getGradePoint(grade, scheme, tot || null, ext || null);
+            const isFail = m.is_backlog === true || unified === 'F' || unified === 'A' || (ext > 0 && ext < 18) || (tot > 0 && tot < 40);
 
             totalCredits += credits;
             totalCreditPoints += (gp * credits);
 
-            if (unified === 'P') {
+            if (!isFail && gp > 0) {
                 earnedCredits += credits;
             } else {
                 backlogs++;
             }
         });
 
-        const sgpa = totalCredits > 0 ? (totalCreditPoints / totalCredits) : 0;
+        const sgpa = totalCredits > 0 ? Number((totalCreditPoints / totalCredits).toFixed(2)) : 0;
 
         return {
             sgpa,
             totalCredits,
-            earnedCredits: backlogs === 0 && totalCredits > 0 ? totalCredits : '—',
+            earnedCredits: backlogs === 0 && totalCredits > 0 ? totalCredits : earnedCredits,
             backlogs,
             gradePoints: totalCreditPoints
         };

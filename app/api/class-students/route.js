@@ -151,16 +151,15 @@ export async function GET(req) {
                     tcp += (gp * cr);
                 });
 
-                // Check stored SGPA from academic_remarks or results
+                const calcSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;
                 const storedRemark = (remarksByUsn[u] || []).find(r => Number(r.semester) === sem);
                 const storedResult = (resultRows || []).find(r => norm(r.usn) === u && Number(r.semester) === sem);
                 const storedSgpa = storedRemark?.sgpa != null ? Number(storedRemark.sgpa) : (storedResult?.sgpa != null ? Number(storedResult.sgpa) : null);
 
-                const calcSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;
-                const finalSgpa = (storedSgpa != null && storedSgpa > 0) ? storedSgpa : (calcSgpa > 0 ? calcSgpa : (storedSgpa === 0 ? 0.0 : null));
+                const finalSgpa = tc > 0 ? calcSgpa : (storedSgpa != null ? storedSgpa : 0.0);
 
                 semDataByUsn[u][sem] = {
-                    sgpa: finalSgpa != null ? finalSgpa : calcSgpa,
+                    sgpa: finalSgpa,
                     backlogs: bCount,
                     total_credits: tc || creditsMap[u]?.[sem] || 0
                 };
