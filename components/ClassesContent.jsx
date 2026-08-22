@@ -112,10 +112,12 @@ export function ClassesContent({ embedded = false }) {
     const [msg, setMsg] = useState('');
     const [scrapeStatus, setScrapeStatus] = useState({});
     const [drawerScrapeStatus, setDrawerScrapeStatus] = useState('');
-    const [showTransfer, setShowTransfer] = useState(false);
-    const [transferStudent, setTransferStudent] = useState(null);
+    const [selectedUsns, setSelectedUsns] = useState(new Set());
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferScope, setTransferScope] = useState('selected');
+    const [transferSingleStudent, setTransferSingleStudent] = useState(null);
+    const [transferTargetClassId, setTransferTargetClassId] = useState('');
     const [transferMode, setTransferMode] = useState('move');
-    const [transferTarget, setTransferTarget] = useState('');
     const [transferLoading, setTransferLoading] = useState(false);
     const [drawerTab, setDrawerTab] = useState('marks');
     const [branches, setBranches] = useState([]);
@@ -387,6 +389,113 @@ export function ClassesContent({ embedded = false }) {
         if (j.success) { setSelectedClass(p => ({ ...p, name: editName })); setClasses(prev => prev.map(c => c.id === selectedClass.id ? { ...c, name: editName } : c)); setEditingName(false); }
     };
 
+    const toggleSelectAll = (studsList) => {
+        const list = studsList || students;
+        if (selectedUsns.size === list.length && list.length > 0) {
+            setSelectedUsns(new Set());
+        } else {
+            setSelectedUsns(new Set(list.map(s => s.usn)));
+        }
+    };
+
+    const toggleSelectStudent = (usn) => {
+        setSelectedUsns(prev => {
+            const next = new Set(prev);
+            if (next.has(usn)) next.delete(usn);
+            else next.add(usn);
+            return next;
+        });
+    };
+
+    const openSingleStudentTransfer = (student, e) => {
+        if (e) e.stopPropagation();
+        setTransferSingleStudent(student);
+        setTransferScope('single');
+        setTransferMode('move');
+        const otherClasses = classes.filter(c => c.id !== selectedClass?.id);
+        setTransferTargetClassId(otherClasses[0]?.id || '');
+        setShowTransferModal(true);
+    };
+
+    const openMultiStudentTransfer = (scope = 'selected') => {
+        setTransferSingleStudent(null);
+        setTransferScope(scope);
+        setTransferMode('move');
+        const otherClasses = classes.filter(c => c.id !== selectedClass?.id);
+        setTransferTargetClassId(otherClasses[0]?.id || '');
+        setShowTransferModal(true);
+    };
+
+    const executeTransfer = async () => {
+        if (!transferTargetClassId) {
+            setMsg('Please select a destination target class.');
+            return;
+        }
+
+        let usns = [];
+        let transferAll = false;
+
+        if (transferScope === 'single' && transferSingleStudent) {
+            usns = [transferSingleStudent.usn];
+        } else if (transferScope === 'whole_class') {
+            transferAll = true;
+            usns = students.map(s => s.usn);
+        } else {
+            usns = Array.from(selectedUsns);
+            if (usns.length === 0) {
+                setMsg('No students selected to transfer.');
+                return;
+            }
+        }
+
+        setTransferLoading(true);
+        try {
+            const targetClassObj = classes.find(c => c.id === transferTargetClassId);
+            const r = await fetch('/api/class-students/transfer', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_class_id: selectedClass.id,
+                    target_class_id: transferTargetClassId,
+                    usns,
+                    mode: transferMode,
+                    transfer_all: transferAll
+                })
+            });
+            const j = await r.json();
+            if (j.success) {
+                setShowTransferModal(false);
+                setSelectedUsns(new Set());
+                const actionVerb = transferMode === 'move' ? 'Transferred' : 'Copied';
+                setMsg(`✓ ${actionVerb} ${j.transferred_count} student(s) to "${targetClassObj?.name || 'target class'}".`);
+                await logActivity(faculty, 'CLASS_STUDENTS_TRANSFER', `${selectedClass.name} -> ${targetClassObj?.name} (${j.transferred_count} students)`);
+                fetchClassStudents(selectedClass);
+                fetchClasses();
+            } else {
+                setMsg(j.error || 'Failed to transfer students.');
+            }
+        } catch (err) {
+            setMsg('Failed to transfer students.');
+        } finally {
+            setTransferLoading(false);
+        }
+    };
+
+    const removeSelectedStudents = async () => {
+        const count = selectedUsns.size;
+        if (count === 0) return;
+        if (!confirm(`Remove ${count} selected student(s) from this class?`)) return;
+
+        for (const usn of Array.from(selectedUsns)) {
+            await fetch('/api/class-students', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ class_id: selectedClass.id, usn }) });
+        }
+        setStudents(prev => prev.filter(s => !selectedUsns.has(s.usn)));
+        setSelectedUsns(new Set());
+        setMsg(`✓ Removed ${count} student(s) from class.`);
+        fetchClasses();
+    };
+
     const deleteClass = async id => {
         if (!confirm('Delete this class?')) return;
         await logActivity(faculty, 'CLASS_DELETE', selectedClass?.name);
@@ -581,6 +690,10 @@ export function ClassesContent({ embedded = false }) {
                     <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(selectedClass)}>
                         <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>Edit Class
                     </button>
+                    <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer(selectedUsns.size > 0 ? 'selected' : 'whole_class')}>
+                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>swap_horiz</span>
+                        {selectedUsns.size > 0 ? `Transfer Selected (${selectedUsns.size})` : 'Transfer / Move Class'}
+                    </button>
                     <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('manual'); setMsg(''); }}>
                         <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>person_add</span>Add Students
                     </button>
@@ -616,13 +729,46 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginLeft: '4px' }}>{filteredStudents.length} students</div>
                     </div>
                 </div>
+
+                {/* Selected Students Actions Bar */}
+                {selectedUsns.size > 0 && (
+                    <div style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>check_circle</span>
+                            {selectedUsns.size} student(s) selected
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer('selected')}>
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>swap_horiz</span>Transfer Selected ({selectedUsns.size})
+                            </button>
+                            <button style={{ ...btn('danger'), padding: '6px 12px', fontSize: '12px' }} onClick={removeSelectedStudents}>
+                                Remove Selected ({selectedUsns.size})
+                            </button>
+                            <button style={{ ...btn('ghost'), padding: '6px 10px', fontSize: '12px' }} onClick={() => setSelectedUsns(new Set())}>
+                                Deselect All
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
                     : (
                         <div style={S.tableWrap}>
                             {!isMobile ? (
-                                <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
+                                <table style={{ width: '100%', minWidth: '660px', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr>{['#', 'Name', 'USN', 'Sem', semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`, semFilter === 'all' ? 'Total Backlogs' : `Backlogs (S${semFilter})`, ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                                        <tr>
+                                            <th style={{ ...S.th, width: '40px', textAlign: 'center' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={filteredStudents.length > 0 && selectedUsns.size === filteredStudents.length}
+                                                    onChange={() => toggleSelectAll(filteredStudents)}
+                                                    style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                    title="Select All Students"
+                                                />
+                                            </th>
+                                            {['#', 'Name', 'USN', 'Sem', semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`, semFilter === 'all' ? 'Total Backlogs' : `Backlogs (S${semFilter})`, 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}
+                                        </tr>
                                     </thead>
                                     <tbody>
                                         {filteredStudents.map((s, idx) => {
@@ -635,8 +781,18 @@ export function ClassesContent({ embedded = false }) {
                                                 ? (semData ? semData.backlogs : null)
                                                 : (s.has_data ? s.total_backlogs : null);
 
+                                            const isSelected = selectedUsns.has(s.usn);
+
                                             return (
-                                                <tr key={s.usn}>
+                                                <tr key={s.usn} style={{ background: isSelected ? 'var(--surface-low)' : 'transparent' }}>
+                                                    <td style={{ ...S.td, textAlign: 'center', width: '40px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => toggleSelectStudent(s.usn)}
+                                                            style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                        />
+                                                    </td>
                                                     <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
                                                     <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
                                                     <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
@@ -653,10 +809,23 @@ export function ClassesContent({ embedded = false }) {
                                                             <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
                                                         )}
                                                     </td>
-                                                    <td style={{ ...S.td, textAlign: 'center' }}>
-                                                        <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px' }}>
-                                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
-                                                        </button>
+                                                    <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            <button
+                                                                title="Transfer student to another class"
+                                                                onClick={(e) => openSingleStudentTransfer(s, e)}
+                                                                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '2px' }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>swap_horiz</span> Transfer
+                                                            </button>
+                                                            <button
+                                                                title="Remove student from class"
+                                                                onClick={() => removeStudent(s.usn)}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1251,6 +1420,173 @@ export function ClassesContent({ embedded = false }) {
                             <button style={btn('ghost')} onClick={() => setShowEditModal(false)}>Cancel</button>
                             <button style={btn('primary')} onClick={saveEditClass} disabled={editLoading}>
                                 {editLoading ? 'Saving…' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Transfer Students Modal (Portal Rendered) */}
+            {mounted && showTransferModal && selectedClass && createPortal(
+                <div style={S.modal} onClick={() => setShowTransferModal(false)}>
+                    <div style={S.mbox('580px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                🔀 Transfer Students
+                            </h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
+                                Move or duplicate students between classes and sections in the institution.
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '14px' }}>
+                            {/* Source Class Summary Card */}
+                            <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>From Class</div>
+                                    <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)' }}>{selectedClass.name}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                        {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section}` : ''}
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface)', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                        {transferScope === 'single'
+                                            ? '1 Student'
+                                            : transferScope === 'whole_class'
+                                            ? `All ${students.length} Students`
+                                            : `${selectedUsns.size} Selected Student(s)`}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Transfer Scope Selector if not single student */}
+                            {transferScope !== 'single' && (
+                                <div>
+                                    <label style={S.label}>Who would you like to transfer?</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                        <div
+                                            onClick={() => setTransferScope('selected')}
+                                            style={{
+                                                border: `1.5px solid ${transferScope === 'selected' ? 'var(--primary)' : 'var(--border)'}`,
+                                                borderRadius: '8px',
+                                                padding: '10px 14px',
+                                                cursor: 'pointer',
+                                                background: transferScope === 'selected' ? 'var(--surface-low)' : 'var(--surface)',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                Selected Students ({selectedUsns.size})
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                                Transfer currently selected students
+                                            </div>
+                                        </div>
+                                        <div
+                                            onClick={() => setTransferScope('whole_class')}
+                                            style={{
+                                                border: `1.5px solid ${transferScope === 'whole_class' ? 'var(--primary)' : 'var(--border)'}`,
+                                                borderRadius: '8px',
+                                                padding: '10px 14px',
+                                                cursor: 'pointer',
+                                                background: transferScope === 'whole_class' ? 'var(--surface-low)' : 'var(--surface)',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                Entire Class (All {students.length})
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                                Transfer all students in this class
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Single Student Info if single */}
+                            {transferScope === 'single' && transferSingleStudent && (
+                                <div>
+                                    <label style={S.label}>Student</label>
+                                    <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>{transferSingleStudent.name}</div>
+                                        <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '12px', color: 'var(--tx-muted)' }}>{transferSingleStudent.usn}</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Target Class Dropdown */}
+                            <div>
+                                <label style={S.label}>Destination Target Class / Section *</label>
+                                <select
+                                    style={S.sel}
+                                    value={transferTargetClassId}
+                                    onChange={e => setTransferTargetClassId(e.target.value)}
+                                >
+                                    <option value="">-- Choose Destination Class --</option>
+                                    {classes.filter(c => c.id !== selectedClass.id).map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
+                                        </option>
+                                    ))}
+                                </select>
+                                {classes.filter(c => c.id !== selectedClass.id).length === 0 && (
+                                    <div style={{ fontSize: '11px', color: 'var(--red)', marginTop: '4px' }}>
+                                        No other classes found. Please create another class first.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Transfer Mode */}
+                            <div>
+                                <label style={S.label}>Transfer Mode</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div
+                                        onClick={() => setTransferMode('move')}
+                                        style={{
+                                            border: `1.5px solid ${transferMode === 'move' ? 'var(--primary)' : 'var(--border)'}`,
+                                            borderRadius: '8px',
+                                            padding: '10px 14px',
+                                            cursor: 'pointer',
+                                            background: transferMode === 'move' ? 'var(--surface-low)' : 'var(--surface)',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>📦 Move (Cut & Paste)</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                            Remove from current class & add to destination
+                                        </div>
+                                    </div>
+                                    <div
+                                        onClick={() => setTransferMode('copy')}
+                                        style={{
+                                            border: `1.5px solid ${transferMode === 'copy' ? 'var(--primary)' : 'var(--border)'}`,
+                                            borderRadius: '8px',
+                                            padding: '10px 14px',
+                                            cursor: 'pointer',
+                                            background: transferMode === 'copy' ? 'var(--surface-low)' : 'var(--surface)',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>📋 Copy (Duplicate)</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                            Keep in current class & also enroll in destination
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowTransferModal(false)}>Cancel</button>
+                            <button
+                                style={btn('primary')}
+                                onClick={executeTransfer}
+                                disabled={transferLoading || !transferTargetClassId}
+                            >
+                                {transferLoading ? 'Transferring…' : 'Confirm & Transfer'}
                             </button>
                         </div>
                     </div>
