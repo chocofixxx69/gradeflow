@@ -99,6 +99,27 @@ function StudentDashboardView({
     const summaryLabel = cgpa >= 7.75 ? 'First Class Distinction' : cgpa >= 6.75 ? 'First Class' : cgpa > 0 ? 'Pass' : '';
     const isInfoMessage = pdfMsg.startsWith('â„¹') || pdfMsg.startsWith('ℹ');
 
+    const [expandedSemesters, setExpandedSemesters] = useState({});
+
+    const toggleSemester = (sem) => {
+        setExpandedSemesters(prev => ({
+            ...prev,
+            [sem]: prev[sem] === undefined ? false : !prev[sem]
+        }));
+    };
+
+    const isExpanded = (sem) => expandedSemesters[sem] !== false;
+    const allExpanded = sortedSemesters.every(([sem]) => isExpanded(sem));
+
+    const toggleAll = () => {
+        const nextState = !allExpanded;
+        const update = {};
+        sortedSemesters.forEach(([sem]) => {
+            update[sem] = nextState;
+        });
+        setExpandedSemesters(update);
+    };
+
     return (
         <>
             <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
@@ -180,8 +201,19 @@ function StudentDashboardView({
                 {semesterCount > 0 ? (
                     <section className={styles.section} aria-labelledby="student-records-title">
                         <div className={styles.sectionHeader}>
-                            <h2 id="student-records-title" className={styles.sectionTitle}>Semester Records</h2>
+                            <div>
+                                <h2 id="student-records-title" className={styles.sectionTitle}>Semester Records</h2>
+                                <p className={styles.meta}>Click any semester to expand or collapse details</p>
+                            </div>
                             <div className={styles.chipRow}>
+                                <Button
+                                    variant="ghost"
+                                    density="compact"
+                                    iconStart={allExpanded ? 'unfold_less' : 'unfold_more'}
+                                    onClick={toggleAll}
+                                >
+                                    {allExpanded ? 'Collapse All' : 'Expand All'}
+                                </Button>
                                 {sortedSemesters.map(([sem]) => (
                                     <Badge key={sem} tone="info" size="sm">
                                         S{sem}: {(sgpas[sem] || 0).toFixed(2)}
@@ -225,116 +257,170 @@ function StudentDashboardView({
                         </div>
 
                         <div className={styles.records}>
-                            {sortedSemesters.map(([sem, subjects]) => (
-                                <article key={sem} className={styles.semesterCard}>
-                                    <div className={styles.semesterHeader}>
-                                        <div>
-                                            <h3 className={styles.semesterTitle}>Semester {sem}</h3>
-                                            <p className={styles.meta}>{subjects.length} Subjects Listed</p>
-                                        </div>
-                                        <div className={styles.semesterActions}>
-                                            <Badge tone="info" size="sm">SGPA: {(sgpas[sem] || 0).toFixed(2)}</Badge>
-                                            <Button
-                                                variant="secondary"
-                                                density="compact"
-                                                iconStart="download"
-                                                onClick={() => {
-                                                    import('../../lib/generatePDF').then(({ generateResultPDF }) => {
-                                                        generateResultPDF({
-                                                            studentName: student.name || 'Student',
-                                                            usn: student.usn || 'N/A',
-                                                            branch: student.branch || '',
-                                                            scheme: student.scheme || '2022',
-                                                            semesterMarks: { [sem]: subjects },
-                                                            cgpa: sgpas[sem]
-                                                        });
-                                                    }).catch(err => alert('PDF Import Error: ' + err.message));
-                                                }}
-                                            >
-                                                Sem {sem} PDF
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <Divider />
-                                    <div className={styles.tableWrap}>
-                                        <table className={`${styles.table} ${styles.subjectTable}`}>
-                                            <thead>
-                                                <tr>
-                                                    {['Subject Code', 'Subject Name', 'Internal Marks', 'External Marks', 'Total', 'Result', 'Announced / Updated on'].map((heading) => (
-                                                        <th key={heading} scope="col">{heading}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {subjects.map((m, idx) => (
-                                                    <tr key={m.id || idx}>
-                                                        <th scope="row" className={styles.code}>{m.subject_code || m.code || '—'}</th>
-                                                        <td>{m.subject_name || m.name || 'Unknown'}</td>
-                                                        <td className={styles.center}>{m.cie_marks ?? m.internal ?? '—'}</td>
-                                                        <td className={styles.center}>{m.see_marks ?? m.external ?? '—'}</td>
-                                                        <td className={styles.center}><strong>{m.total_marks ?? m.total ?? '—'}</strong></td>
-                                                        <td className={styles.center}><GradeBadge grade={m.grade} /></td>
-                                                        <td className={styles.nowrap}>{m.announced_date || m.exam_date || 'N/A'}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    <div className={styles.mobileSubjectList}>
-                                        {subjects.map((m, idx) => (
-                                            <div key={m.id || idx} className={styles.mobileSubjectCard}>
-                                                <div className={styles.mobileSubjectHeader}>
-                                                    <div className={styles.mobileSubjectTitleGroup}>
-                                                        <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
-                                                        <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
-                                                    </div>
-                                                    <GradeBadge grade={m.grade} />
+                            {sortedSemesters.map(([sem, subjects]) => {
+                                const open = isExpanded(sem);
+                                return (
+                                    <article key={sem} className={styles.semesterCard}>
+                                        <div
+                                            className={styles.semesterHeader}
+                                            onClick={() => toggleSemester(sem)}
+                                            style={{
+                                                cursor: 'pointer',
+                                                userSelect: 'none',
+                                                borderRadius: 'var(--radius-3)',
+                                            }}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    toggleSemester(sem);
+                                                }
+                                            }}
+                                            aria-expanded={open}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <div style={{
+                                                    width: '32px',
+                                                    height: '32px',
+                                                    borderRadius: 'var(--radius-3)',
+                                                    background: open ? 'var(--primary)' : 'var(--surface)',
+                                                    border: open ? '1px solid var(--primary)' : '1px solid var(--border)',
+                                                    color: open ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 900,
+                                                    fontSize: '14px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    transition: 'all var(--transition-fast)'
+                                                }}>
+                                                    {sem}
                                                 </div>
-                                                <div className={styles.mobileSubjectStats}>
-                                                    <div className={styles.mobileStatItem}>
-                                                        <span className={styles.statMiniLabel}>CIE:</span>
-                                                        <span>{m.cie_marks ?? m.internal ?? '—'}</span>
-                                                    </div>
-                                                    <div className={styles.mobileStatItem}>
-                                                        <span className={styles.statMiniLabel}>SEE:</span>
-                                                        <span>{m.see_marks ?? m.external ?? '—'}</span>
-                                                    </div>
-                                                    <div className={styles.mobileStatItem}>
-                                                        <span className={styles.statMiniLabel}>Total:</span>
-                                                        <strong>{m.total_marks ?? m.total ?? '—'}</strong>
-                                                    </div>
+                                                <div>
+                                                    <h3 className={styles.semesterTitle}>Semester {sem}</h3>
+                                                    <p className={styles.meta}>{subjects.length} Subjects Listed</p>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-
-                                    {student?.history?.[sem] && student.history[sem].length > 0 && (
-                                        <div className={styles.historyPanel}>
-                                            <div className={styles.historyTitle}>
-                                                <span className="material-icons-round" aria-hidden="true">history</span>
-                                                Previous / Backlog Attempts
+                                            <div className={styles.semesterActions}>
+                                                <Badge tone="info" size="sm">SGPA: {(sgpas[sem] || 0).toFixed(2)}</Badge>
+                                                <Button
+                                                    variant="secondary"
+                                                    density="compact"
+                                                    iconStart="download"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        import('../../lib/generatePDF').then(({ generateResultPDF }) => {
+                                                            generateResultPDF({
+                                                                studentName: student.name || 'Student',
+                                                                usn: student.usn || 'N/A',
+                                                                branch: student.branch || '',
+                                                                scheme: student.scheme || '2022',
+                                                                semesterMarks: { [sem]: subjects },
+                                                                cgpa: sgpas[sem]
+                                                            });
+                                                        }).catch(err => alert('PDF Import Error: ' + err.message));
+                                                    }}
+                                                >
+                                                    Sem {sem} PDF
+                                                </Button>
+                                                <IconButton
+                                                    icon={open ? 'expand_less' : 'expand_more'}
+                                                    variant="ghost"
+                                                    density="compact"
+                                                    aria-label={open ? `Collapse Semester ${sem}` : `Expand Semester ${sem}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleSemester(sem);
+                                                    }}
+                                                />
                                             </div>
-                                            <div className={styles.backlogList}>
-                                                {student.history[sem].map((hm, hidx) => (
-                                                    <div key={`hist-${hm.id || hidx}`} className={styles.historyItem}>
-                                                        <div>
-                                                            <div className={styles.historyName}>
-                                                                {hm.subject_name || hm.name} <span className={styles.code}>({hm.subject_code || hm.code})</span>
+                                        </div>
+
+                                        {open && (
+                                            <div className="gf-fade-in">
+                                                <Divider />
+                                                <div className={styles.tableWrap}>
+                                                    <table className={`${styles.table} ${styles.subjectTable}`}>
+                                                        <thead>
+                                                            <tr>
+                                                                {['Subject Code', 'Subject Name', 'Internal Marks', 'External Marks', 'Total', 'Result', 'Announced / Updated on'].map((heading) => (
+                                                                    <th key={heading} scope="col">{heading}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {subjects.map((m, idx) => (
+                                                                <tr key={m.id || idx}>
+                                                                    <th scope="row" className={styles.code}>{m.subject_code || m.code || '—'}</th>
+                                                                    <td>{m.subject_name || m.name || 'Unknown'}</td>
+                                                                    <td className={styles.center}>{m.cie_marks ?? m.internal ?? '—'}</td>
+                                                                    <td className={styles.center}>{m.see_marks ?? m.external ?? '—'}</td>
+                                                                    <td className={styles.center}><strong>{m.total_marks ?? m.total ?? '—'}</strong></td>
+                                                                    <td className={styles.center}><GradeBadge grade={m.grade} /></td>
+                                                                    <td className={styles.nowrap}>{m.announced_date || m.exam_date || 'N/A'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <div className={styles.mobileSubjectList}>
+                                                    {subjects.map((m, idx) => (
+                                                        <div key={m.id || idx} className={styles.mobileSubjectCard}>
+                                                            <div className={styles.mobileSubjectHeader}>
+                                                                <div className={styles.mobileSubjectTitleGroup}>
+                                                                    <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
+                                                                    <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
+                                                                </div>
+                                                                <GradeBadge grade={m.grade} />
                                                             </div>
-                                                            <div className={styles.historyDate}>{hm.exam_date}</div>
+                                                            <div className={styles.mobileSubjectStats}>
+                                                                <div className={styles.mobileStatItem}>
+                                                                    <span className={styles.statMiniLabel}>CIE:</span>
+                                                                    <span>{m.cie_marks ?? m.internal ?? '—'}</span>
+                                                                </div>
+                                                                <div className={styles.mobileStatItem}>
+                                                                    <span className={styles.statMiniLabel}>SEE:</span>
+                                                                    <span>{m.see_marks ?? m.external ?? '—'}</span>
+                                                                </div>
+                                                                <div className={styles.mobileStatItem}>
+                                                                    <span className={styles.statMiniLabel}>Total:</span>
+                                                                    <strong>{m.total_marks ?? m.total ?? '—'}</strong>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className={styles.historyScore}>
-                                                            <span>Total: <strong>{hm.total_marks ?? hm.total ?? '—'}</strong></span>
-                                                            <GradeBadge grade={hm.grade} />
+                                                    ))}
+                                                </div>
+
+                                                {student?.history?.[sem] && student.history[sem].length > 0 && (
+                                                    <div className={styles.historyPanel}>
+                                                        <div className={styles.historyTitle}>
+                                                            <span className="material-icons-round" aria-hidden="true">history</span>
+                                                            Previous / Backlog Attempts
+                                                        </div>
+                                                        <div className={styles.backlogList}>
+                                                            {student.history[sem].map((hm, hidx) => (
+                                                                <div key={`hist-${hm.id || hidx}`} className={styles.historyItem}>
+                                                                    <div>
+                                                                        <div className={styles.historyName}>
+                                                                            {hm.subject_name || hm.name} <span className={styles.code}>({hm.subject_code || hm.code})</span>
+                                                                        </div>
+                                                                        <div className={styles.historyDate}>{hm.exam_date}</div>
+                                                                    </div>
+                                                                    <div className={styles.historyScore}>
+                                                                        <span>Total: <strong>{hm.total_marks ?? hm.total ?? '—'}</strong></span>
+                                                                        <GradeBadge grade={hm.grade} />
+                                                                    </div>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </div>
-                                                ))}
+                                                )}
                                             </div>
-                                        </div>
-                                    )}
-                                </article>
-                            ))}
+                                        )}
+                                    </article>
+                                );
+                            })}
                         </div>
                     </section>
                 ) : (
