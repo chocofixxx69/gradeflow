@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { weightedCGPA, computeBacklogs } from '../../../lib/analytics-data';
 import { fetchByChunks } from '../../../lib/supabase-utils';
 import { getGradePoint } from '../../../lib/vtuGrades';
+import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -143,8 +144,9 @@ export async function GET(req) {
                     const ext = Number(m.external) || 0;
 
                     if (excludeGrades.has(g)) return;
-                    const cr = Number(m.credits) || 3;
-                    const gp = getGradePoint(g, '2022', tot, ext);
+                    const offCr = getOfficialCredit(m.subject_code || m.code, classData?.scheme || '2022');
+                    const cr = offCr !== null ? offCr : (Number(m.credits) || 0);
+                    const gp = getGradePoint(g, classData?.scheme || '2022', tot, ext);
                     tc += cr;
                     tcp += (gp * cr);
                 });

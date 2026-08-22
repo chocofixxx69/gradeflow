@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireStudent } from '../../../../lib/server-session';
 import { computeBacklogs } from '../../../../lib/analytics-data';
+import { getOfficialCredit } from '../../../../lib/vtu-curriculum-catalog';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -22,12 +23,14 @@ export async function GET(req) {
 
         const { usn } = session;
 
-        // Fetch student profile ID if needed
+        // Fetch student profile ID and scheme if available
         const { data: student } = await supabaseAdmin
             .from('students')
-            .select('id')
+            .select('id, scheme, branch')
             .ilike('usn', usn)
             .maybeSingle();
+
+        const studentScheme = student?.scheme || '2022';
 
         const [
             { data: studentMarks },
@@ -44,37 +47,45 @@ export async function GET(req) {
         const allMarks = [];
 
         if (studentMarks) {
-            studentMarks.forEach(m => allMarks.push({
-                id: m.id,
-                subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
-                subject_name: (m.subject_name || m.name || '').trim(),
-                cie_marks: m.cie_marks ?? m.internal ?? 0,
-                see_marks: m.see_marks ?? m.external ?? 0,
-                total_marks: m.total_marks ?? m.total ?? 0,
-                grade: (m.grade || '').trim().toUpperCase(),
-                credits: Number(m.credits) || 3,
-                semester: Number(m.semester) || 1,
-                source: 'manual'
-            }));
+            studentMarks.forEach(m => {
+                const code = (m.subject_code || m.code || '').trim().toUpperCase();
+                const offCr = getOfficialCredit(code, studentScheme);
+                allMarks.push({
+                    id: m.id,
+                    subject_code: code,
+                    subject_name: (m.subject_name || m.name || '').trim(),
+                    cie_marks: m.cie_marks ?? m.internal ?? 0,
+                    see_marks: m.see_marks ?? m.external ?? 0,
+                    total_marks: m.total_marks ?? m.total ?? 0,
+                    grade: (m.grade || '').trim().toUpperCase(),
+                    credits: offCr !== null ? offCr : (Number(m.credits) || 0),
+                    semester: Number(m.semester) || 1,
+                    source: 'manual'
+                });
+            });
         }
 
         if (subjectMarks) {
-            subjectMarks.forEach(m => allMarks.push({
-                id: m.id,
-                subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
-                subject_name: (m.subject_name || m.name || '').trim(),
-                cie_marks: m.cie_marks ?? m.internal ?? 0,
-                see_marks: m.see_marks ?? m.external ?? 0,
-                total_marks: m.total_marks ?? m.total ?? 0,
-                grade: (m.grade || '').trim().toUpperCase(),
-                credits: Number(m.credits) || 3,
-                semester: Number(m.semester) || 1,
-                announced_date: m.announced_date || null,
-                exam_date: m.announced_date || m.results?.exam_name || 'N/A',
-                exam_name: m.announced_date || m.results?.exam_name || 'Scraped Record',
-                source: 'scraper',
-                is_backlog: m.is_backlog || false
-            }));
+            subjectMarks.forEach(m => {
+                const code = (m.subject_code || m.code || '').trim().toUpperCase();
+                const offCr = getOfficialCredit(code, studentScheme);
+                allMarks.push({
+                    id: m.id,
+                    subject_code: code,
+                    subject_name: (m.subject_name || m.name || '').trim(),
+                    cie_marks: m.cie_marks ?? m.internal ?? 0,
+                    see_marks: m.see_marks ?? m.external ?? 0,
+                    total_marks: m.total_marks ?? m.total ?? 0,
+                    grade: (m.grade || '').trim().toUpperCase(),
+                    credits: offCr !== null ? offCr : (Number(m.credits) || 0),
+                    semester: Number(m.semester) || 1,
+                    announced_date: m.announced_date || null,
+                    exam_date: m.announced_date || m.results?.exam_name || 'N/A',
+                    exam_name: m.announced_date || m.results?.exam_name || 'Scraped Record',
+                    source: 'scraper',
+                    is_backlog: m.is_backlog || false
+                });
+            });
         }
 
         // Group by semester
