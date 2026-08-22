@@ -891,18 +891,9 @@ export function ClassesContent({ embedded = false }) {
 
     return (
         <div style={S.page} className="gf-fade-up">
-            {!embedded && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
-                    <button onClick={() => router.push('/admin/terminal')} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span className="material-icons-round" style={{ fontSize: '18px' }}>arrow_back</span>
-                        Return to Admin Terminal
-                    </button>
-                </div>
-            )}
-            
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                    <div style={S.eyebrow}>Institutional Academic Management</div>
+                    <div style={S.eyebrow}>Academic Management</div>
                     <h1 style={S.title}>Classes & Sections</h1>
                     <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
                 </div>
