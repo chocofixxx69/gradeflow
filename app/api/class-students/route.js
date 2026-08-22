@@ -172,7 +172,30 @@ export async function GET(req) {
             };
         });
 
-        return NextResponse.json({ success: true, students });
+        const exportSem = searchParams.get('export_sem');
+        let exportMarksData = null;
+        let exportCatData = null;
+
+        if (exportSem) {
+            const semNum = Number(exportSem);
+            exportMarksData = (marks || []).filter(m => Number(m.semester) === semNum);
+            
+            const { data: catData } = await supabaseAdmin
+                .from('subject_catalog')
+                .select('id, subject_code, subject_name, credits')
+                .eq('scheme', classData?.scheme || '2022')
+                .eq('branch', classData?.branch || 'CS')
+                .eq('semester', semNum);
+
+            exportCatData = catData || [];
+        }
+
+        return NextResponse.json({ 
+            success: true, 
+            students, 
+            marksData: exportMarksData, 
+            catData: exportCatData 
+        });
     } catch (err) {
         console.error('[GET /api/class-students]', err);
         return NextResponse.json({ error: 'Failed to fetch students.' }, { status: 500 });

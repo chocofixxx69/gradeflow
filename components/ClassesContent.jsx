@@ -5,13 +5,7 @@ import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
-import { createClient } from '@supabase/supabase-js';
 import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF } from '../lib/export-utils';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
@@ -132,7 +126,6 @@ export function ClassesContent({ embedded = false }) {
 
     const loadSemesterExportData = async (targetSem) => {
         if (!selectedClass) return;
-        const usnList = students.map(s => s.usn);
 
         try {
             const saved = localStorage.getItem(`gf_faculty_map_${selectedClass.id}_sem_${targetSem}`);
@@ -140,21 +133,13 @@ export function ClassesContent({ embedded = false }) {
             else setFacultyMap({});
         } catch (e) {}
 
-        if (usnList.length > 0) {
-            try {
-                const { data: marksData } = await supabase
-                    .from('subject_marks')
-                    .select('*')
-                    .in('usn', usnList)
-                    .eq('semester', Number(targetSem));
-                if (marksData) setAllMarks(marksData);
-
-                const { data: catData } = await supabase
-                    .from('subject_catalog')
-                    .select('id, subject_code, subject_name, credits')
-                    .eq('scheme', selectedClass.scheme || '2022')
-                    .eq('branch', selectedClass.branch || 'CS')
-                    .eq('semester', Number(targetSem));
+        try {
+            const res = await fetch(`/api/class-students?class_id=${selectedClass.id}&export_sem=${targetSem}`);
+            const json = await res.json();
+            if (json.success) {
+                const marksData = json.marksData || [];
+                const catData = json.catData || [];
+                setAllMarks(marksData);
 
                 if (catData && catData.length > 0) {
                     const formatted = catData.map(c => ({ id: c.id, code: c.subject_code, name: c.subject_name, credits: c.credits }));
@@ -165,9 +150,9 @@ export function ClassesContent({ embedded = false }) {
                 } else {
                     setClassSubjects([]);
                 }
-            } catch (e) {
-                console.error('Failed to load export data:', e);
             }
+        } catch (e) {
+            console.error('Failed to load export data:', e);
         }
     };
 
