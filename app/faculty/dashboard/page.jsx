@@ -59,14 +59,14 @@ function FacultyDashboardView({
         );
     };
 
-    const latestSem = sortedSemesters.length > 0 ? sortedSemesters[sortedSemesters.length - 1][0] : null;
+    const latestSem = sortedSemesters.length > 0 ? sortedSemesters[0][0] : null;
     const [expandedSemesters, setExpandedSemesters] = useState({});
 
     const isExpanded = (sem) => {
         if (expandedSemesters[sem] !== undefined) {
             return expandedSemesters[sem];
         }
-        // Default: Only the most recent semester is open, others closed
+        // Default: Only the most recent / top semester is open, others closed
         return sem === latestSem;
     };
 
@@ -896,7 +896,7 @@ function FacultyDashboardContent() {
     const totalSubjects = Object.values(marks).flat().length;
     const backlogs = Object.values(marks).flat().filter(m => { const g = unifyGrade(m.grade); return g === 'F' || g === 'A'; });
     const failCount = backlogs.length;
-    const sortedSemesters = Object.entries(marks).sort(([a], [b]) => Number(a) - Number(b));
+    const sortedSemesters = Object.entries(marks).sort(([a], [b]) => Number(b) - Number(a));
 
 
     return (
