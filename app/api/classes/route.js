@@ -100,13 +100,18 @@ export async function POST(req) {
 // PUT — update a class
 export async function PUT(req) {
     try {
-        const { id, name, semester, section, batch, academic_year } = await req.json().catch(() => ({}));
+        const { id, name, branch, semester, scheme, faculty_id, section, batch, academic_year } = await req.json().catch(() => ({}));
         if (!id) return NextResponse.json({ error: 'id required.' }, { status: 400 });
 
         const updates = {};
-        if (name?.trim()) updates.name = name.trim();
+        if (name !== undefined && name?.trim()) updates.name = name.trim();
+        if (branch !== undefined) updates.branch = branch;
         if (semester !== undefined && semester !== null) updates.semester = parseInt(semester);
-        if (section !== undefined) updates.section = section || null;
+        if (scheme !== undefined) updates.scheme = scheme;
+        if (faculty_id !== undefined) {
+            updates.faculty_id = (!faculty_id || faculty_id === 'all' || faculty_id === 'shared') ? null : faculty_id;
+        }
+        if (section !== undefined) updates.section = section ? section.trim().toUpperCase() : null;
         if (batch !== undefined) updates.batch = batch || null;
         if (academic_year !== undefined) updates.academic_year = academic_year || null;
 
@@ -120,10 +125,32 @@ export async function PUT(req) {
             .single();
 
         if (error) throw error;
-        return NextResponse.json({ success: true, class: data });
+
+        // Fetch faculty name if updated
+        let faculty_name = 'All Faculty (Shared)';
+        let faculty_email = null;
+        let faculty_department = null;
+        if (data.faculty_id) {
+            const { data: fac } = await supabaseAdmin.from('faculty_onboarding').select('full_name, email, department').eq('id', data.faculty_id).maybeSingle();
+            if (fac) {
+                faculty_name = fac.full_name;
+                faculty_email = fac.email;
+                faculty_department = fac.department;
+            }
+        }
+
+        return NextResponse.json({
+            success: true,
+            class: {
+                ...data,
+                faculty_name,
+                faculty_email,
+                faculty_department
+            }
+        });
     } catch (err) {
         console.error('[PUT /api/classes]', err);
-        return NextResponse.json({ error: 'Failed to update class.' }, { status: 500 });
+        return NextResponse.json({ error: err.message || 'Failed to update class.' }, { status: 500 });
     }
 }
 

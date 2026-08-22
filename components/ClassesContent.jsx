@@ -69,6 +69,19 @@ export function ClassesContent({ embedded = false }) {
     const [editingName, setEditingName] = useState(false);
     const [editName, setEditName] = useState('');
     const [showCreate, setShowCreate] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editingClass, setEditingClass] = useState(null);
+    const [editClassForm, setEditClassForm] = useState({
+        id: '',
+        name: '',
+        branch: 'CS',
+        semester: 3,
+        scheme: '2022',
+        section: 'A',
+        faculty_id: 'all',
+        academic_year: '2024-2025'
+    });
+    const [editLoading, setEditLoading] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [addTab, setAddTab] = useState('single');
     const [importResult, setImportResult] = useState(null);
@@ -315,6 +328,58 @@ export function ClassesContent({ embedded = false }) {
         }
     };
 
+    const openEditModal = (cls, e) => {
+        if (e) e.stopPropagation();
+        setEditingClass(cls);
+        setEditClassForm({
+            id: cls.id,
+            name: cls.name || '',
+            branch: cls.branch || 'CS',
+            semester: cls.semester || 3,
+            scheme: cls.scheme || '2022',
+            section: cls.section || 'A',
+            faculty_id: cls.faculty_id || 'all',
+            academic_year: cls.academic_year || '2024-2025'
+        });
+        setShowEditModal(true);
+    };
+
+    const saveEditClass = async () => {
+        if (!editClassForm.name?.trim()) {
+            setMsg('Class name is required.');
+            return;
+        }
+
+        setEditLoading(true);
+        try {
+            const r = await fetch('/api/classes', {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editClassForm)
+            });
+            const j = await r.json();
+            if (j.success) {
+                setShowEditModal(false);
+                setMsg('✓ Class details updated successfully.');
+
+                // Update local state immediately
+                setClasses(prev => prev.map(c => c.id === editClassForm.id ? { ...c, ...j.class } : c));
+                if (selectedClass && selectedClass.id === editClassForm.id) {
+                    setSelectedClass(prev => ({ ...prev, ...j.class }));
+                }
+                await logActivity(faculty, 'CLASS_EDIT', editClassForm.name);
+                fetchClasses();
+            } else {
+                setMsg(j.error || 'Failed to update class.');
+            }
+        } catch (err) {
+            setMsg('Failed to update class.');
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
     const renameClass = async () => {
         if (!editName.trim()) return;
         const r = await fetch('/api/classes', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedClass.id, name: editName }) });
@@ -513,6 +578,9 @@ export function ClassesContent({ embedded = false }) {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(selectedClass)}>
+                        <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>Edit Class
+                    </button>
                     <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('manual'); setMsg(''); }}>
                         <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>person_add</span>Add Students
                     </button>
@@ -999,8 +1067,31 @@ export function ClassesContent({ embedded = false }) {
                                     <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
                                         {cls.student_count ?? 0} <span style={{ fontWeight: 500, color: 'var(--tx-dim)' }}>students</span>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
-                                        View Class <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_forward</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => openEditModal(cls, e)}
+                                            style={{
+                                                background: 'var(--surface-low)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: '6px',
+                                                padding: '4px 10px',
+                                                fontSize: '11px',
+                                                fontWeight: 800,
+                                                color: 'var(--tx-muted)',
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                            title="Edit Class Details"
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>edit</span> Edit
+                                        </button>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
+                                            View <span className="material-icons-round" style={{ fontSize: '15px' }}>arrow_forward</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1076,6 +1167,91 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
                             <button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button>
                             <button style={btn('primary')} onClick={createClass}>Create Class</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Edit Class Modal (Portal Rendered) */}
+            {mounted && showEditModal && editingClass && createPortal(
+                <div style={S.modal} onClick={() => setShowEditModal(false)}>
+                    <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Edit Class & Section</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Update class name, semester, section, branch, scheme, and assigned faculty.</p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={S.label}>Class / Section Name *</label>
+                                <input
+                                    style={S.input}
+                                    placeholder="e.g. 6th Sem CSE - Section A"
+                                    value={editClassForm.name}
+                                    onChange={e => setEditClassForm(p => ({ ...p, name: e.target.value }))}
+                                    autoFocus
+                                />
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Branch</label>
+                                    <select style={S.sel} value={editClassForm.branch} onChange={e => setEditClassForm(p => ({ ...p, branch: e.target.value }))}>
+                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
+                                        {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Semester</label>
+                                    <select style={S.sel} value={editClassForm.semester} onChange={e => setEditClassForm(p => ({ ...p, semester: parseInt(e.target.value) }))}>
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Section</label>
+                                    <select style={S.sel} value={editClassForm.section || 'A'} onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value }))}>
+                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
+                                            <option key={sec} value={sec}>Section {sec}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Scheme</label>
+                                    <select style={S.sel} value={editClassForm.scheme} onChange={e => setEditClassForm(p => ({ ...p, scheme: e.target.value }))}>
+                                        {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label style={S.label}>Academic Year</label>
+                                <input
+                                    style={S.input}
+                                    placeholder="e.g. 2024-2025"
+                                    value={editClassForm.academic_year || ''}
+                                    onChange={e => setEditClassForm(p => ({ ...p, academic_year: e.target.value }))}
+                                />
+                            </div>
+                            <div>
+                                <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
+                                <select style={S.sel} value={editClassForm.faculty_id || 'all'} onChange={e => setEditClassForm(p => ({ ...p, faculty_id: e.target.value }))}>
+                                    <option value="all">🌐 All Faculty (Institutional Shared Class)</option>
+                                    {facultyList.map(f => (
+                                        <option key={f.id} value={f.id}>
+                                            👨‍🏫 {f.full_name} ({f.department || 'Faculty'}{f.email ? ` · ${f.email}` : ''})
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    Assign a faculty in-charge or share across all faculty members in the department.
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '14px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowEditModal(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={saveEditClass} disabled={editLoading}>
+                                {editLoading ? 'Saving…' : 'Save Changes'}
+                            </button>
                         </div>
                     </div>
                 </div>,
