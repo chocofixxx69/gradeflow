@@ -26,7 +26,7 @@ export async function GET(req) {
         let { data: studentProfile, error: pErr } = await supabaseAdmin
             .from('students')
             .select('*')
-            .eq('usn', usn)
+            .ilike('usn', usn)
             .maybeSingle();
 
         if (pErr) throw pErr;
@@ -40,7 +40,7 @@ export async function GET(req) {
             const { data: newProfile, error: insertErr } = await supabaseAdmin
                 .from('students')
                 .insert({
-                    usn,
+                    usn: usn.toUpperCase().trim(),
                     name: session.name || usn,
                     scheme: session.scheme || '2022',
                     branch: session.branch || normalizedBranch || 'CSE',
@@ -63,9 +63,9 @@ export async function GET(req) {
             { data: resultRows }
         ] = await Promise.all([
             studentId ? supabaseAdmin.from('marks').select('*').eq('student_id', studentId) : { data: [] },
-            supabaseAdmin.from('subject_marks').select('*, results(exam_name)').eq('usn', usn),
-            supabaseAdmin.from('academic_remarks').select('*').eq('student_usn', usn),
-            supabaseAdmin.from('results').select('*').eq('usn', usn)
+            supabaseAdmin.from('subject_marks').select('*, results(exam_name)').ilike('usn', usn),
+            supabaseAdmin.from('academic_remarks').select('*').ilike('student_usn', usn),
+            supabaseAdmin.from('results').select('*').ilike('usn', usn)
         ]);
 
         // Standardize & combine marks pool

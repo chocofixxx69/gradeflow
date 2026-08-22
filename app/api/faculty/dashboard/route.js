@@ -25,15 +25,20 @@ export async function GET(req) {
         // If faculty searches for a specific student USN
         if (searchUsn) {
             const cleanUSN = searchUsn.toUpperCase().trim();
-            const { data: studentProfile } = await supabaseAdmin
-                .from('students')
-                .select('*')
-                .eq('usn', cleanUSN)
-                .maybeSingle();
+            const [{ data: studentProfile }, { data: resultMarks }] = await Promise.all([
+                supabaseAdmin
+                    .from('students')
+                    .select('*')
+                    .ilike('usn', cleanUSN)
+                    .maybeSingle(),
+                supabaseAdmin
+                    .from('subject_marks')
+                    .select('*, results(exam_name)')
+                    .ilike('usn', cleanUSN)
+            ]);
 
-            const [{ data: studentMarks }, { data: resultMarks }] = await Promise.all([
-                studentProfile?.id ? supabaseAdmin.from('marks').select('*').eq('student_id', studentProfile.id) : { data: [] },
-                supabaseAdmin.from('subject_marks').select('*, results(exam_name)').eq('usn', cleanUSN)
+            const [{ data: studentMarks }] = await Promise.all([
+                studentProfile?.id ? supabaseAdmin.from('marks').select('*').eq('student_id', studentProfile.id) : { data: [] }
             ]);
 
             return ok({
