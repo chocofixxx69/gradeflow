@@ -29,7 +29,7 @@ export async function GET(req) {
         const profiles = await fetchByChunks('students', 'usn, name, branch, semester', 'usn', usns, supabaseAdmin);
         const remarks = await fetchByChunks('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', usns, supabaseAdmin);
         const resultRows = await fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', usns, supabaseAdmin);
-        const marks = await fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, total, is_backlog', 'usn', usns, supabaseAdmin);
+        const marks = await fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, internal, external, total, is_backlog, result', 'usn', usns, supabaseAdmin);
 
         const creditsMap = {};
         (resultRows || []).forEach(r => {
