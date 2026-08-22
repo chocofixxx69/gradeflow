@@ -352,25 +352,34 @@ export default function LandingPage() {
                         <Link href="/guide" className={styles.footerLink}>User Guide</Link>
                     </div>
 
-                    <p className={styles.footerText}>
-                        © 2026 GradeFlow · Academic Intelligence System · Private Institutional Network
-                    </p>
-
-                    <div className={styles.footerCredits}>
-                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', opacity: 0.75, fontWeight: 600 }}>
-                            Developed by <strong>Mohammed Ainan Armar</strong> & <strong>Rawahah Ruknuddin</strong>
-                        </p>
-                        <p style={{ fontSize: '12px', color: 'var(--tx-muted)', opacity: 0.9 }}>
+                    {/* Highlighted Developer Card */}
+                    <div className={styles.developerCreditCard}>
+                        <div className={styles.developerCreditHeader}>
+                            <span className="material-icons-round" style={{ fontSize: '15px' }}>code</span>
+                            <span>ENGINEERED & DEVELOPED BY</span>
+                        </div>
+                        <div className={styles.developerNamesRow}>
+                            <div className={styles.developerChip}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
+                                <span>Mohammed Ainan Armar</span>
+                            </div>
+                            <span className={styles.developerAmp}>&</span>
+                            <div className={styles.developerChip}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
+                                <span>Rawahah Ruknuddin</span>
+                            </div>
+                        </div>
+                        <div className={styles.poweredByLine}>
                             Powered by{' '}
                             <a
                                 href="https://automaticxai.online"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                style={{ color: 'var(--primary)', textDecoration: 'underline', fontWeight: 800 }}
+                                className={styles.poweredByLink}
                             >
                                 automaticxai.online
                             </a>
-                        </p>
+                        </div>
                     </div>
                 </div>
             </footer>

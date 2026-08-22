@@ -559,7 +559,7 @@
 /* ── FOOTER ── */
 .footer {
   text-align: center;
-  padding: 40px var(--page-px) 32px;
+  padding: 48px var(--page-px) 36px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   box-sizing: border-box;
@@ -571,21 +571,98 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
+}
+
+.footerLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--tx-main);
 }
 
 .footerText {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--tx-muted);
   font-weight: 500;
   margin: 0;
 }
 
-.footerCredits {
+/* ── HIGHLIGHTED DEVELOPER CREDITS ── */
+.developerCreditCard {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  background: var(--surface-low);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  box-shadow: var(--shadow-sm);
+  max-width: 640px;
+  width: 100%;
+  margin: 4px 0;
+  box-sizing: border-box;
+}
+
+.developerCreditHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.developerNamesRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.developerChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-strong);
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--tx-main);
+  box-shadow: 0 1px 3px rgba(10, 24, 28, 0.06);
+}
+
+.developerAmp {
+  color: var(--primary);
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.poweredByLine {
+  font-size: 12.5px;
+  color: var(--tx-muted);
+  font-weight: 600;
   margin-top: 2px;
+}
+
+.poweredByLink {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 800;
+  border-bottom: 1.5px solid var(--primary);
+  padding-bottom: 1px;
+  transition: opacity var(--transition-fast);
+}
+
+.poweredByLink:hover {
+  opacity: 0.8;
 }
 
 .footerLinks {
@@ -724,6 +801,15 @@
 
   .footerLinks {
     gap: 12px;
+  }
+
+  .developerCreditCard {
+    padding: 14px 16px;
+  }
+
+  .developerChip {
+    font-size: 12px;
+    padding: 5px 12px;
   }
 }
 

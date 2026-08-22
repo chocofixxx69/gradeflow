@@ -336,6 +336,85 @@ function SettingsContent() {
                 </Card>
             )}
 
+            {/* About & Engineering Team */}
+            <Card style={{ marginBottom: 'var(--space-5)', border: '1px solid var(--border)' }}>
+                <CardHeader>
+                    <CardTitle>System & Engineering Team</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <div>
+                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>
+                                Developed & Maintained By
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                                <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--surface-low)',
+                                    border: '1px solid var(--border)',
+                                    padding: '6px 12px',
+                                    borderRadius: 'var(--radius-full)',
+                                    fontWeight: 800,
+                                    fontSize: '13px',
+                                    color: 'var(--tx-main)'
+                                }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>person</span>
+                                    Mohammed Ainan Armar
+                                </span>
+                                <span style={{ color: 'var(--primary)', fontWeight: 900 }}>&</span>
+                                <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--surface-low)',
+                                    border: '1px solid var(--border)',
+                                    padding: '6px 12px',
+                                    borderRadius: 'var(--radius-full)',
+                                    fontWeight: 800,
+                                    fontSize: '13px',
+                                    color: 'var(--tx-main)'
+                                }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>person</span>
+                                    Rawahah Ruknuddin
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                Architecture & Engine
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'var(--tx-main)', fontWeight: 700 }}>
+                                GradeFlow v1.0 (VTU NEP Suite)
+                            </span>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                Infrastructure Partner
+                            </span>
+                            <a
+                                href="https://automaticxai.online"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                    fontSize: '12.5px',
+                                    color: 'var(--primary)',
+                                    fontWeight: 800,
+                                    textDecoration: 'underline'
+                                }}
+                            >
+                                automaticxai.online
+                            </a>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Logout */}
             <Card style={{ marginBottom: 'var(--space-5)' }}>
                 <CardHeader>
