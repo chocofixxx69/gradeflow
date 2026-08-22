@@ -822,12 +822,12 @@ export function ClassesContent({ embedded = false }) {
                                                 {filteredStudents.map((s, idx) => {
                                                     const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
                                                     const displayScore = semFilter !== 'all'
-                                                        ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
+                                                        ? (semData?.sgpa != null && semData.sgpa > 0 ? Number(semData.sgpa).toFixed(2) : (semData?.sgpa === 0 ? '0.00' : '—'))
                                                         : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
 
                                                     const displayBacklogs = semFilter !== 'all'
-                                                        ? (semData ? semData.backlogs : null)
-                                                        : (s.has_data ? s.total_backlogs : null);
+                                                        ? (semData && semData.backlogs != null ? semData.backlogs : null)
+                                                        : (s.has_data && s.total_backlogs != null ? s.total_backlogs : null);
 
                                                     const isSelected = selectedUsns.has(s.usn);
 
@@ -851,7 +851,7 @@ export function ClassesContent({ embedded = false }) {
                                                             <td style={{ ...S.td, textAlign: 'center' }}>
                                                                 {displayBacklogs != null ? (
                                                                     <span style={{ fontWeight: 900, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                                                                        {displayBacklogs > 0 ? displayBacklogs : 'Clear ✓'}
+                                                                        {displayBacklogs > 0 ? `${displayBacklogs} Backlog${displayBacklogs > 1 ? 's' : ''}` : 'Clear ✓'}
                                                                     </span>
                                                                 ) : (
                                                                     <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
@@ -885,11 +885,11 @@ export function ClassesContent({ embedded = false }) {
                                             {filteredStudents.map((s, idx) => {
                                                 const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
                                                 const displayScore = semFilter !== 'all'
-                                                    ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
+                                                    ? (semData?.sgpa != null && semData.sgpa > 0 ? Number(semData.sgpa).toFixed(2) : (semData?.sgpa === 0 ? '0.00' : '—'))
                                                     : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
                                                 const displayBacklogs = semFilter !== 'all'
-                                                    ? (semData ? semData.backlogs : null)
-                                                    : (s.has_data ? s.total_backlogs : null);
+                                                    ? (semData && semData.backlogs != null ? semData.backlogs : null)
+                                                    : (s.has_data && s.total_backlogs != null ? s.total_backlogs : null);
 
                                                 return (
                                                     <div key={s.usn} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
@@ -906,7 +906,7 @@ export function ClassesContent({ embedded = false }) {
                                                                 </span>
                                                                 {displayBacklogs != null ? (
                                                                     <span style={{ fontWeight: 800, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                                                                        {displayBacklogs > 0 ? `${displayBacklogs} Backlog` : 'Clear ✓'}
+                                                                        {displayBacklogs > 0 ? `${displayBacklogs} Backlog${displayBacklogs > 1 ? 's' : ''}` : 'Clear ✓'}
                                                                     </span>
                                                                 ) : (
                                                                     <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>No result data</span>

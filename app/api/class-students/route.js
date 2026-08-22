@@ -30,16 +30,29 @@ export async function GET(req) {
         const upperUsns = rawUsns.map(u => (u || '').toUpperCase().trim());
         const allQueryUsns = [...new Set([...rawUsns, ...upperUsns])];
 
-        const [profiles, remarks, resultRows, marks] = await Promise.all([
+        const [profiles, remarks, resultRows, scrapedMarks, manualMarks] = await Promise.all([
             fetchByChunks('students', 'usn, name, branch, semester', 'usn', allQueryUsns, supabaseAdmin),
-            fetchByChunks('academic_remarks', 'student_usn, sgpa, semester', 'student_usn', allQueryUsns, supabaseAdmin),
+            fetchByChunks('academic_remarks', 'student_usn, sgpa, semester, backlog_count, is_all_clear', 'student_usn', allQueryUsns, supabaseAdmin),
             fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', allQueryUsns, supabaseAdmin),
             fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, internal, external, total, credits, is_backlog, announced_date, result_id', 'usn', allQueryUsns, supabaseAdmin),
+            fetchByChunks('marks', 'student_usn, semester, subject_code, subject_name, grade, cie_marks, see_marks, total_marks, credits', 'student_usn', allQueryUsns, supabaseAdmin),
         ]);
 
         // ── ALL index maps are keyed by UPPERCASE USN ──
         // This is the single normalization point — every lookup below uses norm().
         const norm = usn => (usn || '').toUpperCase().trim();
+
+        // Combine scraped and manual marks into a single normalized pool
+        const marks = [
+            ...(scrapedMarks || []).map(m => ({ ...m, usn: norm(m.usn) })),
+            ...(manualMarks || []).map(m => ({
+                ...m,
+                usn: norm(m.student_usn),
+                internal: m.cie_marks,
+                external: m.see_marks,
+                total: m.total_marks
+            }))
+        ];
 
         const creditsMap = {};
         (resultRows || []).forEach(r => {
@@ -62,7 +75,14 @@ export async function GET(req) {
 
         const backlogMap = {};
         upperUsns.forEach(u => {
-            backlogMap[u] = computeBacklogs(marksByUsn[u] || []).totalBacklogs;
+            const studMarks = marksByUsn[u] || [];
+            if (studMarks.length > 0) {
+                backlogMap[u] = computeBacklogs(studMarks).totalBacklogs;
+            } else if (remarksByUsn[u] && remarksByUsn[u].length > 0) {
+                backlogMap[u] = remarksByUsn[u].reduce((acc, r) => acc + (Number(r.backlog_count) || (r.is_all_clear === false ? 1 : 0)), 0);
+            } else {
+                backlogMap[u] = 0;
+            }
         });
 
         const profileMap = {};
@@ -113,17 +133,14 @@ export async function GET(req) {
                 const sem = Number(semStr);
                 let tc = 0;
                 let tcp = 0;
-                let bCount = 0;
+
+                const semBacklogInfo = computeBacklogs(semMarks);
+                const bCount = semBacklogInfo.totalBacklogs;
 
                 semMarks.forEach(m => {
                     const g = (m.grade || 'F').trim().toUpperCase();
                     const tot = Number(m.total) || 0;
                     const ext = Number(m.external) || 0;
-                    const isFail = m.is_backlog === true || m.is_backlog === 'true'
-                        || g === 'F' || g === 'A' || g === 'FAIL' || g === 'ABSENT'
-                        || g === 'NP' || g === 'NE' || g === 'X'
-                        || (ext > 0 && ext < 18) || (tot > 0 && tot < 40);
-                    if (isFail) bCount++;
 
                     if (excludeGrades.has(g)) return;
                     const cr = Number(m.credits) || 3;
@@ -132,11 +149,18 @@ export async function GET(req) {
                     tcp += (gp * cr);
                 });
 
+                // Check stored SGPA from academic_remarks or results
+                const storedRemark = (remarksByUsn[u] || []).find(r => Number(r.semester) === sem);
+                const storedResult = (resultRows || []).find(r => norm(r.usn) === u && Number(r.semester) === sem);
+                const storedSgpa = storedRemark?.sgpa != null ? Number(storedRemark.sgpa) : (storedResult?.sgpa != null ? Number(storedResult.sgpa) : null);
+
                 const calcSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;
+                const finalSgpa = (storedSgpa != null && storedSgpa > 0) ? storedSgpa : (calcSgpa > 0 ? calcSgpa : (storedSgpa === 0 ? 0.0 : null));
+
                 semDataByUsn[u][sem] = {
-                    sgpa: calcSgpa,
+                    sgpa: finalSgpa != null ? finalSgpa : calcSgpa,
                     backlogs: bCount,
-                    total_credits: tc
+                    total_credits: tc || creditsMap[u]?.[sem] || 0
                 };
             });
         });
@@ -148,9 +172,17 @@ export async function GET(req) {
             if (u && s) {
                 maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
                 if (!semDataByUsn[u]) semDataByUsn[u] = {};
-                if (!semDataByUsn[u][s]) semDataByUsn[u][s] = { backlogs: 0 };
-                if (semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) {
-                    semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
+                const bCount = r.backlog_count != null ? Number(r.backlog_count) : (r.is_all_clear === false ? 1 : 0);
+                if (!semDataByUsn[u][s]) {
+                    semDataByUsn[u][s] = {
+                        sgpa: Number(r.sgpa) || 0,
+                        backlogs: bCount,
+                        total_credits: creditsMap[u]?.[s] || 0
+                    };
+                } else {
+                    if (semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) {
+                        semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
+                    }
                 }
             }
         });
@@ -161,8 +193,13 @@ export async function GET(req) {
             if (u && s) {
                 maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
                 if (!semDataByUsn[u]) semDataByUsn[u] = {};
-                if (!semDataByUsn[u][s]) semDataByUsn[u][s] = { backlogs: 0 };
-                if ((semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) && r.sgpa) {
+                if (!semDataByUsn[u][s]) {
+                    semDataByUsn[u][s] = {
+                        sgpa: Number(r.sgpa) || 0,
+                        backlogs: 0,
+                        total_credits: Number(r.total_credits) || 0
+                    };
+                } else if ((semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) && r.sgpa) {
                     semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
                 }
             }
