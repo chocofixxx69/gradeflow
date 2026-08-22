@@ -22,6 +22,9 @@ function calcSGPA(subjects) {
         const grade = (m.grade || '').trim().toUpperCase();
         const unified = unifyGrade(grade);
         const credits = Number(m.credits) || 3;
+        const ext = Number(m.see_marks ?? m.external) || 0;
+        const tot = Number(m.total_marks ?? m.total) || 0;
+        const resStr = (m.result || '').trim().toUpperCase();
         const gp = getGradePoint(grade, '2022', m.total_marks || m.total, m.see_marks ?? m.external ?? null);
 
         totalCredits += credits;
@@ -29,7 +32,16 @@ function calcSGPA(subjects) {
         // Sum up weighted grade points (Grade Point * Credits)
         totalCreditPoints += (gp * credits);
 
-        if (unified === 'P') {
+        // Canonical isFail — mirrors computeBacklogs() in lib/analytics-data.js.
+        // Catches: grade F/A, is_backlog flag, ext < 18 (SEE minimum threshold),
+        // total < 40 (pass minimum), and VTU result string 'F' or 'FAIL'.
+        const isFail = m.is_backlog === true
+            || grade === 'F' || unified === 'A'
+            || (ext > 0 && ext < 18)
+            || (tot > 0 && tot < 40)
+            || resStr === 'F' || resStr.includes('FAIL');
+
+        if (!isFail) {
             earnedCredits += credits;
         } else {
             backlogs++;
@@ -603,7 +615,12 @@ function DashboardContent() {
                     semester: Number(m.semester) || 1,
                     announced_date: dateVal,
                     exam_date: dateVal || formatExamAlias(m.results?.exam_name || (source === 'manual' ? 'Manual Entry' : 'N/A')),
-                    source
+                    source,
+                    // Preserve backlog/fail signals from the API — required for canonical
+                    // isFail detection downstream (ext < 18 threshold, is_backlog flag, result string).
+                    is_backlog: m.is_backlog === true,
+                    external: m.external ?? m.see_marks ?? null,
+                    result: m.result || null,
                 };
             };
 
@@ -968,7 +985,20 @@ function DashboardContent() {
     const sortedSemesters = Object.entries(marks).sort(([a], [b]) => Number(b) - Number(a));
     const semesterCount = sortedSemesters.length;
     const totalSubjects = Object.values(marks).flat().length;
-    const backlogs = Object.values(marks).flat().filter(m => { const g = unifyGrade(m.grade); return g === 'F' || g === 'A'; });
+    // Canonical isFail — single source of truth shared with computeBacklogs() in lib/analytics-data.js.
+    // Catches grade F/A, is_backlog flag, SEE external < 18, total < 40, and result string 'F'/'FAIL'.
+    const backlogs = Object.values(marks).flat().filter(m => {
+        const g = (m.grade || '').trim().toUpperCase();
+        const unified = unifyGrade(g);
+        const ext = Number(m.see_marks ?? m.external) || 0;
+        const tot = Number(m.total_marks ?? m.total) || 0;
+        const resStr = (m.result || '').trim().toUpperCase();
+        return m.is_backlog === true
+            || g === 'F' || unified === 'A'
+            || (ext > 0 && ext < 18)
+            || (tot > 0 && tot < 40)
+            || resStr === 'F' || resStr.includes('FAIL');
+    });
     const failedSubjects = backlogs.length;
 
     if (loading) return (

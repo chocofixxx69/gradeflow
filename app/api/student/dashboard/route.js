@@ -108,7 +108,10 @@ export async function GET(req) {
                 announced_date: m.announced_date || null,
                 exam_date: m.announced_date || formatExamAlias(m.results?.exam_name || 'Scraped Record'),
                 source: 'scraper',
-                is_backlog: m.is_backlog || false
+                is_backlog: m.is_backlog || false,
+                // Preserve raw external and result for canonical isFail detection (ext < 18, result = 'F')
+                external: m.external ?? m.see_marks ?? null,
+                result: m.result || null,
             }));
         }
 
