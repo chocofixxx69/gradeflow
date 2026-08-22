@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
-import { Badge, Button, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
+import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradePoint, getGradeRank, unifyGrade } from '../../lib/vtuGrades';
 import styles from './Dashboard.module.css';
 
@@ -210,43 +210,44 @@ function StudentDashboardView({
                         {sortedSemesters.map(([sem, subjects]) => (
                             <section key={sem} className={styles.panel} aria-labelledby={`semester-${sem}-title`}>
                                 <div className={styles.semesterHeader}>
-                                    <div className={styles.semesterTitleGroup}>
-                                        <div>
-                                            <div id={`semester-${sem}-title`} className={styles.semesterTitle}>Semester {sem}</div>
-                                            <div className={styles.semesterMeta}>{subjects.length} Subjects Listed</div>
-                                        </div>
-                                        <Badge tone="info">SGPA: {(sgpas[sem] || 0).toFixed(2)}</Badge>
+                                    <div>
+                                        <h3 id={`semester-${sem}-title`} className={styles.semesterTitle}>Semester {sem}</h3>
+                                        <p className={styles.semesterMeta}>{subjects.length} Subjects Listed</p>
                                     </div>
-                                    <Button
-                                        variant="secondary"
-                                        density="compact"
-                                        iconStart="download"
-                                        onClick={() => {
-                                            import('../../lib/generatePDF').then(({ generateResultPDF }) => {
-                                                generateResultPDF({
-                                                    studentName: student.name || 'Student',
-                                                    usn: student.usn || 'N/A',
-                                                    branch: student.branch || '',
-                                                    scheme: student.scheme || '2022',
-                                                    semesterMarks: { [sem]: subjects },
-                                                    cgpa: sgpas[sem]
-                                                });
-                                            }).catch(err => alert('PDF Import Error: ' + err.message));
-                                        }}
-                                    >
-                                        Sem {sem} PDF
-                                    </Button>
+                                    <div className={styles.semesterActions}>
+                                        <Badge tone="info" size="sm">SGPA: {(sgpas[sem] || 0).toFixed(2)}</Badge>
+                                        <Button
+                                            variant="secondary"
+                                            density="compact"
+                                            iconStart="download"
+                                            onClick={() => {
+                                                import('../../lib/generatePDF').then(({ generateResultPDF }) => {
+                                                    generateResultPDF({
+                                                        studentName: student.name || 'Student',
+                                                        usn: student.usn || 'N/A',
+                                                        branch: student.branch || '',
+                                                        scheme: student.scheme || '2022',
+                                                        semesterMarks: { [sem]: subjects },
+                                                        cgpa: sgpas[sem]
+                                                    });
+                                                }).catch(err => alert('PDF Import Error: ' + err.message));
+                                            }}
+                                        >
+                                            Sem {sem} PDF
+                                        </Button>
+                                    </div>
                                 </div>
+                                <Divider />
                                 <div className={styles.tableWrap}>
                                     <table className={styles.table}>
                                         <thead>
                                             <tr>
                                                 <th scope="col">Subject Code</th>
                                                 <th scope="col">Subject Name</th>
-                                                <th scope="col" className={styles.center}>Internal</th>
-                                                <th scope="col" className={styles.center}>External</th>
+                                                <th scope="col" className={styles.center}>Internal Marks</th>
+                                                <th scope="col" className={styles.center}>External Marks</th>
                                                 <th scope="col" className={styles.center}>Total</th>
-                                                <th scope="col" className={styles.center}>Status</th>
+                                                <th scope="col" className={styles.center}>Result</th>
                                                 <th scope="col">Announced / Updated on</th>
                                             </tr>
                                         </thead>
