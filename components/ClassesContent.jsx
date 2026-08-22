@@ -113,6 +113,7 @@ export function ClassesContent({ embedded = false }) {
     const [drawerTab, setDrawerTab] = useState('marks');
     const [branches, setBranches] = useState([]);
     const [schemes] = useState(['2022', '2025']);
+    const [exportSemester, setExportSemester] = useState(4);
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportType, setExportType] = useState('consolidated');
     const [facultyMap, setFacultyMap] = useState({});
@@ -129,17 +130,14 @@ export function ClassesContent({ embedded = false }) {
         if (data?.faculty) setFacultyList(data.faculty);
     };
 
-    const openPdfExportModal = async () => {
+    const loadSemesterExportData = async (targetSem) => {
         if (!selectedClass) return;
-        setMsg('');
-        setShowExportModal(true);
-
-        const parsedSem = Number(selectedClass.semester) || 4;
         const usnList = students.map(s => s.usn);
 
         try {
-            const saved = localStorage.getItem(`gf_faculty_map_${selectedClass.id}`);
+            const saved = localStorage.getItem(`gf_faculty_map_${selectedClass.id}_sem_${targetSem}`);
             if (saved) setFacultyMap(JSON.parse(saved));
+            else setFacultyMap({});
         } catch (e) {}
 
         if (usnList.length > 0) {
@@ -148,7 +146,7 @@ export function ClassesContent({ embedded = false }) {
                     .from('subject_marks')
                     .select('*')
                     .in('usn', usnList)
-                    .eq('semester', parsedSem);
+                    .eq('semester', Number(targetSem));
                 if (marksData) setAllMarks(marksData);
 
                 const { data: catData } = await supabase
@@ -156,7 +154,7 @@ export function ClassesContent({ embedded = false }) {
                     .select('id, subject_code, subject_name, credits')
                     .eq('scheme', selectedClass.scheme || '2022')
                     .eq('branch', selectedClass.branch || 'CS')
-                    .eq('semester', parsedSem);
+                    .eq('semester', Number(targetSem));
 
                 if (catData && catData.length > 0) {
                     const formatted = catData.map(c => ({ id: c.id, code: c.subject_code, name: c.subject_name, credits: c.credits }));
@@ -164,6 +162,8 @@ export function ClassesContent({ embedded = false }) {
                 } else if (marksData && marksData.length > 0) {
                     const codes = Array.from(new Set(marksData.map(m => m.subject_code)));
                     setClassSubjects(codes.map(c => ({ code: c, name: c })));
+                } else {
+                    setClassSubjects([]);
                 }
             } catch (e) {
                 console.error('Failed to load export data:', e);
@@ -171,9 +171,24 @@ export function ClassesContent({ embedded = false }) {
         }
     };
 
+    const openPdfExportModal = async () => {
+        if (!selectedClass) return;
+        setMsg('');
+        const initialSem = Number(selectedClass.semester) || 4;
+        setExportSemester(initialSem);
+        setShowExportModal(true);
+        await loadSemesterExportData(initialSem);
+    };
+
+    const handleSemesterChange = async (newSem) => {
+        const parsed = Number(newSem);
+        setExportSemester(parsed);
+        await loadSemesterExportData(parsed);
+    };
+
     const handleGeneratePdf = () => {
         try {
-            localStorage.setItem(`gf_faculty_map_${selectedClass.id}`, JSON.stringify(facultyMap));
+            localStorage.setItem(`gf_faculty_map_${selectedClass.id}_sem_${exportSemester}`, JSON.stringify(facultyMap));
         } catch (e) {}
 
         if (exportType === 'consolidated') {
@@ -183,13 +198,14 @@ export function ClassesContent({ embedded = false }) {
                 allMarks,
                 subjects: classSubjects,
                 facultyMap,
+                targetSemester: exportSemester,
                 institutionInfo: {
                     collegeName: 'Anjuman Institute of Technology and Management',
                     department: `Department of ${selectedClass.branch || 'CSE'}`,
-                    batch: `Sem ${selectedClass.semester || 4} - ${selectedClass.name}`,
+                    batch: `Sem ${exportSemester} - ${selectedClass.name}`,
                     ay: 'AY -2025-26 (EVEN Semester)'
                 },
-                fileName: `${(selectedClass.name || 'Class').replace(/\s+/g, '_')}_Consolidated_Report.pdf`
+                fileName: `${(selectedClass.name || 'Class').replace(/\s+/g, '_')}_Sem${exportSemester}_Consolidated_Report.pdf`
             });
         } else {
             exportClassReportPDF({ selectedClass, students, subjectToppers });
@@ -756,10 +772,26 @@ export function ClassesContent({ embedded = false }) {
                             </button>
                         </div>
 
+                        {/* Semester Selector Bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', background: 'var(--surface-low)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', whiteSpace: 'nowrap' }}>Select Semester for Export:</label>
+                            <select
+                                value={exportSemester}
+                                onChange={(e) => handleSemesterChange(e.target.value)}
+                                style={{ ...S.sel, width: 'auto', flex: 1, padding: '6px 12px', fontSize: '13px', fontWeight: 700 }}
+                            >
+                                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                                    <option key={s} value={s}>
+                                        Semester {s} {s === Number(selectedClass.semester) ? '(Class Default)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
                         {exportType === 'consolidated' && (
                             <div>
                                 <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    Assign Faculty Names for Subjects (Sem {selectedClass.semester})
+                                    Assign Faculty Names for Subjects (Sem {exportSemester})
                                 </div>
                                 <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px' }}>
                                     {classSubjects.length > 0 ? (

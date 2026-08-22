@@ -64,14 +64,34 @@ export async function GET(req) {
             hasResultsMap[usn] = hasR;
         });
 
+        // Fetch class metadata to fallback to class semester if needed
+        const { data: classData } = await supabaseAdmin
+            .from('classes')
+            .select('semester, branch, scheme')
+            .eq('id', class_id)
+            .maybeSingle();
+
+        const classSem = Number(classData?.semester) || 1;
+
+        const maxSemByUsn = {};
+        (remarks || []).forEach(r => {
+            const s = Number(r.semester);
+            if (s) maxSemByUsn[r.student_usn] = Math.max(maxSemByUsn[r.student_usn] || 0, s);
+        });
+        (marks || []).forEach(m => {
+            const s = Number(m.semester);
+            if (s) maxSemByUsn[m.usn] = Math.max(maxSemByUsn[m.usn] || 0, s);
+        });
+
         const students = members.map(m => {
             const hasData = hasResultsMap[m.usn] || false;
+            const computedSem = maxSemByUsn[m.usn] || Number(profileMap[m.usn]?.semester) || classSem;
             return {
                 id: m.id,
                 usn: m.usn,
                 name: profileMap[m.usn]?.name || m.usn,
-                branch: profileMap[m.usn]?.branch || '—',
-                semester: profileMap[m.usn]?.semester || '—',
+                branch: profileMap[m.usn]?.branch || classData?.branch || '—',
+                semester: computedSem,
                 cgpa: hasData && cgpaMap[m.usn] != null ? cgpaMap[m.usn] : null,
                 total_backlogs: hasData ? (backlogMap[m.usn] ?? 0) : null,
                 has_data: hasData,
