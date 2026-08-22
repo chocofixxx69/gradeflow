@@ -3,9 +3,7 @@
   <p><strong>Advanced Scraper, SGPA/CGPA Calculator & Faculty Command Center</strong></p>
   
   <p>
-    <a href="https://automaticxai.online/">
-      <img src="https://img.shields.io/badge/Powered%20By-AutomaticXAI-black?style=for-the-badge" alt="AutomaticXAI">
-    </a>
+    <img src="https://img.shields.io/badge/Department-Computer%20Science%20%26%20Engineering-black?style=for-the-badge" alt="Dept of CSE">
     <a href="https://github.com/ainandaddy-cloud/vtu">
       <img src="https://img.shields.io/github/last-commit/ainandaddy-cloud/vtu?style=for-the-badge&color=2ecc71" alt="Last Commit">
     </a>
@@ -31,11 +29,11 @@
 The GradeFlow system is built and maintained with a focus on academic excellence and technical precision.
 
 **Development Team:**
-*   **Mohammed Ainan Armar**
-*   **Rawahah Ruknuddin**
+*   [**Mohammed Ainan Armar**](https://ainanai.vercel.app/) — AI Engineer & Full Stack Developer
+*   [**Rawahah Ruknuddin**](https://rawahahruknuddin.vercel.app/) — AI Product Engineer
 
-**Powered By:**
-*   [automaticxai.online](https://automaticxai.online)
+**Academic Department:**
+*   **Department of Computer Science & Engineering**
 
 ---
 

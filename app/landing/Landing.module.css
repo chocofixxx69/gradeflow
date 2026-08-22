@@ -636,7 +636,18 @@
   font-size: 13px;
   font-weight: 800;
   color: var(--tx-main);
+  text-decoration: none;
   box-shadow: 0 1px 3px rgba(10, 24, 28, 0.06);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.developerChip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(10, 24, 28, 0.1);
+  text-decoration: none;
 }
 
 .developerAmp {

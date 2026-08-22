@@ -41,32 +41,46 @@ function Footer() {
                     <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                         Engineered by
                     </span>
-                    <span style={{ fontSize: '12.5px', color: 'var(--tx-main)', fontWeight: 800 }}>
-                        Mohammed Ainan Armar
-                    </span>
-                    <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '13px' }}>&</span>
-                    <span style={{ fontSize: '12.5px', color: 'var(--tx-main)', fontWeight: 800 }}>
-                        Rawahah Ruknuddin
-                    </span>
-                </div>
-
-                {/* Powered By */}
-                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }}>
-                    Powered by{' '}
                     <a
-                        href="https://automaticxai.online"
+                        href="https://ainanai.vercel.app/"
                         target="_blank"
                         rel="noopener noreferrer"
+                        title="Mohammed Ainan — AI Engineer & Full Stack Developer"
                         style={{
-                            color: 'var(--primary)',
-                            textDecoration: 'none',
+                            fontSize: '12.5px',
+                            color: 'var(--tx-main)',
                             fontWeight: 800,
-                            borderBottom: '1.5px solid var(--primary)',
-                            paddingBottom: '1px'
+                            textDecoration: 'none',
+                            transition: 'color 0.15s ease'
                         }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--tx-main)'}
                     >
-                        automaticxai.online
+                        Mohammed Ainan Armar
                     </a>
+                    <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '13px' }}>&</span>
+                    <a
+                        href="https://rawahahruknuddin.vercel.app/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Rawahah Ruknuddin — AI Product Engineer"
+                        style={{
+                            fontSize: '12.5px',
+                            color: 'var(--tx-main)',
+                            fontWeight: 800,
+                            textDecoration: 'none',
+                            transition: 'color 0.15s ease'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--tx-main)'}
+                    >
+                        Rawahah Ruknuddin
+                    </a>
+                </div>
+
+                {/* Academic Department */}
+                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                    Department of Computer Science & Engineering
                 </div>
             </div>
         </footer>

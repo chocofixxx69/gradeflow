@@ -359,26 +359,30 @@ export default function LandingPage() {
                             <span>ENGINEERED & DEVELOPED BY</span>
                         </div>
                         <div className={styles.developerNamesRow}>
-                            <div className={styles.developerChip}>
-                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
-                                <span>Mohammed Ainan Armar</span>
-                            </div>
-                            <span className={styles.developerAmp}>&</span>
-                            <div className={styles.developerChip}>
-                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
-                                <span>Rawahah Ruknuddin</span>
-                            </div>
-                        </div>
-                        <div className={styles.poweredByLine}>
-                            Powered by{' '}
                             <a
-                                href="https://automaticxai.online"
+                                href="https://ainanai.vercel.app/"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className={styles.poweredByLink}
+                                className={styles.developerChip}
+                                title="Mohammed Ainan — AI Engineer & Full Stack Developer"
                             >
-                                automaticxai.online
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
+                                <span>Mohammed Ainan Armar</span>
                             </a>
+                            <span className={styles.developerAmp}>&</span>
+                            <a
+                                href="https://rawahahruknuddin.vercel.app/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={styles.developerChip}
+                                title="Rawahah Ruknuddin — AI Product Engineer"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
+                                <span>Rawahah Ruknuddin</span>
+                            </a>
+                        </div>
+                        <div className={styles.poweredByLine}>
+                            Department of Computer Science & Engineering
                         </div>
                     </div>
                 </div>

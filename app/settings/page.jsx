@@ -348,37 +348,57 @@ function SettingsContent() {
                                 Developed & Maintained By
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                                <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: 'var(--surface-low)',
-                                    border: '1px solid var(--border)',
-                                    padding: '6px 12px',
-                                    borderRadius: 'var(--radius-full)',
-                                    fontWeight: 800,
-                                    fontSize: '13px',
-                                    color: 'var(--tx-main)'
-                                }}>
+                                <a
+                                    href="https://ainanai.vercel.app/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Mohammed Ainan — AI Engineer & Full Stack Developer"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'var(--surface-low)',
+                                        border: '1px solid var(--border)',
+                                        padding: '6px 12px',
+                                        borderRadius: 'var(--radius-full)',
+                                        fontWeight: 800,
+                                        fontSize: '13px',
+                                        color: 'var(--tx-main)',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--tx-main)'; }}
+                                >
                                     <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>person</span>
                                     Mohammed Ainan Armar
-                                </span>
+                                </a>
                                 <span style={{ color: 'var(--primary)', fontWeight: 900 }}>&</span>
-                                <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: 'var(--surface-low)',
-                                    border: '1px solid var(--border)',
-                                    padding: '6px 12px',
-                                    borderRadius: 'var(--radius-full)',
-                                    fontWeight: 800,
-                                    fontSize: '13px',
-                                    color: 'var(--tx-main)'
-                                }}>
+                                <a
+                                    href="https://rawahahruknuddin.vercel.app/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Rawahah Ruknuddin — AI Product Engineer"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'var(--surface-low)',
+                                        border: '1px solid var(--border)',
+                                        padding: '6px 12px',
+                                        borderRadius: 'var(--radius-full)',
+                                        fontWeight: 800,
+                                        fontSize: '13px',
+                                        color: 'var(--tx-main)',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--tx-main)'; }}
+                                >
                                     <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>person</span>
                                     Rawahah Ruknuddin
-                                </span>
+                                </a>
                             </div>
                         </div>
 
@@ -395,21 +415,11 @@ function SettingsContent() {
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <span style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }}>
-                                Infrastructure Partner
+                                Academic Department
                             </span>
-                            <a
-                                href="https://automaticxai.online"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                    fontSize: '12.5px',
-                                    color: 'var(--primary)',
-                                    fontWeight: 800,
-                                    textDecoration: 'underline'
-                                }}
-                            >
-                                automaticxai.online
-                            </a>
+                            <span style={{ fontSize: '12.5px', color: 'var(--tx-main)', fontWeight: 700 }}>
+                                Department of Computer Science & Engineering
+                            </span>
                         </div>
                     </div>
                 </CardContent>
