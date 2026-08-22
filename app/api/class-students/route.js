@@ -75,50 +75,96 @@ export async function GET(req) {
 
         const maxSemByUsn = {};
         const semDataByUsn = {};
-        usns.forEach(usn => { semDataByUsn[usn] = {}; });
+        usns.forEach(usn => { semDataByUsn[usn.toUpperCase()] = {}; });
 
+        const excludeGrades = new Set(['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE']);
+
+        // 1. Group marks by uppercase USN and semester
+        const marksGrouped = {};
+        (marks || []).forEach(m => {
+            const u = (m.usn || '').toUpperCase().trim();
+            const s = Number(m.semester);
+            if (u && s) {
+                maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
+                if (!marksGrouped[u]) marksGrouped[u] = {};
+                if (!marksGrouped[u][s]) marksGrouped[u][s] = [];
+                marksGrouped[u][s].push(m);
+            }
+        });
+
+        // 2. Compute exact SGPA and backlogs per (USN, semester) from marks
+        Object.entries(marksGrouped).forEach(([u, semMap]) => {
+            if (!semDataByUsn[u]) semDataByUsn[u] = {};
+
+            Object.entries(semMap).forEach(([semStr, semMarks]) => {
+                const sem = Number(semStr);
+                let tc = 0;
+                let tcp = 0;
+                let bCount = 0;
+
+                semMarks.forEach(m => {
+                    const g = (m.grade || 'F').trim().toUpperCase();
+                    const tot = Number(m.total) || 0;
+                    const ext = Number(m.external) || 0;
+                    const isFail = m.is_backlog || g === 'F' || g === 'A' || (m.total != null && tot < 40);
+                    if (isFail) bCount++;
+
+                    if (excludeGrades.has(g)) return;
+                    const cr = Number(m.credits) || 3;
+                    const gp = getGradePoint(g, '2022', tot, ext);
+                    tc += cr;
+                    tcp += (gp * cr);
+                });
+
+                const calcSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;
+                semDataByUsn[u][sem] = {
+                    sgpa: calcSgpa,
+                    backlogs: bCount,
+                    total_credits: tc
+                };
+            });
+        });
+
+        // 3. Fallback to academic_remarks & results if marks not present for a semester
         (remarks || []).forEach(r => {
+            const u = (r.student_usn || '').toUpperCase().trim();
             const s = Number(r.semester);
-            if (s) {
-                maxSemByUsn[r.student_usn] = Math.max(maxSemByUsn[r.student_usn] || 0, s);
-                if (!semDataByUsn[r.student_usn][s]) semDataByUsn[r.student_usn][s] = { backlogs: 0 };
-                semDataByUsn[r.student_usn][s].sgpa = Number(r.sgpa) || 0;
+            if (u && s) {
+                maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
+                if (!semDataByUsn[u]) semDataByUsn[u] = {};
+                if (!semDataByUsn[u][s]) semDataByUsn[u][s] = { backlogs: 0 };
+                if (semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) {
+                    semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
+                }
             }
         });
 
         (resultRows || []).forEach(r => {
+            const u = (r.usn || '').toUpperCase().trim();
             const s = Number(r.semester);
-            if (s) {
-                maxSemByUsn[r.usn] = Math.max(maxSemByUsn[r.usn] || 0, s);
-                if (!semDataByUsn[r.usn][s]) semDataByUsn[r.usn][s] = { backlogs: 0 };
-                if (semDataByUsn[r.usn][s].sgpa == null && r.sgpa) semDataByUsn[r.usn][s].sgpa = Number(r.sgpa) || 0;
-                semDataByUsn[r.usn][s].total_credits = Number(r.total_credits) || 0;
-            }
-        });
-
-        (marks || []).forEach(m => {
-            const s = Number(m.semester);
-            if (s) {
-                maxSemByUsn[m.usn] = Math.max(maxSemByUsn[m.usn] || 0, s);
-                if (!semDataByUsn[m.usn][s]) semDataByUsn[m.usn][s] = { backlogs: 0 };
-                if (m.is_backlog || m.grade === 'F' || m.grade === 'A' || (m.total != null && Number(m.total) < 40)) {
-                    semDataByUsn[m.usn][s].backlogs = (semDataByUsn[m.usn][s].backlogs || 0) + 1;
+            if (u && s) {
+                maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
+                if (!semDataByUsn[u]) semDataByUsn[u] = {};
+                if (!semDataByUsn[u][s]) semDataByUsn[u][s] = { backlogs: 0 };
+                if ((semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) && r.sgpa) {
+                    semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
                 }
             }
         });
 
         const students = members.map(m => {
-            const hasData = hasResultsMap[m.usn] || false;
-            const computedSem = maxSemByUsn[m.usn] || Number(profileMap[m.usn]?.semester) || classSem;
+            const normUsn = (m.usn || '').toUpperCase().trim();
+            const hasData = hasResultsMap[normUsn] || hasResultsMap[m.usn] || false;
+            const computedSem = maxSemByUsn[normUsn] || Number(profileMap[normUsn]?.semester || profileMap[m.usn]?.semester) || classSem;
             return {
                 id: m.id,
                 usn: m.usn,
-                name: profileMap[m.usn]?.name || m.usn,
-                branch: profileMap[m.usn]?.branch || classData?.branch || '—',
+                name: profileMap[normUsn]?.name || profileMap[m.usn]?.name || m.usn,
+                branch: profileMap[normUsn]?.branch || profileMap[m.usn]?.branch || classData?.branch || '—',
                 semester: computedSem,
                 cgpa: hasData && cgpaMap[m.usn] != null ? cgpaMap[m.usn] : null,
                 total_backlogs: hasData ? (backlogMap[m.usn] ?? 0) : null,
-                semester_data: semDataByUsn[m.usn] || {},
+                semester_data: semDataByUsn[normUsn] || semDataByUsn[m.usn] || {},
                 has_data: hasData,
                 added_at: m.created_at,
             };

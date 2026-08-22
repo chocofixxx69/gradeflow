@@ -587,7 +587,7 @@ export function ClassesContent({ embedded = false }) {
                                                     <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
                                                     <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
                                                     <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
-                                                    <td style={{ ...S.td, textAlign: 'center' }}>{s.semester || '—'}</td>
+                                                    <td style={{ ...S.td, textAlign: 'center', fontWeight: 800 }}>{semFilter === 'all' ? (s.semester || '—') : semFilter}</td>
                                                     <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
                                                         {displayScore}
                                                     </td>
@@ -628,7 +628,7 @@ export function ClassesContent({ embedded = false }) {
                                                         {idx + 1}. {s.name}
                                                     </div>
                                                     <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                        {s.usn} · Sem {s.semester || '—'}
+                                                        {s.usn} · Sem {semFilter === 'all' ? (s.semester || '—') : semFilter}
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
                                                         <span style={{ fontWeight: 800, fontSize: '11px', color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
