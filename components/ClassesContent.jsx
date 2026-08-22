@@ -669,7 +669,7 @@ export function ClassesContent({ embedded = false }) {
             setCsvPreview([]);
             setShowAddModal(false);
             setMsg(`✓ ${j.added || 1} student(s) added successfully.`);
-            await logActivity(faculty, 'CLASS_ADD_STUDENT', selectedClass.name);
+            logActivity('CLASS_ADD_STUDENT', selectedClass.name);
             fetchClassStudents(selectedClass);
             fetchClasses();
         } else {
@@ -680,7 +680,7 @@ export function ClassesContent({ embedded = false }) {
     const removeStudent = async usn => {
         if (!confirm(`Remove ${usn} from this class?`)) return;
         await fetch('/api/class-students', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ class_id: selectedClass.id, usn }) });
-        await logActivity(faculty, 'CLASS_REMOVE_STUDENT', usn);
+        logActivity('CLASS_REMOVE_STUDENT', usn);
         setStudents(p => p.filter(s => s.usn !== usn)); fetchClasses();
     };
 
@@ -691,214 +691,744 @@ export function ClassesContent({ embedded = false }) {
     const avgCgpa = withCgpa.length ? (withCgpa.reduce((s, st) => s + (st.cgpa || 0), 0) / withCgpa.length).toFixed(2) : '—';
     const classTopper = top10[0] || null;
 
-    if (selectedClass) return (
+    const displayedClasses = classes.filter(cls => {
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            const matchName = (cls.name || '').toLowerCase().includes(q);
+            const matchBranch = (cls.branch || '').toLowerCase().includes(q);
+            const matchSection = (cls.section || '').toLowerCase().includes(q);
+            const matchFaculty = (cls.faculty_name || '').toLowerCase().includes(q);
+            if (!matchName && !matchBranch && !matchSection && !matchFaculty) return false;
+        }
+        if (facultyFilter !== 'all') {
+            if (cls.faculty_id !== facultyFilter) return false;
+        }
+        if (branchFilter !== 'all') {
+            if (cls.branch !== branchFilter) return false;
+        }
+        if (semesterFilter !== 'all') {
+            if (String(cls.semester) !== String(semesterFilter)) return false;
+        }
+        if (sectionFilter !== 'all') {
+            if ((cls.section || 'A').toUpperCase() !== sectionFilter.toUpperCase()) return false;
+        }
+        return true;
+    });
+
+    return (
         <div style={S.page} className="gf-fade-up">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <button onClick={() => setSelectedClass(null)} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>Classes
-                </button>
-                <span style={{ color: 'var(--tx-dim)' }}>›</span>
-                <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>{selectedClass.name}</span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '28px' }}>
+            {selectedClass ? (
                 <div>
-                    <h1 style={S.title}>{selectedClass.name}</h1>
-                    <p style={S.subtitle}>
-                        {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section} ` : ''}· {selectedClass.scheme} Scheme · 👨‍🏫 {selectedClass.faculty_name || 'All Faculty (Shared)'} · {students.length} students
-                    </p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(selectedClass)}>
-                        <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>Edit Class
-                    </button>
-                    <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer(selectedUsns.size > 0 ? 'selected' : 'whole_class')}>
-                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>swap_horiz</span>
-                        {selectedUsns.size > 0 ? `Transfer Selected (${selectedUsns.size})` : 'Transfer / Move Class'}
-                    </button>
-                    <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('manual'); setMsg(''); }}>
-                        <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>person_add</span>Add Students
-                    </button>
-                    <button style={btn('ghost')} onClick={() => { setShowAddModal(true); setAddTab('csv'); setMsg(''); setTimeout(() => fileRef.current?.click(), 100); }}>
-                        <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>upload_file</span>Import CSV
-                    </button>
-                    <button style={btn('danger')} onClick={() => deleteClass(selectedClass.id)}>Delete Class</button>
-                </div>
-            </div>
-
-            {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
-
-            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-                <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <select
-                            value={semFilter}
-                            onChange={e => setSemFilter(e.target.value)}
-                            style={{ ...S.sel, width: 'auto', padding: '6px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer' }}
-                        >
-                            <option value="all">🌐 All Semesters (Overall CGPA)</option>
-                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                                <option key={s} value={s}>Semester {s} (SGPA View)</option>
-                            ))}
-                        </select>
-                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={openPdfExportModal}>
-                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                        <button onClick={() => setSelectedClass(null)} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>Classes
                         </button>
-                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
-                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
-                        </button>
-                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginLeft: '4px' }}>{filteredStudents.length} students</div>
+                        <span style={{ color: 'var(--tx-dim)' }}>›</span>
+                        <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>{selectedClass.name}</span>
                     </div>
-                </div>
 
-                {/* Selected Students Actions Bar */}
-                {selectedUsns.size > 0 && (
-                    <div style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>check_circle</span>
-                            {selectedUsns.size} student(s) selected
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '28px' }}>
+                        <div>
+                            <h1 style={S.title}>{selectedClass.name}</h1>
+                            <p style={S.subtitle}>
+                                {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section} ` : ''}· {selectedClass.scheme} Scheme · 👨‍🏫 {selectedClass.faculty_name || 'All Faculty (Shared)'} · {students.length} students
+                            </p>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <button style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer('selected')}>
-                                <span className="material-icons-round" style={{ fontSize: '16px' }}>swap_horiz</span>Transfer Selected ({selectedUsns.size})
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(selectedClass)}>
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>Edit Class
                             </button>
-                            <button style={{ ...btn('danger'), padding: '6px 12px', fontSize: '12px' }} onClick={removeSelectedStudents}>
-                                Remove Selected ({selectedUsns.size})
+                            <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer(selectedUsns.size > 0 ? 'selected' : 'whole_class')}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>swap_horiz</span>
+                                {selectedUsns.size > 0 ? `Transfer Selected (${selectedUsns.size})` : 'Transfer / Move Class'}
                             </button>
-                            <button style={{ ...btn('ghost'), padding: '6px 10px', fontSize: '12px' }} onClick={() => setSelectedUsns(new Set())}>
-                                Deselect All
+                            <button style={btn('primary')} onClick={() => { setShowAddModal(true); setAddTab('manual'); setMsg(''); }}>
+                                <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>person_add</span>Add Students
                             </button>
+                            <button style={btn('ghost')} onClick={() => { setShowAddModal(true); setAddTab('csv'); setMsg(''); setTimeout(() => fileRef.current?.click(), 100); }}>
+                                <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>upload_file</span>Import CSV
+                            </button>
+                            <button style={btn('danger')} onClick={() => deleteClass(selectedClass.id)}>Delete Class</button>
                         </div>
                     </div>
-                )}
 
-                {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
-                    : (
-                        <div style={S.tableWrap}>
-                            {!isMobile ? (
-                                <table style={{ width: '100%', minWidth: '660px', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr>
-                                            <th style={{ ...S.th, width: '40px', textAlign: 'center' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={filteredStudents.length > 0 && selectedUsns.size === filteredStudents.length}
-                                                    onChange={() => toggleSelectAll(filteredStudents)}
-                                                    style={{ cursor: 'pointer', width: '15px', height: '15px' }}
-                                                    title="Select All Students"
-                                                />
-                                            </th>
-                                            {['#', 'Name', 'USN', 'Sem', semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`, semFilter === 'all' ? 'Total Backlogs' : `Backlogs (S${semFilter})`, 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredStudents.map((s, idx) => {
-                                            const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
-                                            const displayScore = semFilter !== 'all'
-                                                ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
-                                                : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
+                    {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
 
-                                            const displayBacklogs = semFilter !== 'all'
-                                                ? (semData ? semData.backlogs : null)
-                                                : (s.has_data ? s.total_backlogs : null);
+                    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <select
+                                    value={semFilter}
+                                    onChange={e => setSemFilter(e.target.value)}
+                                    style={{ ...S.sel, width: 'auto', padding: '6px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer' }}
+                                >
+                                    <option value="all">🌐 All Semesters (Overall CGPA)</option>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                                        <option key={s} value={s}>Semester {s} (SGPA View)</option>
+                                    ))}
+                                </select>
+                                <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={openPdfExportModal}>
+                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
+                                </button>
+                                <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
+                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
+                                </button>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginLeft: '4px' }}>{filteredStudents.length} students</div>
+                            </div>
+                        </div>
 
-                                            const isSelected = selectedUsns.has(s.usn);
+                        {/* Selected Students Actions Bar */}
+                        {selectedUsns.size > 0 && (
+                            <div style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>check_circle</span>
+                                    {selectedUsns.size} student(s) selected
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <button style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer('selected')}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>swap_horiz</span>Transfer Selected ({selectedUsns.size})
+                                    </button>
+                                    <button style={{ ...btn('danger'), padding: '6px 12px', fontSize: '12px' }} onClick={removeSelectedStudents}>
+                                        Remove Selected ({selectedUsns.size})
+                                    </button>
+                                    <button style={{ ...btn('ghost'), padding: '6px 10px', fontSize: '12px' }} onClick={() => setSelectedUsns(new Set())}>
+                                        Deselect All
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
-                                            return (
-                                                <tr key={s.usn} style={{ background: isSelected ? 'var(--surface-low)' : 'transparent' }}>
-                                                    <td style={{ ...S.td, textAlign: 'center', width: '40px' }}>
+                        {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
+                            : (
+                                <div style={S.tableWrap}>
+                                    {!isMobile ? (
+                                        <table style={{ width: '100%', minWidth: '660px', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ ...S.th, width: '40px', textAlign: 'center' }}>
                                                         <input
                                                             type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => toggleSelectStudent(s.usn)}
+                                                            checked={filteredStudents.length > 0 && selectedUsns.size === filteredStudents.length}
+                                                            onChange={() => toggleSelectAll(filteredStudents)}
                                                             style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                            title="Select All Students"
                                                         />
-                                                    </td>
-                                                    <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
-                                                    <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
-                                                    <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
-                                                    <td style={{ ...S.td, textAlign: 'center', fontWeight: 800 }}>{semFilter === 'all' ? (s.semester || '—') : semFilter}</td>
-                                                    <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
-                                                        {displayScore}
-                                                    </td>
-                                                    <td style={{ ...S.td, textAlign: 'center' }}>
-                                                        {displayBacklogs != null ? (
-                                                            <span style={{ fontWeight: 900, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                                                                {displayBacklogs > 0 ? displayBacklogs : 'Clear ✓'}
-                                                            </span>
-                                                        ) : (
-                                                            <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
-                                                        )}
-                                                    </td>
-                                                    <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    </th>
+                                                    {['#', 'Name', 'USN', 'Sem', semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`, semFilter === 'all' ? 'Total Backlogs' : `Backlogs (S${semFilter})`, 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredStudents.map((s, idx) => {
+                                                    const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
+                                                    const displayScore = semFilter !== 'all'
+                                                        ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
+                                                        : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
+
+                                                    const displayBacklogs = semFilter !== 'all'
+                                                        ? (semData ? semData.backlogs : null)
+                                                        : (s.has_data ? s.total_backlogs : null);
+
+                                                    const isSelected = selectedUsns.has(s.usn);
+
+                                                    return (
+                                                        <tr key={s.usn} style={{ background: isSelected ? 'var(--surface-low)' : 'transparent' }}>
+                                                            <td style={{ ...S.td, textAlign: 'center', width: '40px' }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={() => toggleSelectStudent(s.usn)}
+                                                                    style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                                />
+                                                            </td>
+                                                            <td style={{ ...S.td, color: 'var(--tx-dim)', fontSize: '11px' }}>{idx + 1}</td>
+                                                            <td style={{ ...S.td, fontWeight: 800 }}>{s.name}</td>
+                                                            <td style={{ ...S.td, fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '11px' }}>{s.usn}</td>
+                                                            <td style={{ ...S.td, textAlign: 'center', fontWeight: 800 }}>{semFilter === 'all' ? (s.semester || '—') : semFilter}</td>
+                                                            <td style={{ ...S.td, textAlign: 'center', fontWeight: 900, color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                                {displayScore}
+                                                            </td>
+                                                            <td style={{ ...S.td, textAlign: 'center' }}>
+                                                                {displayBacklogs != null ? (
+                                                                    <span style={{ fontWeight: 900, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '3px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                                                                        {displayBacklogs > 0 ? displayBacklogs : 'Clear ✓'}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span style={{ color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 600 }}>—</span>
+                                                                )}
+                                                            </td>
+                                                            <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <button
+                                                                        title="Transfer student to another class"
+                                                                        onClick={(e) => openSingleStudentTransfer(s, e)}
+                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '2px' }}
+                                                                    >
+                                                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>swap_horiz</span> Transfer
+                                                                    </button>
+                                                                    <button
+                                                                        title="Remove student from class"
+                                                                        onClick={() => removeStudent(s.usn)}
+                                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
+                                                                    >
+                                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
+                                            {filteredStudents.map((s, idx) => {
+                                                const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
+                                                const displayScore = semFilter !== 'all'
+                                                    ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
+                                                    : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
+                                                const displayBacklogs = semFilter !== 'all'
+                                                    ? (semData ? semData.backlogs : null)
+                                                    : (s.has_data ? s.total_backlogs : null);
+
+                                                return (
+                                                    <div key={s.usn} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {idx + 1}. {s.name}
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                                {s.usn} · Sem {semFilter === 'all' ? (s.semester || '—') : semFilter}
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+                                                                <span style={{ fontWeight: 800, fontSize: '11px', color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                                    {semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`}: {displayScore}
+                                                                </span>
+                                                                {displayBacklogs != null ? (
+                                                                    <span style={{ fontWeight: 800, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
+                                                                        {displayBacklogs > 0 ? `${displayBacklogs} Backlog` : 'Clear ✓'}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>No result data</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                             <button
-                                                                title="Transfer student to another class"
+                                                                title="Transfer student"
                                                                 onClick={(e) => openSingleStudentTransfer(s, e)}
-                                                                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '2px' }}
+                                                                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', padding: '6px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}
                                                             >
                                                                 <span className="material-icons-round" style={{ fontSize: '15px' }}>swap_horiz</span> Transfer
                                                             </button>
-                                                            <button
-                                                                title="Remove student from class"
-                                                                onClick={() => removeStudent(s.usn)}
-                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
-                                                            >
-                                                                <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '36px', minHeight: '36px', flexShrink: 0 }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '20px' }}>remove_circle_outline</span>
                                                             </button>
                                                         </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-                                    {filteredStudents.map((s, idx) => {
-                                        const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
-                                        const displayScore = semFilter !== 'all'
-                                            ? (semData?.sgpa != null ? Number(semData.sgpa).toFixed(2) : '—')
-                                            : (s.has_data && s.cgpa != null ? s.cgpa?.toFixed(2) : '—');
-                                        const displayBacklogs = semFilter !== 'all'
-                                            ? (semData ? semData.backlogs : null)
-                                            : (s.has_data ? s.total_backlogs : null);
-
-                                        return (
-                                            <div key={s.usn} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                                                <div style={{ minWidth: 0, flex: 1 }}>
-                                                    <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                        {idx + 1}. {s.name}
                                                     </div>
-                                                    <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                        {s.usn} · Sem {semFilter === 'all' ? (s.semester || '—') : semFilter}
-                                                    </div>
-                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
-                                                        <span style={{ fontWeight: 800, fontSize: '11px', color: displayScore !== '—' ? 'var(--primary)' : 'var(--tx-dim)' }}>
-                                                            {semFilter === 'all' ? 'CGPA' : `SGPA (S${semFilter})`}: {displayScore}
-                                                        </span>
-                                                        {displayBacklogs != null ? (
-                                                            <span style={{ fontWeight: 800, color: displayBacklogs > 0 ? 'var(--red)' : 'var(--green)', background: displayBacklogs > 0 ? 'var(--red-bg)' : 'var(--green-bg)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                                                                {displayBacklogs > 0 ? `${displayBacklogs} Backlog` : 'Clear ✓'}
-                                                            </span>
-                                                        ) : (
-                                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>No result data</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }}>
-                                                    <span className="material-icons-round" style={{ fontSize: '20px' }}>remove_circle_outline</span>
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                    {filteredStudents.length === 0 && <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No students in roster.</div>}
+                                                );
+                                            })}
+                                            {filteredStudents.length === 0 && <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No students in roster.</div>}
+                                        </div>
+                                    )}
                                 </div>
                             )}
+                    </div>
+                </div>
+            ) : (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+                        <div>
+                            <div style={S.eyebrow}>Academic Management</div>
+                            <h1 style={S.title}>Classes & Sections</h1>
+                            <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
                         </div>
-                    )}
-            </div>
+                        <button style={btn('primary')} onClick={() => setShowCreate(true)}>
+                            <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class
+                        </button>
+                    </div>
+
+                    {/* Filter and Search Bar */}
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
+                        <div style={{ flex: '1 1 240px', position: 'relative' }}>
+                            <input
+                                style={{ ...S.input, paddingLeft: '36px' }}
+                                placeholder="Search classes, sections, or faculty..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                            />
+                            <span className="material-icons-round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--tx-dim)', fontSize: '18px', pointerEvents: 'none' }}>
+                                search
+                            </span>
+                        </div>
+
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '150px' }} value={facultyFilter} onChange={e => setFacultyFilter(e.target.value)}>
+                            <option value="all">👨‍🏫 All Faculty ({facultyList.length})</option>
+                            {facultyList.map(f => (
+                                <option key={f.id} value={f.id}>{f.full_name}</option>
+                            ))}
+                        </select>
+
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '130px' }} value={semesterFilter} onChange={e => setSemesterFilter(e.target.value)}>
+                            <option value="all">All Semesters</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                                <option key={s} value={s}>Semester {s}</option>
+                            ))}
+                        </select>
+
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '120px' }} value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
+                            <option value="all">All Branches</option>
+                            {branches.map(b => (
+                                <option key={b.code} value={b.code}>{b.code}</option>
+                            ))}
+                        </select>
+
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '110px' }} value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
+                            <option value="all">All Sections</option>
+                            {['A', 'B', 'C', 'D', 'E', 'F'].map(sec => (
+                                <option key={sec} value={sec}>Section {sec}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
+
+                    {loadingClasses ? <div style={{ textAlign: 'center', padding: '80px', color: 'var(--tx-dim)' }}>Loading classes…</div>
+                        : displayedClasses.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--tx-dim)' }}>
+                                <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '12px', display: 'block', opacity: 0.25 }}>groups</span>
+                                <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>
+                                    {classes.length === 0 ? 'No classes yet' : 'No classes match your filter'}
+                                </div>
+                                <div style={{ fontSize: '13px' }}>
+                                    {classes.length === 0 ? 'Create your first class to get started.' : 'Try adjusting your search or faculty filter.'}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' }}>
+                                {displayedClasses.map(cls => (
+                                    <div
+                                        key={cls.id}
+                                        onClick={() => selectClass(cls)}
+                                        className="gf-hover-lift"
+                                        style={{
+                                            ...S.card,
+                                            cursor: 'pointer',
+                                            transition: 'transform 0.2s, box-shadow 0.2s',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'space-between',
+                                            position: 'relative'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                        Sem {cls.semester}
+                                                    </span>
+                                                    {cls.section && (
+                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-main)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                            Sec {cls.section}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>
+                                                    {cls.scheme} Scheme
+                                                </span>
+                                            </div>
+
+                                            <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+                                                {cls.name}
+                                            </div>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginBottom: '14px' }}>
+                                                {cls.branch} {cls.academic_year ? `· ${cls.academic_year}` : ''}
+                                            </div>
+
+                                            <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
+                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Faculty In-Charge</div>
+                                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {cls.faculty_name || 'All Faculty (Shared)'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                                            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                {cls.student_count ?? 0} <span style={{ fontWeight: 500, color: 'var(--tx-dim)' }}>students</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => openEditModal(cls, e)}
+                                                    style={{
+                                                        background: 'var(--surface-low)',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 10px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 800,
+                                                        color: 'var(--tx-muted)',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                    title="Edit Class Details"
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>edit</span> Edit
+                                                </button>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
+                                                    View <span className="material-icons-round" style={{ fontSize: '15px' }}>arrow_forward</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                </div>
+            )}
+
+            {/* Create Class Modal (Portal Rendered) */}
+            {mounted && showCreate && createPortal(
+                <div style={S.modal} onClick={() => setShowCreate(false)}>
+                    <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Create New Class & Section</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Created classes will be accessible by all faculty members in the college.</p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={S.label}>Class / Section Name *</label>
+                                <input
+                                    style={S.input}
+                                    placeholder="e.g. 6th Sem CSE - Section A"
+                                    value={newClass.name}
+                                    onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))}
+                                    autoFocus
+                                />
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Branch</label>
+                                    <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
+                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
+                                        {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Semester</label>
+                                    <select style={S.sel} value={newClass.semester} onChange={e => setNewClass(p => ({ ...p, semester: parseInt(e.target.value) }))}>
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Section</label>
+                                    <select style={S.sel} value={newClass.section} onChange={e => setNewClass(p => ({ ...p, section: e.target.value }))}>
+                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
+                                            <option key={sec} value={sec}>Section {sec}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Scheme</label>
+                                    <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
+                                        {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
+                                <select style={S.sel} value={newClass.faculty_id} onChange={e => setNewClass(p => ({ ...p, faculty_id: e.target.value }))}>
+                                    <option value="all">🌐 All Faculty (Institutional Shared Class)</option>
+                                    {facultyList.map(f => (
+                                        <option key={f.id} value={f.id}>
+                                            👨‍🏫 {f.full_name} ({f.department || 'Faculty'}{f.email ? ` · ${f.email}` : ''})
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    Assign a faculty in-charge or share across all faculty members in the department.
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={createClass}>Create Class</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Edit Class Modal (Portal Rendered) */}
+            {mounted && showEditModal && editingClass && createPortal(
+                <div style={S.modal} onClick={() => setShowEditModal(false)}>
+                    <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div>
+                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Edit Class & Section</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Update class name, semester, section, branch, scheme, and assigned faculty.</p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={S.label}>Class / Section Name *</label>
+                                <input
+                                    style={S.input}
+                                    placeholder="e.g. 6th Sem CSE - Section A"
+                                    value={editClassForm.name}
+                                    onChange={e => setEditClassForm(p => ({ ...p, name: e.target.value }))}
+                                    autoFocus
+                                />
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Branch</label>
+                                    <select style={S.sel} value={editClassForm.branch} onChange={e => setEditClassForm(p => ({ ...p, branch: e.target.value }))}>
+                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
+                                        {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Semester</label>
+                                    <select style={S.sel} value={editClassForm.semester} onChange={e => setEditClassForm(p => ({ ...p, semester: parseInt(e.target.value) }))}>
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Section</label>
+                                    <select style={S.sel} value={editClassForm.section || 'A'} onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value }))}>
+                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
+                                            <option key={sec} value={sec}>Section {sec}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={S.label}>Scheme</label>
+                                    <select style={S.sel} value={editClassForm.scheme} onChange={e => setEditClassForm(p => ({ ...p, scheme: e.target.value }))}>
+                                        {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label style={S.label}>Academic Year</label>
+                                <input
+                                    style={S.input}
+                                    placeholder="e.g. 2024-2025"
+                                    value={editClassForm.academic_year || ''}
+                                    onChange={e => setEditClassForm(p => ({ ...p, academic_year: e.target.value }))}
+                                />
+                            </div>
+                            <div>
+                                <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
+                                <select style={S.sel} value={editClassForm.faculty_id || 'all'} onChange={e => setEditClassForm(p => ({ ...p, faculty_id: e.target.value }))}>
+                                    <option value="all">🌐 All Faculty (Institutional Shared Class)</option>
+                                    {facultyList.map(f => (
+                                        <option key={f.id} value={f.id}>
+                                            👨‍🏫 {f.full_name} ({f.department || 'Faculty'}{f.email ? ` · ${f.email}` : ''})
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    Assign a faculty in-charge or share across all faculty members in the department.
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '14px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowEditModal(false)}>Cancel</button>
+                            <button style={btn('primary')} onClick={saveEditClass} disabled={editLoading}>
+                                {editLoading ? 'Saving…' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Transfer Students Modal (Portal Rendered) */}
+            {mounted && showTransferModal && createPortal(
+                <div style={S.modal} onClick={() => setShowTransferModal(false)}>
+                    <div style={S.mbox('580px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                    🔀 Transfer Students & Section
+                                </h3>
+                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
+                                    Move or duplicate students between classes and sections in the institution.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowTransferModal(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center', padding: '4px' }}
+                            >
+                                <span className="material-icons-round">close</span>
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '14px' }}>
+                            {/* Source Class Summary Card */}
+                            {selectedClass && (
+                                <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>From Source Class</div>
+                                        <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)' }}>{selectedClass.name}</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                            {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section}` : ''}
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface)', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                            {transferScope === 'single'
+                                                ? '1 Student'
+                                                : transferScope === 'whole_class'
+                                                ? `All ${students.length} Students`
+                                                : `${selectedUsns.size || students.length} Student(s)`}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Transfer Scope Selector if not single student */}
+                            {transferScope !== 'single' && (
+                                <div>
+                                    <label style={S.label}>Who would you like to transfer?</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                        <div
+                                            onClick={() => setTransferScope('selected')}
+                                            style={{
+                                                border: `1.5px solid ${transferScope === 'selected' ? 'var(--primary)' : 'var(--border)'}`,
+                                                borderRadius: '8px',
+                                                padding: '10px 14px',
+                                                cursor: 'pointer',
+                                                background: transferScope === 'selected' ? 'var(--surface-low)' : 'var(--surface)',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                Selected Students ({selectedUsns.size})
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                                Transfer currently checked students
+                                            </div>
+                                        </div>
+                                        <div
+                                            onClick={() => setTransferScope('whole_class')}
+                                            style={{
+                                                border: `1.5px solid ${transferScope === 'whole_class' ? 'var(--primary)' : 'var(--border)'}`,
+                                                borderRadius: '8px',
+                                                padding: '10px 14px',
+                                                cursor: 'pointer',
+                                                background: transferScope === 'whole_class' ? 'var(--surface-low)' : 'var(--surface)',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                Entire Class (All {students.length})
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                                Transfer all students in this class
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Single Student Info if single */}
+                            {transferScope === 'single' && transferSingleStudent && (
+                                <div>
+                                    <label style={S.label}>Student to Transfer</label>
+                                    <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>{transferSingleStudent.name}</div>
+                                        <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '12px', color: 'var(--tx-muted)' }}>{transferSingleStudent.usn}</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Target Class Dropdown */}
+                            <div>
+                                <label style={S.label}>Destination Target Class / Section *</label>
+                                <select
+                                    style={S.sel}
+                                    value={transferTargetClassId}
+                                    onChange={e => setTransferTargetClassId(e.target.value)}
+                                >
+                                    <option value="">-- Choose Destination Class / Section --</option>
+                                    {classes.filter(c => c.id !== selectedClass?.id).map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
+                                        </option>
+                                    ))}
+                                </select>
+                                {classes.filter(c => c.id !== selectedClass?.id).length === 0 && (
+                                    <div style={{ fontSize: '12px', color: 'var(--red)', marginTop: '6px', fontWeight: 600 }}>
+                                        ⚠️ No other classes found. Please create another class/section first.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Transfer Mode */}
+                            <div>
+                                <label style={S.label}>Transfer Mode</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div
+                                        onClick={() => setTransferMode('move')}
+                                        style={{
+                                            border: `1.5px solid ${transferMode === 'move' ? 'var(--primary)' : 'var(--border)'}`,
+                                            borderRadius: '8px',
+                                            padding: '10px 14px',
+                                            cursor: 'pointer',
+                                            background: transferMode === 'move' ? 'var(--surface-low)' : 'var(--surface)',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>📦 Move (Cut & Paste)</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                            Remove from current class & add to destination
+                                        </div>
+                                    </div>
+                                    <div
+                                        onClick={() => setTransferMode('copy')}
+                                        style={{
+                                            border: `1.5px solid ${transferMode === 'copy' ? 'var(--primary)' : 'var(--border)'}`,
+                                            borderRadius: '8px',
+                                            padding: '10px 14px',
+                                            cursor: 'pointer',
+                                            background: transferMode === 'copy' ? 'var(--surface-low)' : 'var(--surface)',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>📋 Copy (Duplicate)</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                            Keep in current class & also enroll in destination
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                            <button style={btn('ghost')} onClick={() => setShowTransferModal(false)}>Cancel</button>
+                            <button
+                                style={btn('primary')}
+                                onClick={executeTransfer}
+                                disabled={transferLoading || !transferTargetClassId}
+                            >
+                                {transferLoading ? 'Transferring…' : 'Confirm & Transfer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             {/* Add Students Modal (Portal Rendered) */}
             {mounted && showAddModal && selectedClass && createPortal(
@@ -1100,515 +1630,6 @@ export function ClassesContent({ embedded = false }) {
                             <button style={btn('ghost')} onClick={() => setShowExportModal(false)}>Cancel</button>
                             <button style={btn('primary')} onClick={handleGeneratePdf}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>picture_as_pdf</span>Generate & Download PDF
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-        </div>
-    );
-
-    const displayedClasses = classes.filter(cls => {
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            const matchName = (cls.name || '').toLowerCase().includes(q);
-            const matchBranch = (cls.branch || '').toLowerCase().includes(q);
-            const matchSection = (cls.section || '').toLowerCase().includes(q);
-            const matchFaculty = (cls.faculty_name || '').toLowerCase().includes(q);
-            if (!matchName && !matchBranch && !matchSection && !matchFaculty) return false;
-        }
-        if (facultyFilter !== 'all') {
-            if (cls.faculty_id !== facultyFilter) return false;
-        }
-        if (branchFilter !== 'all') {
-            if (cls.branch !== branchFilter) return false;
-        }
-        if (semesterFilter !== 'all') {
-            if (String(cls.semester) !== String(semesterFilter)) return false;
-        }
-        if (sectionFilter !== 'all') {
-            if ((cls.section || 'A').toUpperCase() !== sectionFilter.toUpperCase()) return false;
-        }
-        return true;
-    });
-
-    return (
-        <div style={S.page} className="gf-fade-up">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <div style={S.eyebrow}>Academic Management</div>
-                    <h1 style={S.title}>Classes & Sections</h1>
-                    <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
-                </div>
-                <button style={btn('primary')} onClick={() => setShowCreate(true)}>
-                    <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class
-                </button>
-            </div>
-
-            {/* Filter and Search Bar */}
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
-                <div style={{ flex: '1 1 240px', position: 'relative' }}>
-                    <input
-                        style={{ ...S.input, paddingLeft: '36px' }}
-                        placeholder="Search classes, sections, or faculty..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                    />
-                    <span className="material-icons-round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--tx-dim)', fontSize: '18px', pointerEvents: 'none' }}>
-                        search
-                    </span>
-                </div>
-
-                <select style={{ ...S.sel, width: 'auto', minWidth: '150px' }} value={facultyFilter} onChange={e => setFacultyFilter(e.target.value)}>
-                    <option value="all">👨‍🏫 All Faculty ({facultyList.length})</option>
-                    {facultyList.map(f => (
-                        <option key={f.id} value={f.id}>{f.full_name}</option>
-                    ))}
-                </select>
-
-                <select style={{ ...S.sel, width: 'auto', minWidth: '130px' }} value={semesterFilter} onChange={e => setSemesterFilter(e.target.value)}>
-                    <option value="all">All Semesters</option>
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                        <option key={s} value={s}>Semester {s}</option>
-                    ))}
-                </select>
-
-                <select style={{ ...S.sel, width: 'auto', minWidth: '120px' }} value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
-                    <option value="all">All Branches</option>
-                    {branches.map(b => (
-                        <option key={b.code} value={b.code}>{b.code}</option>
-                    ))}
-                </select>
-
-                <select style={{ ...S.sel, width: 'auto', minWidth: '110px' }} value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
-                    <option value="all">All Sections</option>
-                    {['A', 'B', 'C', 'D', 'E', 'F'].map(sec => (
-                        <option key={sec} value={sec}>Section {sec}</option>
-                    ))}
-                </select>
-            </div>
-
-            {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
-
-            {loadingClasses ? <div style={{ textAlign: 'center', padding: '80px', color: 'var(--tx-dim)' }}>Loading classes…</div>
-                : displayedClasses.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--tx-dim)' }}>
-                        <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '12px', display: 'block', opacity: 0.25 }}>groups</span>
-                        <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>
-                            {classes.length === 0 ? 'No classes yet' : 'No classes match your filter'}
-                        </div>
-                        <div style={{ fontSize: '13px' }}>
-                            {classes.length === 0 ? 'Create your first class to get started.' : 'Try adjusting your search or faculty filter.'}
-                        </div>
-                    </div>
-                ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' }}>
-                        {displayedClasses.map(cls => (
-                            <div
-                                key={cls.id}
-                                onClick={() => selectClass(cls)}
-                                className="gf-hover-lift"
-                                style={{
-                                    ...S.card,
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s, box-shadow 0.2s',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'space-between',
-                                    position: 'relative'
-                                }}
-                            >
-                                <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                                Sem {cls.semester}
-                                            </span>
-                                            {cls.section && (
-                                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-main)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                                    Sec {cls.section}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>
-                                            {cls.scheme} Scheme
-                                        </span>
-                                    </div>
-
-                                    <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
-                                        {cls.name}
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginBottom: '14px' }}>
-                                        {cls.branch} {cls.academic_year ? `· ${cls.academic_year}` : ''}
-                                    </div>
-
-                                    <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>person</span>
-                                        <div style={{ minWidth: 0, flex: 1 }}>
-                                            <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Faculty In-Charge</div>
-                                            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {cls.faculty_name || 'All Faculty (Shared)'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-                                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                        {cls.student_count ?? 0} <span style={{ fontWeight: 500, color: 'var(--tx-dim)' }}>students</span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => openEditModal(cls, e)}
-                                            style={{
-                                                background: 'var(--surface-low)',
-                                                border: '1px solid var(--border)',
-                                                borderRadius: '6px',
-                                                padding: '4px 10px',
-                                                fontSize: '11px',
-                                                fontWeight: 800,
-                                                color: 'var(--tx-muted)',
-                                                cursor: 'pointer',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '4px',
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                            title="Edit Class Details"
-                                        >
-                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>edit</span> Edit
-                                        </button>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
-                                            View <span className="material-icons-round" style={{ fontSize: '15px' }}>arrow_forward</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-            {/* Create Class Modal (Portal Rendered) */}
-            {mounted && showCreate && createPortal(
-                <div style={S.modal} onClick={() => setShowCreate(false)}>
-                    <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                        <div>
-                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Create New Class & Section</h3>
-                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Created classes will be accessible by all faculty members in the college.</p>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div>
-                                <label style={S.label}>Class / Section Name *</label>
-                                <input
-                                    style={S.input}
-                                    placeholder="e.g. 6th Sem CSE - Section A"
-                                    value={newClass.name}
-                                    onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))}
-                                    autoFocus
-                                />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div>
-                                    <label style={S.label}>Branch</label>
-                                    <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
-                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
-                                        {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={S.label}>Semester</label>
-                                    <select style={S.sel} value={newClass.semester} onChange={e => setNewClass(p => ({ ...p, semester: parseInt(e.target.value) }))}>
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div>
-                                    <label style={S.label}>Section</label>
-                                    <select style={S.sel} value={newClass.section} onChange={e => setNewClass(p => ({ ...p, section: e.target.value }))}>
-                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
-                                            <option key={sec} value={sec}>Section {sec}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={S.label}>Scheme</label>
-                                    <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
-                                        {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
-                                <select style={S.sel} value={newClass.faculty_id} onChange={e => setNewClass(p => ({ ...p, faculty_id: e.target.value }))}>
-                                    <option value="all">🌐 All Faculty (Institutional Shared Class)</option>
-                                    {facultyList.map(f => (
-                                        <option key={f.id} value={f.id}>
-                                            👨‍🏫 {f.full_name} ({f.department || 'Faculty'}{f.email ? ` · ${f.email}` : ''})
-                                        </option>
-                                    ))}
-                                </select>
-                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
-                                    Assign a faculty in-charge or share across all faculty members in the department.
-                                </div>
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                            <button style={btn('ghost')} onClick={() => setShowCreate(false)}>Cancel</button>
-                            <button style={btn('primary')} onClick={createClass}>Create Class</button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Edit Class Modal (Portal Rendered) */}
-            {mounted && showEditModal && editingClass && createPortal(
-                <div style={S.modal} onClick={() => setShowEditModal(false)}>
-                    <div style={S.mbox()} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                        <div>
-                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>Edit Class & Section</h3>
-                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>Update class name, semester, section, branch, scheme, and assigned faculty.</p>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div>
-                                <label style={S.label}>Class / Section Name *</label>
-                                <input
-                                    style={S.input}
-                                    placeholder="e.g. 6th Sem CSE - Section A"
-                                    value={editClassForm.name}
-                                    onChange={e => setEditClassForm(p => ({ ...p, name: e.target.value }))}
-                                    autoFocus
-                                />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div>
-                                    <label style={S.label}>Branch</label>
-                                    <select style={S.sel} value={editClassForm.branch} onChange={e => setEditClassForm(p => ({ ...p, branch: e.target.value }))}>
-                                        {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
-                                        {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={S.label}>Semester</label>
-                                    <select style={S.sel} value={editClassForm.semester} onChange={e => setEditClassForm(p => ({ ...p, semester: parseInt(e.target.value) }))}>
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div>
-                                    <label style={S.label}>Section</label>
-                                    <select style={S.sel} value={editClassForm.section || 'A'} onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value }))}>
-                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
-                                            <option key={sec} value={sec}>Section {sec}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={S.label}>Scheme</label>
-                                    <select style={S.sel} value={editClassForm.scheme} onChange={e => setEditClassForm(p => ({ ...p, scheme: e.target.value }))}>
-                                        {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label style={S.label}>Academic Year</label>
-                                <input
-                                    style={S.input}
-                                    placeholder="e.g. 2024-2025"
-                                    value={editClassForm.academic_year || ''}
-                                    onChange={e => setEditClassForm(p => ({ ...p, academic_year: e.target.value }))}
-                                />
-                            </div>
-                            <div>
-                                <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
-                                <select style={S.sel} value={editClassForm.faculty_id || 'all'} onChange={e => setEditClassForm(p => ({ ...p, faculty_id: e.target.value }))}>
-                                    <option value="all">🌐 All Faculty (Institutional Shared Class)</option>
-                                    {facultyList.map(f => (
-                                        <option key={f.id} value={f.id}>
-                                            👨‍🏫 {f.full_name} ({f.department || 'Faculty'}{f.email ? ` · ${f.email}` : ''})
-                                        </option>
-                                    ))}
-                                </select>
-                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
-                                    Assign a faculty in-charge or share across all faculty members in the department.
-                                </div>
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '14px' }}>
-                            <button style={btn('ghost')} onClick={() => setShowEditModal(false)}>Cancel</button>
-                            <button style={btn('primary')} onClick={saveEditClass} disabled={editLoading}>
-                                {editLoading ? 'Saving…' : 'Save Changes'}
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Transfer Students Modal (Portal Rendered) */}
-            {mounted && showTransferModal && selectedClass && createPortal(
-                <div style={S.modal} onClick={() => setShowTransferModal(false)}>
-                    <div style={S.mbox('580px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
-                        <div>
-                            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>
-                                🔀 Transfer Students
-                            </h3>
-                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
-                                Move or duplicate students between classes and sections in the institution.
-                            </p>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '14px' }}>
-                            {/* Source Class Summary Card */}
-                            <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>From Class</div>
-                                    <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)' }}>{selectedClass.name}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                        {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section}` : ''}
-                                    </div>
-                                </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface)', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                        {transferScope === 'single'
-                                            ? '1 Student'
-                                            : transferScope === 'whole_class'
-                                            ? `All ${students.length} Students`
-                                            : `${selectedUsns.size} Selected Student(s)`}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Transfer Scope Selector if not single student */}
-                            {transferScope !== 'single' && (
-                                <div>
-                                    <label style={S.label}>Who would you like to transfer?</label>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div
-                                            onClick={() => setTransferScope('selected')}
-                                            style={{
-                                                border: `1.5px solid ${transferScope === 'selected' ? 'var(--primary)' : 'var(--border)'}`,
-                                                borderRadius: '8px',
-                                                padding: '10px 14px',
-                                                cursor: 'pointer',
-                                                background: transferScope === 'selected' ? 'var(--surface-low)' : 'var(--surface)',
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                        >
-                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
-                                                Selected Students ({selectedUsns.size})
-                                            </div>
-                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
-                                                Transfer currently selected students
-                                            </div>
-                                        </div>
-                                        <div
-                                            onClick={() => setTransferScope('whole_class')}
-                                            style={{
-                                                border: `1.5px solid ${transferScope === 'whole_class' ? 'var(--primary)' : 'var(--border)'}`,
-                                                borderRadius: '8px',
-                                                padding: '10px 14px',
-                                                cursor: 'pointer',
-                                                background: transferScope === 'whole_class' ? 'var(--surface-low)' : 'var(--surface)',
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                        >
-                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
-                                                Entire Class (All {students.length})
-                                            </div>
-                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
-                                                Transfer all students in this class
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Single Student Info if single */}
-                            {transferScope === 'single' && transferSingleStudent && (
-                                <div>
-                                    <label style={S.label}>Student</label>
-                                    <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>{transferSingleStudent.name}</div>
-                                        <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '12px', color: 'var(--tx-muted)' }}>{transferSingleStudent.usn}</div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Target Class Dropdown */}
-                            <div>
-                                <label style={S.label}>Destination Target Class / Section *</label>
-                                <select
-                                    style={S.sel}
-                                    value={transferTargetClassId}
-                                    onChange={e => setTransferTargetClassId(e.target.value)}
-                                >
-                                    <option value="">-- Choose Destination Class --</option>
-                                    {classes.filter(c => c.id !== selectedClass.id).map(c => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
-                                        </option>
-                                    ))}
-                                </select>
-                                {classes.filter(c => c.id !== selectedClass.id).length === 0 && (
-                                    <div style={{ fontSize: '11px', color: 'var(--red)', marginTop: '4px' }}>
-                                        No other classes found. Please create another class first.
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Transfer Mode */}
-                            <div>
-                                <label style={S.label}>Transfer Mode</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    <div
-                                        onClick={() => setTransferMode('move')}
-                                        style={{
-                                            border: `1.5px solid ${transferMode === 'move' ? 'var(--primary)' : 'var(--border)'}`,
-                                            borderRadius: '8px',
-                                            padding: '10px 14px',
-                                            cursor: 'pointer',
-                                            background: transferMode === 'move' ? 'var(--surface-low)' : 'var(--surface)',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>📦 Move (Cut & Paste)</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
-                                            Remove from current class & add to destination
-                                        </div>
-                                    </div>
-                                    <div
-                                        onClick={() => setTransferMode('copy')}
-                                        style={{
-                                            border: `1.5px solid ${transferMode === 'copy' ? 'var(--primary)' : 'var(--border)'}`,
-                                            borderRadius: '8px',
-                                            padding: '10px 14px',
-                                            cursor: 'pointer',
-                                            background: transferMode === 'copy' ? 'var(--surface-low)' : 'var(--surface)',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>📋 Copy (Duplicate)</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
-                                            Keep in current class & also enroll in destination
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                            <button style={btn('ghost')} onClick={() => setShowTransferModal(false)}>Cancel</button>
-                            <button
-                                style={btn('primary')}
-                                onClick={executeTransfer}
-                                disabled={transferLoading || !transferTargetClassId}
-                            >
-                                {transferLoading ? 'Transferring…' : 'Confirm & Transfer'}
                             </button>
                         </div>
                     </div>
