@@ -9,7 +9,7 @@ export function ConfirmDialog({ description, onCancel, onConfirm, open, title, b
 
     useEffect(() => {
         if (!open) return undefined;
-        cancelRef.current?.focus();
+        cancelRef.current?.focus({ preventScroll: true });
         const onKeyDown = (event) => { if (event.key === 'Escape' && !busy) onCancel(); };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);

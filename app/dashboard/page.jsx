@@ -7,6 +7,7 @@ import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone, isFailedSubject } from '../../lib/vtuGrades';
 import { getOfficialCredit } from '../../lib/vtu-curriculum-catalog';
+import { calculateVTUAttempts } from '../../lib/academic-rules';
 import styles from './Dashboard.module.css';
 
 function calcSGPA(subjects, scheme = '2022', branch = null, semNumber = null) {
@@ -54,6 +55,7 @@ function calcSGPA(subjects, scheme = '2022', branch = null, semNumber = null) {
 function StudentDashboardView({
     backlogs,
     backlogDialogRef,
+    backlogTriggerRef,
     closeBacklogModal,
     cgpa,
     downloadPDF,
@@ -96,6 +98,59 @@ function StudentDashboardView({
                 }}
             >
                 {displayText}
+            </Badge>
+        );
+    };
+
+    const AttemptBadge = ({ attempts = 1, grade }) => {
+        const unified = unifyGrade(grade);
+        const isFail = unified === 'F' || unified === 'A' || unified === 'FAIL' || unified === 'ABSENT' || (grade || '').toUpperCase() === 'F' || (grade || '').toUpperCase() === 'A';
+
+        if (attempts <= 1) {
+            return (
+                <Badge
+                    tone="info"
+                    size="sm"
+                    style={{
+                        fontWeight: 700,
+                        fontSize: '11px',
+                        whiteSpace: 'nowrap'
+                    }}
+                >
+                    1st Attempt
+                </Badge>
+            );
+        }
+
+        const ordinal = attempts === 2 ? '2nd' : attempts === 3 ? '3rd' : `${attempts}th`;
+
+        if (isFail) {
+            return (
+                <Badge
+                    tone="danger"
+                    size="sm"
+                    style={{
+                        fontWeight: 800,
+                        fontSize: '11px',
+                        whiteSpace: 'nowrap'
+                    }}
+                >
+                    {ordinal} Attempt · Backlog
+                </Badge>
+            );
+        }
+
+        return (
+            <Badge
+                tone="warning"
+                size="sm"
+                style={{
+                    fontWeight: 800,
+                    fontSize: '11px',
+                    whiteSpace: 'nowrap'
+                }}
+            >
+                {ordinal} Attempt · Cleared
             </Badge>
         );
     };
@@ -194,7 +249,7 @@ function StudentDashboardView({
                             <StatContent label="Subjects Logged" value={totalSubjects || '—'} />
                         </div>
                         {failedSubjects > 0 ? (
-                            <button className={styles.statCardButton} type="button" onClick={() => setShowBacklogModal(true)} aria-haspopup="dialog" aria-controls="backlog-modal">
+                            <button ref={backlogTriggerRef} className={styles.statCardButton} type="button" onClick={() => setShowBacklogModal(true)} aria-haspopup="dialog" aria-controls="backlog-modal">
                                 <StatContent label="Backlogs" value={failedSubjects} sub={`${failedSubjects} subject(s)`} tone="dangerText" actionable />
                             </button>
                         ) : (
@@ -322,7 +377,30 @@ function StudentDashboardView({
                                                 </div>
                                                 <div>
                                                     <h3 className={styles.semesterTitle}>Semester {sem}</h3>
-                                                    <p className={styles.meta}>{subjects.length} Subjects Listed</p>
+                                                    {(() => {
+                                                        const failedCount = subjects.filter(m => {
+                                                            const g = unifyGrade(m.grade);
+                                                            const ext = Number(m.see_marks ?? m.external) || 0;
+                                                            const tot = Number(m.total_marks ?? m.total) || 0;
+                                                            const resStr = (m.result || '').trim().toUpperCase();
+                                                            return m.is_backlog === true || g === 'F' || g === 'A' || g === 'FAIL' || g === 'ABSENT' || (ext > 0 && ext < 18) || (tot > 0 && tot < 40) || resStr.includes('F');
+                                                        }).length;
+                                                        const clearedCount = subjects.length - failedCount;
+
+                                                        return (
+                                                            <p className={styles.meta}>
+                                                                {subjects.length} Subjects · {failedCount === 0 ? (
+                                                                    <span style={{ color: 'var(--success)', fontWeight: 600 }}>All Cleared ✓</span>
+                                                                ) : (
+                                                                    <>
+                                                                        <span style={{ color: 'var(--success)', fontWeight: 600 }}>{clearedCount} Cleared</span>
+                                                                        {' · '}
+                                                                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>{failedCount} Backlog{failedCount > 1 ? 's' : ''}</span>
+                                                                    </>
+                                                                )}
+                                                            </p>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                             <div className={styles.semesterActions}>
@@ -376,7 +454,8 @@ function StudentDashboardView({
                                                                 <th scope="col" className={styles.center}>Grade</th>
                                                                 <th scope="col" className={styles.center}>GP</th>
                                                                 <th scope="col" className={styles.center}>Result</th>
-                                                                <th scope="col">Session</th>
+                                                                <th scope="col" className={styles.center}>Attempts</th>
+                                                                <th scope="col">Announced / Updated</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
@@ -401,6 +480,9 @@ function StudentDashboardView({
                                                                                 {details.isPass ? 'Pass' : 'Fail'}
                                                                             </Badge>
                                                                         </td>
+                                                                        <td className={styles.center}>
+                                                                            <AttemptBadge attempts={m.attempts || 1} grade={m.grade} />
+                                                                        </td>
                                                                         <td className={styles.nowrap}>{m.announced_date || m.exam_date || 'Regular'}</td>
                                                                     </tr>
                                                                 );
@@ -423,7 +505,10 @@ function StudentDashboardView({
                                                                         <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
                                                                         <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
                                                                     </div>
-                                                                    <GradeBadge grade={details.grade} />
+                                                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                                        <GradeBadge grade={details.grade} />
+                                                                        <AttemptBadge attempts={m.attempts || 1} grade={m.grade} />
+                                                                    </div>
                                                                 </div>
                                                                 <div className={styles.mobileSubjectStats}>
                                                                     <div className={styles.mobileStatItem}>
@@ -446,6 +531,9 @@ function StudentDashboardView({
                                                                         <span className={styles.statMiniLabel}>GP:</span>
                                                                         <strong>{details.gpFormatted}</strong>
                                                                     </div>
+                                                                </div>
+                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                                                                    <span>Updated: {m.announced_date || m.exam_date || 'Regular'}</span>
                                                                 </div>
                                                             </div>
                                                         );
@@ -547,16 +635,21 @@ function DashboardContent() {
     const [pdfMsg, setPdfMsg] = useState('');
     const [pdfError, setPdfError] = useState('');
     const fileInputRef = useRef(null);
+    const backlogTriggerRef = useRef(null);
     const backlogDialogRef = useRef(null);
     const [showBacklogModal, setShowBacklogModal] = useState(false);
     const loadedRef = useRef(false);
 
     const closeBacklogModal = useCallback(() => {
         setShowBacklogModal(false);
+        window.requestAnimationFrame(() => backlogTriggerRef.current?.focus({ preventScroll: true }));
     }, []);
 
     useEffect(() => {
         if (!showBacklogModal) return;
+
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
 
         const focusableSelector = [
             'a[href]',
@@ -570,7 +663,7 @@ function DashboardContent() {
         const getFocusableItems = () => Array.from(backlogDialogRef.current?.querySelectorAll(focusableSelector) || []);
 
         window.requestAnimationFrame(() => {
-            getFocusableItems()[0]?.focus();
+            getFocusableItems()[0]?.focus({ preventScroll: true });
         });
 
         const handleKeyDown = (event) => {
@@ -593,15 +686,18 @@ function DashboardContent() {
 
             if (event.shiftKey && document.activeElement === firstItem) {
                 event.preventDefault();
-                lastItem.focus();
+                lastItem.focus({ preventScroll: true });
             } else if (!event.shiftKey && document.activeElement === lastItem) {
                 event.preventDefault();
-                firstItem.focus();
+                firstItem.focus({ preventScroll: true });
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = originalOverflow;
+        };
     }, [closeBacklogModal, showBacklogModal]);
 
     const loadStudentData = useCallback(async (usn, session) => {
@@ -611,11 +707,22 @@ function DashboardContent() {
             const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
             setStudent(profile);
 
-            const studentMarks = [];
+            const studentMarks = data?.studentMarks || [];
             const resultMarks = data?.recentResults || [];
 
             // 2. Normalize and Combine
             const pool = [];
+
+            const parseExamDate = (d) => {
+                if (!d || d === 'Manual Entry' || d === 'Scraped Record' || d === 'N/A') return 0;
+                const parsed = Date.parse(d);
+                if (!isNaN(parsed)) return parsed;
+                const dmy = String(d).match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+                if (dmy) return new Date(`${dmy[3]}-${dmy[2]}-${dmy[1]}`).getTime() || 0;
+                const yr = String(d).match(/\b(20\d{2})\b/);
+                if (yr) return new Date(`${yr[1]}-01-01`).getTime() || 0;
+                return 0;
+            };
 
             const formatExamAlias = text => {
                 if (!text || text === 'Manual Entry' || text === 'Scraped Record') return text;
@@ -627,7 +734,9 @@ function DashboardContent() {
             };
 
             const normalize = (m, source) => {
-                const dateVal = m.announced_date || (m.exam_date && m.exam_date !== 'Scraped Record' && m.exam_date !== 'Manual Entry' ? m.exam_date : null);
+                const rawDate = m.announced_date || m.results?.announced_date || null;
+                const examAlias = formatExamAlias(m.results?.exam_name || (source === 'manual' ? 'Manual Entry' : 'Scraped Record'));
+                const dateVal = rawDate || (m.exam_date && m.exam_date !== 'Scraped Record' && m.exam_date !== 'Manual Entry' ? m.exam_date : null);
                 return {
                     id: m.id,
                     subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
@@ -639,7 +748,8 @@ function DashboardContent() {
                     credits: Number(m.credits) || 3,
                     semester: Number(m.semester) || 1,
                     announced_date: dateVal,
-                    exam_date: dateVal || formatExamAlias(m.results?.exam_name || (source === 'manual' ? 'Manual Entry' : 'N/A')),
+                    exam_date: dateVal || examAlias,
+                    raw_exam: m.results?.exam_name || m.exam_name || examAlias,
                     source,
                     // Preserve backlog/fail signals from the API — required for canonical
                     // isFail detection downstream (ext < 18 threshold, is_backlog flag, result string).
@@ -653,10 +763,8 @@ function DashboardContent() {
             if (resultMarks) resultMarks.forEach(m => pool.push(normalize(m, 'scraper')));
 
             // 3. ── BACKLOG & SEMESTER RECONCILIATION ──
-            // We want to group by subject_code and pick the BEST result.
-            // Also, we MUST ensure the subject is mapped to its ORIGINAL semester using its code.
-            const bestByCode = {};
-            const historyByCode = {};
+            // We want to group by subject_code and pick the BEST result while resolving latest announced date.
+            const attemptsByCode = {};
 
             pool.forEach(m => {
                 const code = m.subject_code;
@@ -671,31 +779,69 @@ function DashboardContent() {
                 }
                 m.semester = targetSem;
 
-                const key = code; // Unique by Code (VTU codes are unique across semesters usually)
-                const existing = bestByCode[key];
+                if (!attemptsByCode[code]) attemptsByCode[code] = [];
+                attemptsByCode[code].push(m);
+            });
 
-                if (!existing) {
-                    bestByCode[key] = m;
-                    historyByCode[key] = [];
-                } else {
-                    const existingRank = getGradeRank(existing.grade);
-                    const newRank = getGradeRank(m.grade);
+            const bestByCode = {};
+            const historyByCode = {};
 
-                    // Logic: Keep better grade.
-                    if (newRank > existingRank) {
-                        historyByCode[key].push(bestByCode[key]);
-                        bestByCode[key] = m;
-                    } else if (newRank === existingRank && m.total_marks > existing.total_marks) {
-                        historyByCode[key].push(bestByCode[key]);
-                        bestByCode[key] = m;
-                    } else {
-                        historyByCode[key].push(m);
+            const allKnownSems = pool.map(m => m.semester).filter(Boolean);
+            const maxStudentSem = allKnownSems.length > 0 ? Math.max(...allKnownSems) : 1;
+
+            Object.entries(attemptsByCode).forEach(([code, attempts]) => {
+                // Find latest announced date across all attempts for this subject
+                const allDates = attempts
+                    .map(a => a.announced_date || a.exam_date)
+                    .filter(d => d && d !== 'N/A' && d !== 'Manual Entry' && d !== 'Scraped Record');
+
+                allDates.sort((a, b) => parseExamDate(b) - parseExamDate(a));
+                const latestAnnouncedDate = allDates[0] || attempts[0]?.announced_date || attempts[0]?.exam_date || 'N/A';
+
+                // Find the best attempt
+                let best = attempts[0];
+                for (let i = 1; i < attempts.length; i++) {
+                    const curr = attempts[i];
+                    const bestRank = getGradeRank(best.grade);
+                    const currRank = getGradeRank(curr.grade);
+
+                    if (currRank > bestRank) {
+                        best = curr;
+                    } else if (currRank === bestRank) {
+                        if ((curr.total_marks || 0) > (best.total_marks || 0)) {
+                            best = curr;
+                        } else if (parseExamDate(curr.announced_date || curr.exam_date) > parseExamDate(best.announced_date || best.exam_date)) {
+                            best = curr;
+                        } else if ((curr.id || 0) > (best.id || 0)) {
+                            best = curr;
+                        }
                     }
+                }
+
+                const calculatedAttempts = calculateVTUAttempts(
+                    code,
+                    best.semester,
+                    best.raw_exam || best.exam_date,
+                    latestAnnouncedDate,
+                    best.grade,
+                    maxStudentSem,
+                    attempts.length
+                );
+
+                bestByCode[code] = {
+                    ...best,
+                    announced_date: latestAnnouncedDate,
+                    exam_date: latestAnnouncedDate,
+                    attempts: calculatedAttempts,
+                };
+
+                const priorAttempts = attempts.filter(a => a !== best);
+                if (priorAttempts.length > 0) {
+                    historyByCode[code] = priorAttempts.sort((a, b) => parseExamDate(b.announced_date || b.exam_date) - parseExamDate(a.announced_date || a.exam_date));
                 }
             });
 
             const deduplicated = Object.values(bestByCode);
-            const allHistory = Object.values(historyByCode).flat();
 
             // 4. Enrich Credits from Master Registry
             try {
@@ -724,10 +870,13 @@ function DashboardContent() {
                 if (!grouped[s]) { grouped[s] = []; groupedHistory[s] = []; }
                 grouped[s].push(m);
             });
-            allHistory.forEach(m => {
-                const s = m.semester;
-                if (!groupedHistory[s]) groupedHistory[s] = [];
-                groupedHistory[s].push(m);
+
+            Object.entries(historyByCode).forEach(([code, historyItems]) => {
+                historyItems.forEach(hm => {
+                    const sem = hm.semester || 1;
+                    if (!groupedHistory[sem]) groupedHistory[sem] = [];
+                    groupedHistory[sem].push(hm);
+                });
             });
 
             // VTU Native Sorter: Parse the deepest num block to arrange subjects strictly by curriculum order
@@ -1028,6 +1177,7 @@ function DashboardContent() {
         <StudentDashboardView
             backlogs={backlogs}
             backlogDialogRef={backlogDialogRef}
+            backlogTriggerRef={backlogTriggerRef}
             closeBacklogModal={closeBacklogModal}
             cgpa={cgpa}
             downloadPDF={downloadPDF}
