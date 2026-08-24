@@ -85,7 +85,8 @@ export function ClassesContent({ embedded = false }) {
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
-        academic_year: '2024-2025'
+        academic_year: '2024-2025',
+        batch: ''
     });
     const [editLoading, setEditLoading] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -110,7 +111,8 @@ export function ClassesContent({ embedded = false }) {
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
-        academic_year: '2024-2025'
+        academic_year: '2024-2025',
+        batch: ''
     });
     const [addUsn, setAddUsn] = useState('');
     const [bulkUsns, setBulkUsns] = useState('');
@@ -208,8 +210,8 @@ export function ClassesContent({ embedded = false }) {
                 institutionInfo: {
                     collegeName: 'Anjuman Institute of Technology and Management',
                     department: `Department of ${selectedClass.branch || 'CSE'}`,
-                    batch: `Sem ${exportSemester} - ${selectedClass.name}`,
-                    ay: 'AY -2025-26 (EVEN Semester)'
+                    batch: selectedClass.batch || '',
+                    academicYear: selectedClass.academic_year || ''
                 },
                 fileName: `${(selectedClass.name || 'Class').replace(/\s+/g, '_')}_Sem${exportSemester}_Consolidated_Report.pdf`
             });
@@ -326,7 +328,8 @@ export function ClassesContent({ embedded = false }) {
                 scheme: '2022',
                 section: 'A',
                 faculty_id: 'all',
-                academic_year: '2024-2025'
+                academic_year: '2024-2025',
+                batch: ''
             });
             setMsg('✓ Class created successfully. Visible to all faculty & administrators.');
             await logActivity(faculty, 'CLASS_CREATE', newClass.name);
@@ -347,7 +350,8 @@ export function ClassesContent({ embedded = false }) {
             scheme: cls.scheme || '2022',
             section: cls.section || 'A',
             faculty_id: cls.faculty_id || 'all',
-            academic_year: cls.academic_year || '2024-2025'
+            academic_year: cls.academic_year || '2024-2025',
+            batch: cls.batch || ''
         });
         setShowEditModal(true);
     };
@@ -1144,6 +1148,26 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Academic Year</label>
+                                    <input
+                                        style={S.input}
+                                        placeholder="e.g. 2024-2025"
+                                        value={newClass.academic_year}
+                                        onChange={e => setNewClass(p => ({ ...p, academic_year: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={S.label}>Batch</label>
+                                    <input
+                                        style={S.input}
+                                        placeholder="e.g. 2024"
+                                        value={newClass.batch}
+                                        onChange={e => setNewClass(p => ({ ...p, batch: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
                             <div>
                                 <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
                                 <select style={S.sel} value={newClass.faculty_id} onChange={e => setNewClass(p => ({ ...p, faculty_id: e.target.value }))}>
@@ -1218,14 +1242,25 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div>
-                                <label style={S.label}>Academic Year</label>
-                                <input
-                                    style={S.input}
-                                    placeholder="e.g. 2024-2025"
-                                    value={editClassForm.academic_year || ''}
-                                    onChange={e => setEditClassForm(p => ({ ...p, academic_year: e.target.value }))}
-                                />
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={S.label}>Academic Year</label>
+                                    <input
+                                        style={S.input}
+                                        placeholder="e.g. 2024-2025"
+                                        value={editClassForm.academic_year || ''}
+                                        onChange={e => setEditClassForm(p => ({ ...p, academic_year: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={S.label}>Batch</label>
+                                    <input
+                                        style={S.input}
+                                        placeholder="e.g. 2024"
+                                        value={editClassForm.batch || ''}
+                                        onChange={e => setEditClassForm(p => ({ ...p, batch: e.target.value }))}
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <label style={S.label}>Faculty In-Charge (Assigned Faculty)</label>
