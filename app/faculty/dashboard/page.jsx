@@ -818,30 +818,20 @@ function FacultyDashboardContent() {
                     .trim();
             };
 
-<<<<<<< HEAD
-            // -- DEDUPLICATION & BEST RESULT LOGIC --
-            const bestByCode = {};
-
-            // CRITICAL: Only include marks that strictly belong to the searched USN to prevent cross-student contamination
             const strictResultMarks = (resultMarks || []).filter(m => {
                 const mUsn = (m.usn || '').trim().toUpperCase();
                 return mUsn === cleanUSN;
             });
 
             const allMarksRaw = [
-                ...(studentMarks || []).map(m => ({ ...m, source: 'manual', exam_date: 'Manual Entry' })),
-                ...(strictResultMarks || []).map(m => ({
-=======
-            const allMarksRaw = [
                 ...(studentMarks || []).map(m => ({
->>>>>>> 3e2a99a (feat: enhance attempt calculations, revaluation rules, dynamic semester clearance breakdown, and PDF export)
                     ...m,
                     source: 'manual',
                     announced_date: m.announced_date || m.exam_date || null,
                     exam_date: m.announced_date || m.exam_date || 'Manual Entry',
                     raw_exam: m.exam_name || 'Manual Entry'
                 })),
-                ...(resultMarks || []).map(m => {
+                ...(strictResultMarks || []).map(m => {
                     const rawDate = m.announced_date || m.results?.announced_date || null;
                     const examAlias = formatExamAlias(m.results?.exam_name || 'Scraped Record');
                     const dateVal = rawDate || (m.exam_date && m.exam_date !== 'Scraped Record' && m.exam_date !== 'Manual Entry' ? m.exam_date : null);
