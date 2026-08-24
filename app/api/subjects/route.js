@@ -12,10 +12,14 @@ const supabaseAdmin = createClient(
 function normalizeBranch(br) {
     if (!br) return 'CS';
     const b = br.toUpperCase().trim();
-    if (b === 'CSE') return 'CS';
-    if (b === 'ECE') return 'EC';
-    if (b === 'EEE') return 'EE';
-    if (b === 'AIML') return 'AI';
+    if (b === 'CSE' || b === 'CS' || b.includes('COMPUTER SCIENCE')) return 'CS';
+    if (b === 'ECE' || b === 'EC' || b.includes('ELECTRONICS')) return 'EC';
+    if (b === 'EEE' || b === 'EE' || b.includes('ELECTRICAL')) return 'EE';
+    if (b === 'AIML' || b === 'AI' || b === 'CI' || b.includes('ARTIFICIAL INTELLIGENCE')) return 'AI';
+    if (b === 'DS' || b === 'CD' || b.includes('DATA SCIENCE') || b.includes('CSE(DS)')) return 'DS';
+    if (b === 'MECH' || b === 'ME' || b.includes('MECHANICAL')) return 'ME';
+    if (b === 'CIVIL' || b === 'CV' || b.includes('CIVIL')) return 'CV';
+    if (b === 'ROBOTICS' || b === 'RI' || b.includes('ROBOTICS')) return 'RI';
     return b;
 }
 
