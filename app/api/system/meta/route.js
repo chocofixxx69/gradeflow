@@ -25,18 +25,18 @@ export async function GET() {
         }
 
         const fallbackBranches = [
-            { code: 'CSE', name: 'Computer Science & Engineering' },
-            { code: 'ISE', name: 'Information Science & Engineering' },
-            { code: 'ECE', name: 'Electronics & Communication Engineering' },
-            { code: 'EEE', name: 'Electrical & Electronics Engineering' },
+            { code: 'CS', name: 'Computer Science & Engineering' },
+            { code: 'AI', name: 'Artificial Intelligence & Machine Learning' },
+            { code: 'DS', name: 'Data Science' },
+            { code: 'EC', name: 'Electronics & Communication Engineering' },
+            { code: 'EE', name: 'Electrical & Electronics Engineering' },
             { code: 'ME', name: 'Mechanical Engineering' },
             { code: 'CV', name: 'Civil Engineering' },
-            { code: 'AIML', name: 'Artificial Intelligence & Machine Learning' },
-            { code: 'DS', name: 'Data Science' }
+            { code: 'RI', name: 'Robotics & Artificial Intelligence' }
         ];
 
         const branches = dbBranches.length > 0 ? dbBranches : fallbackBranches;
-        const schemes = ['2022', '2021', '2018', '2017', '2015'];
+        const schemes = ['2022', '2025'];
         const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
         const sections = ['A', 'B', 'C', 'D', 'E', 'F'];
         const academicYears = ['2025-2026', '2024-2025', '2023-2024', '2022-2023'];

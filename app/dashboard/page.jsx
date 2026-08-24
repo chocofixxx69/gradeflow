@@ -5,11 +5,11 @@ import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
-import { getGradePoint, getGradeRank, unifyGrade } from '../../lib/vtuGrades';
+import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone } from '../../lib/vtuGrades';
 import { getOfficialCredit } from '../../lib/vtu-curriculum-catalog';
 import styles from './Dashboard.module.css';
 
-function calcSGPA(subjects, scheme = '2022') {
+function calcSGPA(subjects, scheme = '2022', branch = null, semNumber = null) {
     const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
     // Only include subjects that are not in the exclude list
     const validSubs = subjects.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
@@ -21,27 +21,17 @@ function calcSGPA(subjects, scheme = '2022') {
 
     validSubs.forEach(m => {
         const code = (m.subject_code || m.code || '').trim().toUpperCase();
-        const grade = (m.grade || '').trim().toUpperCase();
-        const unified = unifyGrade(grade);
-        const ext = Number(m.see_marks ?? m.external) || 0;
-        const tot = Number(m.total_marks ?? m.total) || 0;
-        const resStr = (m.result || '').trim().toUpperCase();
-        
-        const offCr = getOfficialCredit(code, scheme);
+        const details = getGradeDetails(m, scheme);
+        const offCr = getOfficialCredit(code, scheme, branch, semNumber || m.semester);
         const credits = offCr !== null ? offCr : (Number(m.credits) || 0);
 
-        if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga)
+        if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga, IKS)
 
-        const gp = getGradePoint(grade, scheme, m.total_marks || m.total, m.see_marks ?? m.external ?? null);
+        const gp = details.gp;
+        const isFail = details.isFail || m.is_backlog === true;
 
         totalCredits += credits;
         totalCreditPoints += (gp * credits);
-
-        const isFail = m.is_backlog === true
-            || grade === 'F' || unified === 'A'
-            || (ext > 0 && ext < 18)
-            || (tot > 0 && tot < 40)
-            || resStr === 'F' || resStr.includes('FAIL');
 
         if (!isFail && gp > 0) {
             earnedCredits += credits;
@@ -86,25 +76,22 @@ function StudentDashboardView({
     totalSubjects,
 }) {
     const GradeBadge = ({ grade }) => {
-        const unified = unifyGrade(grade);
-        const isFail = unified === 'F' || unified === 'A' || unified === 'FAIL' || unified === 'ABSENT' || (grade || '').toUpperCase() === 'F' || (grade || '').toUpperCase() === 'A';
-        const isPass = unified === 'P' || unified === 'PASS' || ['O', 'A+', 'A', 'B+', 'B', 'C', 'P'].includes((grade || '').toUpperCase());
-        const tone = isFail ? 'danger' : isPass ? 'success' : 'info';
-        const displayText = unified === 'P' ? 'P' : unified === 'F' ? 'F' : unified === 'A' ? 'AB' : unified;
+        const tone = getGradeBadgeTone(grade);
+        const displayText = grade || '—';
         return (
             <Badge
                 tone={tone}
                 size="sm"
                 style={{
                     fontWeight: 900,
-                    minWidth: '28px',
+                    minWidth: '32px',
                     height: '24px',
                     padding: '0 8px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: 'var(--radius-full)',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     letterSpacing: '0.04em'
                 }}
             >
@@ -380,53 +367,89 @@ function StudentDashboardView({
                                                     <table className={`${styles.table} ${styles.subjectTable}`}>
                                                         <thead>
                                                             <tr>
-                                                                {['Subject Code', 'Subject Name', 'Internal Marks', 'External Marks', 'Total', 'Result', 'Announced / Updated on'].map((heading) => (
-                                                                    <th key={heading} scope="col">{heading}</th>
-                                                                ))}
+                                                                <th scope="col">Code</th>
+                                                                <th scope="col">Subject</th>
+                                                                <th scope="col" className={styles.center}>CR</th>
+                                                                <th scope="col" className={styles.center}>INT</th>
+                                                                <th scope="col" className={styles.center}>EXT</th>
+                                                                <th scope="col" className={styles.center}>Total</th>
+                                                                <th scope="col" className={styles.center}>Grade</th>
+                                                                <th scope="col" className={styles.center}>GP</th>
+                                                                <th scope="col" className={styles.center}>Result</th>
+                                                                <th scope="col">Session</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            {subjects.map((m, idx) => (
-                                                                <tr key={m.id || idx}>
-                                                                    <th scope="row" className={styles.code}>{m.subject_code || m.code || '—'}</th>
-                                                                    <td>{m.subject_name || m.name || 'Unknown'}</td>
-                                                                    <td className={styles.center}>{m.cie_marks ?? m.internal ?? '—'}</td>
-                                                                    <td className={styles.center}>{m.see_marks ?? m.external ?? '—'}</td>
-                                                                    <td className={styles.center}><strong>{m.total_marks ?? m.total ?? '—'}</strong></td>
-                                                                    <td className={styles.center}><GradeBadge grade={m.grade} /></td>
-                                                                    <td className={styles.nowrap}>{m.announced_date || m.exam_date || 'N/A'}</td>
-                                                                </tr>
-                                                            ))}
+                                                            {subjects.map((m, idx) => {
+                                                                const scheme = student?.scheme || '2022';
+                                                                const branch = student?.branch || null;
+                                                                const details = getGradeDetails(m, scheme);
+                                                                const offCr = getOfficialCredit(m.subject_code || m.code, scheme, branch, Number(sem));
+                                                                const displayCr = offCr !== null ? offCr : (Number(m.credits) || 0);
+                                                                return (
+                                                                    <tr key={m.id || idx}>
+                                                                        <th scope="row" className={styles.code}>{m.subject_code || m.code || '—'}</th>
+                                                                        <td>{m.subject_name || m.name || 'Unknown'}</td>
+                                                                        <td className={styles.center}><strong>{displayCr}</strong></td>
+                                                                        <td className={styles.center}>{m.cie_marks ?? m.internal ?? '—'}</td>
+                                                                        <td className={styles.center}>{m.see_marks ?? m.external ?? '—'}</td>
+                                                                        <td className={styles.center}><strong>{m.total_marks ?? m.total ?? '—'}</strong></td>
+                                                                        <td className={styles.center}><GradeBadge grade={details.grade} /></td>
+                                                                        <td className={styles.center}><strong>{details.gpFormatted}</strong></td>
+                                                                        <td className={styles.center}>
+                                                                            <Badge tone={details.isPass ? 'success' : 'danger'} size="sm">
+                                                                                {details.isPass ? 'Pass' : 'Fail'}
+                                                                            </Badge>
+                                                                        </td>
+                                                                        <td className={styles.nowrap}>{m.announced_date || m.exam_date || 'Regular'}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
                                                         </tbody>
                                                     </table>
                                                 </div>
 
                                                 <div className={styles.mobileSubjectList}>
-                                                    {subjects.map((m, idx) => (
-                                                        <div key={m.id || idx} className={styles.mobileSubjectCard}>
-                                                            <div className={styles.mobileSubjectHeader}>
-                                                                <div className={styles.mobileSubjectTitleGroup}>
-                                                                    <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
-                                                                    <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
+                                                    {subjects.map((m, idx) => {
+                                                        const scheme = student?.scheme || '2022';
+                                                        const branch = student?.branch || null;
+                                                        const details = getGradeDetails(m, scheme);
+                                                        const offCr = getOfficialCredit(m.subject_code || m.code, scheme, branch, Number(sem));
+                                                        const displayCr = offCr !== null ? offCr : (Number(m.credits) || 0);
+                                                        return (
+                                                            <div key={m.id || idx} className={styles.mobileSubjectCard}>
+                                                                <div className={styles.mobileSubjectHeader}>
+                                                                    <div className={styles.mobileSubjectTitleGroup}>
+                                                                        <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
+                                                                        <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
+                                                                    </div>
+                                                                    <GradeBadge grade={details.grade} />
                                                                 </div>
-                                                                <GradeBadge grade={m.grade} />
+                                                                <div className={styles.mobileSubjectStats}>
+                                                                    <div className={styles.mobileStatItem}>
+                                                                        <span className={styles.statMiniLabel}>Credits:</span>
+                                                                        <span>{displayCr}</span>
+                                                                    </div>
+                                                                    <div className={styles.mobileStatItem}>
+                                                                        <span className={styles.statMiniLabel}>CIE:</span>
+                                                                        <span>{m.cie_marks ?? m.internal ?? '—'}</span>
+                                                                    </div>
+                                                                    <div className={styles.mobileStatItem}>
+                                                                        <span className={styles.statMiniLabel}>SEE:</span>
+                                                                        <span>{m.see_marks ?? m.external ?? '—'}</span>
+                                                                    </div>
+                                                                    <div className={styles.mobileStatItem}>
+                                                                        <span className={styles.statMiniLabel}>Total:</span>
+                                                                        <strong>{m.total_marks ?? m.total ?? '—'}</strong>
+                                                                    </div>
+                                                                    <div className={styles.mobileStatItem}>
+                                                                        <span className={styles.statMiniLabel}>GP:</span>
+                                                                        <strong>{details.gpFormatted}</strong>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <div className={styles.mobileSubjectStats}>
-                                                                <div className={styles.mobileStatItem}>
-                                                                    <span className={styles.statMiniLabel}>CIE:</span>
-                                                                    <span>{m.cie_marks ?? m.internal ?? '—'}</span>
-                                                                </div>
-                                                                <div className={styles.mobileStatItem}>
-                                                                    <span className={styles.statMiniLabel}>SEE:</span>
-                                                                    <span>{m.see_marks ?? m.external ?? '—'}</span>
-                                                                </div>
-                                                                <div className={styles.mobileStatItem}>
-                                                                    <span className={styles.statMiniLabel}>Total:</span>
-                                                                    <strong>{m.total_marks ?? m.total ?? '—'}</strong>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
 
                                                 {student?.history?.[sem] && student.history[sem].length > 0 && (
@@ -725,19 +748,23 @@ function DashboardContent() {
             const semSGPAs = {};
             const stats = {};
             let totalWeighted = 0, totalCr = 0;
+            const stuScheme = student?.scheme || '2022';
+            const stuBranch = student?.branch || null;
             Object.entries(grouped)
                 .sort(([a], [b]) => Number(a) - Number(b))
                 .forEach(([sem, subjects]) => {
-                    const res = calcSGPA(subjects);
+                    const res = calcSGPA(subjects, stuScheme, stuBranch, Number(sem));
                     semSGPAs[sem] = res.sgpa;
                     stats[sem] = res;
-                    totalWeighted += res.sgpa * res.totalCredits;
-                    totalCr += res.totalCredits;
+                    if (res.totalCredits > 0) {
+                        totalWeighted += res.sgpa * res.totalCredits;
+                        totalCr += res.totalCredits;
+                    }
                 });
             setSgpas(semSGPAs);
             setSemStats(stats);
 
-            const calculatedCGPA = totalCr > 0 ? totalWeighted / totalCr : 0;
+            const calculatedCGPA = totalCr > 0 ? Number((totalWeighted / totalCr).toFixed(2)) : 0;
             setCgpa(calculatedCGPA);
             setPercentage(Math.max(0, (calculatedCGPA - 0.75) * 10));
 

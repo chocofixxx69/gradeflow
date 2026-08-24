@@ -1,12 +1,23 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireStaff } from '../../../lib/server-session';
-import { getGradePoint } from '../../../lib/vtuGrades';
+import { getGradePoint, getGradeDetails } from '../../../lib/vtuGrades';
+import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
+
+function normalizeBranch(br) {
+    if (!br) return 'CS';
+    const b = br.toUpperCase().trim();
+    if (b === 'CSE') return 'CS';
+    if (b === 'ECE') return 'EC';
+    if (b === 'EEE') return 'EE';
+    if (b === 'AIML') return 'AI';
+    return b;
+}
 
 export async function GET(req) {
     const { error: authError } = requireStaff(req, ['faculty', 'admin']);
@@ -14,7 +25,8 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const scheme = searchParams.get('scheme') || '2022';
-    const branch = searchParams.get('branch') || 'CSE';
+    const rawBranch = searchParams.get('branch') || 'CS';
+    const branch = normalizeBranch(rawBranch);
     const semester = searchParams.get('semester');
 
     try {
@@ -22,7 +34,7 @@ export async function GET(req) {
             .from('subject_catalog')
             .select('*')
             .eq('scheme', scheme)
-            .eq('branch', branch);
+            .in('branch', Array.from(new Set([branch, rawBranch])));
 
         if (semester && semester !== 'all') {
             query = query.eq('semester', parseInt(semester));
@@ -279,20 +291,21 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
 
             if (!semMarks || semMarks.length === 0) continue;
 
-            let tc = 0;
-            let tcp = 0;
-            let backlogs = 0;
-
             semMarks.forEach(m => {
                 const g = (m.grade || 'F').trim().toUpperCase();
                 if (excludeGrades.has(g)) return;
 
-                const cr = Number(m.credits) || 3;
-                const gp = getGradePoint(g, '2022', m.total, m.external);
+                const details = getGradeDetails(m, '2022');
+                const offCr = getOfficialCredit(m.subject_code, '2022', null, Number(semester));
+                const cr = offCr !== null ? offCr : (Number(m.credits) || 0);
+
+                if (cr === 0) return; // Non-credit audit course
+
+                const gp = details.gp;
                 tc += cr;
                 tcp += (gp * cr);
 
-                if (g === 'F' || g === 'A' || m.is_backlog) backlogs++;
+                if (details.isFail || m.is_backlog) backlogs++;
             });
 
             const newSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;

@@ -1,7 +1,8 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
 import { processStudentResults } from '../lib/semester-utils';
-import { unifyGrade } from '../lib/vtuGrades';
+import { unifyGrade, getGradeDetails, getGradeBadgeTone } from '../lib/vtuGrades';
+import { getOfficialCredit } from '../lib/vtu-curriculum-catalog';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { exportToExcel, exportToPDF, exportToCSV } from '../lib/export-utils';
 import { supabase } from '../lib/supabase';
@@ -30,10 +31,13 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                 
                 const updatedMarks = marks.map(m => {
                     const code = (m.subject_code || m.code || '').toUpperCase();
-                    if (subjectMap[code]) {
-                        return { ...m, credits: subjectMap[code].credits, subject_name: m.subject_name || subjectMap[code].subject_name };
-                    }
-                    return m;
+                    const offCr = getOfficialCredit(code, scheme, null, m.semester);
+                    const finalCredits = offCr !== null ? offCr : (subjectMap[code]?.credits ?? m.credits ?? 3);
+                    return {
+                        ...m,
+                        credits: finalCredits,
+                        subject_name: m.subject_name || subjectMap[code]?.subject_name || m.name
+                    };
                 });
                 setDynamicMarks(updatedMarks);
             } else {
@@ -188,28 +192,39 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                                     <thead>
                                         <tr>
                                             <th>Subject</th>
+                                            <th>CR</th>
                                             <th>Internal</th>
                                             <th>External</th>
                                             <th>Total</th>
+                                            <th>Grade</th>
+                                            <th>GP</th>
                                             <th>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {grouped[selectedSem].map((m, idx) => {
-                                            const unified = unifyGrade(m.grade);
-                                            const isFail = unified === 'F' || unified === 'A';
+                                            const details = getGradeDetails(m, scheme);
+                                            const offCr = getOfficialCredit(m.subject_code || m.code, scheme, null, Number(selectedSem));
+                                            const displayCr = offCr !== null ? offCr : (m.credits || 0);
                                             return (
                                                 <tr key={idx}>
                                                     <td>
                                                         <div style={{ fontWeight: 700, fontSize: '13px' }}>{m.subject_name || m.name}</div>
                                                         <div style={{ fontSize: '10px', color: 'var(--tx-dim)', fontFamily: 'monospace' }}>{m.subject_code || m.code}</div>
                                                     </td>
+                                                    <td style={{ fontWeight: 700 }}>{displayCr}</td>
                                                     <td>{m.internal ?? m.cie_marks ?? '—'}</td>
                                                     <td>{m.external ?? m.see_marks ?? '—'}</td>
                                                     <td style={{ fontWeight: 800 }}>{m.total ?? m.total_marks ?? '—'}</td>
                                                     <td>
-                                                        <span className={`gf-badge ${isFail ? 'gf-badge-red' : 'gf-badge-stone'}`}>
-                                                            {unified}
+                                                        <span className={`gf-badge ${details.isPass ? 'gf-badge-green' : 'gf-badge-red'}`} style={{ fontWeight: 800 }}>
+                                                            {details.grade}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ fontWeight: 700 }}>{details.gpFormatted}</td>
+                                                    <td>
+                                                        <span className={`gf-badge ${details.isPass ? 'gf-badge-green' : 'gf-badge-red'}`}>
+                                                            {details.isPass ? 'Pass' : 'Fail'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -221,8 +236,9 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
 
                             <div className="gf-mobile-subject-list">
                                 {grouped[selectedSem].map((m, idx) => {
-                                    const unified = unifyGrade(m.grade);
-                                    const isFail = unified === 'F' || unified === 'A';
+                                    const details = getGradeDetails(m, scheme);
+                                    const offCr = getOfficialCredit(m.subject_code || m.code, scheme, null, Number(selectedSem));
+                                    const displayCr = offCr !== null ? offCr : (m.credits || 0);
                                     return (
                                         <div key={idx} className="gf-mobile-subject-card">
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
@@ -234,14 +250,16 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                                                         {m.subject_name || m.name}
                                                     </div>
                                                 </div>
-                                                <span className={`gf-badge ${isFail ? 'gf-badge-red' : 'gf-badge-stone'}`}>
-                                                    {unified}
-                                                </span>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <span className={`gf-badge ${details.isPass ? 'gf-badge-green' : 'gf-badge-red'}`} style={{ fontWeight: 800 }}>
+                                                        {details.grade}
+                                                    </span>
+                                                </div>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--surface-low)', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', marginTop: '8px' }}>
-                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>CIE:</span> {m.internal ?? m.cie_marks ?? '—'}</div>
-                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>SEE:</span> {m.external ?? m.see_marks ?? '—'}</div>
+                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Credits:</span> {displayCr}</div>
                                                 <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Total:</span> <strong>{m.total ?? m.total_marks ?? '—'}</strong></div>
+                                                <div><span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>GP:</span> <strong>{details.gpFormatted}</strong></div>
                                             </div>
                                         </div>
                                     );

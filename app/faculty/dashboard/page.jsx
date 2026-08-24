@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
-import { getGradePoint, getGradeRank, unifyGrade } from '../../../lib/vtuGrades';
+import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone } from '../../../lib/vtuGrades';
 import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
 import styles from './FacultyDashboard.module.css';
@@ -52,25 +52,22 @@ function FacultyDashboardView({
     )[0];
 
     const GradeBadge = ({ grade }) => {
-        const unified = unifyGrade(grade);
-        const isFail = unified === 'F' || unified === 'A' || unified === 'FAIL' || unified === 'ABSENT' || (grade || '').toUpperCase() === 'F' || (grade || '').toUpperCase() === 'A';
-        const isPass = unified === 'P' || unified === 'PASS' || ['O', 'A+', 'A', 'B+', 'B', 'C', 'P'].includes((grade || '').toUpperCase());
-        const tone = isFail ? 'danger' : isPass ? 'success' : 'info';
-        const displayText = unified === 'P' ? 'P' : unified === 'F' ? 'F' : unified === 'A' ? 'AB' : unified;
+        const tone = getGradeBadgeTone(grade);
+        const displayText = grade || '—';
         return (
             <Badge
                 tone={tone}
                 size="sm"
                 style={{
                     fontWeight: 900,
-                    minWidth: '28px',
+                    minWidth: '32px',
                     height: '24px',
                     padding: '0 8px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: 'var(--radius-full)',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     letterSpacing: '0.04em'
                 }}
             >
@@ -366,53 +363,89 @@ function FacultyDashboardView({
                                                             <table className={`${styles.table} ${styles.subjectTable}`}>
                                                                 <thead>
                                                                     <tr>
-                                                                        {['Subject Code', 'Subject Name', 'Internal Marks', 'External Marks', 'Total', 'Result', 'Announced / Updated on'].map((heading) => (
-                                                                            <th key={heading} scope="col">{heading}</th>
-                                                                        ))}
+                                                                        <th scope="col">Code</th>
+                                                                        <th scope="col">Subject</th>
+                                                                        <th scope="col" className={styles.center}>CR</th>
+                                                                        <th scope="col" className={styles.center}>INT</th>
+                                                                        <th scope="col" className={styles.center}>EXT</th>
+                                                                        <th scope="col" className={styles.center}>Total</th>
+                                                                        <th scope="col" className={styles.center}>Grade</th>
+                                                                        <th scope="col" className={styles.center}>GP</th>
+                                                                        <th scope="col" className={styles.center}>Result</th>
+                                                                        <th scope="col">Session</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
-                                                                    {subjects.map((mark, index) => (
-                                                                        <tr key={mark.id || `${sem}-${index}`}>
-                                                                            <th scope="row" className={styles.code}>{mark.subject_code || mark.code || '—'}</th>
-                                                                            <td>{mark.subject_name || mark.name}</td>
-                                                                            <td className={styles.center}>{mark.cie_marks ?? mark.internal ?? '—'}</td>
-                                                                            <td className={styles.center}>{mark.see_marks ?? mark.external ?? '—'}</td>
-                                                                            <td className={styles.center}><strong>{mark.total_marks ?? mark.total ?? '—'}</strong></td>
-                                                                            <td className={styles.center}><GradeBadge grade={mark.grade} /></td>
-                                                                            <td className={styles.nowrap}>{mark.announced_date || mark.exam_date || 'N/A'}</td>
-                                                                        </tr>
-                                                                    ))}
+                                                                    {subjects.map((mark, index) => {
+                                                                        const scheme = student?.scheme || '2022';
+                                                                        const branch = student?.branch || null;
+                                                                        const details = getGradeDetails(mark, scheme);
+                                                                        const offCr = getOfficialCredit(mark.subject_code || mark.code, scheme, branch, Number(sem));
+                                                                        const displayCr = offCr !== null ? offCr : (Number(mark.credits) || 0);
+                                                                        return (
+                                                                            <tr key={mark.id || `${sem}-${index}`}>
+                                                                                <th scope="row" className={styles.code}>{mark.subject_code || mark.code || '—'}</th>
+                                                                                <td>{mark.subject_name || mark.name}</td>
+                                                                                <td className={styles.center}><strong>{displayCr}</strong></td>
+                                                                                <td className={styles.center}>{mark.cie_marks ?? mark.internal ?? '—'}</td>
+                                                                                <td className={styles.center}>{mark.see_marks ?? mark.external ?? '—'}</td>
+                                                                                <td className={styles.center}><strong>{mark.total_marks ?? mark.total ?? '—'}</strong></td>
+                                                                                <td className={styles.center}><GradeBadge grade={details.grade} /></td>
+                                                                                <td className={styles.center}><strong>{details.gpFormatted}</strong></td>
+                                                                                <td className={styles.center}>
+                                                                                    <Badge tone={details.isPass ? 'success' : 'danger'} size="sm">
+                                                                                        {details.isPass ? 'Pass' : 'Fail'}
+                                                                                    </Badge>
+                                                                                </td>
+                                                                                <td className={styles.nowrap}>{mark.announced_date || mark.exam_date || 'Regular'}</td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
                                                                 </tbody>
                                                             </table>
                                                         </div>
 
                                                         <div className={styles.mobileSubjectList}>
-                                                            {subjects.map((mark, index) => (
-                                                                <div key={mark.id || `${sem}-${index}`} className={styles.mobileSubjectCard}>
-                                                                    <div className={styles.mobileSubjectHeader}>
-                                                                        <div className={styles.mobileSubjectTitleGroup}>
-                                                                            <span className={styles.code}>{mark.subject_code || mark.code || '—'}</span>
-                                                                            <span className={styles.subjectName}>{mark.subject_name || mark.name}</span>
+                                                            {subjects.map((mark, index) => {
+                                                                const scheme = student?.scheme || '2022';
+                                                                const branch = student?.branch || null;
+                                                                const details = getGradeDetails(mark, scheme);
+                                                                const offCr = getOfficialCredit(mark.subject_code || mark.code, scheme, branch, Number(sem));
+                                                                const displayCr = offCr !== null ? offCr : (Number(mark.credits) || 0);
+                                                                return (
+                                                                    <div key={mark.id || `${sem}-${index}`} className={styles.mobileSubjectCard}>
+                                                                        <div className={styles.mobileSubjectHeader}>
+                                                                            <div className={styles.mobileSubjectTitleGroup}>
+                                                                                <span className={styles.code}>{mark.subject_code || mark.code || '—'}</span>
+                                                                                <span className={styles.subjectName}>{mark.subject_name || mark.name}</span>
+                                                                            </div>
+                                                                            <GradeBadge grade={details.grade} />
                                                                         </div>
-                                                                        <GradeBadge grade={mark.grade} />
+                                                                        <div className={styles.mobileSubjectStats}>
+                                                                            <div className={styles.mobileStatItem}>
+                                                                                <span className={styles.statMiniLabel}>Credits:</span>
+                                                                                <span>{displayCr}</span>
+                                                                            </div>
+                                                                            <div className={styles.mobileStatItem}>
+                                                                                <span className={styles.statMiniLabel}>CIE:</span>
+                                                                                <span>{mark.cie_marks ?? mark.internal ?? '—'}</span>
+                                                                            </div>
+                                                                            <div className={styles.mobileStatItem}>
+                                                                                <span className={styles.statMiniLabel}>SEE:</span>
+                                                                                <span>{mark.see_marks ?? mark.external ?? '—'}</span>
+                                                                            </div>
+                                                                            <div className={styles.mobileStatItem}>
+                                                                                <span className={styles.statMiniLabel}>Total:</span>
+                                                                                <strong>{mark.total_marks ?? mark.total ?? '—'}</strong>
+                                                                            </div>
+                                                                            <div className={styles.mobileStatItem}>
+                                                                                <span className={styles.statMiniLabel}>GP:</span>
+                                                                                <strong>{details.gpFormatted}</strong>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
-                                                                    <div className={styles.mobileSubjectStats}>
-                                                                        <div className={styles.mobileStatItem}>
-                                                                            <span className={styles.statMiniLabel}>CIE:</span>
-                                                                            <span>{mark.cie_marks ?? mark.internal ?? '—'}</span>
-                                                                        </div>
-                                                                        <div className={styles.mobileStatItem}>
-                                                                            <span className={styles.statMiniLabel}>SEE:</span>
-                                                                            <span>{mark.see_marks ?? mark.external ?? '—'}</span>
-                                                                        </div>
-                                                                        <div className={styles.mobileStatItem}>
-                                                                            <span className={styles.statMiniLabel}>Total:</span>
-                                                                            <strong>{mark.total_marks ?? mark.total ?? '—'}</strong>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 )}
@@ -506,9 +539,10 @@ function FacultyDashboardContent() {
         if (!silent) setMessage('Scraping scan halted.');
     };
 
-    const calcSGPA = (subjects) => {
+    const calcSGPA = (subjects, semNumber = null) => {
         const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
         const scheme = student?.scheme || '2022';
+        const branch = student?.branch || null;
 
         // Group by code to handle multiple attempts for same subject
         const subjectsPool = {};
@@ -527,17 +561,14 @@ function FacultyDashboardContent() {
 
         validSubs.forEach(m => {
             const code = (m.subject_code || m.code || '').trim().toUpperCase();
-            const grade = (m.grade || '').trim().toUpperCase();
-            const unified = unifyGrade(grade);
-            const ext = Number(m.see_marks ?? m.external) || 0;
-            const tot = Number(m.total_marks ?? m.total) || 0;
-            const offCr = getOfficialCredit(code, scheme);
+            const details = getGradeDetails(m, scheme);
+            const offCr = getOfficialCredit(code, scheme, branch, semNumber || m.semester);
             const credits = offCr !== null ? offCr : (Number(m.credits) || 0);
 
-            if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga)
+            if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga, IKS)
 
-            const gp = getGradePoint(grade, scheme, tot || null, ext || null);
-            const isFail = m.is_backlog === true || unified === 'F' || unified === 'A' || (ext > 0 && ext < 18) || (tot > 0 && tot < 40);
+            const gp = details.gp;
+            const isFail = details.isFail || m.is_backlog === true;
 
             totalCredits += credits;
             totalCreditPoints += (gp * credits);
@@ -747,15 +778,18 @@ function FacultyDashboardContent() {
             const stats = {};
             let tW = 0, tC = 0;
             Object.entries(groupedBySem).forEach(([sem, subjects]) => {
-                const res = calcSGPA(subjects);
+                const res = calcSGPA(subjects, Number(sem));
                 semSGPAs[sem] = res.sgpa;
                 stats[sem] = res;
-                tW += res.sgpa * res.totalCredits; tC += res.totalCredits;
+                if (res.totalCredits > 0) {
+                    tW += res.sgpa * res.totalCredits;
+                    tC += res.totalCredits;
+                }
             });
 
             setSgpas(semSGPAs);
             setSemStats(stats);
-            setCgpa(tC > 0 ? tW / tC : 0);
+            setCgpa(tC > 0 ? Number((tW / tC).toFixed(2)) : 0);
 
             // Audit Log
             await recordFacultyAction(faculty, 'VIEW_RECORD', cleanUSN);
