@@ -29,12 +29,12 @@ export async function GET(req) {
                 supabaseAdmin
                     .from('students')
                     .select('*')
-                    .ilike('usn', cleanUSN)
+                    .eq('usn', cleanUSN)
                     .maybeSingle(),
                 supabaseAdmin
                     .from('subject_marks')
                     .select('*, results(exam_name)')
-                    .ilike('usn', cleanUSN)
+                    .eq('usn', cleanUSN)
             ]);
 
             const [{ data: studentMarks }] = await Promise.all([
@@ -43,7 +43,7 @@ export async function GET(req) {
 
             return ok({
                 profile: studentProfile || { usn: cleanUSN, name: cleanUSN },
-                recentResults: resultMarks || [],
+                recentResults: (resultMarks || []).filter(m => m.usn === cleanUSN),
                 studentMarks: studentMarks || []
             });
         }

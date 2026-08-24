@@ -691,9 +691,15 @@ function FacultyDashboardContent() {
             // -- DEDUPLICATION & BEST RESULT LOGIC --
             const bestByCode = {};
 
+            // CRITICAL: Only include marks that strictly belong to the searched USN to prevent cross-student contamination
+            const strictResultMarks = (resultMarks || []).filter(m => {
+                const mUsn = (m.usn || '').trim().toUpperCase();
+                return mUsn === cleanUSN;
+            });
+
             const allMarksRaw = [
                 ...(studentMarks || []).map(m => ({ ...m, source: 'manual', exam_date: 'Manual Entry' })),
-                ...(resultMarks || []).map(m => ({
+                ...(strictResultMarks || []).map(m => ({
                     ...m,
                     source: 'scraped',
                     cie_marks: m.internal,

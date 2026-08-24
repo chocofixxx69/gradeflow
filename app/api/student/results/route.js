@@ -27,7 +27,7 @@ export async function GET(req) {
         const { data: student } = await supabaseAdmin
             .from('students')
             .select('id, scheme, branch')
-            .ilike('usn', usn)
+            .eq('usn', usn)
             .maybeSingle();
 
         const studentScheme = student?.scheme || '2022';
@@ -39,9 +39,9 @@ export async function GET(req) {
             { data: results }
         ] = await Promise.all([
             student?.id ? supabaseAdmin.from('marks').select('*').eq('student_id', student.id) : { data: [] },
-            supabaseAdmin.from('subject_marks').select('*, results(exam_name)').ilike('usn', usn),
-            supabaseAdmin.from('academic_remarks').select('*').ilike('student_usn', usn),
-            supabaseAdmin.from('results').select('*').ilike('usn', usn)
+            supabaseAdmin.from('subject_marks').select('*, results(exam_name)').eq('usn', usn),
+            supabaseAdmin.from('academic_remarks').select('*').eq('student_usn', usn),
+            supabaseAdmin.from('results').select('*').eq('usn', usn)
         ]);
 
         const allMarks = [];
