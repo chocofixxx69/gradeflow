@@ -109,7 +109,7 @@ export default function Navbar() {
 
         if (returnFocus) {
             window.requestAnimationFrame(() => {
-                mobileMenuButtonRef.current?.focus({ preventScroll: true });
+                mobileMenuButtonRef.current?.focus();
             });
         }
     }, []);
@@ -130,7 +130,7 @@ export default function Navbar() {
             .filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
 
         const focusableItems = getFocusableItems();
-        focusableItems[0]?.focus({ preventScroll: true });
+        focusableItems[0]?.focus();
 
         const handleKeyDown = (event) => {
             if (event.key === 'Escape') {
@@ -152,10 +152,10 @@ export default function Navbar() {
 
             if (event.shiftKey && document.activeElement === firstItem) {
                 event.preventDefault();
-                lastItem.focus({ preventScroll: true });
+                lastItem.focus();
             } else if (!event.shiftKey && document.activeElement === lastItem) {
                 event.preventDefault();
-                firstItem.focus({ preventScroll: true });
+                firstItem.focus();
             }
         };
 

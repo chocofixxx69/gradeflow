@@ -64,7 +64,7 @@ export async function GET(req) {
             { data: resultRows }
         ] = await Promise.all([
             studentId ? supabaseAdmin.from('marks').select('*').eq('student_id', studentId) : { data: [] },
-            supabaseAdmin.from('subject_marks').select('*, results(exam_name, semester)').eq('usn', usn),
+            supabaseAdmin.from('subject_marks').select('*, results(exam_name)').eq('usn', usn),
             supabaseAdmin.from('academic_remarks').select('*').eq('student_usn', usn),
             supabaseAdmin.from('results').select('*').eq('usn', usn)
         ]);

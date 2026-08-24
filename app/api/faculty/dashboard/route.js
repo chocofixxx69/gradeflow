@@ -33,7 +33,7 @@ export async function GET(req) {
                     .maybeSingle(),
                 supabaseAdmin
                     .from('subject_marks')
-                    .select('*, results(exam_name, semester)')
+                    .select('*, results(exam_name)')
                     .eq('usn', cleanUSN)
             ]);
 

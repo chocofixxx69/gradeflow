@@ -645,7 +645,7 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
 
   to {
     opacity: 1;
-    transform: none;
+    transform: translateY(0);
   }
 }
 
