@@ -562,8 +562,13 @@ function FacultyDashboardContent() {
         validSubs.forEach(m => {
             const code = (m.subject_code || m.code || '').trim().toUpperCase();
             const details = getGradeDetails(m, scheme);
+
+            // ── Credit Priority ─────────────────────────────────────────────────────
+            // 1. m.credits: set by credit lookup above from subject_catalog (Supabase)
+            // 2. getOfficialCredit: JS fallback catalog (only if DB didn't provide a value)
+            const dbCredit = Number(m.credits);
             const offCr = getOfficialCredit(code, scheme, branch, semNumber || m.semester);
-            const credits = offCr !== null ? offCr : (Number(m.credits) || 0);
+            const credits = dbCredit > 0 ? dbCredit : (offCr !== null ? offCr : 0);
 
             if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga, IKS)
 
@@ -742,27 +747,49 @@ function FacultyDashboardContent() {
                 }
             });
 
-            // Dynamic Credit Lookup: Prioritize subject_catalog (faculty-managed) then master registry
+            // ── Credit Resolution ──────────────────────────────────────────────────
+            // Priority:
+            //   1. subject_catalog in Supabase (queried by branch + scheme → most authoritative)
+            //   2. m.credits already stored in subject_marks (synced from catalog by cascadeCreditUpdate)
+            //   3. getOfficialCredit() JS fallback catalog
+            //
+            // NOTE: /api/system/meta returns branch/scheme metadata — NOT subject credits.
+            // The correct endpoint is /api/subjects?scheme=&branch= which queries subject_catalog.
             try {
-                const codes = [...new Set(Object.values(bestByCode).map(m => m.subject_code || m.code))];
-                if (codes.length > 0) {
-                    const catRes = await apiRequest('/api/system/meta').catch(() => null);
-                    const masterRes = { data: [] };
+                const studentScheme = student?.scheme || '2022';
+                const studentBranch = student?.branch || 'CS';
 
-                    const creditMap = {};
-                    // Master registry as base
-                    masterRes.data?.forEach(r => { creditMap[r.subject_code] = r.credits; });
-                    // Subject catalog overrides (more specific)
-                    catRes.data?.forEach(r => { creditMap[r.subject_code] = r.credits; });
+                // Load subject catalog for this student's branch + scheme
+                const catalogRes = await apiRequest(
+                    `/api/subjects?scheme=${encodeURIComponent(studentScheme)}&branch=${encodeURIComponent(studentBranch)}`
+                ).catch(() => null);
 
-                    Object.values(bestByCode).forEach(m => {
-                        const code = (m.subject_code || m.code);
-                        if (creditMap[code]) m.credits = creditMap[code];
+                const creditMap = {};
+                // Build code→credit map from the catalog
+                if (catalogRes?.subjects?.length > 0) {
+                    catalogRes.subjects.forEach(s => {
+                        if (s.code && s.credits != null) {
+                            creditMap[s.code.trim().toUpperCase()] = Number(s.credits);
+                        }
                     });
                 }
+
+                // Apply catalog credits to each mark record
+                Object.values(bestByCode).forEach(m => {
+                    const code = (m.subject_code || m.code || '').trim().toUpperCase();
+                    if (code) {
+                        if (creditMap[code] != null) {
+                            // Catalog is authoritative
+                            m.credits = creditMap[code];
+                        }
+                        // else: keep m.credits already stored in subject_marks (synced from DB)
+                        // getOfficialCredit is applied as last fallback inside calcSGPA
+                    }
+                });
             } catch (e) {
                 console.error('Credit lookup error:', e);
             }
+
 
             const groupedBySem = {};
             Object.values(bestByCode).forEach(m => {

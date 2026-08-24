@@ -22,16 +22,21 @@ function calcSGPA(subjects, scheme = '2022', branch = null, semNumber = null) {
     validSubs.forEach(m => {
         const code = (m.subject_code || m.code || '').trim().toUpperCase();
         const details = getGradeDetails(m, scheme);
+
+        // ── Credit Priority ─────────────────────────────────────────────────────
+        // 1. m.credits: set by credit lookup from subject_catalog (Supabase)
+        // 2. getOfficialCredit: JS fallback catalog (only if DB didn't provide a value)
+        const dbCredit = Number(m.credits);
         const offCr = getOfficialCredit(code, scheme, branch, semNumber || m.semester);
-        const credits = offCr !== null ? offCr : (Number(m.credits) || 0);
+        const credits = dbCredit > 0 ? dbCredit : (offCr !== null ? offCr : 0);
 
         if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga, IKS)
 
         const gp = details.gp;
-        const isFail = details.isFail || m.is_backlog === true;
+        const isFail = isFailedSubject(m);
 
         totalCredits += credits;
-        totalCreditPoints += (gp * credits);
+        totalCreditPoints += (isFail ? 0 : gp) * credits;
 
         if (!isFail && gp > 0) {
             earnedCredits += credits;
@@ -678,14 +683,14 @@ function DashboardContent() {
                     bestByCode[key] = m;
                     historyByCode[key] = [];
                 } else {
-                    const existingRank = getGradeRank(existing.grade);
-                    const newRank = getGradeRank(m.grade);
+                    const existingRank = getGradeRank(existing.grade, existing.total_marks || existing.total);
+                    const newRank = getGradeRank(m.grade, m.total_marks || m.total);
 
-                    // Logic: Keep better grade.
+                    // Logic: Keep better grade rank.
                     if (newRank > existingRank) {
                         historyByCode[key].push(bestByCode[key]);
                         bestByCode[key] = m;
-                    } else if (newRank === existingRank && m.total_marks > existing.total_marks) {
+                    } else if (newRank === existingRank && (m.total_marks || m.total || 0) > (existing.total_marks || existing.total || 0)) {
                         historyByCode[key].push(bestByCode[key]);
                         bestByCode[key] = m;
                     } else {
@@ -697,22 +702,27 @@ function DashboardContent() {
             const deduplicated = Object.values(bestByCode);
             const allHistory = Object.values(historyByCode).flat();
 
-            // 4. Enrich Credits from Master Registry
+            // 4. Enrich Credits from subject_catalog in Supabase
             try {
-                const codes = [...new Set(deduplicated.map(m => m.subject_code))];
-                if (codes.length > 0) {
-                    const { data: registry } = await supabase
-                        .from('subject_master_registry')
-                        .select('subject_code, credits')
-                        .in('subject_code', codes);
+                const stuScheme = profile?.scheme || '2022';
+                const stuBranch = profile?.branch || 'CS';
+                const catalogRes = await apiRequest(
+                    `/api/subjects?scheme=${encodeURIComponent(stuScheme)}&branch=${encodeURIComponent(stuBranch)}`
+                ).catch(() => null);
 
-                    if (registry?.length) {
-                        const creditMap = {};
-                        registry.forEach(r => { creditMap[r.subject_code] = r.credits; });
-                        deduplicated.forEach(m => {
-                            if (creditMap[m.subject_code]) m.credits = creditMap[m.subject_code];
-                        });
-                    }
+                if (catalogRes?.subjects?.length) {
+                    const creditMap = {};
+                    catalogRes.subjects.forEach(r => {
+                        if (r.code && r.credits != null) {
+                            creditMap[r.code.trim().toUpperCase()] = Number(r.credits);
+                        }
+                    });
+                    deduplicated.forEach(m => {
+                        const code = (m.subject_code || m.code || '').trim().toUpperCase();
+                        if (creditMap[code] != null) {
+                            m.credits = creditMap[code];
+                        }
+                    });
                 }
             } catch (e) { }
 

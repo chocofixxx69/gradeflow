@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireStaff } from '../../../lib/server-session';
-import { getGradePoint, getGradeDetails } from '../../../lib/vtuGrades';
+import { getGradePoint, getGradeDetails, isFailedSubject } from '../../../lib/vtuGrades';
 import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
 
 const supabaseAdmin = createClient(
@@ -291,21 +291,30 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
 
             if (!semMarks || semMarks.length === 0) continue;
 
+            // CRITICAL: Reset accumulators for each (usn, semester) pair
+            let tc = 0, tcp = 0, backlogs = 0;
+
             semMarks.forEach(m => {
                 const g = (m.grade || 'F').trim().toUpperCase();
                 if (excludeGrades.has(g)) return;
 
                 const details = getGradeDetails(m, '2022');
+                // DB credit is primary; JS catalog is fallback
+                const dbCr = Number(m.credits);
                 const offCr = getOfficialCredit(m.subject_code, '2022', null, Number(semester));
-                const cr = offCr !== null ? offCr : (Number(m.credits) || 0);
+                const cr = dbCr > 0 ? dbCr : (offCr !== null ? offCr : 0);
 
                 if (cr === 0) return; // Non-credit audit course
 
+                // Use canonical isFailedSubject for consistent backlog detection
+                const isFail = isFailedSubject(m);
+                if (isFail) {
+                    backlogs++;
+                }
+
                 const gp = details.gp;
                 tc += cr;
-                tcp += (gp * cr);
-
-                if (details.isFail || m.is_backlog) backlogs++;
+                tcp += (isFail ? 0 : gp) * cr;
             });
 
             const newSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;

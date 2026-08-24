@@ -68,7 +68,10 @@ export async function GET(req) {
         if (subjectMarks) {
             subjectMarks.forEach(m => {
                 const code = (m.subject_code || m.code || '').trim().toUpperCase();
+                // DB credit (m.credits, synced from subject_catalog) is primary; JS catalog is fallback
+                const dbCr = Number(m.credits);
                 const offCr = getOfficialCredit(code, studentScheme);
+                const resolvedCredits = dbCr > 0 ? dbCr : (offCr !== null ? offCr : 0);
                 allMarks.push({
                     id: m.id,
                     subject_code: code,
@@ -77,7 +80,7 @@ export async function GET(req) {
                     see_marks: m.see_marks ?? m.external ?? 0,
                     total_marks: m.total_marks ?? m.total ?? 0,
                     grade: (m.grade || '').trim().toUpperCase(),
-                    credits: offCr !== null ? offCr : (Number(m.credits) || 0),
+                    credits: resolvedCredits,
                     semester: Number(m.semester) || 1,
                     announced_date: m.announced_date || null,
                     exam_date: m.announced_date || m.results?.exam_name || 'N/A',

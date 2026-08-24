@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
+import { getGradePoint } from '../../../lib/vtuGrades';
 
 function AdminPanelContent() {
     const router = useRouter();
@@ -254,14 +255,14 @@ function AdminPanelContent() {
         (s.name || '').toLowerCase().includes(search.toLowerCase())
     );
 
-    // Calculate SGPA for student marks
-    const GP = { 'O': 10, 'S': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5, 'P': 4, 'F': 0, 'Ab': 0 };
+    // Calculate SGPA for student marks using canonical grade points
     const calcSGPA = (marks) => {
         if (!marks?.length) return 0;
         let pts = 0, cr = 0;
         marks.forEach(m => {
-            const c = m.credits || 3;
-            pts += (GP[m.grade] || 0) * c;
+            const c = Number(m.credits) || 3;
+            const gp = getGradePoint(m.grade, '2022', m.total_marks ?? m.total, m.see_marks ?? m.external);
+            pts += gp * c;
             cr += c;
         });
         return cr > 0 ? (pts / cr).toFixed(2) : '0.00';

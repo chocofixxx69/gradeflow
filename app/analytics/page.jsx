@@ -5,7 +5,7 @@ import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { ResponsiveGrid, Stack } from '@/components/ui/Foundation';
-import { getGradePoint, getGradeRank, unifyGrade } from '../../lib/vtuGrades';
+import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject } from '../../lib/vtuGrades';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -51,8 +51,8 @@ function AnalyticsContent() {
             if (!code) return;
             const existing = subjectsPool[code];
             if (!existing) { subjectsPool[code] = m; return; }
-            const newRank = getGradeRank(m.grade);
-            const oldRank = getGradeRank(existing.grade);
+            const newRank = getGradeRank(m.grade, m.total_marks ?? m.total ?? m.marks);
+            const oldRank = getGradeRank(existing.grade, existing.total_marks ?? existing.total ?? existing.marks);
             if (newRank > oldRank) subjectsPool[code] = m;
         });
 
@@ -63,13 +63,14 @@ function AnalyticsContent() {
         let totalCredits = 0, totalCreditPoints = 0, backlogs = 0;
         validSubs.forEach(m => {
             const grade = (m.grade || '').trim().toUpperCase();
-            const unified = unifyGrade(grade);
             const credits = Number(m.credits) || 3;
             const totalScore = m.total_marks ?? m.total ?? m.marks ?? null;
             const gp = getGradePoint(grade, '2022', totalScore, m.see_marks ?? m.external ?? null);
+            const isFail = isFailedSubject(m);
+
             totalCredits += credits;
-            totalCreditPoints += gp * credits;
-            if (unified !== 'P') backlogs++;
+            totalCreditPoints += (isFail ? 0 : gp) * credits;
+            if (isFail) backlogs++;
         });
 
         const sgpa = totalCredits > 0 ? totalCreditPoints / totalCredits : 0;

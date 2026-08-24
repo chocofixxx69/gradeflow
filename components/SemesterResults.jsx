@@ -31,8 +31,14 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                 
                 const updatedMarks = marks.map(m => {
                     const code = (m.subject_code || m.code || '').toUpperCase();
+                    const dbCatalogCredit = subjectMap[code]?.credits;
+                    const dbMarkCredit = m.credits;
                     const offCr = getOfficialCredit(code, scheme, null, m.semester);
-                    const finalCredits = offCr !== null ? offCr : (subjectMap[code]?.credits ?? m.credits ?? 3);
+                    const finalCredits = (dbCatalogCredit != null && Number(dbCatalogCredit) > 0)
+                        ? Number(dbCatalogCredit)
+                        : ((dbMarkCredit != null && Number(dbMarkCredit) > 0)
+                            ? Number(dbMarkCredit)
+                            : (offCr !== null ? offCr : 3));
                     return {
                         ...m,
                         credits: finalCredits,
