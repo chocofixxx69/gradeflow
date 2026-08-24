@@ -5,56 +5,9 @@ import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
-import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone, isFailedSubject } from '../../lib/vtuGrades';
-import { getOfficialCredit } from '../../lib/vtu-curriculum-catalog';
+import { getGradeBadgeTone } from '../../lib/vtuGrades';
+import { calculateAcademicRecord } from '../../lib/vtuAcademicEngine';
 import styles from './Dashboard.module.css';
-
-function calcSGPA(subjects, scheme = '2022', branch = null, semNumber = null) {
-    const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
-    // Only include subjects that are not in the exclude list
-    const validSubs = subjects.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
-
-    let totalCredits = 0;
-    let earnedCredits = 0;
-    let totalCreditPoints = 0;
-    let backlogs = 0;
-
-    validSubs.forEach(m => {
-        const code = (m.subject_code || m.code || '').trim().toUpperCase();
-        const details = getGradeDetails(m, scheme);
-
-        // ── Credit Priority ─────────────────────────────────────────────────────
-        // 1. m.credits: set by credit lookup from subject_catalog (Supabase)
-        // 2. getOfficialCredit: JS fallback catalog (only if DB didn't provide a value)
-        const dbCredit = Number(m.credits);
-        const offCr = getOfficialCredit(code, scheme, branch, semNumber || m.semester);
-        const credits = dbCredit > 0 ? dbCredit : (offCr !== null ? offCr : 0);
-
-        if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga, IKS)
-
-        const gp = details.gp;
-        const isFail = isFailedSubject(m);
-
-        totalCredits += credits;
-        totalCreditPoints += (isFail ? 0 : gp) * credits;
-
-        if (!isFail && gp > 0) {
-            earnedCredits += credits;
-        } else {
-            backlogs++;
-        }
-    });
-
-    const sgpa = totalCredits > 0 ? Number((totalCreditPoints / totalCredits).toFixed(2)) : 0;
-
-    return {
-        sgpa,
-        totalCredits,
-        earnedCredits: backlogs === 0 && totalCredits > 0 ? totalCredits : earnedCredits,
-        backlogs,
-        gradePoints: totalCreditPoints
-    };
-}
 
 function StudentDashboardView({
     backlogs,
@@ -386,27 +339,23 @@ function StudentDashboardView({
                                                         </thead>
                                                         <tbody>
                                                             {subjects.map((m, idx) => {
-                                                                const scheme = student?.scheme || '2022';
-                                                                const branch = student?.branch || null;
-                                                                const details = getGradeDetails(m, scheme);
-                                                                const offCr = getOfficialCredit(m.subject_code || m.code, scheme, branch, Number(sem));
-                                                                const displayCr = offCr !== null ? offCr : (Number(m.credits) || 0);
+                                                                const isPass = m.isPassed && !m.isFailed;
                                                                 return (
                                                                     <tr key={m.id || idx}>
-                                                                        <th scope="row" className={styles.code}>{m.subject_code || m.code || '—'}</th>
-                                                                        <td>{m.subject_name || m.name || 'Unknown'}</td>
-                                                                        <td className={styles.center}><strong>{displayCr}</strong></td>
-                                                                        <td className={styles.center}>{m.cie_marks ?? m.internal ?? '—'}</td>
-                                                                        <td className={styles.center}>{m.see_marks ?? m.external ?? '—'}</td>
-                                                                        <td className={styles.center}><strong>{m.total_marks ?? m.total ?? '—'}</strong></td>
-                                                                        <td className={styles.center}><GradeBadge grade={details.grade} /></td>
-                                                                        <td className={styles.center}><strong>{details.gpFormatted}</strong></td>
+                                                                        <th scope="row" className={styles.code}>{m.subjectCode || m.subject_code || m.code || '—'}</th>
+                                                                        <td>{m.subjectName || m.subject_name || m.name || 'Unknown'}</td>
+                                                                        <td className={styles.center}><strong>{m.credits}</strong></td>
+                                                                        <td className={styles.center}>{m.internalMarks ?? m.cie_marks ?? m.internal ?? '—'}</td>
+                                                                        <td className={styles.center}>{m.seeMarks ?? m.see_marks ?? m.external ?? '—'}</td>
+                                                                        <td className={styles.center}><strong>{m.totalMarks ?? m.total_marks ?? m.total ?? '—'}</strong></td>
+                                                                        <td className={styles.center}><GradeBadge grade={m.grade} /></td>
+                                                                        <td className={styles.center}><strong>{m.gpFormatted || (m.gradePoint != null ? m.gradePoint.toFixed(2) : '0.00')}</strong></td>
                                                                         <td className={styles.center}>
-                                                                            <Badge tone={details.isPass ? 'success' : 'danger'} size="sm">
-                                                                                {details.isPass ? 'Pass' : 'Fail'}
+                                                                            <Badge tone={isPass ? 'success' : 'danger'} size="sm">
+                                                                                {isPass ? 'Pass' : 'Fail'}
                                                                             </Badge>
                                                                         </td>
-                                                                        <td className={styles.nowrap}>{m.announced_date || m.exam_date || 'Regular'}</td>
+                                                                        <td className={styles.nowrap}>{m.announcedDate || m.announced_date || m.exam_date || 'Regular'}</td>
                                                                     </tr>
                                                                 );
                                                             })}
@@ -416,40 +365,36 @@ function StudentDashboardView({
 
                                                 <div className={styles.mobileSubjectList}>
                                                     {subjects.map((m, idx) => {
-                                                        const scheme = student?.scheme || '2022';
-                                                        const branch = student?.branch || null;
-                                                        const details = getGradeDetails(m, scheme);
-                                                        const offCr = getOfficialCredit(m.subject_code || m.code, scheme, branch, Number(sem));
-                                                        const displayCr = offCr !== null ? offCr : (Number(m.credits) || 0);
+                                                        const isPass = m.isPassed && !m.isFailed;
                                                         return (
                                                             <div key={m.id || idx} className={styles.mobileSubjectCard}>
                                                                 <div className={styles.mobileSubjectHeader}>
                                                                     <div className={styles.mobileSubjectTitleGroup}>
-                                                                        <span className={styles.code}>{m.subject_code || m.code || '—'}</span>
-                                                                        <span className={styles.subjectName}>{m.subject_name || m.name || 'Unknown'}</span>
+                                                                        <span className={styles.code}>{m.subjectCode || m.subject_code || m.code || '—'}</span>
+                                                                        <span className={styles.subjectName}>{m.subjectName || m.subject_name || m.name || 'Unknown'}</span>
                                                                     </div>
-                                                                    <GradeBadge grade={details.grade} />
+                                                                    <GradeBadge grade={m.grade} />
                                                                 </div>
                                                                 <div className={styles.mobileSubjectStats}>
                                                                     <div className={styles.mobileStatItem}>
                                                                         <span className={styles.statMiniLabel}>Credits:</span>
-                                                                        <span>{displayCr}</span>
+                                                                        <span>{m.credits}</span>
                                                                     </div>
                                                                     <div className={styles.mobileStatItem}>
                                                                         <span className={styles.statMiniLabel}>CIE:</span>
-                                                                        <span>{m.cie_marks ?? m.internal ?? '—'}</span>
+                                                                        <span>{m.internalMarks ?? m.cie_marks ?? m.internal ?? '—'}</span>
                                                                     </div>
                                                                     <div className={styles.mobileStatItem}>
                                                                         <span className={styles.statMiniLabel}>SEE:</span>
-                                                                        <span>{m.see_marks ?? m.external ?? '—'}</span>
+                                                                        <span>{m.seeMarks ?? m.see_marks ?? m.external ?? '—'}</span>
                                                                     </div>
                                                                     <div className={styles.mobileStatItem}>
                                                                         <span className={styles.statMiniLabel}>Total:</span>
-                                                                        <strong>{m.total_marks ?? m.total ?? '—'}</strong>
+                                                                        <strong>{m.totalMarks ?? m.total_marks ?? m.total ?? '—'}</strong>
                                                                     </div>
                                                                     <div className={styles.mobileStatItem}>
                                                                         <span className={styles.statMiniLabel}>GP:</span>
-                                                                        <strong>{details.gpFormatted}</strong>
+                                                                        <strong>{m.gpFormatted || (m.gradePoint != null ? m.gradePoint.toFixed(2) : '0.00')}</strong>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -614,172 +559,20 @@ function DashboardContent() {
         try {
             const data = await apiRequest('/api/student/dashboard', { query: { usn } });
             const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
-            setStudent(profile);
-
-            const studentMarks = [];
             const resultMarks = data?.recentResults || [];
 
-            // 2. Normalize and Combine
-            const pool = [];
+            // ── Run Canonical Academic Calculation Pipeline ──
+            const record = calculateAcademicRecord(resultMarks, profile);
 
-            const formatExamAlias = text => {
-                if (!text || text === 'Manual Entry' || text === 'Scraped Record') return text;
-                return text.replace(/^DJ/i, 'Dec/Jan ').replace(/^JJ/i, 'June/July ')
-                    .replace(/cbcs/i, ' ')
-                    .replace(/MakeUp/i, 'Makeup ')
-                    .replace(/RV|Reval/i, ' (Revaluation)')
-                    .trim();
-            };
-
-            const normalize = (m, source) => {
-                const dateVal = m.announced_date || (m.exam_date && m.exam_date !== 'Scraped Record' && m.exam_date !== 'Manual Entry' ? m.exam_date : null);
-                return {
-                    id: m.id,
-                    subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
-                    subject_name: (m.subject_name || m.name || '').trim(),
-                    cie_marks: m.cie_marks ?? m.internal ?? 0,
-                    see_marks: m.see_marks ?? m.external ?? 0,
-                    total_marks: m.total_marks ?? m.total ?? 0,
-                    grade: (m.grade || '').trim().toUpperCase(),
-                    credits: Number(m.credits) || 3,
-                    semester: Number(m.semester) || 1,
-                    announced_date: dateVal,
-                    exam_date: dateVal || formatExamAlias(m.results?.exam_name || (source === 'manual' ? 'Manual Entry' : 'N/A')),
-                    source,
-                    // Preserve backlog/fail signals from the API — required for canonical
-                    // isFail detection downstream (ext < 18 threshold, is_backlog flag, result string).
-                    is_backlog: m.is_backlog === true,
-                    external: m.external ?? m.see_marks ?? null,
-                    result: m.result || null,
-                };
-            };
-
-            if (studentMarks) studentMarks.forEach(m => pool.push(normalize(m, 'manual')));
-            if (resultMarks) resultMarks.forEach(m => pool.push(normalize(m, 'scraper')));
-
-            // 3. ── BACKLOG & SEMESTER RECONCILIATION ──
-            // We want to group by subject_code and pick the BEST result.
-            // Also, we MUST ensure the subject is mapped to its ORIGINAL semester using its code.
-            const bestByCode = {};
-            const historyByCode = {};
-
-            pool.forEach(m => {
-                const code = m.subject_code;
-                if (!code) return;
-
-                let targetSem = Number(m.semester) || 1;
-                if (!targetSem || targetSem < 1 || targetSem > 8) {
-                    const semMatch = code.match(/^[0-9A-Z]{2,6}?(\d)\d{2}[A-Z]?$/i) || code.match(/^[A-Z]+(\d)\d/i);
-                    if (semMatch && semMatch[1]) {
-                        targetSem = parseInt(semMatch[1], 10);
-                    }
-                }
-                m.semester = targetSem;
-
-                const key = code; // Unique by Code (VTU codes are unique across semesters usually)
-                const existing = bestByCode[key];
-
-                if (!existing) {
-                    bestByCode[key] = m;
-                    historyByCode[key] = [];
-                } else {
-                    const existingRank = getGradeRank(existing.grade, existing.total_marks || existing.total);
-                    const newRank = getGradeRank(m.grade, m.total_marks || m.total);
-
-                    // Logic: Keep better grade rank.
-                    if (newRank > existingRank) {
-                        historyByCode[key].push(bestByCode[key]);
-                        bestByCode[key] = m;
-                    } else if (newRank === existingRank && (m.total_marks || m.total || 0) > (existing.total_marks || existing.total || 0)) {
-                        historyByCode[key].push(bestByCode[key]);
-                        bestByCode[key] = m;
-                    } else {
-                        historyByCode[key].push(m);
-                    }
-                }
-            });
-
-            const deduplicated = Object.values(bestByCode);
-            const allHistory = Object.values(historyByCode).flat();
-
-            // 4. Enrich Credits from subject_catalog in Supabase
-            try {
-                const stuScheme = profile?.scheme || '2022';
-                const stuBranch = profile?.branch || 'CS';
-                const catalogRes = await apiRequest(
-                    `/api/subjects?scheme=${encodeURIComponent(stuScheme)}&branch=${encodeURIComponent(stuBranch)}`
-                ).catch(() => null);
-
-                if (catalogRes?.subjects?.length) {
-                    const creditMap = {};
-                    catalogRes.subjects.forEach(r => {
-                        if (r.code && r.credits != null) {
-                            creditMap[r.code.trim().toUpperCase()] = Number(r.credits);
-                        }
-                    });
-                    deduplicated.forEach(m => {
-                        const code = (m.subject_code || m.code || '').trim().toUpperCase();
-                        if (creditMap[code] != null) {
-                            m.credits = creditMap[code];
-                        }
-                    });
-                }
-            } catch (e) { }
-
-            // 5. Group by Semester
-            const grouped = {};
-            const groupedHistory = {};
-            deduplicated.forEach(m => {
-                const s = m.semester;
-                if (!grouped[s]) { grouped[s] = []; groupedHistory[s] = []; }
-                grouped[s].push(m);
-            });
-            allHistory.forEach(m => {
-                const s = m.semester;
-                if (!groupedHistory[s]) groupedHistory[s] = [];
-                groupedHistory[s].push(m);
-            });
-
-            // VTU Native Sorter: Parse the deepest num block to arrange subjects strictly by curriculum order
-            Object.keys(grouped).forEach(s => {
-                grouped[s].sort((a, b) => {
-                    const getNum = code => {
-                        const m = (code || '').match(/\d+/g);
-                        return m ? parseInt(m[m.length - 1], 10) : 0;
-                    };
-                    return getNum(a.subject_code) - getNum(b.subject_code);
-                });
-            });
-            setMarks(grouped);
-            // Attach history securely to Window or State if needed, but we can just use groupedHistory
-            setStudent(prev => ({ ...prev, history: groupedHistory }));
-
-            // Calculate SGPAs per semester and overall CGPA
-            const semSGPAs = {};
-            const stats = {};
-            let totalWeighted = 0, totalCr = 0;
-            const stuScheme = student?.scheme || '2022';
-            const stuBranch = student?.branch || null;
-            Object.entries(grouped)
-                .sort(([a], [b]) => Number(a) - Number(b))
-                .forEach(([sem, subjects]) => {
-                    const res = calcSGPA(subjects, stuScheme, stuBranch, Number(sem));
-                    semSGPAs[sem] = res.sgpa;
-                    stats[sem] = res;
-                    if (res.totalCredits > 0) {
-                        totalWeighted += res.sgpa * res.totalCredits;
-                        totalCr += res.totalCredits;
-                    }
-                });
-            setSgpas(semSGPAs);
-            setSemStats(stats);
-
-            const calculatedCGPA = totalCr > 0 ? Number((totalWeighted / totalCr).toFixed(2)) : 0;
-            setCgpa(calculatedCGPA);
-            setPercentage(Math.max(0, (calculatedCGPA - 0.75) * 10));
+            setStudent(record.profile);
+            setMarks(record.marksBySemester);
+            setSgpas(record.semSGPAs);
+            setSemStats(record.semStats);
+            setCgpa(record.cgpa);
+            setPercentage(Math.max(0, (record.cgpa - 0.75) * 10));
 
         } catch (err) {
-            console.error('Error loading dashboard data:', err);
+            console.error('Failed to load student data:', err);
         } finally {
             setLoading(false);
         }

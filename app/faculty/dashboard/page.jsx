@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
-import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone, isFailedSubject } from '../../../lib/vtuGrades';
-import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
+import { getGradeBadgeTone } from '../../../lib/vtuGrades';
+import { calculateAcademicRecord, normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
 import styles from './FacultyDashboard.module.css';
 
@@ -377,27 +377,23 @@ function FacultyDashboardView({
                                                                 </thead>
                                                                 <tbody>
                                                                     {subjects.map((mark, index) => {
-                                                                        const scheme = student?.scheme || '2022';
-                                                                        const branch = student?.branch || null;
-                                                                        const details = getGradeDetails(mark, scheme);
-                                                                        const offCr = getOfficialCredit(mark.subject_code || mark.code, scheme, branch, Number(sem));
-                                                                        const displayCr = offCr !== null ? offCr : (Number(mark.credits) || 0);
+                                                                        const isPass = mark.isPassed && !mark.isFailed;
                                                                         return (
                                                                             <tr key={mark.id || `${sem}-${index}`}>
-                                                                                <th scope="row" className={styles.code}>{mark.subject_code || mark.code || '—'}</th>
-                                                                                <td>{mark.subject_name || mark.name}</td>
-                                                                                <td className={styles.center}><strong>{displayCr}</strong></td>
-                                                                                <td className={styles.center}>{mark.cie_marks ?? mark.internal ?? '—'}</td>
-                                                                                <td className={styles.center}>{mark.see_marks ?? mark.external ?? '—'}</td>
-                                                                                <td className={styles.center}><strong>{mark.total_marks ?? mark.total ?? '—'}</strong></td>
-                                                                                <td className={styles.center}><GradeBadge grade={details.grade} /></td>
-                                                                                <td className={styles.center}><strong>{details.gpFormatted}</strong></td>
+                                                                                <th scope="row" className={styles.code}>{mark.subjectCode || mark.subject_code || mark.code || '—'}</th>
+                                                                                <td>{mark.subjectName || mark.subject_name || mark.name}</td>
+                                                                                <td className={styles.center}><strong>{mark.credits}</strong></td>
+                                                                                <td className={styles.center}>{mark.internalMarks ?? mark.cie_marks ?? mark.internal ?? '—'}</td>
+                                                                                <td className={styles.center}>{mark.seeMarks ?? mark.see_marks ?? mark.external ?? '—'}</td>
+                                                                                <td className={styles.center}><strong>{mark.totalMarks ?? mark.total_marks ?? mark.total ?? '—'}</strong></td>
+                                                                                <td className={styles.center}><GradeBadge grade={mark.grade} /></td>
+                                                                                <td className={styles.center}><strong>{mark.gpFormatted || (mark.gradePoint != null ? mark.gradePoint.toFixed(2) : '0.00')}</strong></td>
                                                                                 <td className={styles.center}>
-                                                                                    <Badge tone={details.isPass ? 'success' : 'danger'} size="sm">
-                                                                                        {details.isPass ? 'Pass' : 'Fail'}
+                                                                                    <Badge tone={isPass ? 'success' : 'danger'} size="sm">
+                                                                                        {isPass ? 'Pass' : 'Fail'}
                                                                                     </Badge>
                                                                                 </td>
-                                                                                <td className={styles.nowrap}>{mark.announced_date || mark.exam_date || 'Regular'}</td>
+                                                                                <td className={styles.nowrap}>{mark.announcedDate || mark.announced_date || mark.exam_date || 'Regular'}</td>
                                                                             </tr>
                                                                         );
                                                                     })}
@@ -407,40 +403,36 @@ function FacultyDashboardView({
 
                                                         <div className={styles.mobileSubjectList}>
                                                             {subjects.map((mark, index) => {
-                                                                const scheme = student?.scheme || '2022';
-                                                                const branch = student?.branch || null;
-                                                                const details = getGradeDetails(mark, scheme);
-                                                                const offCr = getOfficialCredit(mark.subject_code || mark.code, scheme, branch, Number(sem));
-                                                                const displayCr = offCr !== null ? offCr : (Number(mark.credits) || 0);
+                                                                const isPass = mark.isPassed && !mark.isFailed;
                                                                 return (
                                                                     <div key={mark.id || `${sem}-${index}`} className={styles.mobileSubjectCard}>
                                                                         <div className={styles.mobileSubjectHeader}>
                                                                             <div className={styles.mobileSubjectTitleGroup}>
-                                                                                <span className={styles.code}>{mark.subject_code || mark.code || '—'}</span>
-                                                                                <span className={styles.subjectName}>{mark.subject_name || mark.name}</span>
+                                                                                <span className={styles.code}>{mark.subjectCode || mark.subject_code || mark.code || '—'}</span>
+                                                                                <span className={styles.subjectName}>{mark.subjectName || mark.subject_name || mark.name}</span>
                                                                             </div>
-                                                                            <GradeBadge grade={details.grade} />
+                                                                            <GradeBadge grade={mark.grade} />
                                                                         </div>
                                                                         <div className={styles.mobileSubjectStats}>
                                                                             <div className={styles.mobileStatItem}>
                                                                                 <span className={styles.statMiniLabel}>Credits:</span>
-                                                                                <span>{displayCr}</span>
+                                                                                <span>{mark.credits}</span>
                                                                             </div>
                                                                             <div className={styles.mobileStatItem}>
                                                                                 <span className={styles.statMiniLabel}>CIE:</span>
-                                                                                <span>{mark.cie_marks ?? mark.internal ?? '—'}</span>
+                                                                                <span>{mark.internalMarks ?? mark.cie_marks ?? mark.internal ?? '—'}</span>
                                                                             </div>
                                                                             <div className={styles.mobileStatItem}>
                                                                                 <span className={styles.statMiniLabel}>SEE:</span>
-                                                                                <span>{mark.see_marks ?? mark.external ?? '—'}</span>
+                                                                                <span>{mark.seeMarks ?? mark.see_marks ?? mark.external ?? '—'}</span>
                                                                             </div>
                                                                             <div className={styles.mobileStatItem}>
                                                                                 <span className={styles.statMiniLabel}>Total:</span>
-                                                                                <strong>{mark.total_marks ?? mark.total ?? '—'}</strong>
+                                                                                <strong>{mark.totalMarks ?? mark.total_marks ?? mark.total ?? '—'}</strong>
                                                                             </div>
                                                                             <div className={styles.mobileStatItem}>
                                                                                 <span className={styles.statMiniLabel}>GP:</span>
-                                                                                <strong>{details.gpFormatted}</strong>
+                                                                                <strong>{mark.gpFormatted || (mark.gradePoint != null ? mark.gradePoint.toFixed(2) : '0.00')}</strong>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -679,28 +671,13 @@ function FacultyDashboardContent() {
         try {
             const resData = await apiRequest('/api/faculty/dashboard', { query: { search_usn: cleanUSN } });
             const profile = resData?.profile || { usn: cleanUSN, name: cleanUSN };
-            setStudent(profile);
-
             const studentMarks = [];
             const resultMarks = resData?.recentResults || [];
 
-            // Combine and Dedup (Taking best grade across all sources)
-            const formatExamAlias = text => {
-                if (!text || text === 'Manual Entry' || text === 'Scraped Record') return text;
-                return text.replace(/^DJ/i, 'Dec/Jan ').replace(/^JJ/i, 'June/July ')
-                    .replace(/cbcs|cbcs/i, ' ')
-                    .replace(/MakeUp/i, 'Makeup ')
-                    .replace(/RV|Reval/i, ' (Revaluation)')
-                    .trim();
-            };
-
-            // -- DEDUPLICATION & BEST RESULT LOGIC --
-            const bestByCode = {};
-
-            // CRITICAL: Only include marks that strictly belong to the searched USN to prevent cross-student contamination
+            // CRITICAL: Only include marks that strictly belong to the searched USN
             const strictResultMarks = (resultMarks || []).filter(m => {
                 const mUsn = (m.usn || '').trim().toUpperCase();
-                return mUsn === cleanUSN;
+                return !mUsn || mUsn === cleanUSN;
             });
 
             const allMarksRaw = [
@@ -711,127 +688,24 @@ function FacultyDashboardContent() {
                     cie_marks: m.internal,
                     see_marks: m.external,
                     total_marks: m.total,
-                    exam_date: m.announced_date || formatExamAlias(m.results?.exam_name || 'Scraped Record')
+                    announced_date: m.announced_date || (m.results?.exam_name ? String(m.results.exam_name) : 'Scraped Record')
                 }))
             ];
 
-            allMarksRaw.forEach(m => {
-                const code = (m.subject_code || m.code || '').trim().toUpperCase();
-                if (!code) return;
+            // ── Run Canonical Academic Calculation Pipeline ──
+            const record = calculateAcademicRecord(allMarksRaw, profile);
 
-                // Track correct semester
-                let sem = m.semester || 1;
-                const match = code.match(/^[0-9]{2,3}[A-Z]{2,3}(\d)\d/i) || code.match(/^[A-Z]{2,3}(\d)\d/i);
-                if (match && match[1]) sem = parseInt(match[1], 10);
-                m.semester = sem;
-
-                const existing = bestByCode[code];
-                if (!existing) {
-                    bestByCode[code] = m;
-                } else {
-                    // Pass total_marks so getGradeRank correctly disambiguates 'A' letter grade vs Absent
-                    const existingRank = getGradeRank(existing.grade, existing.total_marks || existing.total);
-                    const newRank = getGradeRank(m.grade, m.total_marks || m.total);
-
-                    // Keep better grade rank. If tied, keep higher total marks.
-                    // If still tied, keep the one with a more descriptive exam date (likely more recent)
-                    if (newRank > existingRank) {
-                        bestByCode[code] = m;
-                    } else if (newRank === existingRank) {
-                        if ((m.total_marks || m.total || 0) > (existing.total_marks || existing.total || 0)) {
-                            bestByCode[code] = m;
-                        } else if (m.id > existing.id) { // Fallback to ID for "latest" if marks equal
-                            bestByCode[code] = m;
-                        }
-                    }
-                }
-            });
-
-            // ── Credit Resolution ──────────────────────────────────────────────────
-            // Priority:
-            //   1. subject_catalog in Supabase (queried by branch + scheme → most authoritative)
-            //   2. m.credits already stored in subject_marks (synced from catalog by cascadeCreditUpdate)
-            //   3. getOfficialCredit() JS fallback catalog
-            //
-            // NOTE: /api/system/meta returns branch/scheme metadata — NOT subject credits.
-            // The correct endpoint is /api/subjects?scheme=&branch= which queries subject_catalog.
-            try {
-                const studentScheme = student?.scheme || '2022';
-                const studentBranch = student?.branch || 'CS';
-
-                // Load subject catalog for this student's branch + scheme
-                const catalogRes = await apiRequest(
-                    `/api/subjects?scheme=${encodeURIComponent(studentScheme)}&branch=${encodeURIComponent(studentBranch)}`
-                ).catch(() => null);
-
-                const creditMap = {};
-                // Build code→credit map from the catalog
-                if (catalogRes?.subjects?.length > 0) {
-                    catalogRes.subjects.forEach(s => {
-                        if (s.code && s.credits != null) {
-                            creditMap[s.code.trim().toUpperCase()] = Number(s.credits);
-                        }
-                    });
-                }
-
-                // Apply catalog credits to each mark record
-                Object.values(bestByCode).forEach(m => {
-                    const code = (m.subject_code || m.code || '').trim().toUpperCase();
-                    if (code) {
-                        if (creditMap[code] != null) {
-                            // Catalog is authoritative
-                            m.credits = creditMap[code];
-                        }
-                        // else: keep m.credits already stored in subject_marks (synced from DB)
-                        // getOfficialCredit is applied as last fallback inside calcSGPA
-                    }
-                });
-            } catch (e) {
-                console.error('Credit lookup error:', e);
-            }
-
-
-            const groupedBySem = {};
-            Object.values(bestByCode).forEach(m => {
-                const sem = m.semester;
-                if (!groupedBySem[sem]) groupedBySem[sem] = [];
-                groupedBySem[sem].push(m);
-            });
-            // VTU Native Sorter: Parse deepest num block for chronological curriculum sequencing
-            Object.keys(groupedBySem).forEach(sem => {
-                groupedBySem[sem].sort((a, b) => {
-                    const getNum = c => {
-                        const m = (c || '').match(/\d+/g);
-                        return m ? parseInt(m[m.length - 1], 10) : 0;
-                    };
-                    return getNum(a.subject_code || a.code) - getNum(b.subject_code || b.code);
-                });
-            });
-            setMarks(groupedBySem);
-
-            const semSGPAs = {};
-            const stats = {};
-            let tW = 0, tC = 0;
-            Object.entries(groupedBySem).forEach(([sem, subjects]) => {
-                const res = calcSGPA(subjects, Number(sem));
-                semSGPAs[sem] = res.sgpa;
-                stats[sem] = res;
-                if (res.totalCredits > 0) {
-                    tW += res.sgpa * res.totalCredits;
-                    tC += res.totalCredits;
-                }
-            });
-
-            setSgpas(semSGPAs);
-            setSemStats(stats);
-            setCgpa(tC > 0 ? Number((tW / tC).toFixed(2)) : 0);
+            setStudent(record.profile);
+            setMarks(record.marksBySemester);
+            setSgpas(record.semSGPAs);
+            setSemStats(record.semStats);
+            setCgpa(record.cgpa);
 
             // Audit Log
             await recordFacultyAction(faculty, 'VIEW_RECORD', cleanUSN);
 
             if (!silent) {
-                const totalSubs = Object.values(groupedBySem).flat().length;
-                setMessage(`Found ${profile.name || cleanUSN} - ${totalSubs} subjects processed.`);
+                setMessage(`Found ${record.profile.name || cleanUSN} - ${record.totalSubjects} subjects processed.`);
             }
 
         } catch (err) {
