@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireStudent } from '../../../../lib/server-session';
 import { weightedCGPA, computeBacklogs } from '../../../../lib/analytics-data';
+import { isFailedSubject } from '../../../../lib/vtuGrades';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -134,7 +135,7 @@ export async function GET(req) {
                 semesterSummary[sem] = { semester: sem, totalSubjects: 0, passedSubjects: 0, failedSubjects: 0, totalCredits: 0 };
             }
             semesterSummary[sem].totalSubjects++;
-            if (m.grade === 'F' || m.is_backlog) {
+            if (isFailedSubject(m)) {
                 semesterSummary[sem].failedSubjects++;
             } else {
                 semesterSummary[sem].passedSubjects++;

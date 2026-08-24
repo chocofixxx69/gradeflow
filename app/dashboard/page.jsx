@@ -5,7 +5,7 @@ import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
-import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone } from '../../lib/vtuGrades';
+import { getGradePoint, getGradeRank, unifyGrade, getGradeDetails, getGradeBadgeTone, isFailedSubject } from '../../lib/vtuGrades';
 import { getOfficialCredit } from '../../lib/vtu-curriculum-catalog';
 import styles from './Dashboard.module.css';
 
@@ -1014,20 +1014,8 @@ function DashboardContent() {
     const sortedSemesters = Object.entries(marks).sort(([a], [b]) => Number(b) - Number(a));
     const semesterCount = sortedSemesters.length;
     const totalSubjects = Object.values(marks).flat().length;
-    // Canonical isFail — single source of truth shared with computeBacklogs() in lib/analytics-data.js.
-    // Catches grade F/A, is_backlog flag, SEE external < 18, total < 40, and result string 'F'/'FAIL'.
-    const backlogs = Object.values(marks).flat().filter(m => {
-        const g = (m.grade || '').trim().toUpperCase();
-        const unified = unifyGrade(g);
-        const ext = Number(m.see_marks ?? m.external) || 0;
-        const tot = Number(m.total_marks ?? m.total) || 0;
-        const resStr = (m.result || '').trim().toUpperCase();
-        return m.is_backlog === true
-            || g === 'F' || unified === 'A'
-            || (ext > 0 && ext < 18)
-            || (tot > 0 && tot < 40)
-            || resStr === 'F' || resStr.includes('FAIL');
-    });
+    // Canonical backlog detection — uses isFailedSubject() from vtuGrades.js (single source of truth)
+    const backlogs = Object.values(marks).flat().filter(m => isFailedSubject(m));
     const failedSubjects = backlogs.length;
 
     if (loading) return (
