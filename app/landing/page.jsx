@@ -82,39 +82,6 @@ export default function LandingPage() {
                     <span className="material-icons-round" style={{ fontSize: '16px', flexShrink: 0 }}>calculate</span>
                     <span>Need a quick calculation? Try Open SGPA Calculator →</span>
                 </Link>
-
-                {/* 3 Spotlight Feature Pillars */}
-                <div className={styles.pillarGrid}>
-                    <div className={styles.pillarCard}>
-                        <div className={styles.pillarIconWrap}>
-                            <span className="material-icons-round">calculate</span>
-                        </div>
-                        <h3 className={styles.pillarTitle}>VTU 2022 & 2025 NEP Logic</h3>
-                        <p className={styles.pillarDesc}>
-                            Accurate SGPA/CGPA with official weighted credit points, external passing thresholds, and percentage formula ((CGPA - 0.75) × 10).
-                        </p>
-                    </div>
-
-                    <div className={styles.pillarCard}>
-                        <div className={styles.pillarIconWrap}>
-                            <span className="material-icons-round">fact_check</span>
-                        </div>
-                        <h3 className={styles.pillarTitle}>Automated Backlog Tracking</h3>
-                        <p className={styles.pillarDesc}>
-                            Instantly flags failed (F) and absent (A) subjects across all semesters, with deduplication that prioritizes your best passing attempt.
-                        </p>
-                    </div>
-
-                    <div className={styles.pillarCard}>
-                        <div className={styles.pillarIconWrap}>
-                            <span className="material-icons-round">cloud_sync</span>
-                        </div>
-                        <h3 className={styles.pillarTitle}>Real-Time VTU Scraper</h3>
-                        <p className={styles.pillarDesc}>
-                            Direct result lookup from official VTU result portals with automated extraction, job queues, and real-time database sync.
-                        </p>
-                    </div>
-                </div>
             </section>
 
             {/* Role Gateway / Portals Section */}
@@ -316,28 +283,6 @@ export default function LandingPage() {
                             </p>
                         </div>
                     </div>
-                </div>
-            </section>
-
-            {/* Quick Calculator Callout */}
-            <section className={styles.calcBannerSection}>
-                <div className={styles.calcBanner}>
-                    <div className={styles.calcBannerContent}>
-                        <h3 className={styles.calcBannerTitle}>Want to Quickly Calculate Your SGPA?</h3>
-                        <p className={styles.calcBannerDesc}>
-                            Use the open VTU SGPA & CGPA calculator to test subjects, enter internal/external marks, and estimate your scores without logging in.
-                        </p>
-                    </div>
-                    <Button
-                        as={Link}
-                        href="/calculator"
-                        variant="primary"
-                        size="lg"
-                        iconEnd="arrow_forward"
-                        style={{ whiteSpace: 'nowrap' }}
-                    >
-                        Launch Calculator
-                    </Button>
                 </div>
             </section>
 
