@@ -10,6 +10,7 @@ import {
     getGradeFromTotal,
     VTU_BRANCHES
 } from '../../lib/vtuGrades';
+import { supabase } from '../../lib/supabase';
 import PDFUpload from '../../components/PDFUpload';
 import { apiRequest } from '@/lib/api/client';
 import { useRouter } from 'next/navigation';

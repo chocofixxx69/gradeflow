@@ -5,8 +5,9 @@ import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
-import { getGradeBadgeTone } from '../../lib/vtuGrades';
+import { getGradeBadgeTone, unifyGrade, isFailedSubject, getGradeRank } from '../../lib/vtuGrades';
 import { calculateAcademicRecord } from '../../lib/vtuAcademicEngine';
+import { supabase } from '../../lib/supabase';
 import styles from './Dashboard.module.css';
 
 function StudentDashboardView({
