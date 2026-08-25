@@ -2,6 +2,8 @@ export const NAV_CONFIG = {
   student: [
     { key: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: 'space_dashboard', group: 'Academic Home' },
     { key: 'analytics', label: 'Analytics', href: '/analytics', icon: 'insights', group: 'Academic Tools' },
+    { key: 'calculator', label: 'Calculator', href: '/calculator', icon: 'calculate', group: 'Academic Tools' },
+    { key: 'vault', label: 'Batch Results Upload', href: '/vault', icon: 'upload_file', group: 'Academic Tools' },
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   faculty: [
@@ -61,7 +63,7 @@ export const ROUTE_LABELS = {
   '/auth/student': 'Student Access',
   '/dashboard': 'Dashboard',
   '/calculator': 'Calculator',
-  '/vault': 'Results Upload',
+  '/vault': 'Batch Results Upload',
   '/analytics': 'Analytics',
   '/guide': 'Guide',
   '/curriculum': 'Curriculum',

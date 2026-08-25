@@ -1,77 +1,99 @@
 import { NextResponse } from 'next/server';
-import { spawn } from 'child_process';
-import path from 'path';
 import { requireStaff } from '../../../../lib/server-session';
+import {
+    getAdminClient, loadResultAnalysisDataset, buildStudentRow, rankBy,
+} from '../../../../lib/analytics-data';
 
-export async function POST(req) {
-    try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
-        if (authError) return authError;
+export const dynamic = 'force-dynamic';
 
-        const { classId, branch, semester } = await req.json();
+const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 
-        if (!classId || !branch || !semester) {
-            return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
-        }
-
-        const scriptPath = path.join(process.cwd(), 'scripts', 'scraper', 'analyser.py');
-
-        return new Promise((resolve) => {
-            const pythonProcess = spawn('python', [scriptPath, classId, branch, semester.toString()]);
-
-            let resultData = '';
-            pythonProcess.stdout.on('data', (data) => {
-                resultData += data.toString();
-            });
-
-            pythonProcess.stderr.on('data', (data) => {
-                console.error(`Analyser Error: ${data}`);
-            });
-
-            pythonProcess.on('close', (code) => {
-                if (code !== 0) {
-                    return resolve(NextResponse.json({ error: 'Analysis failed' }, { status: 500 }));
-                }
-
-                try {
-                    const parsed = JSON.parse(resultData);
-                    resolve(NextResponse.json(parsed));
-                } catch (e) {
-                    resolve(NextResponse.json({ error: 'Failed to parse analyser output' }, { status: 500 }));
-                }
-            });
-        });
-
-    } catch (err) {
-        return NextResponse.json({ error: 'An internal error occurred.' }, { status: 500 });
-    }
-}
-
+/**
+ * GET /api/faculty/reports
+ * Faculty-scoped reporting rollup (subject pass/fail/absent counts, grade
+ * distribution, class pass rates, top students by CGPA, subject-wise pass
+ * rates). Reuses the same dataset/helpers as /api/admin/analytics/* —
+ * loadResultAnalysisDataset already scopes everything to the calling
+ * faculty's own classes when role === 'faculty'.
+ */
 export async function GET(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-        );
+        const dataset = await loadResultAnalysisDataset(getAdminClient(), {
+            role: session.role,
+            facultyId: session.sub,
+        });
 
-        const { searchParams } = new URL(req.url);
-        const branch = searchParams.get('branch');
-        const semester = searchParams.get('semester');
+        const scopedUsns = new Set(dataset.students.map(s => s.usn));
+        const scopedMarks = dataset.subjectMarks.filter(m => scopedUsns.has(m.usn));
 
-        let query = supabaseAdmin.from('classes').select('*, class_students(count)');
-        if (branch) query = query.eq('branch', branch);
-        if (semester) query = query.eq('semester', parseInt(semester, 10));
+        // ── Grade distribution + pass/fail/absent counts ──
+        const gradeDist = {};
+        for (const m of scopedMarks) {
+            const g = (m.grade || '—').toUpperCase();
+            gradeDist[g] = (gradeDist[g] || 0) + 1;
+        }
+        const passCount = scopedMarks.filter(m => m.passed).length;
+        const failCount = gradeDist['F'] || 0;
+        const absentCount = gradeDist['A'] || 0;
 
-        const { data: classes, error } = await query;
-        if (error) throw error;
+        // ── Subject-wise pass rates ──
+        const bySubject = {};
+        for (const m of scopedMarks) (bySubject[m.subject_code] ||= []).push(m);
+        const subjectPassRates = Object.entries(bySubject)
+            .map(([code, marks]) => {
+                const passed = marks.filter(m => m.passed).length;
+                return {
+                    code,
+                    name: marks[0]?.subject_name || code,
+                    passed,
+                    total: marks.length,
+                    passRate: pct(passed, marks.length),
+                };
+            })
+            .sort((a, b) => a.code.localeCompare(b.code));
 
-        return NextResponse.json({ success: true, data: { reports: classes || [] } });
+        // ── Class pass rates ──
+        const allStudentRows = dataset.students.map(s => buildStudentRow(s, dataset));
+        const rowByUsn = {};
+        for (const s of allStudentRows) rowByUsn[s.usn] = s;
+
+        const classStats = dataset.classes.map(c => {
+            const usns = dataset.classStudents.filter(cs => cs.class_id === c.id).map(cs => cs.usn);
+            const members = usns.map(u => rowByUsn[u]).filter(Boolean);
+            const appeared = members.filter(m => m.has_results).length;
+            const passed = members.filter(m => m.has_results && m.is_all_clear).length;
+            return {
+                name: c.name || 'Class',
+                students: usns.length,
+                passRate: appeared ? pct(passed, appeared) : null,
+            };
+        });
+
+        // ── Top students by CGPA ──
+        const studentRows = allStudentRows.filter(s => s.cgpa > 0);
+        const topStudents = rankBy(studentRows, s => s.cgpa, { tieBreakKey: s => s.usn })
+            .slice(0, 5)
+            .map(s => ({ usn: s.usn, name: s.name, cgpa: s.cgpa }));
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                uniqueStudents: dataset.students.length,
+                totalSubjects: scopedMarks.length,
+                passCount,
+                failCount,
+                absentCount,
+                gradeDist,
+                topStudents,
+                classStats,
+                subjectPassRates,
+            },
+        });
     } catch (err) {
         console.error('[GET /api/faculty/reports]', err);
-        return NextResponse.json({ success: false, error: 'Failed to fetch report datasets.' }, { status: 500 });
+        return NextResponse.json({ success: false, error: 'Failed to build faculty report.' }, { status: 500 });
     }
 }

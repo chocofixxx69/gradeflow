@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Input, Button } from '@/components/ui/Foundation';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 function VtuUrlManagerContent() {
     const [vtuUrls, setVtuUrls] = useState([]);
@@ -14,6 +15,8 @@ function VtuUrlManagerContent() {
     const [newExamName, setNewExamName] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
+    const [confirmingRemove, setConfirmingRemove] = useState(null);
+    const [removing, setRemoving] = useState(false);
 
     useEffect(() => {
         fetchVtuUrls();
@@ -95,6 +98,7 @@ function VtuUrlManagerContent() {
     const removeVtuUrl = async (id) => {
         const facSession = JSON.parse(localStorage.getItem('faculty_session') || '{}');
         if (!facSession.id) return;
+        setRemoving(true);
         try {
             await fetch('/api/vtu-urls', {
                 method: 'DELETE',
@@ -103,7 +107,11 @@ function VtuUrlManagerContent() {
                 body: JSON.stringify({ id, faculty_id: facSession.id }),
             });
             fetchVtuUrls();
-        } catch (e) { }
+        } catch (e) {
+        } finally {
+            setRemoving(false);
+            setConfirmingRemove(null);
+        }
     };
 
     const c = {
@@ -194,7 +202,7 @@ function VtuUrlManagerContent() {
                                     {u.is_active ? '✓ ENABLED' : 'DISABLED'}
                                 </button>
                                 <Button
-                                    onClick={() => removeVtuUrl(u.id)}
+                                    onClick={() => setConfirmingRemove(u)}
                                     variant="ghost"
                                     size="sm"
                                     style={{ padding: 'var(--space-2)' }}
@@ -213,6 +221,15 @@ function VtuUrlManagerContent() {
                     )}
                 </div>
             </Card>
+
+            <ConfirmDialog
+                open={Boolean(confirmingRemove)}
+                title="Delete this VTU URL?"
+                description={`This removes "${confirmingRemove?.exam_name || confirmingRemove?.url || 'this portal'}" from the scrape configuration. This cannot be undone.`}
+                busy={removing}
+                onCancel={() => setConfirmingRemove(null)}
+                onConfirm={() => removeVtuUrl(confirmingRemove.id)}
+            />
         </div>
     );
 }

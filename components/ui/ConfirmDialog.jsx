@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { Button } from './Foundation';
 import styles from './ConfirmDialog.module.css';
 
-export function ConfirmDialog({ description, onCancel, onConfirm, open, title, busy = false }) {
+export function ConfirmDialog({ confirmLabel = 'Delete', description, onCancel, onConfirm, open, title, busy = false }) {
     const cancelRef = useRef(null);
 
     useEffect(() => {
@@ -23,7 +23,7 @@ export function ConfirmDialog({ description, onCancel, onConfirm, open, title, b
                 <p id="confirm-dialog-description" className={styles.description}>{description}</p>
                 <div className={styles.actions}>
                     <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={busy}>Cancel</Button>
-                    <Button variant="danger" loading={busy} onClick={onConfirm}>Delete</Button>
+                    <Button variant="danger" loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
                 </div>
             </div>
         </div>

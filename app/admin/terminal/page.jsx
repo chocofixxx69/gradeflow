@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
+import { ConfirmDialog } from '../../../components/ui';
 import { getGradePoint } from '../../../lib/vtuGrades';
 
 function AdminPanelContent() {
@@ -63,6 +64,7 @@ function AdminPanelContent() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
     const [actionId, setActionId] = useState(null);
+    const [confirmingReject, setConfirmingReject] = useState(null);
     const [search, setSearch] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [studentDetails, setStudentDetails] = useState(null);
@@ -174,6 +176,7 @@ function AdminPanelContent() {
             alert('Failed to reject request.');
         } finally {
             setActionId(null);
+            setConfirmingReject(null);
         }
     };
 
@@ -751,7 +754,7 @@ function AdminPanelContent() {
                                                         <button style={c.actionBtn(true)} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
                                                             {actionId === r.id ? '...' : 'Approve'}
                                                         </button>
-                                                        <button style={c.actionBtn(false)} onClick={() => rejectRequest(r.id)}>Decline</button>
+                                                        <button style={c.actionBtn(false)} onClick={() => setConfirmingReject(r)}>Decline</button>
                                                     </div>
                                                 ) : (
                                                     <span style={c.badge(r.status)}>{r.status?.toUpperCase()}</span>
@@ -782,7 +785,7 @@ function AdminPanelContent() {
                                                 <button style={{ ...c.actionBtn(true), flex: 1, padding: '9px' }} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
                                                     {actionId === r.id ? '...' : 'Approve Access'}
                                                 </button>
-                                                <button style={{ ...c.actionBtn(false), flex: 1, padding: '9px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => rejectRequest(r.id)}>Decline</button>
+                                                <button style={{ ...c.actionBtn(false), flex: 1, padding: '9px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setConfirmingReject(r)}>Decline</button>
                                             </div>
                                         )}
                                     </div>
@@ -791,6 +794,16 @@ function AdminPanelContent() {
                             </div>
                         )}
                     </div>
+
+                    <ConfirmDialog
+                        open={Boolean(confirmingReject)}
+                        title="Decline faculty request?"
+                        description={`${confirmingReject?.full_name || 'This applicant'} will need to submit a new registration request to gain access.`}
+                        confirmLabel="Decline"
+                        busy={actionId === confirmingReject?.id}
+                        onCancel={() => setConfirmingReject(null)}
+                        onConfirm={() => rejectRequest(confirmingReject.id)}
+                    />
                 </>}
 
                 {tab === 'activity' && <>

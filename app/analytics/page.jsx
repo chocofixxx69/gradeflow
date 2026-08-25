@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiRequest } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
-import { ResponsiveGrid, Stack } from '@/components/ui/Foundation';
+import { EmptyState, LoadingState, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
 import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject } from '../../lib/vtuGrades';
 import {
     ResponsiveContainer,
@@ -243,9 +243,8 @@ function AnalyticsContent() {
     const maxGradeCount = Math.max(...Object.values(gradeDistribution), 1);
 
     if (loading) return (
-        <div className="gf-page gf-page-wide" style={{ textAlign: 'center', paddingBlock: '120px' }}>
-            <span className="material-icons-round gf-spin" style={{ fontSize: '48px', color: 'var(--primary)' }}>sync</span>
-            <p style={{ marginTop: '20px', fontWeight: 700, color: 'var(--tx-dim)' }}>Generating Advanced Insights...</p>
+        <div className="gf-page gf-page-wide">
+            <LoadingState block label="Generating Advanced Insights..." />
         </div>
     );
 
@@ -351,7 +350,7 @@ function AnalyticsContent() {
                                     </ResponsiveContainer>
                                 </div>
                             ) : (
-                                <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>No longitudinal data found.</div>
+                                <EmptyState variant="inline" icon="show_chart" title="No longitudinal data found." />
                             )}
                         </div>
                     </Stack>
@@ -396,7 +395,7 @@ function AnalyticsContent() {
                                     </ResponsiveContainer>
                                 </div>
                             ) : (
-                                <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>No semester data found.</div>
+                                <EmptyState variant="inline" icon="bar_chart" title="No semester data found." />
                             )}
                             {semesterData.length > 0 && (
                                 <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '12px', fontSize: '11px', fontWeight: 700 }}>
@@ -488,10 +487,7 @@ function AnalyticsContent() {
 
                         <div className={styles.section}>
                             <div className={styles.sectionTitle}>Resource Utilization</div>
-                            <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.5 }}>
-                                <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '16px' }}>insights</span>
-                                <p>Cluster analytics will manifest as more data arrives.</p>
-                            </div>
+                            <EmptyState variant="inline" icon="insights" title="Cluster analytics will manifest as more data arrives." />
                         </div>
                     </Stack>
 
@@ -523,7 +519,7 @@ function AnalyticsContent() {
                                         })}
                                 </div>
                             ) : (
-                                <div style={{ textAlign: 'center', padding: '40px 0', opacity: 0.5 }}>No faculty activity data yet.</div>
+                                <EmptyState variant="inline" icon="history" title="No faculty activity data yet." />
                             )}
                         </div>
                     </div>

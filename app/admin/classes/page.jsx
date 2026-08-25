@@ -1,12 +1,7 @@
 'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
+import { ClassesContent } from '../../../components/ClassesContent';
 
 export default function ClassesPage() {
-    const router = useRouter();
-    useEffect(() => {
-        router.replace('/admin/terminal?tab=classes');
-    }, [router]);
-    return <AuthGuard role="admin"><div style={{ padding: '80px', textAlign: 'center', color: 'var(--tx-dim)' }}>Opening Classes…</div></AuthGuard>;
+    return <AuthGuard role="admin"><ClassesContent /></AuthGuard>;
 }

@@ -8,7 +8,7 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recha
 import * as XLSX from 'xlsx';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
-import { Input, Button } from '@/components/ui/Foundation';
+import { Input, Button, Select } from '@/components/ui/Foundation';
 
 // ── Branch & Scheme Definitions (single source of truth) ──
 const SCHEMES = ['2022', '2025'];
@@ -382,23 +382,28 @@ export default function SubjectsPage() {
         {/* Filters */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '12px', marginBottom: '20px' }}>
           <div>
-            <label style={S.label}>Scheme</label>
-            <select value={scheme} onChange={e => setScheme(e.target.value)} style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-3)', color: 'var(--tx-main)', fontSize: '14px', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}>
-              {SCHEMES.map(s => <option key={s} value={s}>{s} Scheme</option>)}
-            </select>
+            <Select
+              label="Scheme"
+              value={scheme}
+              onChange={e => setScheme(e.target.value)}
+              options={SCHEMES.map(s => ({ value: s, label: `${s} Scheme` }))}
+            />
           </div>
           <div>
-            <label style={S.label}>Branch</label>
-            <select value={branch} onChange={e => setBranch(e.target.value)} style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-3)', color: 'var(--tx-main)', fontSize: '14px', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}>
-              {branches.map(b => <option key={b.code} value={b.code}>{b.name || b.label}</option>)}
-            </select>
+            <Select
+              label="Branch"
+              value={branch}
+              onChange={e => setBranch(e.target.value)}
+              options={branches.map(b => ({ value: b.code, label: b.name || b.label }))}
+            />
           </div>
           <div>
-            <label style={S.label}>Semester</label>
-            <select value={filterSem} onChange={e => setFilterSem(e.target.value)} style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-3)', color: 'var(--tx-main)', fontSize: '14px', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}>
-              <option value="all">All Semesters</option>
-              {SEMESTERS.map(s => <option key={s} value={s}>Semester {s}</option>)}
-            </select>
+            <Select
+              label="Semester"
+              value={filterSem}
+              onChange={e => setFilterSem(e.target.value)}
+              options={[{ value: 'all', label: 'All Semesters' }, ...SEMESTERS.map(s => ({ value: s, label: `Semester ${s}` }))]}
+            />
           </div>
           <div>
             <Input
@@ -554,10 +559,12 @@ export default function SubjectsPage() {
                   <Input label="Credits" type="number" value={formData.credits} onChange={e => setFormData({...formData, credits: e.target.value})} />
                 </div>
                 <div>
-                  <label style={S.label}>Semester</label>
-                  <select style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-3)', color: 'var(--tx-main)', fontSize: '14px', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }} value={formData.semester} onChange={e => setFormData({...formData, semester: e.target.value})}>
-                    {SEMESTERS.map(s => <option key={s} value={s}>Sem {s}</option>)}
-                  </select>
+                  <Select
+                    label="Semester"
+                    value={formData.semester}
+                    onChange={e => setFormData({...formData, semester: e.target.value})}
+                    options={SEMESTERS.map(s => ({ value: s, label: `Sem ${s}` }))}
+                  />
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>

@@ -224,7 +224,7 @@ function BatchUploadContent() {
         <div style={s.page} className="gf-fade-up">
             <PageHeader>
                 <PageHeaderEyebrow>Batch Analysis Engine</PageHeaderEyebrow>
-                <PageHeaderTitle>Multi-Semester CGPA Calculator</PageHeaderTitle>
+                <PageHeaderTitle>Batch Results Upload</PageHeaderTitle>
                 <PageHeaderSubtitle>
                     Upload result PDFs for multiple semesters at once. Get instant SGPA per semester and your overall CGPA — with duplicate detection and full validation.
                 </PageHeaderSubtitle>

@@ -323,7 +323,7 @@ function CalculatorContent() {
 
                             <Inline className="gf-result-bar gf-fade-up" align="between" stackMobile>
                                 <div>
-                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Your SGPA</div>
+                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Your SGPA</div>
                                     <div style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '-0.04em' }}>{stats.sgpa.toFixed(2)}</div>
                                     <div style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>{stats.formula}</div>
                                 </div>

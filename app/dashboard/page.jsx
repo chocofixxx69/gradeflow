@@ -26,6 +26,7 @@ function StudentDashboardView({
     router,
     semStats,
     semesterCount,
+    setPdfMsg,
     setShowBacklogModal,
     sgpas,
     showBacklogModal,
@@ -300,7 +301,7 @@ function StudentDashboardView({
                                                                 semesterMarks: { [sem]: subjects },
                                                                 cgpa: sgpas[sem]
                                                             });
-                                                        }).catch(err => alert('PDF Import Error: ' + err.message));
+                                                        }).catch(err => setPdfMsg('Error generating semester PDF: ' + err.message));
                                                     }}
                                                 >
                                                     Sem {sem} PDF
@@ -808,7 +809,7 @@ function DashboardContent() {
             });
         } catch (err) {
             console.error('PDF generation error:', err);
-            alert('PDF generation error: ' + err.message);
+            setPdfMsg('PDF generation error: ' + err.message);
         } finally {
             setPdfLoading(false);
         }
@@ -845,6 +846,7 @@ function DashboardContent() {
             router={router}
             semStats={semStats}
             semesterCount={semesterCount}
+            setPdfMsg={setPdfMsg}
             setShowBacklogModal={setShowBacklogModal}
             sgpas={sgpas}
             showBacklogModal={showBacklogModal}

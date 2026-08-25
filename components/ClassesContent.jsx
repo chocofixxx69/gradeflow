@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
 import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF } from '../lib/export-utils';
+import { ConfirmDialog } from './ui';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
@@ -50,15 +51,13 @@ export function ClassesContent({ embedded = false }) {
     const [selectedClass, setSelectedClass] = useState(null);
     const [students, setStudents] = useState([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
+    const [confirmingBulkRemove, setConfirmingBulkRemove] = useState(false);
+    const [bulkRemoving, setBulkRemoving] = useState(false);
+    const [confirmingDeleteClass, setConfirmingDeleteClass] = useState(false);
+    const [deletingClass, setDeletingClass] = useState(false);
 
     useEffect(() => {
         setMounted(true);
-        if (typeof window === 'undefined') return;
-        const handleResize = () => setIsMobile(window.innerWidth < 768);
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
     }, []);
     const router = useRouter();
     const [semFilter, setSemFilter] = useState('all');
@@ -511,22 +510,31 @@ export function ClassesContent({ embedded = false }) {
     const removeSelectedStudents = async () => {
         const count = selectedUsns.size;
         if (count === 0) return;
-        if (!confirm(`Remove ${count} selected student(s) from this class?`)) return;
-
-        for (const usn of Array.from(selectedUsns)) {
-            await fetch('/api/class-students', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ class_id: selectedClass.id, usn }) });
+        setBulkRemoving(true);
+        try {
+            for (const usn of Array.from(selectedUsns)) {
+                await fetch('/api/class-students', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ class_id: selectedClass.id, usn }) });
+            }
+            setStudents(prev => prev.filter(s => !selectedUsns.has(s.usn)));
+            setSelectedUsns(new Set());
+            setMsg(`✓ Removed ${count} student(s) from class.`);
+            fetchClasses();
+        } finally {
+            setBulkRemoving(false);
+            setConfirmingBulkRemove(false);
         }
-        setStudents(prev => prev.filter(s => !selectedUsns.has(s.usn)));
-        setSelectedUsns(new Set());
-        setMsg(`✓ Removed ${count} student(s) from class.`);
-        fetchClasses();
     };
 
     const deleteClass = async id => {
-        if (!confirm('Delete this class?')) return;
-        logActivity('CLASS_DELETE', selectedClass?.name);
-        await fetch('/api/classes', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-        setSelectedClass(null); fetchClasses();
+        setDeletingClass(true);
+        try {
+            logActivity('CLASS_DELETE', selectedClass?.name);
+            await fetch('/api/classes', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+            setSelectedClass(null); fetchClasses();
+        } finally {
+            setDeletingClass(false);
+            setConfirmingDeleteClass(false);
+        }
     };
 
     const [csvPreview, setCsvPreview] = useState([]);
@@ -752,7 +760,7 @@ export function ClassesContent({ embedded = false }) {
                             <button style={btn('ghost')} onClick={() => { setShowAddModal(true); setAddTab('csv'); setMsg(''); setTimeout(() => fileRef.current?.click(), 100); }}>
                                 <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>upload_file</span>Import CSV
                             </button>
-                            <button style={btn('danger')} onClick={() => deleteClass(selectedClass.id)}>Delete Class</button>
+                            <button style={btn('danger')} onClick={() => setConfirmingDeleteClass(true)}>Delete Class</button>
                         </div>
                     </div>
 
@@ -793,7 +801,7 @@ export function ClassesContent({ embedded = false }) {
                                     <button style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer('selected')}>
                                         <span className="material-icons-round" style={{ fontSize: '16px' }}>swap_horiz</span>Transfer Selected ({selectedUsns.size})
                                     </button>
-                                    <button style={{ ...btn('danger'), padding: '6px 12px', fontSize: '12px' }} onClick={removeSelectedStudents}>
+                                    <button style={{ ...btn('danger'), padding: '6px 12px', fontSize: '12px' }} onClick={() => setConfirmingBulkRemove(true)}>
                                         Remove Selected ({selectedUsns.size})
                                     </button>
                                     <button style={{ ...btn('ghost'), padding: '6px 10px', fontSize: '12px' }} onClick={() => setSelectedUsns(new Set())}>
@@ -805,8 +813,8 @@ export function ClassesContent({ embedded = false }) {
 
                         {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
                             : (
-                                <div style={S.tableWrap}>
-                                    {!isMobile ? (
+                                <>
+                                    <div style={S.tableWrap} className="gf-desktop-table-wrap">
                                         <table style={{ width: '100%', minWidth: '660px', borderCollapse: 'collapse' }}>
                                             <thead>
                                                 <tr>
@@ -884,8 +892,8 @@ export function ClassesContent({ embedded = false }) {
                                                 })}
                                             </tbody>
                                         </table>
-                                    ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
+                                    </div>
+                                    <div className="gf-mobile-subject-list" style={{ padding: '12px' }}>
                                             {filteredStudents.map((s, idx) => {
                                                 const semData = semFilter !== 'all' ? s.semester_data?.[semFilter] : null;
                                                 const displayScore = semFilter !== 'all'
@@ -933,9 +941,8 @@ export function ClassesContent({ embedded = false }) {
                                                 );
                                             })}
                                             {filteredStudents.length === 0 && <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No students in roster.</div>}
-                                        </div>
-                                    )}
-                                </div>
+                                    </div>
+                                </>
                             )}
                     </div>
                 </div>
@@ -1671,6 +1678,23 @@ export function ClassesContent({ embedded = false }) {
                 </div>,
                 document.body
             )}
+
+            <ConfirmDialog
+                open={confirmingBulkRemove}
+                title="Remove selected students?"
+                description={`This removes ${selectedUsns.size} selected student(s) from ${selectedClass?.name || 'this class'}.`}
+                busy={bulkRemoving}
+                onCancel={() => setConfirmingBulkRemove(false)}
+                onConfirm={removeSelectedStudents}
+            />
+            <ConfirmDialog
+                open={confirmingDeleteClass}
+                title="Delete this class?"
+                description={`This permanently deletes ${selectedClass?.name || 'this class'} and its student roster. This cannot be undone.`}
+                busy={deletingClass}
+                onCancel={() => setConfirmingDeleteClass(false)}
+                onConfirm={() => deleteClass(selectedClass.id)}
+            />
         </div>
     );
 }

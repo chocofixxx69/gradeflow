@@ -36,33 +36,28 @@ function ReportsContent() {
         try {
             const f = JSON.parse(sessionStr);
             setFaculty(f);
-            loadReportData(f.id);
+            loadReportData();
         } catch { /* ignored */ }
     }, []);
 
-    const loadReportData = async (facultyId) => {
+    const loadReportData = async () => {
         setLoading(true);
         try {
-            const reportRes = await apiRequest('/api/faculty/reports').catch(() => null);
-            const reports = reportRes?.data?.reports || [];
+            const data = await apiRequest('/api/faculty/reports').catch(() => null);
 
-            const classStats = reports.map(r => ({
-                name: r.name || 'Class',
-                students: r.class_students?.[0]?.count || 0,
-                passRate: 100
-            }));
-
-            setStats({
-                uniqueStudents: reports.length,
-                totalSubjects: 0,
-                passCount: 0,
-                failCount: 0,
-                absentCount: 0,
-                gradeDist: {},
-                topStudents: [],
-                classStats,
-                subjectPassRates: []
-            });
+            if (data) {
+                setStats({
+                    uniqueStudents: data.uniqueStudents || 0,
+                    totalSubjects: data.totalSubjects || 0,
+                    passCount: data.passCount || 0,
+                    failCount: data.failCount || 0,
+                    absentCount: data.absentCount || 0,
+                    gradeDist: data.gradeDist || {},
+                    topStudents: data.topStudents || [],
+                    classStats: data.classStats || [],
+                    subjectPassRates: data.subjectPassRates || [],
+                });
+            }
             setLastUpdated(new Date());
         } catch (err) {
             console.error('Failed to load report data:', err);

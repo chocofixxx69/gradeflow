@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { apiRequest } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 
@@ -64,80 +65,19 @@ function BatchUploadContent() {
         setMsg('');
 
         try {
-            const rows = previewData.rows;
-            // Detect columns: look for USN, Semester, SGPA columns (case-insensitive)
-            const headers = Object.keys(rows[0]).map(h => h.trim().toLowerCase());
-            const usnCol = Object.keys(rows[0]).find(h => ['usn', 'usno', 'roll no', 'university seat number'].includes(h.trim().toLowerCase()));
-            const semCol = Object.keys(rows[0]).find(h => ['semester', 'sem', 'semester no'].includes(h.trim().toLowerCase()));
-            const sgpaCol = Object.keys(rows[0]).find(h => ['sgpa', 'gpa', 'grade point'].includes(h.trim().toLowerCase()));
+            const stats = await apiRequest('/api/faculty/batch-upload/sgpa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rows: previewData.rows }),
+            });
 
-            if (!usnCol || !semCol || !sgpaCol) {
-                setError(`Required columns not found. Need: USN, Semester, SGPA. Found: ${Object.keys(rows[0]).join(', ')}`);
-                setLoading(false);
-                return;
-            }
-
-            let inserted = 0, skipped = 0, errors = 0;
-
-            for (const row of rows) {
-                const usn = String(row[usnCol] || '').trim().toUpperCase();
-                const semester = parseInt(row[semCol]) || 0;
-                const sgpa = parseFloat(row[sgpaCol]) || 0;
-
-                if (!usn || !semester || sgpa <= 0) { skipped++; continue; }
-
-                // Ensure student exists
-                const { data: student } = await supabase
-                    .from('students')
-                    .select('id')
-                    .eq('usn', usn)
-                    .maybeSingle();
-
-                if (!student) {
-                    // Create student profile
-                    const branchMatch = usn.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,3})\d{3}$/);
-                    const branch = branchMatch ? branchMatch[1] : '';
-                    const { data: newStudent, error: sErr } = await supabase
-                        .from('students')
-                        .insert({ usn, name: usn, branch: branch === 'CS' ? 'CSE' : branch, scheme: '2022' })
-                        .select('id')
-                        .single();
-                    
-                    if (sErr) { errors++; continue; }
-
-                    const { error: rErr } = await supabase
-                        .from('academic_remarks')
-                        .upsert({
-                            student_id: newStudent.id,
-                            student_usn: usn,
-                            semester,
-                            sgpa,
-                            updated_at: new Date().toISOString()
-                        }, { onConflict: 'student_id,semester' });
-
-                    if (rErr) errors++; else inserted++;
-                } else {
-                    const { error: rErr } = await supabase
-                        .from('academic_remarks')
-                        .upsert({
-                            student_id: student.id,
-                            student_usn: usn,
-                            semester,
-                            sgpa,
-                            updated_at: new Date().toISOString()
-                        }, { onConflict: 'student_id,semester' });
-
-                    if (rErr) errors++; else inserted++;
-                }
-            }
-
-            setUploadStats({ inserted, skipped, errors, total: rows.length });
-            setMsg(`✓ Batch SGPA Upload Complete: ${inserted} records processed, ${skipped} skipped, ${errors} errors.`);
+            setUploadStats(stats);
+            setMsg(`✓ Batch SGPA Upload Complete: ${stats.inserted} records processed, ${stats.skipped} skipped, ${stats.errors} errors.`);
             setPreviewData(null);
 
             // Log activity
             if (faculty?.id) {
-                await recordFacultyAction(faculty, 'BATCH_SGPA_UPLOAD', `${inserted} records`);
+                await recordFacultyAction(faculty, 'BATCH_SGPA_UPLOAD', `${stats.inserted} records`);
             }
         } catch (err) {
             console.error('Batch SGPA error:', err);
@@ -155,65 +95,18 @@ function BatchUploadContent() {
         setMsg('');
 
         try {
-            const rows = previewData.rows;
-            // Detect columns
-            const subjectCol = Object.keys(rows[0]).find(h => ['subject', 'subject code', 'code', 'subject_code'].includes(h.trim().toLowerCase()));
-            const coCol = Object.keys(rows[0]).find(h => ['co', 'course outcome', 'co_number', 'co_id'].includes(h.trim().toLowerCase()));
-            const poCol = Object.keys(rows[0]).find(h => ['po', 'program outcome', 'po_number', 'po_id'].includes(h.trim().toLowerCase()));
-            const levelCol = Object.keys(rows[0]).find(h => ['level', 'attainment', 'attainment level', 'mapping', 'value'].includes(h.trim().toLowerCase()));
+            const stats = await apiRequest('/api/faculty/batch-upload/attainment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rows: previewData.rows }),
+            });
 
-            if (!subjectCol || !levelCol) {
-                setError(`Required columns not found. Need at least: Subject Code, Level/Attainment. Found: ${Object.keys(rows[0]).join(', ')}`);
-                setLoading(false);
-                return;
-            }
-
-            let inserted = 0, skipped = 0, errors = 0;
-
-            for (const row of rows) {
-                const subjectCode = String(row[subjectCol] || '').trim().toUpperCase();
-                const co = coCol ? String(row[coCol] || '').trim() : null;
-                const po = poCol ? String(row[poCol] || '').trim() : null;
-                const level = parseFloat(row[levelCol]) || 0;
-
-                if (!subjectCode) { skipped++; continue; }
-
-                const { error: iErr } = await supabase
-                    .from('co_po_mapping')
-                    .upsert({
-                        subject_code: subjectCode,
-                        co_number: co || null,
-                        po_number: po || null,
-                        attainment_level: level,
-                        faculty_id: faculty?.id || null,
-                        updated_at: new Date().toISOString(),
-                    }, { onConflict: 'subject_code,co_number,po_number' })
-                    .select();
-
-                // If upsert fails due to table not existing, use insert
-                if (iErr) {
-                    // Try plain insert if upsert constraint doesn't exist
-                    const { error: insErr } = await supabase
-                        .from('co_po_mapping')
-                        .insert({
-                            subject_code: subjectCode,
-                            co_number: co || null,
-                            po_number: po || null,
-                            attainment_level: level,
-                            faculty_id: faculty?.id || null,
-                        });
-                    if (insErr) errors++; else inserted++;
-                } else {
-                    inserted++;
-                }
-            }
-
-            setUploadStats({ inserted, skipped, errors, total: rows.length });
-            setMsg(`✓ CO-PO Mapping Upload Complete: ${inserted} mappings processed, ${skipped} skipped, ${errors} errors.`);
+            setUploadStats(stats);
+            setMsg(`✓ CO-PO Mapping Upload Complete: ${stats.inserted} mappings processed, ${stats.skipped} skipped, ${stats.errors} errors.`);
             setPreviewData(null);
 
             if (faculty?.id) {
-                await recordFacultyAction(faculty, 'BATCH_COPO_UPLOAD', `${inserted} mappings`);
+                await recordFacultyAction(faculty, 'BATCH_COPO_UPLOAD', `${stats.inserted} mappings`);
             }
         } catch (err) {
             console.error('Attainment upload error:', err);

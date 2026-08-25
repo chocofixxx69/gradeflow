@@ -6,7 +6,7 @@ import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone } from '../../../lib/vtuGrades';
 import { calculateAcademicRecord, normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
-import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
+import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
 import styles from './FacultyDashboard.module.css';
 
 function FacultyDashboardView({
@@ -27,6 +27,7 @@ function FacultyDashboardView({
     scraping = false,
     scrapeProgress = '',
     semStats = {},
+    setMessage,
     setShowBacklogModal,
     setUsn,
     sgpas = {},
@@ -338,7 +339,7 @@ function FacultyDashboardView({
                                                                         semesterMarks: { [sem]: subjects },
                                                                         cgpa: sgpas[sem]
                                                                     });
-                                                                }).catch(err => alert('PDF Import Error: ' + err.message));
+                                                                }).catch(err => setMessage('Error generating semester PDF: ' + err.message));
                                                             }}
                                                         >
                                                             Sem {sem} PDF
@@ -517,6 +518,7 @@ function FacultyDashboardContent() {
     const [scraping, setScraping] = useState(false);
     const [scrapeProgress, setScrapeProgress] = useState('');
     const [showBacklogModal, setShowBacklogModal] = useState(false);
+    const [confirmingDeleteStudent, setConfirmingDeleteStudent] = useState(false);
     const pollRef = useRef(null);
     const backlogDialogRef = useRef(null);
     const backlogTriggerRef = useRef(null);
@@ -812,11 +814,14 @@ function FacultyDashboardContent() {
 
 
 
+    const requestDeleteStudent = () => {
+        if (!student) return;
+        setConfirmingDeleteStudent(true);
+    };
+
     const deleteStudent = async () => {
         if (!student) return;
-        const confirmDelete = window.confirm(`WARNING: This will permanently delete ALL data for ${student.name || student.usn}. This cannot be undone. Proceed?`);
-        if (!confirmDelete) return;
-
+        setConfirmingDeleteStudent(false);
         setLoading(true);
         setMessage('Deleting student data...');
         try {
@@ -862,7 +867,7 @@ function FacultyDashboardContent() {
                 semesterMarks: marks,
                 cgpa,
             });
-        } catch (err) { alert('PDF Error: ' + err.message); console.error(err); } finally { setPdfLoading(false); }
+        } catch (err) { setMessage('PDF Error: ' + err.message); console.error(err); } finally { setPdfLoading(false); }
     };
 
     const totalSubjects = Object.values(marks).flat().length;
@@ -874,13 +879,14 @@ function FacultyDashboardContent() {
 
 
     return (
+        <>
         <FacultyDashboardView
             backlogs={backlogs}
             backlogDialogRef={backlogDialogRef}
             backlogTriggerRef={backlogTriggerRef}
             cgpa={cgpa}
             closeBacklogModal={closeBacklogModal}
-            deleteStudent={deleteStudent}
+            deleteStudent={requestDeleteStudent}
             failCount={failCount}
             fetchFromVTU={fetchFromVTU}
             handlePDF={handlePDF}
@@ -892,6 +898,7 @@ function FacultyDashboardContent() {
             scraping={scraping}
             scrapeProgress={scrapeProgress}
             semStats={semStats}
+            setMessage={setMessage}
             setShowBacklogModal={() => setShowBacklogModal(true)}
             setUsn={setUsn}
             sgpas={sgpas}
@@ -902,6 +909,15 @@ function FacultyDashboardContent() {
             totalSubjects={totalSubjects}
             usn={usn}
         />
+        <ConfirmDialog
+            open={confirmingDeleteStudent}
+            title="Delete this student?"
+            description={`This will permanently delete ALL data for ${student?.name || student?.usn}. This cannot be undone.`}
+            busy={loading}
+            onCancel={() => setConfirmingDeleteStudent(false)}
+            onConfirm={deleteStudent}
+        />
+        </>
     );
 }
 export default function FacultyDashboard() {
