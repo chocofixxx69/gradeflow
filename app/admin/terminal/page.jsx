@@ -7,6 +7,7 @@ import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
 import { getGradePoint } from '../../../lib/vtuGrades';
+import { supabase } from '../../../lib/supabase';
 
 function AdminPanelContent() {
     const router = useRouter();

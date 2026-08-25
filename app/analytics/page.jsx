@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { ResponsiveGrid, Stack } from '@/components/ui/Foundation';
 import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject } from '../../lib/vtuGrades';
+import { supabase } from '../../lib/supabase';
 import {
     ResponsiveContainer,
     AreaChart,

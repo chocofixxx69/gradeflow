@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
-import { getGradeBadgeTone } from '../../../lib/vtuGrades';
+import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
 import { calculateAcademicRecord, normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
+import { supabase } from '../../../lib/supabase';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
 import styles from './FacultyDashboard.module.css';
 
@@ -529,64 +530,6 @@ function FacultyDashboardContent() {
         setScraping(false);
         setScrapeProgress('');
         if (!silent) setMessage('Scraping scan halted.');
-    };
-
-    const calcSGPA = (subjects, semNumber = null) => {
-        const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
-        const scheme = student?.scheme || '2022';
-        const branch = student?.branch || null;
-
-        // Group by code to handle multiple attempts for same subject
-        const subjectsPool = {};
-        subjects.forEach(m => {
-            const code = (m.subject_code || m.code || '').trim().toUpperCase();
-            if (!subjectsPool[code]) subjectsPool[code] = m;
-        });
-
-        const poolItems = Object.values(subjectsPool);
-        const validSubs = poolItems.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
-
-        let totalCredits = 0;
-        let earnedCredits = 0;
-        let totalCreditPoints = 0;
-        let backlogs = 0;
-
-        validSubs.forEach(m => {
-            const code = (m.subject_code || m.code || '').trim().toUpperCase();
-            const details = getGradeDetails(m, scheme);
-
-            // ── Credit Priority ─────────────────────────────────────────────────────
-            // 1. m.credits: set by credit lookup above from subject_catalog (Supabase)
-            // 2. getOfficialCredit: JS fallback catalog (only if DB didn't provide a value)
-            const dbCredit = Number(m.credits);
-            const offCr = getOfficialCredit(code, scheme, branch, semNumber || m.semester);
-            const credits = dbCredit > 0 ? dbCredit : (offCr !== null ? offCr : 0);
-
-            if (credits === 0) return; // Non-credit audit course (PE, NSS, Yoga, IKS)
-
-            const gp = details.gp;
-            // Use canonical isFailedSubject() — correctly disambiguates grade 'A' (letter grade vs Absent)
-            const isFail = isFailedSubject(m);
-
-            totalCredits += credits;
-            totalCreditPoints += (isFail ? 0 : gp) * credits;
-
-            if (!isFail && gp > 0) {
-                earnedCredits += credits;
-            } else {
-                backlogs++;
-            }
-        });
-
-        const sgpa = totalCredits > 0 ? Number((totalCreditPoints / totalCredits).toFixed(2)) : 0;
-
-        return {
-            sgpa,
-            totalCredits,
-            earnedCredits: backlogs === 0 && totalCredits > 0 ? totalCredits : earnedCredits,
-            backlogs,
-            gradePoints: totalCreditPoints
-        };
     };
 
     const closeBacklogModal = () => {

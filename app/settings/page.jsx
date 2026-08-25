@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/lib/api/client';
+import { supabase } from '@/lib/supabase';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, Stack } from '@/components/ui/Foundation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';

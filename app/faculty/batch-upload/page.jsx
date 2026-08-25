@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
+import { supabase } from '../../../lib/supabase';
 
 function BatchUploadContent() {
     const [faculty, setFaculty] = useState(null);
