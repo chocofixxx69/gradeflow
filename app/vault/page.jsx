@@ -111,7 +111,7 @@ function BatchUploadContent() {
                                     see_marks: s.external || 0,
                                     total_marks: s.total || ((s.internal || 0) + (s.external || 0)),
                                     grade: s.grade || 'P',
-                                    credits: s.credits || 3,
+                                    credits: (s.credits !== null && s.credits !== undefined) ? Number(s.credits) : null,
                                     semester: semResult.semester,
                                     sync_source: 'BATCH_PDF_UPLOAD',
                                 }));
@@ -464,7 +464,7 @@ function BatchUploadContent() {
                                                     <div style={{ fontWeight: 700 }}>{sub.name || sub.code || 'Unknown'}</div>
                                                     <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'var(--tx-dim)', marginTop: '2px' }}>{sub.code || ''}</div>
                                                 </TableCell>
-                                                <TableCell align="center">{sub.credits || 3}</TableCell>
+                                                <TableCell align="center">{sub.credits ?? 'Unresolved'}</TableCell>
                                                 <TableCell align="center">{sub.internal ?? '—'}</TableCell>
                                                 <TableCell align="center">{sub.external ?? '—'}</TableCell>
                                                 <TableCell align="center" style={{ fontWeight: 800 }}>{sub.total ?? '—'}</TableCell>

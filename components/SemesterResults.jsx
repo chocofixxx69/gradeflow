@@ -1,61 +1,37 @@
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { processStudentResults } from '../lib/semester-utils';
 import { unifyGrade, getGradeDetails, getGradeBadgeTone } from '../lib/vtuGrades';
-import { getOfficialCredit } from '../lib/vtu-curriculum-catalog';
+import { fetchCatalogIndex } from '../lib/subjectCreditResolver';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { exportToExcel, exportToPDF, exportToCSV } from '../lib/export-utils';
 import { supabase } from '../lib/supabase';
 
 const COLORS = ['#16A34A', '#DC2626', '#FFBB28', '#D97706'];
 
+const EMPTY_RESULT = { grouped: {}, stats: {}, cgpa: 0, unresolvedSubjects: [] };
+
 export default function SemesterResults({ marks = [], scheme = '2022', studentName = 'Student', usn = '' }) {
     const [selectedSem, setSelectedSem] = useState('all');
-    const [dynamicMarks, setDynamicMarks] = useState([]);
-    
-    // Fetch dynamic subjects mapped by scheme — uses subject_catalog (the actual scraped table)
+    const [result, setResult] = useState(EMPTY_RESULT);
+
+    // Credits are resolved by the canonical engine (lib/vtuAcademicEngine.js) from
+    // the live subject_catalog table — this component no longer overrides them.
     useEffect(() => {
-        const fetchSubjects = async () => {
+        let cancelled = false;
+        (async () => {
             if (!marks || marks.length === 0) {
-                setDynamicMarks(marks);
+                if (!cancelled) setResult(EMPTY_RESULT);
                 return;
             }
-            const { data: subjects } = await supabase
-                .from('subject_catalog')
-                .select('subject_code, subject_name, credits')
-                .eq('scheme', scheme);
-                
-            if (subjects && subjects.length > 0) {
-                const subjectMap = {};
-                subjects.forEach(s => subjectMap[s.subject_code.toUpperCase()] = s);
-                
-                const updatedMarks = marks.map(m => {
-                    const code = (m.subject_code || m.code || '').toUpperCase();
-                    const dbCatalogCredit = subjectMap[code]?.credits;
-                    const dbMarkCredit = m.credits;
-                    const offCr = getOfficialCredit(code, scheme, null, m.semester);
-                    const finalCredits = (dbCatalogCredit != null && Number(dbCatalogCredit) > 0)
-                        ? Number(dbCatalogCredit)
-                        : ((dbMarkCredit != null && Number(dbMarkCredit) > 0)
-                            ? Number(dbMarkCredit)
-                            : (offCr !== null ? offCr : 3));
-                    return {
-                        ...m,
-                        credits: finalCredits,
-                        subject_name: m.subject_name || subjectMap[code]?.subject_name || m.name
-                    };
-                });
-                setDynamicMarks(updatedMarks);
-            } else {
-                setDynamicMarks(marks);
-            }
-        };
-        fetchSubjects();
-    }, [marks, scheme]);
+            const catalogIndex = await fetchCatalogIndex(supabase);
+            const r = await processStudentResults(marks, scheme, { usn, catalogIndex });
+            if (!cancelled) setResult(r);
+        })();
+        return () => { cancelled = true; };
+    }, [marks, scheme, usn]);
 
-    const { grouped, stats, cgpa } = useMemo(() => {
-        return processStudentResults(dynamicMarks, scheme);
-    }, [dynamicMarks, scheme]);
+    const { grouped, stats, cgpa } = result;
 
     const semesters = Object.keys(grouped).sort((a, b) => a - b);
 
@@ -210,8 +186,7 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                                     <tbody>
                                         {grouped[selectedSem].map((m, idx) => {
                                             const details = getGradeDetails(m, scheme);
-                                            const offCr = getOfficialCredit(m.subject_code || m.code, scheme, null, Number(selectedSem));
-                                            const displayCr = offCr !== null ? offCr : (m.credits || 0);
+                                            const displayCr = m.isUnresolved ? 'Unresolved' : m.credits;
                                             return (
                                                 <tr key={idx}>
                                                     <td>
@@ -243,8 +218,7 @@ export default function SemesterResults({ marks = [], scheme = '2022', studentNa
                             <div className="gf-mobile-subject-list">
                                 {grouped[selectedSem].map((m, idx) => {
                                     const details = getGradeDetails(m, scheme);
-                                    const offCr = getOfficialCredit(m.subject_code || m.code, scheme, null, Number(selectedSem));
-                                    const displayCr = offCr !== null ? offCr : (m.credits || 0);
+                                    const displayCr = m.isUnresolved ? 'Unresolved' : m.credits;
                                     return (
                                         <div key={idx} className="gf-mobile-subject-card">
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>

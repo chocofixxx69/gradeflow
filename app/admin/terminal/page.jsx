@@ -8,6 +8,7 @@ import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
 import { ConfirmDialog } from '../../../components/ui';
 import { getGradePoint } from '../../../lib/vtuGrades';
+import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { supabase } from '../../../lib/supabase';
 
 function AdminPanelContent() {
@@ -259,15 +260,18 @@ function AdminPanelContent() {
         (s.name || '').toLowerCase().includes(search.toLowerCase())
     );
 
-    // Calculate SGPA for student marks using canonical grade points
+    // Calculate SGPA for student marks using canonical grade points and catalog credits
     const calcSGPA = (marks) => {
-        if (!marks?.length) return 0;
+        if (!marks?.length) return '0.00';
         let pts = 0, cr = 0;
         marks.forEach(m => {
-            const c = Number(m.credits) || 3;
-            const gp = getGradePoint(m.grade, '2022', m.total_marks ?? m.total, m.see_marks ?? m.external);
-            pts += gp * c;
-            cr += c;
+            const norm = normalizeSubjectResult(m, '2022');
+            if (norm.isAudit || norm.isUnresolved) return;
+            const c = norm.credits;
+            if (c > 0) {
+                pts += norm.weightedPoints;
+                cr += c;
+            }
         });
         return cr > 0 ? (pts / cr).toFixed(2) : '0.00';
     };

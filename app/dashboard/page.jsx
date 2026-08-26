@@ -291,10 +291,11 @@ function StudentDashboardView({
                                                     variant="secondary"
                                                     density="compact"
                                                     iconStart="download"
-                                                    onClick={(e) => {
+                                                    onClick={async (e) => {
                                                         e.stopPropagation();
-                                                        import('../../lib/generatePDF').then(({ generateResultPDF }) => {
-                                                            generateResultPDF({
+                                                        try {
+                                                            const { generateResultPDF } = await import('../../lib/generatePDF');
+                                                            await generateResultPDF({
                                                                 studentName: student.name || 'Student',
                                                                 usn: student.usn || 'N/A',
                                                                 branch: student.branch || '',
@@ -302,7 +303,9 @@ function StudentDashboardView({
                                                                 semesterMarks: { [sem]: subjects },
                                                                 cgpa: sgpas[sem]
                                                             });
-                                                        }).catch(err => setPdfMsg('Error generating semester PDF: ' + err.message));
+                                                        } catch (err) {
+                                                            setPdfMsg('Error generating semester PDF: ' + err.message);
+                                                        }
                                                     }}
                                                 >
                                                     Sem {sem} PDF
@@ -564,7 +567,7 @@ function DashboardContent() {
             const resultMarks = data?.recentResults || [];
 
             // ── Run Canonical Academic Calculation Pipeline ──
-            const record = calculateAcademicRecord(resultMarks, profile);
+            const record = await calculateAcademicRecord(resultMarks, profile);
 
             setStudent(record.profile);
             setMarks(record.marksBySemester);
@@ -728,7 +731,7 @@ function DashboardContent() {
                             see_marks: s.external || 0,
                             total_marks: s.total || ((s.internal || 0) + (s.external || 0)),
                             grade: newGrade,
-                            credits: s.credits || 3,
+                            credits: (s.credits !== null && s.credits !== undefined) ? Number(s.credits) : null,
                             semester: subjectSem,
                             sync_source: 'PDF_UPLOAD'
                         });
@@ -800,7 +803,7 @@ function DashboardContent() {
         setPdfLoading(true);
         try {
             const { generateResultPDF } = await import('../../lib/generatePDF');
-            generateResultPDF({
+            await generateResultPDF({
                 studentName: student?.name || 'Student',
                 usn: student?.usn || 'N/A',
                 branch: student?.branch || '',

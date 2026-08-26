@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { weightedCGPA, computeBacklogs } from '../../../lib/analytics-data';
 import { fetchByChunks } from '../../../lib/supabase-utils';
-import { getGradePoint } from '../../../lib/vtuGrades';
-import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
+import { calculateAcademicRecord } from '../../../lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
+import { weightedCGPA } from '../../../lib/analytics-data';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -31,10 +31,8 @@ export async function GET(req) {
         const upperUsns = rawUsns.map(u => (u || '').toUpperCase().trim());
         const allQueryUsns = [...new Set([...rawUsns, ...upperUsns])];
 
-        const [profiles, remarks, resultRows, scrapedMarks, manualMarks] = await Promise.all([
-            fetchByChunks('students', 'usn, name, branch, semester', 'usn', allQueryUsns, supabaseAdmin),
-            fetchByChunks('academic_remarks', 'student_usn, sgpa, semester, backlog_count, is_all_clear', 'student_usn', allQueryUsns, supabaseAdmin),
-            fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', allQueryUsns, supabaseAdmin),
+        const [profiles, scrapedMarks, manualMarks] = await Promise.all([
+            fetchByChunks('students', 'usn, name, branch, semester, scheme', 'usn', allQueryUsns, supabaseAdmin),
             fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, grade, internal, external, total, credits, is_backlog, announced_date, result_id', 'usn', allQueryUsns, supabaseAdmin),
             fetchByChunks('marks', 'student_usn, semester, subject_code, subject_name, grade, cie_marks, see_marks, total_marks, credits', 'student_usn', allQueryUsns, supabaseAdmin),
         ]);
@@ -55,50 +53,13 @@ export async function GET(req) {
             }))
         ];
 
-        const creditsMap = {};
-        (resultRows || []).forEach(r => {
-            const u = norm(r.usn);
-            if (!creditsMap[u]) creditsMap[u] = {};
-            const prev = creditsMap[u][r.semester] || 0;
-            creditsMap[u][r.semester] = Math.max(prev, r.total_credits || 0);
-        });
-
-        const remarksByUsn = {};
-        (remarks || []).forEach(r => (remarksByUsn[norm(r.student_usn)] ||= []).push(r));
-
-        const cgpaMap = {};
-        upperUsns.forEach(u => {
-            cgpaMap[u] = weightedCGPA(remarksByUsn[u] || [], creditsMap[u] || {});
-        });
-
         const marksByUsn = {};
         (marks || []).forEach(m => (marksByUsn[norm(m.usn)] ||= []).push(m));
-
-        const backlogMap = {};
-        upperUsns.forEach(u => {
-            const studMarks = marksByUsn[u] || [];
-            if (studMarks.length > 0) {
-                backlogMap[u] = computeBacklogs(studMarks).totalBacklogs;
-            } else if (remarksByUsn[u] && remarksByUsn[u].length > 0) {
-                backlogMap[u] = remarksByUsn[u].reduce((acc, r) => acc + (Number(r.backlog_count) || (r.is_all_clear === false ? 1 : 0)), 0);
-            } else {
-                backlogMap[u] = 0;
-            }
-        });
 
         const profileMap = {};
         (profiles || []).forEach(p => { profileMap[norm(p.usn)] = p; });
 
-        const hasResultsMap = {};
-        upperUsns.forEach(u => {
-            hasResultsMap[u] = Boolean(
-                (remarksByUsn[u] && remarksByUsn[u].length > 0) ||
-                (marksByUsn[u] && marksByUsn[u].length > 0) ||
-                (creditsMap[u] && Object.keys(creditsMap[u]).length > 0)
-            );
-        });
-
-        // Fetch class metadata to fallback to class semester if needed
+        // Fetch class metadata to fall back to when a student has no own profile
         const { data: classData } = await supabaseAdmin
             .from('classes')
             .select('semester, branch, scheme')
@@ -107,119 +68,60 @@ export async function GET(req) {
 
         const classSem = Number(classData?.semester) || 1;
 
-        const maxSemByUsn = {};
-        const semDataByUsn = {};
-        upperUsns.forEach(u => { semDataByUsn[u] = {}; });
+        // ── Single canonical calculation path (lib/vtuAcademicEngine.js) — the
+        // exact same function Student Results uses. One catalog_subject fetch for
+        // the whole roster, then one in-memory calculateAcademicRecord() per
+        // student — no N+1 queries, and no independent SGPA/backlog logic here. ──
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
 
-        const excludeGrades = new Set(['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE']);
+        const recordByUsn = {};
+        await Promise.all(upperUsns.map(async u => {
+            const studMarks = marksByUsn[u] || [];
+            if (studMarks.length === 0) return;
+            const profile = {
+                usn: u,
+                branch: profileMap[u]?.branch || classData?.branch,
+                scheme: profileMap[u]?.scheme || classData?.scheme || '2022',
+            };
+            recordByUsn[u] = await calculateAcademicRecord(studMarks, profile, { catalogIndex });
+        }));
 
-        // 1. Group marks by uppercase USN and semester
-        const marksGrouped = {};
-        (marks || []).forEach(m => {
-            const u = norm(m.usn);
-            const s = Number(m.semester);
-            if (u && s) {
-                maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
-                if (!marksGrouped[u]) marksGrouped[u] = {};
-                if (!marksGrouped[u][s]) marksGrouped[u][s] = [];
-                marksGrouped[u][s].push(m);
-            }
-        });
-
-        // 2. Compute exact SGPA and backlogs per (USN, semester) from marks
-        Object.entries(marksGrouped).forEach(([u, semMap]) => {
-            if (!semDataByUsn[u]) semDataByUsn[u] = {};
-
-            Object.entries(semMap).forEach(([semStr, semMarks]) => {
-                const sem = Number(semStr);
-                let tc = 0;
-                let tcp = 0;
-
-                const semBacklogInfo = computeBacklogs(semMarks);
-                const bCount = semBacklogInfo.totalBacklogs;
-
-                semMarks.forEach(m => {
-                    const g = (m.grade || 'F').trim().toUpperCase();
-                    const tot = Number(m.total) || 0;
-                    const ext = Number(m.external) || 0;
-
-                    if (excludeGrades.has(g)) return;
-                    const offCr = getOfficialCredit(m.subject_code || m.code, classData?.scheme || '2022');
-                    const cr = offCr !== null ? offCr : (Number(m.credits) || 0);
-                    const gp = getGradePoint(g, classData?.scheme || '2022', tot, ext);
-                    tc += cr;
-                    tcp += (gp * cr);
-                });
-
-                const calcSgpa = tc > 0 ? Number((tcp / tc).toFixed(2)) : 0.0;
-                const storedRemark = (remarksByUsn[u] || []).find(r => Number(r.semester) === sem);
-                const storedResult = (resultRows || []).find(r => norm(r.usn) === u && Number(r.semester) === sem);
-                const storedSgpa = storedRemark?.sgpa != null ? Number(storedRemark.sgpa) : (storedResult?.sgpa != null ? Number(storedResult.sgpa) : null);
-
-                const finalSgpa = tc > 0 ? calcSgpa : (storedSgpa != null ? storedSgpa : 0.0);
-
-                semDataByUsn[u][sem] = {
-                    sgpa: finalSgpa,
-                    backlogs: bCount,
-                    total_credits: tc || creditsMap[u]?.[sem] || 0
-                };
-            });
-        });
-
-        // 3. Fallback to academic_remarks & results if marks not present for a semester
-        (remarks || []).forEach(r => {
-            const u = norm(r.student_usn);
-            const s = Number(r.semester);
-            if (u && s) {
-                maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
-                if (!semDataByUsn[u]) semDataByUsn[u] = {};
-                const bCount = r.backlog_count != null ? Number(r.backlog_count) : (r.is_all_clear === false ? 1 : 0);
-                if (!semDataByUsn[u][s]) {
-                    semDataByUsn[u][s] = {
-                        sgpa: Number(r.sgpa) || 0,
-                        backlogs: bCount,
-                        total_credits: creditsMap[u]?.[s] || 0
-                    };
-                } else {
-                    if (semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) {
-                        semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
-                    }
-                }
-            }
-        });
-
-        (resultRows || []).forEach(r => {
-            const u = norm(r.usn);
-            const s = Number(r.semester);
-            if (u && s) {
-                maxSemByUsn[u] = Math.max(maxSemByUsn[u] || 0, s);
-                if (!semDataByUsn[u]) semDataByUsn[u] = {};
-                if (!semDataByUsn[u][s]) {
-                    semDataByUsn[u][s] = {
-                        sgpa: Number(r.sgpa) || 0,
-                        backlogs: 0,
-                        total_credits: Number(r.total_credits) || 0
-                    };
-                } else if ((semDataByUsn[u][s].sgpa == null || semDataByUsn[u][s].sgpa === 0) && r.sgpa) {
-                    semDataByUsn[u][s].sgpa = Number(r.sgpa) || 0;
-                }
-            }
-        });
+        const hasResultsMap = {};
+        upperUsns.forEach(u => { hasResultsMap[u] = Boolean(recordByUsn[u] && (marksByUsn[u]?.length > 0)); });
 
         // ── Build final student list — ALL lookups via norm(usn) ──
         const students = members.map(m => {
             const u = norm(m.usn);
             const hasData = hasResultsMap[u] || false;
-            const computedSem = maxSemByUsn[u] || Number(profileMap[u]?.semester) || classSem;
+            const record = recordByUsn[u];
+            const semNumbers = record ? Object.keys(record.semStats).map(Number) : [];
+            const computedSem = (semNumbers.length ? Math.max(...semNumbers) : 0) || Number(profileMap[u]?.semester) || classSem;
+
+            const semester_data = {};
+            let cgpa = null;
+            if (record) {
+                const remarks = [];
+                const creditsBySem = {};
+                Object.entries(record.semStats).forEach(([sem, s]) => {
+                    semester_data[sem] = { sgpa: s.sgpa, backlogs: s.backlogs, total_credits: s.totalCredits };
+                    remarks.push({ semester: Number(sem), sgpa: s.sgpa });
+                    creditsBySem[sem] = s.totalCredits;
+                });
+                // Existing, unmodified CGPA formula (lib/analytics-data.js) — fed
+                // live-computed per-semester SGPA/credits instead of the stale
+                // academic_remarks/results caches.
+                cgpa = weightedCGPA(remarks, creditsBySem);
+            }
+
             return {
                 id: m.id,
                 usn: m.usn,
                 name: profileMap[u]?.name || m.usn,
                 branch: profileMap[u]?.branch || classData?.branch || '—',
                 semester: computedSem,
-                cgpa: hasData && cgpaMap[u] != null ? cgpaMap[u] : null,
-                total_backlogs: hasData ? (backlogMap[u] ?? 0) : null,
-                semester_data: semDataByUsn[u] || {},
+                cgpa: hasData ? cgpa : null,
+                total_backlogs: hasData ? record.totalActiveBacklogs : null,
+                semester_data,
                 has_data: hasData,
                 added_at: m.created_at,
             };

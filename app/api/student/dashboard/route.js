@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireStudent } from '../../../../lib/server-session';
 import { weightedCGPA, computeBacklogs } from '../../../../lib/analytics-data';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
+import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -78,42 +79,50 @@ export async function GET(req) {
                 .replace(/RV|Reval/i, ' (Revaluation)').trim();
         };
 
+        const scheme = studentProfile?.scheme || '2022';
+        const branch = studentProfile?.branch || '';
+
         if (studentMarks) {
-            studentMarks.forEach(m => pool.push({
-                id: m.id,
-                subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
-                subject_name: (m.subject_name || m.name || '').trim(),
-                cie_marks: m.cie_marks ?? m.internal ?? 0,
-                see_marks: m.see_marks ?? m.external ?? 0,
-                total_marks: m.total_marks ?? m.total ?? 0,
-                grade: (m.grade || '').trim().toUpperCase(),
-                credits: Number(m.credits) || 3,
-                semester: Number(m.semester) || 1,
-                announced_date: m.announced_date || m.exam_date || null,
-                exam_date: m.announced_date || 'Manual Entry',
-                source: 'manual'
-            }));
+            studentMarks.forEach(m => {
+                const norm = normalizeSubjectResult(m, scheme, branch, m.semester);
+                pool.push({
+                    id: m.id,
+                    subject_code: norm.subjectCode,
+                    subject_name: norm.subjectName,
+                    cie_marks: norm.cie_marks,
+                    see_marks: norm.see_marks,
+                    total_marks: norm.total_marks,
+                    grade: norm.grade,
+                    credits: norm.credits,
+                    semester: norm.semester,
+                    announced_date: norm.announced_date,
+                    exam_date: norm.announced_date || 'Manual Entry',
+                    source: 'manual'
+                });
+            });
         }
 
         if (resultMarks) {
-            resultMarks.forEach(m => pool.push({
-                id: m.id,
-                subject_code: (m.subject_code || m.code || '').trim().toUpperCase(),
-                subject_name: (m.subject_name || m.name || '').trim(),
-                cie_marks: m.cie_marks ?? m.internal ?? 0,
-                see_marks: m.see_marks ?? m.external ?? 0,
-                total_marks: m.total_marks ?? m.total ?? 0,
-                grade: (m.grade || '').trim().toUpperCase(),
-                credits: Number(m.credits) || 3,
-                semester: Number(m.semester) || 1,
-                announced_date: m.announced_date || null,
-                exam_date: m.announced_date || formatExamAlias(m.results?.exam_name || 'Scraped Record'),
-                source: 'scraper',
-                is_backlog: m.is_backlog || false,
-                // Preserve raw external and result for canonical isFail detection (ext < 18, result = 'F')
-                external: m.external ?? m.see_marks ?? null,
-                result: m.result || null,
-            }));
+            resultMarks.forEach(m => {
+                const norm = normalizeSubjectResult(m, scheme, branch, m.semester);
+                pool.push({
+                    id: m.id,
+                    subject_code: norm.subjectCode,
+                    subject_name: norm.subjectName,
+                    cie_marks: norm.cie_marks,
+                    see_marks: norm.see_marks,
+                    total_marks: norm.total_marks,
+                    grade: norm.grade,
+                    credits: norm.credits,
+                    semester: norm.semester,
+                    announced_date: norm.announced_date,
+                    exam_date: norm.announced_date || formatExamAlias(m.results?.exam_name || 'Scraped Record'),
+                    source: 'scraper',
+                    is_backlog: norm.isFailed,
+                    external: norm.see_marks,
+                    result: m.result || null,
+                });
+            });
         }
 
         // Calculate credits per semester

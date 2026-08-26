@@ -273,7 +273,7 @@ function CalculatorContent() {
                                     id: Math.random(),
                                     name: sub.name || sub.code,
                                     code: sub.code,
-                                    credits: sub.credits || 3,
+                                    credits: (sub.credits !== null && sub.credits !== undefined) ? Number(sub.credits) : '',
                                     total: sub.total || ((sub.internal || 0) + (sub.external || 0)),
                                     grade: sub.grade || getGradeFromTotal(sub.total || ((sub.internal || 0) + (sub.external || 0)), scheme),
                                 })));

@@ -70,7 +70,7 @@ export async function GET(req) {
             return {
                 subject_code: code,
                 subject_name: catalogEntry?.name || marks[0]?.subject_name || code,
-                credits: catalogEntry?.credits ?? marks[0]?.credits ?? null,
+                credits: catalogEntry?.credits ?? null,
                 faculty: facultyName,
                 branch: branch || null,
                 semester: semester ?? null,

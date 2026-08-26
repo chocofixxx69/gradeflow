@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { VTU_BRANCHES, VTU_SCHEMES, getSubjectsFor } from '../../lib/vtuGrades';
+import { supabase } from '@/lib/supabase';
+import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 import AuthGuard from '../../components/AuthGuard';
 import { Inline } from '@/components/ui/Foundation';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
@@ -9,13 +11,48 @@ import { TableWrapper, Table, TableHead, TableBody, TableRow, TableHeader, Table
 
 function CurriculumContent() {
     const [scheme, setScheme] = useState('2022');
-    const [branch, setBranch] = useState('CSE');
-    const [semester, setSemester] = useState(3);
+    const [branch, setBranch] = useState('CS');
+    const [semester, setSemester] = useState(1);
     const [subjects, setSubjects] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        const list = getSubjectsFor(branch, semester, scheme);
-        setSubjects(list);
+        let isMounted = true;
+        async function fetchSubjects() {
+            setLoading(true);
+            const normBranch = normalizeBranch(branch);
+            try {
+                const { data, error } = await supabase
+                    .from('subject_catalog')
+                    .select('subject_code, subject_name, credits')
+                    .eq('scheme', scheme)
+                    .eq('branch', normBranch)
+                    .eq('semester', semester)
+                    .order('subject_code');
+
+                if (!error && data && data.length > 0 && isMounted) {
+                    setSubjects(data.map(d => ({
+                        code: d.subject_code,
+                        name: d.subject_name,
+                        credits: d.credits
+                    })));
+                    setLoading(false);
+                    return;
+                }
+            } catch (err) {
+                console.error('Error fetching subject catalog from DB:', err);
+            }
+
+            // Fallback to official synced catalog if offline / DB error
+            if (isMounted) {
+                const list = getSubjectsFor(branch, semester, scheme);
+                setSubjects(list);
+                setLoading(false);
+            }
+        }
+
+        fetchSubjects();
+        return () => { isMounted = false; };
     }, [scheme, branch, semester]);
 
     const totalCredits = subjects.reduce((sum, s) => sum + (s.credits || 0), 0);
@@ -41,7 +78,7 @@ function CurriculumContent() {
             <PageHeader>
                 <PageHeaderEyebrow>Academic Structure</PageHeaderEyebrow>
                 <PageHeaderTitle>Curriculum Explorer</PageHeaderTitle>
-                <PageHeaderSubtitle>Browse subject details, credits, and course codes for your VTU programme.</PageHeaderSubtitle>
+                <PageHeaderSubtitle>Browse official subject details, credits, and course codes from the canonical VTU database catalog.</PageHeaderSubtitle>
             </PageHeader>
 
             {/* Filters */}
@@ -71,11 +108,11 @@ function CurriculumContent() {
             {/* Stats */}
             <Inline align="start" style={s.statsRow}>
                 <div style={s.statPill}>
-                    <div style={s.statPillVal}>{subjects.length}</div>
+                    <div style={s.statPillVal}>{loading ? '...' : subjects.length}</div>
                     <div style={s.statPillLabel}>Subjects</div>
                 </div>
                 <div style={s.statPill}>
-                    <div style={s.statPillVal}>{totalCredits}</div>
+                    <div style={s.statPillVal}>{loading ? '...' : totalCredits}</div>
                     <div style={s.statPillLabel}>Total Credits</div>
                 </div>
             </Inline>
@@ -92,7 +129,9 @@ function CurriculumContent() {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {subjects.length > 0 ? subjects.map((sub, i) => (
+                        {loading ? (
+                            <TableRow><TableCell colSpan={4} align="center" style={s.empty}>Loading official curriculum...</TableCell></TableRow>
+                        ) : subjects.length > 0 ? subjects.map((sub, i) => (
                             <TableRow key={i} style={{ transition: 'background 0.15s' }}
                                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>

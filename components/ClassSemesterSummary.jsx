@@ -1,57 +1,42 @@
 'use client';
-import { useMemo } from 'react';
 import { processStudentResults } from '../lib/semester-utils';
 import { exportToExcel } from '../lib/export-utils';
 import { useState, useEffect } from 'react';
-import { apiRequest } from '../lib/api/client';
+import { fetchCatalogIndex } from '../lib/subjectCreditResolver';
+import { supabase } from '../lib/supabase';
 
 export default function ClassSemesterSummary({ students = [], allMarks = [], selectedSem }) {
-    const [dynamicMarks, setDynamicMarks] = useState([]);
-    
-    // Process marks dynamically based on live subjects DB
+    const [summaryData, setSummaryData] = useState({});
+
+    // Credits are resolved by the canonical engine (lib/vtuAcademicEngine.js) from
+    // the live subject_catalog table — one catalog fetch for the whole roster,
+    // not a separate lookup per student.
     useEffect(() => {
-        const fetchDynamicSubjects = async () => {
-            if (!allMarks || allMarks.length === 0) return;
-            const data = await apiRequest('/api/system/meta').catch(() => null);
-            const subjects = data?.subjects || [];
-
-            if (subjects && subjects.length > 0) {
-                const map = {};
-                subjects.forEach(s => map[`${s.scheme}_${s.subject_code.toUpperCase()}`] = s);
-                
-                // create a map for student usn -> scheme for quick lookup
-                const usnSchemeMap = {};
-                students.forEach(s => usnSchemeMap[s.usn] = s.scheme || '2022');
-                
-                const mapped = allMarks.map(m => {
-                    const sch = usnSchemeMap[m.usn];
-                    const code = (m.subject_code || m.code || '').toUpperCase();
-                    const sub = map[`${sch}_${code}`];
-                    return sub ? { ...m, credits: sub.credits } : m;
-                });
-                setDynamicMarks(mapped);
-            } else {
-                setDynamicMarks(allMarks);
+        let cancelled = false;
+        (async () => {
+            if (!students.length) {
+                if (!cancelled) setSummaryData({});
+                return;
             }
-        };
-        fetchDynamicSubjects();
-    }, [allMarks, students]);
 
-    const summaryData = useMemo(() => {
-        const map = {};
-        const marksByUsn = {};
-        dynamicMarks.forEach(m => {
-            if (!marksByUsn[m.usn]) marksByUsn[m.usn] = [];
-            marksByUsn[m.usn].push(m);
-        });
+            const marksByUsn = {};
+            allMarks.forEach(m => {
+                if (!marksByUsn[m.usn]) marksByUsn[m.usn] = [];
+                marksByUsn[m.usn].push(m);
+            });
 
-        students.forEach(s => {
-            const studentMarks = marksByUsn[s.usn] || [];
-            map[s.usn] = processStudentResults(studentMarks, s.scheme || '2022');
-        });
-        
-        return map;
-    }, [students, dynamicMarks]);
+            const catalogIndex = await fetchCatalogIndex(supabase);
+
+            const entries = await Promise.all(students.map(async s => {
+                const studentMarks = marksByUsn[s.usn] || [];
+                const result = await processStudentResults(studentMarks, s.scheme || '2022', { usn: s.usn, catalogIndex });
+                return [s.usn, result];
+            }));
+
+            if (!cancelled) setSummaryData(Object.fromEntries(entries));
+        })();
+        return () => { cancelled = true; };
+    }, [students, allMarks]);
 
     const handleExport = () => {
         const data = students.map(s => {

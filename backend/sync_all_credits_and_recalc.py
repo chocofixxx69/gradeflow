@@ -16,47 +16,48 @@ if not url or not key:
 
 supabase = create_client(url, key)
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scraper'))
+from credit_resolver import is_audit_course, _VARIANT_RE, _DEPT_VARIANT_RE  # noqa: E402
+
 def get_official_credit(code, scheme='2022', branch=None, semester=None, catalog_map=None):
+    """subject_catalog (via `catalog_map`, keyed (scheme,branch,semester,code) ->
+    credit) is the ONLY credit source. Exact match first, then VTU's two
+    documented elective-family-variant conventions (see
+    backend/scraper/credit_resolver.py / lib/subjectCreditResolver.js for the
+    rationale). Returns None — never a guessed number — when nothing matches;
+    callers must exclude that subject from any credit/SGPA sum."""
     if not code:
-        return 3
+        return None
     c = code.strip().upper()
     s = str(scheme) if scheme else '2022'
     b = (branch or '').strip().upper()
     sem = str(semester) if semester else None
 
-    # Try exact match in catalog_map
-    if catalog_map:
-        if b and sem and (s, b, sem, c) in catalog_map:
-            return catalog_map[(s, b, sem, c)]
-        if sem and (s, sem, c) in catalog_map:
-            return catalog_map[(s, sem, c)]
-        if (s, c) in catalog_map:
-            return catalog_map[(s, c)]
-
-    # Rule-based pattern matching
-    if re.match(r'^(BPEK|BNSS|BYOK|BIKS|CIP|CPH|KSK|KBK|BAL|BNS)\d', c) or 'PE' in c or 'NSS' in c or 'YOGA' in c or 'IKS' in c or 'AUDIT' in c:
+    if is_audit_course(c):
         return 0
-    if re.match(r'^B[A-Z]{2,4}[1-8]5[0-9][A-Z]?$', c) or re.match(r'^B[A-Z]{2,4}[1-8]58[A-Z]?$', c) or re.match(r'^B[A-Z]{2,4}[1-8]56[A-Z]?$', c):
-        return 1
-    if re.match(r'^B[A-Z]{2,4}L\d', c) or re.search(r'L\d{3}', c):
-        return 1
-    if re.search(r'P[1-8]\d{2}', c) or 'PROJ' in c:
-        if sem == '8' or (sem is None and '8' in c):
-            return 10
-        if sem == '7' or (sem is None and '7' in c):
-            return 6
-        return 2
-    if 'INT' in c or 'IN8' in c:
-        return 10
-    if re.match(r'^B[A-Z]{2,4}405[A-Z]?', c) or re.match(r'^B[A-Z]{2,4}[34]86', c):
-        return 2
-    if re.match(r'^B[A-Z]{2,4}[1-8]08', c) or re.match(r'^B[A-Z]{2,4}[1-8]86', c):
-        return 2
-    if re.match(r'^B[A-Z]{2,4}101$', c) or re.match(r'^B[A-Z]{2,4}201$', c) or re.match(r'^B[A-Z]{2,4}301$', c):
-        return 4
-    if re.match(r'^B[A-Z]{2,4}[3-8]02$', c) or re.match(r'^B[A-Z]{2,4}[3-8]03$', c):
-        return 4
-    return 3
+
+    if not catalog_map or not b or not sem:
+        return None
+
+    exact_key = (s, b, sem, c)
+    if exact_key in catalog_map:
+        return catalog_map[exact_key]
+
+    vm = _VARIANT_RE.match(c)
+    if vm:
+        base = vm.group(1)
+        same_key = (s, b, sem, f'{base}X')
+        if same_key in catalog_map:
+            return catalog_map[same_key]
+
+    dm = _DEPT_VARIANT_RE.match(c)
+    if dm:
+        leading_digits, _dept, digits, _letter = dm.groups()
+        generic_key = (s, b, sem, f'{leading_digits}BXX{digits}X')
+        if generic_key in catalog_map:
+            return catalog_map[generic_key]
+
+    return None
 
 def get_grade_point(total, grade=None, ext=None):
     raw_grade = (grade or '').strip().upper()
@@ -150,8 +151,8 @@ def main():
             break
     print(f"Loaded {len(all_marks)} subject_marks rows.", flush=True)
 
-    # Group distinct (code, semester) pairs to update in batch
-    code_sem_updates = {}
+    # Group rows by their newly-resolved credit value, for batched-by-id updates
+    row_ids_by_credit = {}
     student_sem_marks = {}
 
     for m in all_marks:
@@ -167,16 +168,29 @@ def main():
         correct_cr = get_official_credit(code, st_scheme, st_branch, sem, catalog_map)
         m['credits'] = correct_cr
 
-        if current_cr != correct_cr:
-            code_sem_updates.setdefault((code, sem), correct_cr)
+        # Only write when resolved — an unresolved subject's stored credit is
+        # left untouched (and excluded from the SGPA recompute below) rather
+        # than overwritten with a guess. Updated by row id, not by a blanket
+        # (subject_code, semester) match, since two branches can share a code
+        # + semester with genuinely different resolved credits.
+        if correct_cr is not None and current_cr != correct_cr:
+            row_ids_by_credit.setdefault(correct_cr, []).append(m['id'])
 
         student_sem_marks.setdefault((u, sem), []).append(m)
 
-    print(f"Found {len(code_sem_updates)} unique (code, semester) combinations requiring credit adjustments.", flush=True)
-    for (c, s), cr in code_sem_updates.items():
-        supabase.table('subject_marks').update({'credits': cr}).eq('subject_code', c).eq('semester', s).execute()
+    total_updates = sum(len(ids) for ids in row_ids_by_credit.values())
+    print(f"Found {total_updates} subject_marks rows requiring a credit adjustment.", flush=True)
+    unresolved_count = sum(1 for m in all_marks if m['credits'] is None)
+    for cr, ids in row_ids_by_credit.items():
+        for i in range(0, len(ids), 200):
+            chunk = ids[i:i + 200]
+            supabase.table('subject_marks').update({'credits': cr}).in_('id', chunk).execute()
 
     print(f"All subject_marks credits synchronized successfully.", flush=True)
+    if unresolved_count:
+        print(f"[WARNING] {unresolved_count} subject_marks rows have a subject_code with no catalog match "
+              f"(exact or elective-family) for their scheme/branch/semester — left as UNRESOLVED, not guessed. "
+              f"These need a human to check/extend subject_catalog.", flush=True)
 
     # 4. Recalculate results & academic_remarks
     print("\n[4/5] Recalculating SGPA and Updating results / academic_remarks...", flush=True)
@@ -202,8 +216,8 @@ def main():
                 continue
 
             cr = sub['credits']
-            if cr == 0:
-                continue
+            if cr is None or cr == 0:
+                continue  # Unresolved or non-credit audit course — excluded, not guessed.
 
             tot = sub['total']
             ext = sub['external']
@@ -252,7 +266,7 @@ def main():
         s_pts = 0
         for m in t_by_sem[sem]:
             cr = m['credits']
-            if cr > 0:
+            if cr is not None and cr > 0:
                 gp = get_grade_point(m['total'], m['grade'], m['external'])
                 s_cr += cr
                 s_pts += gp * cr

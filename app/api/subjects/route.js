@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireStaff } from '../../../lib/server-session';
 import { getGradePoint, getGradeDetails, isFailedSubject } from '../../../lib/vtuGrades';
-import { getOfficialCredit } from '../../../lib/vtu-curriculum-catalog';
+import { fetchCatalogIndex, resolveSubjectCredit } from '../../../lib/subjectCreditResolver';
+import { isAuditCourse, normalizeBranch as normalizeBranchCode } from '../../../lib/vtuAcademicEngine';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -100,7 +101,7 @@ export async function POST(req) {
         if (error) throw error;
 
         // Sync credits to existing subject_marks if any
-        await cascadeCreditUpdate(cleanCode, numCredits);
+        await cascadeCreditUpdate(cleanCode, numCredits, branch, numSem, scheme);
 
         return NextResponse.json({ success: true, subject: data });
     } catch (err) {
@@ -143,7 +144,7 @@ export async function PUT(req) {
         if (error) throw error;
 
         // Cascade updated credits and recalculate SGPA/CGPA strictly for students of the specified branch
-        const affectedCount = await cascadeCreditUpdate(cleanCode, numCredits, branch, semester);
+        const affectedCount = await cascadeCreditUpdate(cleanCode, numCredits, branch, semester, scheme);
 
         return NextResponse.json({
             success: true,
@@ -220,7 +221,7 @@ function matchesBranch(usn, studentBranch, targetBranch) {
  * Cascades updated credit values to subject_marks and dynamically recalculates SGPA/CGPA
  * strictly for students belonging to the target branch.
  */
-async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null, targetSemester = null) {
+async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null, targetSemester = null, scheme = '2022') {
     try {
         // 1. Fetch all subject_marks matching this subject code
         let marksQuery = supabaseAdmin
@@ -284,6 +285,7 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
 
         const pairs = Array.from(pairsMap.values());
         const excludeGrades = new Set(['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE']);
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
 
         // 4. For each pair, recalculate SGPA and update results & academic_remarks
         for (const { usn, semester } of pairs) {
@@ -294,6 +296,7 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
                 .eq('semester', semester);
 
             if (!semMarks || semMarks.length === 0) continue;
+            const studentBranch = normalizeBranchCode(profileMap.get(usn) || targetBranch, usn);
 
             // CRITICAL: Reset accumulators for each (usn, semester) pair
             let tc = 0, tcp = 0, backlogs = 0;
@@ -302,13 +305,16 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
                 const g = (m.grade || 'F').trim().toUpperCase();
                 if (excludeGrades.has(g)) return;
 
-                const details = getGradeDetails(m, '2022');
-                // DB credit is primary; JS catalog is fallback
-                const dbCr = Number(m.credits);
-                const offCr = getOfficialCredit(m.subject_code, '2022', null, Number(semester));
-                const cr = dbCr > 0 ? dbCr : (offCr !== null ? offCr : 0);
+                const details = getGradeDetails(m, scheme);
+                // Credit is always resolved fresh from subject_catalog — the
+                // stored subject_marks.credits value is never trusted.
+                const code = (m.subject_code || '').trim().toUpperCase();
+                const resolved = isAuditCourse(code)
+                    ? { credits: 0, source: 'audit' }
+                    : resolveSubjectCredit(catalogIndex, { scheme, branch: studentBranch, semester: Number(semester), subject_code: code });
+                const cr = resolved.credits;
 
-                if (cr === 0) return; // Non-credit audit course
+                if (cr === null || cr === 0) return; // Unresolved or non-credit audit course
 
                 // Use canonical isFailedSubject for consistent backlog detection
                 const isFail = isFailedSubject(m);

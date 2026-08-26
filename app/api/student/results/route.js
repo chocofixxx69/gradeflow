@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireStudent } from '../../../../lib/server-session';
 import { computeBacklogs } from '../../../../lib/analytics-data';
-import { getOfficialCredit } from '../../../../lib/vtu-curriculum-catalog';
+import { fetchCatalogIndex, resolveSubjectCredit } from '../../../../lib/subjectCreditResolver';
+import { isAuditCourse, normalizeBranch } from '../../../../lib/vtuAcademicEngine';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -31,6 +32,13 @@ export async function GET(req) {
             .maybeSingle();
 
         const studentScheme = student?.scheme || '2022';
+        const studentBranch = normalizeBranch(student?.branch, usn);
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+
+        function resolveCredits(code, semester) {
+            if (isAuditCourse(code)) return { credits: 0, source: 'audit' };
+            return resolveSubjectCredit(catalogIndex, { scheme: studentScheme, branch: studentBranch, semester, subject_code: code });
+        }
 
         const [
             { data: studentMarks },
@@ -49,7 +57,8 @@ export async function GET(req) {
         if (studentMarks) {
             studentMarks.forEach(m => {
                 const code = (m.subject_code || m.code || '').trim().toUpperCase();
-                const offCr = getOfficialCredit(code, studentScheme);
+                const semester = Number(m.semester) || 1;
+                const resolved = resolveCredits(code, semester);
                 allMarks.push({
                     id: m.id,
                     subject_code: code,
@@ -58,8 +67,9 @@ export async function GET(req) {
                     see_marks: m.see_marks ?? m.external ?? 0,
                     total_marks: m.total_marks ?? m.total ?? 0,
                     grade: (m.grade || '').trim().toUpperCase(),
-                    credits: offCr !== null ? offCr : (Number(m.credits) || 0),
-                    semester: Number(m.semester) || 1,
+                    credits: resolved.credits,
+                    credit_source: resolved.source,
+                    semester,
                     source: 'manual'
                 });
             });
@@ -68,10 +78,11 @@ export async function GET(req) {
         if (subjectMarks) {
             subjectMarks.forEach(m => {
                 const code = (m.subject_code || m.code || '').trim().toUpperCase();
-                // DB credit (m.credits, synced from subject_catalog) is primary; JS catalog is fallback
-                const dbCr = Number(m.credits);
-                const offCr = getOfficialCredit(code, studentScheme);
-                const resolvedCredits = dbCr > 0 ? dbCr : (offCr !== null ? offCr : 0);
+                const semester = Number(m.semester) || 1;
+                // Credit is always resolved fresh from subject_catalog — the stored
+                // subject_marks.credits value (written once at scrape time) is never
+                // trusted; see lib/subjectCreditResolver.js for why.
+                const resolved = resolveCredits(code, semester);
                 allMarks.push({
                     id: m.id,
                     subject_code: code,
@@ -80,8 +91,9 @@ export async function GET(req) {
                     see_marks: m.see_marks ?? m.external ?? 0,
                     total_marks: m.total_marks ?? m.total ?? 0,
                     grade: (m.grade || '').trim().toUpperCase(),
-                    credits: resolvedCredits,
-                    semester: Number(m.semester) || 1,
+                    credits: resolved.credits,
+                    credit_source: resolved.source,
+                    semester,
                     announced_date: m.announced_date || null,
                     exam_date: m.announced_date || m.results?.exam_name || 'N/A',
                     exam_name: m.announced_date || m.results?.exam_name || 'Scraped Record',

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { EmptyState, LoadingState, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
 import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject } from '../../lib/vtuGrades';
+import { normalizeSubjectResult } from '../../lib/vtuAcademicEngine';
 import { supabase } from '../../lib/supabase';
 import {
     ResponsiveContainer,
@@ -60,23 +61,22 @@ function AnalyticsContent() {
         const poolItems = Object.values(subjectsPool);
         const validSubs = poolItems.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
 
-        // Credit-weighted SGPA — same formula as Dashboard
+        // Credit-weighted SGPA — canonical calculation
         let totalCredits = 0, totalCreditPoints = 0, backlogs = 0;
         validSubs.forEach(m => {
-            const grade = (m.grade || '').trim().toUpperCase();
-            const credits = Number(m.credits) || 3;
-            const totalScore = m.total_marks ?? m.total ?? m.marks ?? null;
-            const gp = getGradePoint(grade, '2022', totalScore, m.see_marks ?? m.external ?? null);
-            const isFail = isFailedSubject(m);
+            const norm = normalizeSubjectResult(m, '2022');
+            if (norm.isAudit || norm.isUnresolved) return;
 
-            totalCredits += credits;
-            totalCreditPoints += (isFail ? 0 : gp) * credits;
-            if (isFail) backlogs++;
+            if (norm.credits > 0) {
+                totalCredits += norm.credits;
+                totalCreditPoints += norm.weightedPoints;
+            }
+            if (norm.isFailed) backlogs++;
         });
 
         const sgpa = totalCredits > 0 ? totalCreditPoints / totalCredits : 0;
 
-        return { sgpa, totalCredits: totalCredits || 20, backlogs };
+        return { sgpa, totalCredits, backlogs };
     };
 
     useEffect(() => {

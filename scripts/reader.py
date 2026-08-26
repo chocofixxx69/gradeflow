@@ -9,39 +9,15 @@ def clean_text(text):
         return ""
     return re.sub(r'\s+', ' ', str(text)).strip()
 
-# Common VTU subject credit mapping (from 2022 scheme)
-CREDIT_MAP = {
-    # Common subjects typically have these credits
-    'LAB': 1, 'LABORATORY': 1, 'PRACTICAL': 1,
-    'PROJECT': 4, 'INTERNSHIP': 2, 'SEMINAR': 2,
-    'MINI PROJECT': 2, 'MINI-PROJECT': 2,
-}
-
-def guess_credits(code, name):
-    """Guess credits from subject code/name patterns"""
-    name_upper = (name or '').upper()
-    code_upper = (code or '').upper()
-    
-    # Lab subjects usually 1-2 credits
-    if any(kw in name_upper for kw in ['LAB', 'LABORATORY', 'PRACTICAL']):
-        return 1
-    # Projects
-    if 'PROJECT' in name_upper:
-        return 4 if 'MINI' not in name_upper else 2
-    # Internship/Seminar
-    if any(kw in name_upper for kw in ['INTERNSHIP', 'SEMINAR', 'RESEARCH']):
-        return 2
-    # Audit courses
-    if any(kw in name_upper for kw in ['AUDIT', 'MOOC', 'YOGA', 'NSS', 'SPORTS']):
-        return 0
-    # Constitution, Kannada, etc. - typically 1 credit
-    if any(kw in name_upper for kw in ['CONSTITUTION', 'KANNADA', 'ENVIRONMENTAL']):
-        return 1
-    # Default engineering subjects: 3-4 credits
-    # If code ends with 'L' it might be a lab
-    if code_upper and code_upper[-1] == 'L':
-        return 1
-    return 3  # Default
+# NOTE: this script only extracts what's literally printed on the uploaded PDF.
+# It has no DB access (no USN -> scheme/branch -> subject_catalog lookup is
+# possible from a stateless subprocess), so it cannot resolve credits against
+# the canonical catalog itself — lib/pdfParser.js's caller is responsible for
+# that. When the PDF's own credit column can't be read, this returns `None`
+# rather than guessing from the subject name/code (VTU credit values aren't
+# derivable from a name pattern — e.g. "Project Phase I" is 2 credits in one
+# scheme's semester and 3 in another) — a guessed number here would silently
+# corrupt every downstream SGPA calculation.
 
 def extract_vtu_data(pdf_path_or_stream):
     results = {
@@ -194,11 +170,11 @@ def extract_vtu_data(pdf_path_or_stream):
                         # Extract fields
                         name = row[header_map["name"]] if "name" in header_map and header_map["name"] < len(row) else code
                         
-                        # Credits
+                        # Credits — only trust what was actually printed in the
+                        # PDF's own credits column; never guess.
                         credits_str = row[header_map["credits"]] if "credits" in header_map and header_map["credits"] < len(row) else ""
-                        credits = int(re.sub(r'\D', '', str(credits_str)) or 0) if credits_str else 0
-                        if credits == 0 or credits > 10:
-                            credits = guess_credits(code, name)
+                        parsed_credits = int(re.sub(r'\D', '', str(credits_str)) or 0) if credits_str else 0
+                        credits = parsed_credits if 0 < parsed_credits <= 10 else None
 
                         internal = row[header_map["internal"]] if "internal" in header_map and header_map["internal"] < len(row) else "0"
                         external = row[header_map["external"]] if "external" in header_map and header_map["external"] < len(row) else "0"
@@ -245,10 +221,10 @@ def extract_vtu_data(pdf_path_or_stream):
                     groups = match.groups()
                     if len(groups) == 7:
                         code, name, credits_s, int_m, ext_m, tot_m, grd = groups
-                        cred = int(credits_s) if int(credits_s) <= 10 else 3
+                        cred = int(credits_s) if 0 < int(credits_s) <= 10 else None
                     else:
                         code, name, int_m, ext_m, tot_m, grd = groups
-                        cred = guess_credits(code, name)
+                        cred = None  # Credits column wasn't captured by this pattern — unresolved, not guessed.
                     
                     if not any(s["code"] == code.upper() for s in all_subjects):
                         all_subjects.append({

@@ -105,7 +105,11 @@ export async function POST(req) {
             let semPts = 0, semCr = 0;
             r.subjects.forEach(s => {
                 const grade = (s.grade || '').trim();
-                const credits = s.credits || 3;
+                // Credit comes only from what was extracted off the actual PDF —
+                // a subject with no extractable credit is excluded from the SGPA
+                // sum, never defaulted to 3.
+                const credits = (s.credits !== null && s.credits !== undefined) ? Number(s.credits) : null;
+                if (credits === null) return;
                 semPts += (GP[grade] || 0) * credits;
                 semCr += credits;
             });

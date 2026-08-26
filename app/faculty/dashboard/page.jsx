@@ -328,10 +328,11 @@ function FacultyDashboardView({
                                                             variant="secondary"
                                                             density="compact"
                                                             iconStart="download"
-                                                            onClick={(e) => {
+                                                            onClick={async (e) => {
                                                                 e.stopPropagation();
-                                                                import('../../../lib/generatePDF').then(({ generateResultPDF }) => {
-                                                                    generateResultPDF({
+                                                                try {
+                                                                    const { generateResultPDF } = await import('../../../lib/generatePDF');
+                                                                    await generateResultPDF({
                                                                         studentName: student.name || student.usn,
                                                                         usn: student.usn,
                                                                         branch: student.branch || '',
@@ -339,7 +340,9 @@ function FacultyDashboardView({
                                                                         semesterMarks: { [sem]: subjects },
                                                                         cgpa: sgpas[sem]
                                                                     });
-                                                                }).catch(err => setMessage('Error generating semester PDF: ' + err.message));
+                                                                } catch (err) {
+                                                                    setMessage('Error generating semester PDF: ' + err.message);
+                                                                }
                                                             }}
                                                         >
                                                             Sem {sem} PDF
@@ -637,7 +640,7 @@ function FacultyDashboardContent() {
             ];
 
             // ── Run Canonical Academic Calculation Pipeline ──
-            const record = calculateAcademicRecord(allMarksRaw, profile);
+            const record = await calculateAcademicRecord(allMarksRaw, profile);
 
             setStudent(record.profile);
             setMarks(record.marksBySemester);
@@ -801,7 +804,7 @@ function FacultyDashboardContent() {
         setPdfLoading(true);
         try {
             const { generateResultPDF } = await import('../../../lib/generatePDF');
-            generateResultPDF({
+            await generateResultPDF({
                 studentName: student.name || student.usn,
                 usn: student.usn,
                 branch: student.branch || '',

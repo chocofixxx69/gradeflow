@@ -21,9 +21,15 @@ import ssl
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from scrape_syllabus import CATALOG_2022, CATALOG_2025 # type: ignore
+    # Kept only as a rough initial-parse guess (see _parse_row) — the
+    # authoritative credit, resolved from the live subject_catalog table with
+    # scheme/branch/semester awareness, is applied in _save_db before anything
+    # is persisted. See backend/scraper/credit_resolver.py.
     CREDIT_MAP = {r[0]: r[2] for r in CATALOG_2022 + CATALOG_2025}
 except ImportError:
     CREDIT_MAP = {}
+
+from .credit_resolver import fetch_catalog_index, resolve_credits
 
 # Global workaround for SSL issues
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -467,13 +473,45 @@ def _parse_branch(usn):
     mapping = {
         "CS": "Computer Science (CSE)", "IS": "Information Science (ISE)",
         "EC": "Electronics & Comm (ECE)", "EE": "Electrical & Electronics (EEE)",
-        "ME": "Mechanical Engineering", "CV": "Civil Engineering", 
+        "ME": "Mechanical Engineering", "CV": "Civil Engineering",
         "AI": "AI & Machine Learning (AIML)", "DS": "Data Science",
         "CB": "Comp. Science & Business", "AD": "AI & Data Science",
         "CI": "AI & Machine Learning (AIML)", "CD": "Data Science",
         "RI": "Robotics & AI"
     }
     return mapping.get(code, code)
+
+# Short branch code (matching subject_catalog.branch: CS/AI/CV/DS/EC/EE/ME/RI)
+# for credit resolution — mirrors lib/vtuAcademicEngine.js's normalizeBranch.
+_BRANCH_CODE_MAP = {
+    "CS": "CS", "CI": "AI", "AI": "AI", "DS": "DS", "CD": "DS",
+    "EC": "EC", "EE": "EE", "ME": "ME", "CV": "CV", "RI": "RI",
+}
+
+def _parse_branch_code(usn):
+    if not usn or len(usn) < 7: return "CS"
+    return _BRANCH_CODE_MAP.get(usn[5:7].upper(), "CS")
+
+_catalog_index_cache = None
+
+def _get_catalog_index():
+    """Fetches subject_catalog once per process and caches it — every
+    _save_db/_recalculate_remarks call in this scrape run reuses it."""
+    global _catalog_index_cache
+    if _catalog_index_cache is None:
+        _catalog_index_cache = fetch_catalog_index(supabase)
+    return _catalog_index_cache
+
+def _get_student_scheme(usn):
+    """Looks up the student's known scheme; defaults to '2022' when unknown,
+    matching the app-wide default (lib/vtuAcademicEngine.js and friends)."""
+    try:
+        res = supabase.table("students").select("scheme").eq("usn", usn).limit(1).execute()
+        if res.data and res.data[0].get("scheme"):
+            return res.data[0]["scheme"]
+    except Exception:
+        pass
+    return "2022"
 
 def _save_db(usn, name, sem, url, subs):
     try:
@@ -482,47 +520,46 @@ def _save_db(usn, name, sem, url, subs):
         updates = {"usn": usn, "name": name, "semester": sem}
         if branch: updates["branch"] = branch
         
-        # Dynamic Catalog Sync: Fetch subject_catalog credits for these subject codes
-        codes = [s["subject_code"] for s in subs if s.get("subject_code")]
-        catalog_credits = {}
-        if codes:
-            try:
-                c_resp = supabase.table("subject_catalog").select("subject_code, credits").in_("subject_code", codes).execute()
-                if c_resp.data:
-                    catalog_credits = {r["subject_code"]: r["credits"] for r in c_resp.data if r.get("credits") is not None}
-            except Exception:
-                pass
+        # Canonical credit resolution: subject_catalog is the ONLY credit
+        # authority (see backend/scraper/credit_resolver.py — same algorithm
+        # as lib/subjectCreditResolver.js: exact code match, then VTU's
+        # elective-family variant conventions). Never trusts whatever digit
+        # was parsed off the raw HTML, never defaults to 3 — unresolved
+        # subjects are written with credits=None and excluded from SGPA.
+        scheme = _get_student_scheme(usn)
+        branch_code = _parse_branch_code(usn)
+        catalog_index = _get_catalog_index()
 
         for s in subs:
             code = s.get("subject_code")
-            if code and code in catalog_credits:
-                s["credits"] = catalog_credits[code]
+            resolved_cr, _source = resolve_credits(catalog_index, scheme, branch_code, sem, code)
+            s["credits"] = resolved_cr
 
         # Calc SGPA with Credits and True Points!
         tc = 0
         tcp = 0
         exclude_grades = {"PP", "NP", "W", "DX", "AU"}
-        
+
         for s in subs:
             g = s.get("grade", "F").strip().upper()
             if g in exclude_grades: continue
-            
+
             pts = _get_true_grade_point(g, s.get("total", 0), ext_m=s.get("external", None))
             cr = s.get("credits")
-            if cr is None: cr = 3
-            
+            if cr is None: continue  # Unresolved — excluded from SGPA, not guessed.
+
             tc += cr
             tcp += (pts * cr)
-            
+
         sgpa = round(tcp / tc, 2) if tc > 0 else 0.0 # type: ignore
-        
+
         exam_alias = url.split('/')[-2] if ('/' in url) else "Scraped Record"
         
         # Smart Sync: Fetch existing marks for this USN and Semester
         existing_res = supabase.table("subject_marks").select("subject_code, passed").eq("usn", usn).execute()
         already_passed = {r["subject_code"] for r in existing_res.data if r["passed"]} if existing_res.data else set()
 
-        res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 3) for s in subs)}, on_conflict="usn,exam_url").execute()
+        res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 0) for s in subs)}, on_conflict="usn,exam_url").execute()
         if res.data:
             r_id = res.data[0]["id"]
             
@@ -549,29 +586,33 @@ def _recalculate_remarks(usn):
     try:
         marks = supabase.table("subject_marks").select("*").eq("usn", usn).execute().data
         if not marks: return
-        student = supabase.table("students").select("id").eq("usn", usn).execute().data
+        student = supabase.table("students").select("id, scheme").eq("usn", usn).execute().data
         if not student: return
         sid = student[0]["id"]
-        
+        scheme = student[0].get("scheme") or "2022"
+        branch_code = _parse_branch_code(usn)
+        catalog_index = _get_catalog_index()
+
         exclude_grades = {"PP", "NP", "W", "DX", "AU"}
         sems = set(m["semester"] for m in marks if m.get("semester"))
         for s in sems:
             s_marks = [m for m in marks if m["semester"] == s]
-            
+
             backlogs = [m for m in s_marks if str(m.get("is_backlog")).lower() == 'true' or m.get("grade", "F").strip().upper() in ("F", "A", "AB", "ABSENT", "X", "NE")]
-            
-            # Recalculate SGPA
+
+            # Recalculate SGPA — credit resolved fresh from subject_catalog,
+            # never trusted from the stored subject_marks.credits column.
             tc = 0
             tcp = 0
             for m in s_marks:
                 g = m.get("grade", "F").strip().upper()
                 if g in exclude_grades: continue
                 pts = _get_true_grade_point(g, m.get("total", 0), ext_m=m.get("see_marks", m.get("external", None)))
-                cr = m.get("credits")
-                if cr is None: cr = 3
+                cr, _source = resolve_credits(catalog_index, scheme, branch_code, s, m.get("subject_code"))
+                if cr is None: continue  # Unresolved — excluded, not guessed.
                 tc += cr
                 tcp += (pts * cr)
-                
+
             sgpa = round(tcp / tc, 2) if tc > 0 else 0.0 # type: ignore
             
             supabase.table("academic_remarks").upsert({"student_id": sid, "student_usn": usn, "semester": s, "sgpa": sgpa, "backlog_count": len(backlogs), "is_all_clear": len(backlogs) == 0}, on_conflict="student_id,semester").execute()
