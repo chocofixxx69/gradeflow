@@ -126,7 +126,6 @@ export function ClassesContent({ embedded = false }) {
     const [transferTargetClassId, setTransferTargetClassId] = useState('');
     const [transferMode, setTransferMode] = useState('move');
     const [transferLoading, setTransferLoading] = useState(false);
-    const [drawerTab, setDrawerTab] = useState('marks');
     const [branches, setBranches] = useState([]);
     const [schemes] = useState(['2022', '2025']);
     const [exportSemester, setExportSemester] = useState(4);

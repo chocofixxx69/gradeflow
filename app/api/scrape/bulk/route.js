@@ -31,10 +31,12 @@ export async function POST(req) {
 
         console.log(`[BULK API] Received request for ${usns.length} USNs.`);
 
-        // Insert into scraper_jobs queue 
-        // We do chunks to avoid overwhelming the database insert
+        // Insert into scraper_jobs queue in chunks, tracking how many rows
+        // actually committed so a mid-way failure can be reported accurately
+        // instead of leaving the client assuming nothing was queued.
         const chunkSize = 20;
         let totalInserted = 0;
+        let failedAtChunk = null;
 
         for (let i = 0; i < usns.length; i += chunkSize) {
             const chunk = usns.slice(i, i + chunkSize);
@@ -46,25 +48,39 @@ export async function POST(req) {
                 // Note: You could adapt your schema to store the target URL per job if needed
             }));
 
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('scraper_jobs')
                 .insert(insertPayload);
 
             if (error) {
-                console.error("[BULK API] DB Insert Error:", error);
-                throw error;
+                console.error('[BULK API] DB Insert Error at chunk starting index', i, error);
+                failedAtChunk = i;
+                break;
             }
             totalInserted += chunk.length;
+        }
+
+        if (failedAtChunk !== null) {
+            return NextResponse.json({
+                status: totalInserted > 0 ? 'partial' : 'error',
+                message: totalInserted > 0
+                    ? `Queued ${totalInserted} of ${usns.length} USNs before a database error occurred. The remaining ${usns.length - totalInserted} were NOT queued.`
+                    : 'Failed to queue any USNs — a database error occurred before the first chunk completed.',
+                queued: totalInserted,
+                requested: usns.length,
+            }, { status: totalInserted > 0 ? 200 : 500 });
         }
 
         return NextResponse.json({
             status: 'success',
             message: `Successfully queued ${totalInserted} USNs for background scraping.`,
+            queued: totalInserted,
+            requested: usns.length,
             note: "The Playwright worker will process these sequentially mapping 'AB' as Backlogs."
         })
 
     } catch (err) {
         console.error("[BULK API] Execution Error:", err)
-        return NextResponse.json({ error: 'Internal server error.', details: err.message }, { status: 500 })
+        return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
     }
 }

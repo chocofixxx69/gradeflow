@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { getStudentAuthHeaders } from '../lib/api/client';
 
 export default function PDFUpload({ onExtracted }) {
     const [file, setFile] = useState(null);
@@ -36,7 +37,7 @@ export default function PDFUpload({ onExtracted }) {
             const fd = new FormData();
             fd.append('pdf', file);
 
-            const res = await fetch('/api/parse-pdf', { method: 'POST', body: fd });
+            const res = await fetch('/api/parse-pdf', { method: 'POST', headers: getStudentAuthHeaders(), body: fd });
             const json = await res.json();
 
             if (!json.success) throw new Error(json.detail || json.error || 'Parsing failed.');

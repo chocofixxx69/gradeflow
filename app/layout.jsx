@@ -1,13 +1,13 @@
-import ThemeProvider from '../components/ThemeProvider';
 import ClientLayoutWrapper from '../components/ClientLayoutWrapper';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 
-const jakarta = Plus_Jakarta_Sans({
+const inter = Inter({
     subsets: ['latin'],
-    weight: ['400', '500', '600', '700', '800'],
-    variable: '--font-jakarta',
+    weight: ['400', '500', '600', '700'],
+    variable: '--font-inter',
 });
+
 
 // Root metadata should be in Server Components
 export const metadata = {
@@ -33,11 +33,10 @@ export default function RootLayout({ children }) {
                     rel="stylesheet"
                 />
             </head>
-            <body className={jakarta.className} suppressHydrationWarning>
-                <ThemeProvider>
-                    <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
-                </ThemeProvider>
+            <body className={inter.className} suppressHydrationWarning>
+                <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
             </body>
+
         </html>
     );
 }

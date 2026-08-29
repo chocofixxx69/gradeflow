@@ -4,15 +4,16 @@ import { requireStaff } from '../../../lib/server-session';
 
 export async function POST(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const body = await req.json();
-        const { action, usn, facultyId, data } = body;
+        const { action, usn, data } = body;
 
-        // 1. Log action in Supabase 'faculty_activity'
+        // 1. Log action in Supabase 'faculty_activity' — attributed to the
+        // authenticated session, never a client-supplied id.
         await supabase.from('faculty_activity').insert({
-            faculty_id: facultyId || null,
+            faculty_id: session.sub,
             faculty_name: 'System Hook',
             target_usn: usn,
             action_type: action,

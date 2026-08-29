@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, getStudentAuthHeaders } from '@/lib/api/client';
 import { supabase } from '@/lib/supabase';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, Stack } from '@/components/ui/Foundation';
@@ -93,7 +93,7 @@ function SettingsContent() {
                 try {
                     await apiRequest('/api/student/settings', {
                         method: 'PATCH',
-                        headers: { 'x-student-usn': session?.usn || '' },
+                        headers: getStudentAuthHeaders(session),
                         body: JSON.stringify({ photo_url: base64 })
                     });
                     setPhotoUrl(base64);
@@ -122,7 +122,7 @@ function SettingsContent() {
         try {
             await apiRequest('/api/student/settings', {
                 method: 'PATCH',
-                headers: { 'x-student-usn': session?.usn || '' },
+                headers: getStudentAuthHeaders(session),
                 body: JSON.stringify({
                     full_name: editName,
                     email: editEmail,

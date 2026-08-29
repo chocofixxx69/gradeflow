@@ -34,7 +34,7 @@ export async function POST(req) {
 
             if (error) {
                 console.error('[Faculty Approval API] Error:', error);
-                return NextResponse.json({ error: error.message }, { status: 500 });
+                return NextResponse.json({ error: 'Failed to approve faculty request.' }, { status: 500 });
             }
 
             return NextResponse.json({ success: true, key: accessKey, data });
@@ -48,7 +48,7 @@ export async function POST(req) {
 
             if (error) {
                 console.error('[Faculty Rejection API] Error:', error);
-                return NextResponse.json({ error: error.message }, { status: 500 });
+                return NextResponse.json({ error: 'Failed to reject faculty request.' }, { status: 500 });
             }
 
             return NextResponse.json({ success: true, data });

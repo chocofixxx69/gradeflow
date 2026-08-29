@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiRequest } from '../../lib/api/client';
+import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { EmptyState, LoadingState, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
@@ -99,7 +99,7 @@ function AnalyticsContent() {
     const fetchStudentAnalytics = async (usn) => {
         setLoading(true);
         try {
-            const res = await apiRequest('/api/student/results', { headers: { 'x-student-usn': usn } });
+            const res = await apiRequest('/api/student/results', { headers: getStudentAuthHeaders() });
             const marks1 = [];
             const marks2 = res?.subjectMarks || [];
 

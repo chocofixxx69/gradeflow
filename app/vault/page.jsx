@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, getStudentAuthHeaders } from '@/lib/api/client';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
@@ -69,6 +69,7 @@ function BatchUploadContent() {
 
             const res = await fetch('/api/batch-parse', {
                 method: 'POST',
+                headers: getStudentAuthHeaders(),
                 body: fd,
             });
             const json = await res.json();
@@ -126,7 +127,7 @@ function BatchUploadContent() {
                             if (firstName && firstName !== usn && firstName.length > 2) {
                                 await apiRequest('/api/student/profile', {
                                     method: 'PATCH',
-                                    headers: { 'x-student-usn': usn },
+                                    headers: getStudentAuthHeaders(student),
                                     body: JSON.stringify({ name: firstName, scheme })
                                 });
                             }

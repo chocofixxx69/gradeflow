@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { parsePDF } from '../../../lib/pdfParser';
 import { classify } from '../../../lib/vtuGrades';
+import { requireAnyUser } from '../../../lib/server-session';
 import crypto from 'crypto';
 
 export async function POST(req) {
+    const { error: authError } = requireAnyUser(req);
+    if (authError) return authError;
+
     try {
         const formData = await req.formData();
         const files = formData.getAll('pdfs');

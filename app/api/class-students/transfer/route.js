@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getAdminClient } from '../../../../lib/analytics-data';
+import { requireStaff } from '../../../../lib/server-session';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseAdmin = getAdminClient();
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const body = await req.json().catch(() => ({}));
         const { source_class_id, target_class_id, usns: rawUsns, mode = 'move', transfer_all = false } = body || {};
@@ -96,6 +97,6 @@ export async function POST(req) {
         });
     } catch (err) {
         console.error('[POST /api/class-students/transfer]', err);
-        return NextResponse.json({ error: err.message || 'Failed to transfer student(s).' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to transfer student(s).' }, { status: 500 });
     }
 }

@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import Tesseract from 'tesseract.js';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { getAdminClient } from '../../../lib/analytics-data';
+import { requireStudent } from '../../../lib/server-session';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseAdmin = getAdminClient();
 
 export async function POST(request) {
+    const { error: authError } = requireStudent(request);
+    if (authError) return authError;
+
     try {
         const formData = await request.formData();
         const file = formData.get('image') || formData.get('file');

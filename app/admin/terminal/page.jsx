@@ -67,6 +67,8 @@ function AdminPanelContent() {
     const [loadError, setLoadError] = useState('');
     const [actionId, setActionId] = useState(null);
     const [confirmingReject, setConfirmingReject] = useState(null);
+    const [confirmingPasswordReset, setConfirmingPasswordReset] = useState(false);
+    const [resettingPassword, setResettingPassword] = useState(false);
     const [search, setSearch] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [studentDetails, setStudentDetails] = useState(null);
@@ -209,9 +211,7 @@ function AdminPanelContent() {
 
     const resetStudentCredentials = async () => {
         if (!selectedStudent) return;
-        const confirmReset = window.confirm(`WARNING: This will reset the password and Recovery PIN for ${selectedStudent.name || selectedStudent.usn}. They will need to 'Activate' their account again. Proceed?`);
-        if (!confirmReset) return;
-
+        setResettingPassword(true);
         try {
             const { error } = await supabase
                 .from('students')
@@ -226,6 +226,9 @@ function AdminPanelContent() {
         } catch (err) {
             console.error('Reset error:', err);
             alert('❌ Failed to reset credentials.');
+        } finally {
+            setResettingPassword(false);
+            setConfirmingPasswordReset(false);
         }
     };
 
@@ -1000,7 +1003,7 @@ function AdminPanelContent() {
                         </div>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
-                            <button style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial' }} onClick={resetStudentCredentials}>
+                            <button style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial' }} onClick={() => setConfirmingPasswordReset(true)}>
                                 <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>lock_reset</span>
                                 Reset Password
                             </button>
@@ -1009,6 +1012,16 @@ function AdminPanelContent() {
                                 Delete Student
                             </button>
                         </div>
+
+                        <ConfirmDialog
+                            open={confirmingPasswordReset}
+                            title="Reset password and Recovery PIN?"
+                            description={`This will reset the password and Recovery PIN for ${selectedStudent?.name || selectedStudent?.usn}. They will need to 'Activate' their account again.`}
+                            confirmLabel="Reset"
+                            busy={resettingPassword}
+                            onCancel={() => setConfirmingPasswordReset(false)}
+                            onConfirm={resetStudentCredentials}
+                        />
 
                         <div style={c.tabRow}>
                             {['marks', 'documents'].map(t => (

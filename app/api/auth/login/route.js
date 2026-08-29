@@ -1,10 +1,12 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { createSessionCookie } from '../../../../lib/server-session';
+import bcrypt from 'bcryptjs';
+import { createSessionCookie, signStudentSession } from '../../../../lib/server-session';
+import { verifyStudentPassword } from '../../../../lib/student-auth';
+import { checkRateLimit, getClientIp } from '../../../../lib/rate-limit';
 
 const ADMIN_PASSWORD_SALT = 'vtu_calc_secure_2026';
-const LOCAL_SESSION_SECRET = '_gradeflow_secret_v1_2026';
 
 let supabaseAdmin = null;
 
@@ -24,10 +26,6 @@ function getSupabaseAdmin() {
 
 function hashAdminPassword(password) {
     return createHash('sha256').update(`${password}${ADMIN_PASSWORD_SALT}`).digest('hex');
-}
-
-function hashLocalSessionSignature(value) {
-    return createHash('sha256').update(`${value}${LOCAL_SESSION_SECRET}`).digest('hex');
 }
 
 function safeCompareHex(a, b) {
@@ -99,7 +97,8 @@ async function loginFaculty({ email, password }) {
         return failureResponse('No approved faculty account found for this email.', 401);
     }
 
-    if (faculty.password !== password) {
+    const passwordMatches = await bcrypt.compare(password, faculty.password || '');
+    if (!passwordMatches) {
         return failureResponse('The password you entered is incorrect.', 401);
     }
 
@@ -109,7 +108,6 @@ async function loginFaculty({ email, password }) {
         full_name: faculty.full_name,
         email: faculty.email,
         department: faculty.department,
-        signature: hashLocalSessionSignature(faculty.email + faculty.id),
     };
 
     return successResponse(
@@ -128,11 +126,12 @@ async function loginStudent({ usn, email, password }) {
     const cleanUSN = (rawInput.includes('@') ? rawInput.split('@')[0] : rawInput).toUpperCase();
 
     if (!cleanUSN) return failureResponse('USN or email is required.', 400);
+    if (!password) return failureResponse('Password is required.', 400);
 
     const supabase = getSupabaseAdmin();
     const { data: student, error } = await supabase
         .from('students')
-        .select('*')
+        .select('id, usn, name, branch, scheme, password_hash')
         .eq('usn', cleanUSN)
         .maybeSingle();
 
@@ -140,28 +139,37 @@ async function loginStudent({ usn, email, password }) {
     if (!student) return failureResponse('USN not found. Please activate your account first.', 404);
     if (!student.password_hash) return failureResponse('Account not activated yet. Please activate your account.', 400);
 
-    const hashedInput = hashLocalSessionSignature(password);
-    if (student.password_hash !== hashedInput && student.password_hash !== password) {
+    const passwordMatches = await verifyStudentPassword(password, student.password_hash);
+    if (!passwordMatches) {
         return failureResponse('Incorrect password. Please try again.', 401);
     }
 
-    const localSession = {
+    // Students don't get the httpOnly staff cookie — their session is the
+    // returned JSON, stored client-side and replayed via x-student-* headers.
+    const session = {
         usn: student.usn,
         id: student.id,
         name: student.name,
         branch: student.branch,
         scheme: student.scheme,
         role: 'student',
+        signature: signStudentSession({ usn: student.usn, id: student.id }),
     };
 
-    return successResponse(
-        { success: true, role: 'student', session: localSession },
-        { sub: student.id, usn: student.usn, role: 'student' }
-    );
+    return NextResponse.json({ success: true, role: 'student', session });
 }
 
 export async function POST(req) {
     try {
+        const ip = getClientIp(req);
+        const { allowed, retryAfterSeconds } = checkRateLimit(`login:${ip}`, { limit: 10, windowMs: 60_000 });
+        if (!allowed) {
+            return NextResponse.json(
+                { success: false, error: 'Too many login attempts. Please try again shortly.' },
+                { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+            );
+        }
+
         const body = await req.json();
 
         if (body?.role === 'admin') {
@@ -180,7 +188,7 @@ export async function POST(req) {
     } catch (err) {
         console.error('[POST /api/auth/login]', err);
         return NextResponse.json(
-            { success: false, error: err.message || 'Authentication service unavailable.' },
+            { success: false, error: 'Authentication service unavailable. Please try again.' },
             { status: 500 }
         );
     }

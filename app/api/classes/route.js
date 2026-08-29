@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { fetchAllPaginated } from '../../../lib/supabase-utils';
-import { getStaffSession } from '../../../lib/server-session';
+import { requireStaff } from '../../../lib/server-session';
+import { getAdminClient } from '../../../lib/analytics-data';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseAdmin = getAdminClient();
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +41,9 @@ export async function GET(req) {
 
 // POST — create a new class
 export async function POST(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const body = await req.json().catch(() => ({}));
         let { name, branch, semester, scheme, faculty_id, section, batch, academic_year } = body || {};
@@ -52,9 +52,8 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Class name is required.' }, { status: 400 });
         }
 
-        const staff = getStaffSession(req);
         if (!faculty_id || faculty_id === 'all' || faculty_id === 'shared') {
-            faculty_id = staff?.sub || req.headers?.get?.('x-faculty-id') || null;
+            faculty_id = null;
         }
 
         // Fallback for faculty_id if missing from client
@@ -87,18 +86,21 @@ export async function POST(req) {
 
         if (error) {
             console.error('[POST /api/classes] Supabase error:', error);
-            return NextResponse.json({ error: error.message || 'Failed to create class in database.' }, { status: 500 });
+            return NextResponse.json({ error: 'Failed to create class in database.' }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, class: data });
     } catch (err) {
         console.error('[POST /api/classes]', err);
-        return NextResponse.json({ error: err.message || 'Failed to create class.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to create class.' }, { status: 500 });
     }
 }
 
 // PUT — update a class
 export async function PUT(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const { id, name, branch, semester, scheme, faculty_id, section, batch, academic_year } = await req.json().catch(() => ({}));
         if (!id) return NextResponse.json({ error: 'id required.' }, { status: 400 });
@@ -150,12 +152,15 @@ export async function PUT(req) {
         });
     } catch (err) {
         console.error('[PUT /api/classes]', err);
-        return NextResponse.json({ error: err.message || 'Failed to update class.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to update class.' }, { status: 500 });
     }
 }
 
 // DELETE — delete a class
 export async function DELETE(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const { id } = await req.json().catch(() => ({}));
         if (!id) return NextResponse.json({ error: 'Class ID required.' }, { status: 400 });

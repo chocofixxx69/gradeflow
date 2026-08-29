@@ -12,7 +12,7 @@ import {
 } from '../../lib/vtuGrades';
 import { supabase } from '../../lib/supabase';
 import PDFUpload from '../../components/PDFUpload';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, getStudentAuthHeaders } from '@/lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
@@ -122,7 +122,7 @@ function CalculatorContent() {
             const stats = calculateSGPA(subjects, scheme);
             await apiRequest('/api/student/results', {
                 method: 'POST',
-                headers: { 'x-student-usn': student.usn },
+                headers: getStudentAuthHeaders(loggedInUser),
                 body: JSON.stringify({
                     student_id: student.id,
                     semester,

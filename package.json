@@ -11,20 +11,19 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.5",
-    "@supabase/mcp-server-supabase": "^0.10.0",
     "@supabase/supabase-js": "^2.97.0",
+    "bcryptjs": "^2.4.3",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "next": "14.2.3",
-    "pdf-parse": "^1.1.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^3.8.0",
-    "swagger": "^0.7.5",
     "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@supabase/mcp-server-supabase": "^0.10.0",
     "@types/react": "19.2.14",
     "cross-env": "^10.1.0",
     "eslint": "^8",

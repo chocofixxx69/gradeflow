@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { requireStaff } from '../../../lib/server-session';
+import { getAdminClient } from '../../../lib/analytics-data';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabase = getAdminClient();
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +39,7 @@ const FALLBACK_URLS = [
 // GET — List all VTU result URLs for a specific faculty
 export async function GET(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
@@ -50,6 +47,10 @@ export async function GET(req) {
 
         if (!faculty_id) {
             return NextResponse.json({ error: 'Faculty ID required' }, { status: 400 });
+        }
+
+        if (session.role === 'faculty' && faculty_id !== session.sub) {
+            return NextResponse.json({ error: 'You can only access your own VTU URL configuration.' }, { status: 403 });
         }
 
         // Fetch their specific URLs, oldest exam session first
@@ -103,13 +104,17 @@ export async function GET(req) {
 // POST — Add a new VTU result URL or toggle its status
 export async function POST(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { url, exam_name, faculty_id, is_active } = await req.json();
 
         if (!faculty_id) {
             return NextResponse.json({ error: 'Faculty ID required' }, { status: 400 });
+        }
+
+        if (session.role === 'faculty' && faculty_id !== session.sub) {
+            return NextResponse.json({ error: 'You can only modify your own VTU URL configuration.' }, { status: 403 });
         }
 
         if (url && !url.includes('vtu.ac.in')) {
@@ -137,10 +142,15 @@ export async function POST(req) {
 // PUT - Toggle all URLs (Turn off completely or turn on all)
 export async function PUT(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { faculty_id, is_active } = await req.json();
+
+        if (session.role === 'faculty' && faculty_id !== session.sub) {
+            return NextResponse.json({ error: 'You can only modify your own VTU URL configuration.' }, { status: 403 });
+        }
+
         const { error } = await supabase
             .from('faculty_vtu_urls')
             .update({ is_active })
@@ -156,10 +166,15 @@ export async function PUT(req) {
 // DELETE — Deactivate a URL
 export async function DELETE(req) {
     try {
-        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { id, faculty_id } = await req.json();
+
+        if (session.role === 'faculty' && faculty_id !== session.sub) {
+            return NextResponse.json({ error: 'You can only modify your own VTU URL configuration.' }, { status: 403 });
+        }
+
         const { error } = await supabase
             .from('faculty_vtu_urls')
             .update({ is_active: false })

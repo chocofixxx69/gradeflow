@@ -1,5 +1,4 @@
 export {
-    Avatar,
     Badge,
     Button,
     Divider,
@@ -7,14 +6,12 @@ export {
     IconButton,
     Input,
     Inline,
-    LOADING_STATE_USAGE,
     LoadingState,
     ResponsiveGrid,
     SearchInput,
     Select,
     Skeleton,
     Stack,
-    Textarea,
     Tooltip,
     VALIDATION_MESSAGE_PRIORITY,
 } from './Foundation';

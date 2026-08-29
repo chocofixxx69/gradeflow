@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
 import { Button, Input } from '@/components/ui/Foundation';
 import { Card } from '@/components/ui/Card';
 // Clerk removed — auth is now fully handled via Supabase password_hash
@@ -42,47 +41,21 @@ function StudentAuthContent() {
             const input = email.toLowerCase().trim();
             const usn = (input.includes('@') ? input.split('@')[0] : input).toUpperCase();
 
-            // Fetch student profile from Supabase
-            const { data: student, error: fetchErr } = await supabase
-                .from('students')
-                .select('id, usn, name, branch, scheme, password_hash')
-                .eq('usn', usn)
-                .maybeSingle();
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role: 'student', usn, password }),
+            });
+            const json = await res.json();
 
-            if (fetchErr) throw fetchErr;
-
-            if (!student) {
-                setError('USN not found. Please activate your account first.');
+            if (!json.success || !json.session) {
+                setError(json.error || 'Sign in failed. Please try again.');
                 setLoading(false);
                 return;
             }
 
-            if (!student.password_hash) {
-                setError('Account not activated yet. Please use the "Activate" tab.');
-                setLoading(false);
-                return;
-            }
-
-            // Verify password
-            const inputHash = await hashPassword(password);
-            if (inputHash !== student.password_hash) {
-                setError('Incorrect password. Try again or reset via Recovery PIN.');
-                setLoading(false);
-                return;
-            }
-
-            // Build session
-            const sessionData = {
-                usn: student.usn,
-                id: student.id,
-                name: student.name,
-                branch: student.branch,
-                scheme: student.scheme,
-                role: 'student',
-            };
-            sessionData.signature = await hash(student.usn + student.id);
             localStorage.removeItem('faculty_session');
-            localStorage.setItem('student_session', JSON.stringify(sessionData));
+            localStorage.setItem('student_session', JSON.stringify(json.session));
             router.push('/dashboard');
 
         } catch (err) {
@@ -111,116 +84,29 @@ function StudentAuthContent() {
                 return;
             }
 
-            // 1. Check if student exists already (could have been created by scraper/admin/faculty)
-            let { data: existing, error: existErr } = await supabase
-                .from('students')
-                .select('*')
-                .eq('usn', cleanUSN)
-                .maybeSingle();
+            const res = await fetch('/api/auth/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usn: cleanUSN, password }),
+            });
+            const json = await res.json();
 
-            if (existErr) throw existErr;
-
-            const passwordHash = await hashPassword(password);
-
-            if (existing) {
-                // Student exists (auto-created by scraper or faculty) — set password and recovery pin
-                if (existing.password_hash) {
-                    setError('This USN is already activated. Please use "Sign In" instead.');
+            if (!json.success) {
+                if (res.status === 409) {
+                    setError(json.error);
                     setMode('login');
                     return;
                 }
-
-                const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
-                const { error: upErr } = await supabase
-                    .from('students')
-                    .update({
-                        password_hash: passwordHash,
-                        recovery_pin: generatedPin,
-                        activated_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('usn', cleanUSN);
-
-                if (upErr) throw upErr;
-
-                // Auto-login and show pin
-                const { data: freshProfile } = await supabase
-                    .from('students')
-                    .select('*')
-                    .eq('usn', cleanUSN)
-                    .maybeSingle();
-
-                if (freshProfile) {
-                    localStorage.removeItem('faculty_session');
-                    const sessionData = {
-                        usn: freshProfile.usn,
-                        name: freshProfile.name,
-                        id: freshProfile.id,
-                        branch: freshProfile.branch,
-                        scheme: freshProfile.scheme,
-                    };
-                    sessionData.signature = await hash(freshProfile.usn + freshProfile.id);
-                    localStorage.setItem('student_session', JSON.stringify(sessionData));
-
-                    setAuthGeneratedPin(generatedPin);
-                    setSuccess('✅ Account activated!');
-                    setMode('show_pin');
-                    return;
-                }
-
-                setSuccess('Account activated! You can now sign in.');
-                setMode('login');
-                setPassword('');
-                setConfirmPassword('');
-            } else {
-                // Student doesn't exist — create new profile
-                const branchMatch = cleanUSN.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,4})\d{3}$/);
-                let detectedBranch = branchMatch ? branchMatch[1] : '';
-                if (detectedBranch === 'CS') detectedBranch = 'CSE';
-                if (detectedBranch === 'IS') detectedBranch = 'ISE';
-                if (detectedBranch === 'EC') detectedBranch = 'ECE';
-                if (detectedBranch === 'ME') detectedBranch = 'MECH';
-
-                const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
-                const { data: newProfile, error: insertErr } = await supabase
-                    .from('students')
-                    .insert({
-                        usn: cleanUSN,
-                        name: cleanUSN,
-                        password_hash: passwordHash,
-                        recovery_pin: generatedPin,
-                        activated_at: new Date().toISOString(),
-                        scheme: '2022',
-                        branch: detectedBranch || null,
-                    })
-                    .select()
-                    .single();
-
-                if (insertErr) throw insertErr;
-
-                if (newProfile) {
-                    localStorage.removeItem('faculty_session');
-                    const sessionData = {
-                        usn: newProfile.usn,
-                        name: newProfile.name,
-                        id: newProfile.id,
-                        branch: newProfile.branch,
-                        scheme: newProfile.scheme,
-                    };
-                    sessionData.signature = await hash(newProfile.usn + newProfile.id);
-                    localStorage.setItem('student_session', JSON.stringify(sessionData));
-
-                    setAuthGeneratedPin(generatedPin);
-                    setSuccess('✅ Account created and activated!');
-                    setMode('show_pin');
-                    return;
-                }
-
-                setSuccess('Account created and activated! You can now sign in.');
-                setMode('login');
-                setPassword('');
-                setConfirmPassword('');
+                setError(json.error || 'Something went wrong during activation. Please try again.');
+                return;
             }
+
+            localStorage.removeItem('faculty_session');
+            localStorage.setItem('student_session', JSON.stringify(json.session));
+
+            setAuthGeneratedPin(json.pin);
+            setSuccess('✅ Account activated!');
+            setMode('show_pin');
 
         } catch (err) {
             console.error('Activation error:', err);
@@ -242,37 +128,18 @@ function StudentAuthContent() {
 
         try {
             const cleanUSN = (email.includes('@') ? email.split('@')[0] : email).toUpperCase().trim();
-            const { data: student, error: fetchErr } = await supabase
-                .from('students')
-                .select('*')
-                .eq('usn', cleanUSN)
-                .maybeSingle();
 
-            if (fetchErr) throw fetchErr;
-            if (!student) {
-                setError('USN is not registered.');
+            const res = await fetch('/api/auth/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usn: cleanUSN, pin, password }),
+            });
+            const json = await res.json();
+
+            if (!json.success) {
+                setError(json.error || 'Something went wrong. Please try again.');
                 return;
             }
-            if (!student.recovery_pin) {
-                setError('This account does not have a Recovery PIN set. Please click "Activate" to setup your account.');
-                return;
-            }
-
-            if (String(student.recovery_pin).trim() !== String(pin).trim()) {
-                setError('Incorrect Recovery PIN.');
-                return;
-            }
-
-            const newHash = await hashPassword(password);
-            const { error: upErr } = await supabase
-                .from('students')
-                .update({
-                    password_hash: newHash,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('usn', cleanUSN);
-
-            if (upErr) throw upErr;
 
             setSuccess('Password reset successfully! You can now sign in.');
             setTimeout(() => {
@@ -289,22 +156,6 @@ function StudentAuthContent() {
             setLoading(false);
         }
     };
-
-    // Simple hash function (browser-compatible)
-    async function hash(str) {
-        if (!window.crypto || !window.crypto.subtle) {
-            throw new Error('CRYPTO_ERROR');
-        }
-        const encoder = new TextEncoder();
-        const data = encoder.encode(str + '_gradeflow_secret_v1_2026');
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    async function hashPassword(pwd) {
-        return await hash(pwd);
-    }
 
     const s = {
         page: {

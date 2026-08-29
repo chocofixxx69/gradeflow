@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { requireStaff } from '../../../lib/server-session';
 import { getGradePoint, getGradeDetails, isFailedSubject } from '../../../lib/vtuGrades';
 import { fetchCatalogIndex, resolveSubjectCredit } from '../../../lib/subjectCreditResolver';
 import { isAuditCourse, normalizeBranch as normalizeBranchCode } from '../../../lib/vtuAcademicEngine';
+import { getAdminClient } from '../../../lib/analytics-data';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseAdmin = getAdminClient();
 
 function normalizeBranch(br) {
     if (!br) return 'CS';
@@ -106,7 +103,7 @@ export async function POST(req) {
         return NextResponse.json({ success: true, subject: data });
     } catch (err) {
         console.error('[POST /api/subjects] Error:', err);
-        return NextResponse.json({ error: err.message || 'Failed to create subject.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to create subject.' }, { status: 500 });
     }
 }
 
@@ -154,7 +151,7 @@ export async function PUT(req) {
         });
     } catch (err) {
         console.error('[PUT /api/subjects] Error:', err);
-        return NextResponse.json({ error: err.message || 'Failed to update subject.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to update subject.' }, { status: 500 });
     }
 }
 
@@ -181,7 +178,7 @@ export async function DELETE(req) {
         return NextResponse.json({ success: true });
     } catch (err) {
         console.error('[DELETE /api/subjects] Error:', err);
-        return NextResponse.json({ error: err.message || 'Failed to delete subject.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to delete subject.' }, { status: 500 });
     }
 }
 

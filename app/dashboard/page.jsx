@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { apiRequest } from '../../lib/api/client';
+import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
@@ -562,7 +562,7 @@ function DashboardContent() {
     const loadStudentData = useCallback(async (usn, session) => {
         setLoading(true);
         try {
-            const data = await apiRequest('/api/student/dashboard', { query: { usn } });
+            const data = await apiRequest('/api/student/dashboard', { headers: getStudentAuthHeaders(session) });
             const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
             const resultMarks = data?.recentResults || [];
 
@@ -593,20 +593,8 @@ function DashboardContent() {
 
             try {
                 const parsed = JSON.parse(stuSession);
-
-                const encoder = new TextEncoder();
-                const data = encoder.encode((parsed.usn + parsed.id) + '_gradeflow_secret_v1_2026');
-                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                const expected = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-                if (parsed.signature !== expected) {
-                    console.error('Security: Invalid session signature.');
-                    localStorage.removeItem('student_session');
-                    router.push('/auth/student');
-                    return;
-                }
-
+                // Signature is verified server-side on every request (getStudentSession) —
+                // an invalid/tampered session simply gets 401s from the API from here on.
                 loadStudentData(parsed.usn.toUpperCase(), parsed);
             } catch (e) {
                 console.error('Session error:', e);
@@ -643,7 +631,7 @@ function DashboardContent() {
             fd.append(isPdf ? 'pdf' : 'image', file);
 
             const endpoint = isPdf ? '/api/parse-pdf' : '/api/parse-image';
-            const res = await fetch(endpoint, { method: 'POST', body: fd });
+            const res = await fetch(endpoint, { method: 'POST', headers: getStudentAuthHeaders(), body: fd });
             const json = await res.json();
 
             if (!json.success) throw new Error(json.detail || json.error || 'Parsing failed.');
@@ -760,7 +748,7 @@ function DashboardContent() {
                     try {
                         await apiRequest('/api/student/profile', {
                             method: 'PATCH',
-                            headers: { 'x-student-usn': student.usn },
+                            headers: getStudentAuthHeaders(),
                             body: JSON.stringify({ name: pdfName })
                         });
                         // Update local state immediately

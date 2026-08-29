@@ -31,11 +31,3 @@ export function PageHeaderSubtitle({ children, className, ...props }) {
         </p>
     );
 }
-
-export function PageHeaderActions({ children, className, ...props }) {
-    return (
-        <div className={[styles.actions, className].filter(Boolean).join(' ')} {...props}>
-            {children}
-        </div>
-    );
-}

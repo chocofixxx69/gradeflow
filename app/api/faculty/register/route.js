@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+
+const BCRYPT_SALT_ROUNDS = 10;
 
 // Server-side client using the SERVICE KEY — bypasses all RLS
 const supabaseAdmin = createClient(
@@ -50,14 +53,15 @@ export async function POST(request) {
         }
 
         // Insert the new faculty registration request
+        const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
         const { data, error: insertErr } = await supabaseAdmin
             .from('faculty_onboarding')
             .insert({
                 full_name: full_name.trim(),
                 email: email.trim().toLowerCase(),
                 department: department.trim(),
-                password: password,
-                password_hash: password,
+                password: hashedPassword,
+                password_hash: hashedPassword,
                 status: 'pending',
             })
             .select('id, email, status')

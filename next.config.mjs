@@ -5,7 +5,16 @@ const nextConfig = {
       bodySizeLimit: '30mb',
     },
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
+    if (dev) {
+      config.cache = false;
+    }
+    if (isServer) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: false,
+      };
+    }
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -20,3 +29,5 @@ const nextConfig = {
 };
 
 export default nextConfig;
+
+

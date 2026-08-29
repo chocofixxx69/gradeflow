@@ -18,17 +18,10 @@ export default function ClerkSync() {
     const [clerkUser, setClerkUser] = useState(null);
 
     useEffect(() => {
-        // Dynamically import useUser to avoid crashes when outside ClerkProvider
         let cancelled = false;
-        
-        import('@clerk/nextjs').then(({ useUser }) => {
-            // This won't work as a hook call outside React — 
-            // so we use the Clerk client-side API instead
-        }).catch(() => {
-            // Clerk not available, skip
-        });
 
-        // Alternative: use Clerk's window-based API if available
+        // Uses Clerk's window-based API since useUser can't be called as a
+        // hook here (this component may render outside ClerkProvider).
         const checkClerk = () => {
             try {
                 if (typeof window !== 'undefined' && window.Clerk) {
@@ -82,18 +75,18 @@ export default function ClerkSync() {
                     profile = newProfile;
                 }
 
-                const encoder = new TextEncoder();
-                const data = encoder.encode((usn + profile.id) + '_gradeflow_secret_v1_2026');
-                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                const sig = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
+                // Clerk is not configured in this app (see the sign-in/sign-up layouts and
+                // .env.local.example — the Clerk keys are commented out) and there is no
+                // server-side endpoint to mint a real, verifiable session signature for a
+                // Clerk-authenticated identity. A session stored without one will simply
+                // fail the server's signature check on every request (401), same as any
+                // other invalid session — this path stays inert until Clerk is reactivated
+                // and given a proper server-verified signature flow.
                 localStorage.setItem('student_session', JSON.stringify({
                     usn,
                     id: profile.id,
                     name: profile.name || name,
                     role: 'student',
-                    signature: sig
                 }));
 
                 if (pathname === '/sign-in' || pathname === '/sign-up') {

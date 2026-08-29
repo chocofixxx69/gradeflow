@@ -20,8 +20,6 @@ export async function POST(req) {
 
     const cleanUSN = usn.toUpperCase()
 
-    /* 
-    // Rate limit: disabled for testing
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
     const { data: recentJobs } = await supabase
         .from('scraper_jobs')
@@ -32,7 +30,6 @@ export async function POST(req) {
     if (recentJobs && recentJobs.length >= 5) {
         return NextResponse.json({ error: 'Rate limit reached. Max 5 fetch requests per hour per USN.' }, { status: 429 });
     }
-    */
 
     // 1. Check if already in database (only if force is false)
     if (!force) {

@@ -17,11 +17,6 @@ function mergeIds(...ids) {
 
 export const VALIDATION_MESSAGE_PRIORITY = ['error', 'success', 'helper'];
 
-export const LOADING_STATE_USAGE = {
-    loadingState: 'Use LoadingState when a region or action is actively waiting and users need a live status announcement.',
-    skeleton: 'Use Skeleton when preserving layout during content loading and the placeholder should stay out of the accessibility tree.',
-};
-
 function Icon({ name, className, children }) {
     if (children) return <span className={className}>{children}</span>;
     if (!name) return null;
@@ -214,37 +209,6 @@ export function Badge({
     );
 }
 
-export function Avatar({
-    alt,
-    className,
-    name = '',
-    size = 'md',
-    src,
-    ...props
-}) {
-    const initials = name
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map(part => part.charAt(0).toUpperCase())
-        .join('') || '?';
-
-    return (
-        <span
-            className={cx(
-                styles.avatar,
-                styles[`avatar${capitalize(size)}`],
-                className
-            )}
-            aria-label={alt || name || 'User'}
-            role="img"
-            {...props}
-        >
-            {src ? <img className={styles.avatarImage} src={src} alt="" /> : initials}
-        </span>
-    );
-}
-
 export function Divider({ className, orientation = 'horizontal', ...props }) {
     return (
         <div
@@ -361,46 +325,6 @@ export const Input = forwardRef(function Input({
                 id={inputId}
                 className={cx(styles.fieldControl, density === 'compact' && styles.fieldControlCompact, error && styles.fieldInvalid)}
                 type={type}
-                required={required}
-                aria-invalid={error ? true : undefined}
-                aria-describedby={getDescribedBy({ messageId, ariaDescribedBy, describedBy })}
-                {...props}
-            />
-            {message && <FieldMessage id={messageId} type={message.type}>{message.content}</FieldMessage>}
-        </div>
-    );
-});
-
-export const Textarea = forwardRef(function Textarea({
-    'aria-describedby': ariaDescribedBy,
-    className,
-    density = 'regular',
-    describedBy,
-    error,
-    hideLabel = false,
-    helperText,
-    id,
-    label,
-    required = false,
-    successText,
-    ...props
-}, ref) {
-    const generatedId = useId();
-    const textareaId = id || generatedId;
-    const message = getValidationMessage({ error, helperText, successText });
-    const messageId = message ? `${textareaId}-${message.idSuffix}` : undefined;
-
-    return (
-        <div className={cx(styles.field, density === 'compact' && styles.fieldCompact, className)}>
-            {label && (
-                <label className={cx(styles.fieldLabel, hideLabel && styles.visuallyHidden)} htmlFor={textareaId}>
-                    {label} {required && <span className={styles.fieldRequired}>*</span>}
-                </label>
-            )}
-            <textarea
-                ref={ref}
-                id={textareaId}
-                className={cx(styles.fieldControl, styles.textareaControl, density === 'compact' && styles.fieldControlCompact, density === 'compact' && styles.textareaCompact, error && styles.fieldInvalid)}
                 required={required}
                 aria-invalid={error ? true : undefined}
                 aria-describedby={getDescribedBy({ messageId, ariaDescribedBy, describedBy })}

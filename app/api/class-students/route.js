@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { fetchByChunks } from '../../../lib/supabase-utils';
 import { calculateAcademicRecord } from '../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
-import { weightedCGPA } from '../../../lib/analytics-data';
+import { weightedCGPA, getAdminClient } from '../../../lib/analytics-data';
+import { requireStaff } from '../../../lib/server-session';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseAdmin = getAdminClient();
 
 export const dynamic = 'force-dynamic';
 
 // GET — students in a class, joined with their CGPA/backlog data
 export async function GET(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const { searchParams } = new URL(req.url);
         const class_id = searchParams.get('class_id');
@@ -159,6 +159,9 @@ export async function GET(req) {
 
 // POST — add student(s) to a class
 export async function POST(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const body = await req.json().catch(() => ({}));
         const { class_id, usn, students: rawStudentObjects } = body || {};
@@ -246,12 +249,15 @@ export async function POST(req) {
         return NextResponse.json({ success: true, added: newUsnsToInsert.length || usns.length });
     } catch (err) {
         console.error('[POST /api/class-students]', err);
-        return NextResponse.json({ error: err.message || 'Failed to add student.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to add student.' }, { status: 500 });
     }
 }
 
 // DELETE — remove a student from a class
 export async function DELETE(req) {
+    const { session, error: authError } = requireStaff(req);
+    if (authError) return authError;
+
     try {
         const body = await req.json().catch(() => ({}));
         const { class_id, usn } = body || {};

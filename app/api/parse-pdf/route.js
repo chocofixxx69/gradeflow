@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getAdminClient } from '../../../lib/analytics-data';
+import { requireAnyUser } from '../../../lib/server-session';
 
 export const runtime = 'nodejs';
 
 // Max file size: 30MB
 export const maxDuration = 60;
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseAdmin = getAdminClient();
 
 export async function POST(request) {
+    const { error: authError } = requireAnyUser(request);
+    if (authError) return authError;
+
     try {
         const formData = await request.formData();
         const file = formData.get('pdf');

@@ -233,21 +233,21 @@
   background: #FFF8E1;
   border-color: #FFE082;
   color: #B45309;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .badgeDanger {
   background: #FFEBEE;
   border-color: #FFCDD2;
   color: #B91C1C;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .badgeInfo {
   background: #E0F2F1;
   border-color: #B2DFDB;
   color: #004D40;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .avatar {
@@ -258,9 +258,10 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  font-weight: 900;
+  font-weight: 700;
   flex-shrink: 0;
 }
+
 
 .avatarSm {
   width: 28px;
@@ -579,9 +580,10 @@
 .emptyTitle {
   color: var(--tx-main);
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
+
 
 .emptyDescription {
   max-width: 460px;

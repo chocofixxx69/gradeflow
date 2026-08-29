@@ -52,8 +52,6 @@ export default function Navbar() {
     }, []);
 
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', 'light');
-
         const isCollapsed = localStorage.getItem('gf_sidebar_collapsed') === 'true';
         setCollapsed(isCollapsed);
         document.documentElement.classList.toggle('gf-sidebar-is-collapsed', isCollapsed);

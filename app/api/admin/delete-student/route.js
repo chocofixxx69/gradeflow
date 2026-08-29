@@ -132,6 +132,6 @@ export async function POST(req) {
         return NextResponse.json({ success: true, message: `All data for ${cleanUSN} deleted.` });
     } catch (err) {
         console.error('Delete Error:', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to delete student.' }, { status: 500 });
     }
 }
