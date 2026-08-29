@@ -489,6 +489,16 @@
   padding-right: var(--space-10);
 }
 
+.searchInput::-webkit-search-decoration,
+.searchInput::-webkit-search-cancel-button,
+.searchInput::-webkit-search-results-button,
+.searchInput::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+
 .searchWrapCompact .searchIcon {
   left: var(--space-3);
   font-size: 18px;
