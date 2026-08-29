@@ -206,8 +206,8 @@ export default function Navbar() {
                 id="gf-sidebar"
                 aria-label={`${getRoleLabel(activeRole)} navigation`}
             >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 'var(--space-5)' }}>
-                    <Link href="/" className="gf-sidebar-header" style={{ marginBottom: 0 }}>
+                <div className="gf-sidebar-top-row">
+                    <Link href="/" className="gf-sidebar-header" title="GradeFlow Home">
                         <div className="gf-logo-box">G</div>
                         {!collapsed && (
                             <div className="gf-sidebar-header-info">
@@ -222,21 +222,14 @@ export default function Navbar() {
                         onClick={toggleSidebarCollapse}
                         className="gf-hamburger-toggle-btn"
                         title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--tx-muted)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '6px',
-                            borderRadius: '6px'
-                        }}
+                        aria-label={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                     >
-                        <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
+                        <span className="material-icons-round" style={{ fontSize: '20px' }}>
+                            {collapsed ? 'chevron_right' : 'menu'}
+                        </span>
                     </button>
                 </div>
+
 
                 <nav className="gf-sidebar-nav" aria-label="Primary">
                     {navGroups.map(group => (

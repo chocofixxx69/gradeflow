@@ -277,6 +277,42 @@ body.gf-drawer-open {
   transition: width 0.2s ease-in-out, padding 0.2s ease-in-out;
 }
 
+/* ── SIDEBAR TOP ROW & TOGGLE ── */
+.gf-sidebar-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: var(--space-5);
+  gap: var(--space-2);
+}
+
+.gf-hamburger-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--tx-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: var(--radius-2);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.gf-hamburger-toggle-btn:hover {
+  background: var(--surface-low);
+  color: var(--tx-main);
+}
+
+.gf-hamburger-toggle-btn:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* ── COLLAPSED SIDEBAR ── */
 html.gf-sidebar-is-collapsed .app-layout {
   grid-template-columns: 72px minmax(0, 1fr) !important;
@@ -286,6 +322,28 @@ html.gf-sidebar-is-collapsed .gf-sidebar {
   width: 72px !important;
   padding: var(--space-4) var(--space-2) !important;
   overflow-x: hidden !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-sidebar-top-row {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+html.gf-sidebar-is-collapsed .gf-sidebar-header {
+  margin-bottom: 0 !important;
+  justify-content: center;
+}
+
+html.gf-sidebar-is-collapsed .gf-logo-box {
+  margin: 0 auto !important;
+}
+
+html.gf-sidebar-is-collapsed .gf-hamburger-toggle-btn {
+  margin: 0 auto !important;
+  background: var(--surface-low);
 }
 
 html.gf-sidebar-is-collapsed .gf-sidebar-header-info,
@@ -301,13 +359,10 @@ html.gf-sidebar-is-collapsed .gf-nav-link {
   padding: 12px 0 !important;
 }
 
-html.gf-sidebar-is-collapsed .gf-logo-box {
-  margin: 0 auto !important;
-}
-
 html.gf-sidebar-is-collapsed .gf-sidebar-footer {
   padding-top: var(--space-2) !important;
 }
+
 
 .gf-sidebar-header {
   display: flex;
