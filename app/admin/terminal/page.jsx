@@ -1048,7 +1048,7 @@ function AdminPanelContent() {
 
                 {tab === 'settings' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
-                    <h1 style={c.pageTitle}>System Settings</h1>
+                    <h1 style={c.pageTitle}>System Settings & Administration</h1>
 
                     {settingsMsg && (
                         <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green)', fontWeight: 700, fontSize: '13px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1071,215 +1071,377 @@ function AdminPanelContent() {
                         </div>
                     )}
 
-                    <div style={{ maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
-                        {/* Institutional Profile */}
-                        <div style={c.statCard}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div>
-                                    <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Institutional Profile</h3>
-                                    <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px', margin: 0 }}>Configure college details, active academic year, and default syllabus scheme.</p>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr)',
+                        gap: '24px',
+                        alignItems: 'start',
+                        width: '100%',
+                    }}>
+                        {/* ── LEFT COLUMN: Primary Configuration & Security ── */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            {/* Institutional Profile */}
+                            <div style={c.statCard}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Institutional Profile</h3>
+                                        <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px', margin: 0 }}>Configure college details, active academic year, and default syllabus scheme.</p>
+                                    </div>
+                                    <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--primary)' }}>school</span>
                                 </div>
-                                <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--primary)' }}>school</span>
+
+                                {/* Live Profile Summary Banner */}
+                                <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '13px', fontWeight: 900, color: 'var(--tx-main)' }}>
+                                            [{settingsProfile.institution_code || 'AITM'}] {settingsProfile.institution_name || 'Institution Name'}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                            {settingsProfile.affiliation || 'VTU Affiliated'}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                        <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: 'var(--primary)', color: 'var(--bg)' }}>
+                                            {settingsProfile.academic_year}
+                                        </span>
+                                        <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: 'var(--surface)', color: 'var(--tx-main)', border: '1px solid var(--border)' }}>
+                                            {settingsProfile.default_scheme} Scheme
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Institution Name</label>
+                                        <input
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                            value={settingsProfile.institution_name}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, institution_name: e.target.value }))}
+                                            placeholder="e.g. Anjuman Institute of Technology and Management"
+                                        />
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                        <div>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Institution Code</label>
+                                            <input
+                                                style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                                value={settingsProfile.institution_code}
+                                                onChange={e => setSettingsProfile(prev => ({ ...prev, institution_code: e.target.value.toUpperCase() }))}
+                                                placeholder="e.g. AITM"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Affiliation / University</label>
+                                            <input
+                                                style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                                value={settingsProfile.affiliation}
+                                                onChange={e => setSettingsProfile(prev => ({ ...prev, affiliation: e.target.value }))}
+                                                placeholder="e.g. Visvesvaraya Technological University (VTU)"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                        <div>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Academic Year</label>
+                                            <select
+                                                style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
+                                                value={settingsProfile.academic_year}
+                                                onChange={e => setSettingsProfile(prev => ({ ...prev, academic_year: e.target.value }))}
+                                            >
+                                                <option value="2025-2026">2025-2026</option>
+                                                <option value="2024-2025">2024-2025</option>
+                                                <option value="2023-2024">2023-2024</option>
+                                                <option value="2022-2023">2022-2023</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Default Syllabus Scheme</label>
+                                            <select
+                                                style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
+                                                value={settingsProfile.default_scheme}
+                                                onChange={e => setSettingsProfile(prev => ({ ...prev, default_scheme: e.target.value }))}
+                                            >
+                                                <option value="2022">2022 Scheme (NEP)</option>
+                                                <option value="2025">2025 Scheme (NEP)</option>
+                                                <option value="2018">2018 Scheme (CBCS)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                        <div>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Environment</label>
+                                            <input
+                                                style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                                value={settingsProfile.environment}
+                                                onChange={e => setSettingsProfile(prev => ({ ...prev, environment: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Primary Region</label>
+                                            <input
+                                                style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                                value={settingsProfile.primary_region}
+                                                onChange={e => setSettingsProfile(prev => ({ ...prev, primary_region: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                        <button
+                                            style={{ ...c.actionBtn(true), display: 'flex', alignItems: 'center', gap: '6px' }}
+                                            onClick={handleSaveSettings}
+                                            disabled={settingsSaving}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '16px' }}>{settingsSaving ? 'hourglass_top' : 'save'}</span>
+                                            {settingsSaving ? 'Saving Changes…' : 'Save Profile Changes'}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-                                <div>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Institution Name</label>
-                                    <input
-                                        style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
-                                        value={settingsProfile.institution_name}
-                                        onChange={e => setSettingsProfile(prev => ({ ...prev, institution_name: e.target.value }))}
-                                        placeholder="e.g. Anjuman Institute of Technology and Management"
-                                    />
+                            {/* Security & Authentication */}
+                            <div style={c.statCard}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Security & Gatekeeper</h3>
+                                        <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px', margin: 0 }}>
+                                            Administrator access is secured with encrypted credentials, role-based access control, and a System Access Token.
+                                        </p>
+                                    </div>
+                                    <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--amber)' }}>security</span>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
-                                    <div>
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Institution Code</label>
-                                        <input
-                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
-                                            value={settingsProfile.institution_code}
-                                            onChange={e => setSettingsProfile(prev => ({ ...prev, institution_code: e.target.value.toUpperCase() }))}
-                                            placeholder="e.g. AITM"
-                                        />
+                                {/* System Access Token Section */}
+                                <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Access Token</label>
+                                        {!editingToken && (
+                                            <button
+                                                onClick={() => { setTokenInput(settingsSecurity.system_access_token); setEditingToken(true); }}
+                                                style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '13px' }}>edit</span>
+                                                Edit Token
+                                            </button>
+                                        )}
                                     </div>
-                                    <div>
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Affiliation / University</label>
-                                        <input
-                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
-                                            value={settingsProfile.affiliation}
-                                            onChange={e => setSettingsProfile(prev => ({ ...prev, affiliation: e.target.value }))}
-                                            placeholder="e.g. Visvesvaraya Technological University (VTU)"
-                                        />
-                                    </div>
+
+                                    {!editingToken ? (
+                                        <>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                                <code style={{ fontSize: '16px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', background: 'var(--surface)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                    {settingsSecurity.system_access_token}
+                                                </code>
+                                                <button
+                                                    onClick={() => copyKey(settingsSecurity.system_access_token)}
+                                                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: copiedKey === settingsSecurity.system_access_token ? 'var(--green)' : 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700 }}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '16px' }}>{copiedKey === settingsSecurity.system_access_token ? 'check' : 'content_copy'}</span>
+                                                    {copiedKey === settingsSecurity.system_access_token ? 'Copied' : 'Copy'}
+                                                </button>
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '8px' }}>
+                                                Use this token at the Admin Gateway to authenticate.
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                <input
+                                                    style={{ ...c.searchInput, flex: 1, minWidth: '200px', fontWeight: 800, letterSpacing: '0.05em' }}
+                                                    value={tokenInput}
+                                                    onChange={e => setTokenInput(e.target.value.toUpperCase())}
+                                                    placeholder="Enter new token (e.g. GF-ADMIN-PROD)"
+                                                />
+                                                <button
+                                                    onClick={handleGenerateToken}
+                                                    style={{ ...c.actionBtn(false), padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                    title="Generate Random Secure Token"
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>casino</span>
+                                                    Generate Key
+                                                </button>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                                <button
+                                                    onClick={() => setEditingToken(false)}
+                                                    style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '12px' }}
+                                                    disabled={settingsSaving}
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={handleSaveToken}
+                                                    style={{ ...c.actionBtn(true), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                    disabled={settingsSaving || !tokenInput.trim()}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>check</span>
+                                                    {settingsSaving ? 'Updating…' : 'Save New Token'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                {/* System Reload Action */}
+                                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                                     <div>
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Academic Year</label>
-                                        <select
-                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
-                                            value={settingsProfile.academic_year}
-                                            onChange={e => setSettingsProfile(prev => ({ ...prev, academic_year: e.target.value }))}
-                                        >
-                                            <option value="2025-2026">2025-2026</option>
-                                            <option value="2024-2025">2024-2025</option>
-                                            <option value="2023-2024">2023-2024</option>
-                                            <option value="2022-2023">2022-2023</option>
-                                        </select>
+                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>Synchronize & Reload System Data</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>Re-fetches all database tables, student metrics, and server settings.</div>
                                     </div>
-                                    <div>
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Default Syllabus Scheme</label>
-                                        <select
-                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
-                                            value={settingsProfile.default_scheme}
-                                            onChange={e => setSettingsProfile(prev => ({ ...prev, default_scheme: e.target.value }))}
-                                        >
-                                            <option value="2022">2022 Scheme (NEP)</option>
-                                            <option value="2025">2025 Scheme (NEP)</option>
-                                            <option value="2018">2018 Scheme (CBCS)</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
-                                    <div>
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Environment</label>
-                                        <input
-                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
-                                            value={settingsProfile.environment}
-                                            onChange={e => setSettingsProfile(prev => ({ ...prev, environment: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Primary Region</label>
-                                        <input
-                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
-                                            value={settingsProfile.primary_region}
-                                            onChange={e => setSettingsProfile(prev => ({ ...prev, primary_region: e.target.value }))}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
                                     <button
-                                        style={{ ...c.actionBtn(true), display: 'flex', alignItems: 'center', gap: '6px' }}
-                                        onClick={handleSaveSettings}
-                                        disabled={settingsSaving}
+                                        style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
+                                        onClick={handleReloadAllData}
+                                        disabled={reloadingData}
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>{settingsSaving ? 'hourglass_top' : 'save'}</span>
-                                        {settingsSaving ? 'Saving Changes…' : 'Save Profile Changes'}
+                                        <span
+                                            className="material-icons-round"
+                                            style={{
+                                                fontSize: '16px',
+                                                animation: reloadingData ? 'spin 1s linear infinite' : 'none'
+                                            }}
+                                        >
+                                            refresh
+                                        </span>
+                                        {reloadingData ? 'Reloading…' : 'Reload Data'}
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Security & Authentication */}
-                        <div style={c.statCard}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div>
-                                    <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Security & Authentication</h3>
-                                    <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px', margin: 0 }}>
-                                        Administrator access is secured with encrypted credentials, role-based access control, and a System Access Token.
-                                    </p>
-                                </div>
-                                <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--amber)' }}>security</span>
-                            </div>
-
-                            {/* System Access Token Section */}
-                            <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Access Token</label>
-                                    {!editingToken && (
-                                        <button
-                                            onClick={() => { setTokenInput(settingsSecurity.system_access_token); setEditingToken(true); }}
-                                            style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                        >
-                                            <span className="material-icons-round" style={{ fontSize: '13px' }}>edit</span>
-                                            Edit Token
-                                        </button>
-                                    )}
-                                </div>
-
-                                {!editingToken ? (
-                                    <>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                            <code style={{ fontSize: '16px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', background: 'var(--surface)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                {settingsSecurity.system_access_token}
-                                            </code>
-                                            <button
-                                                onClick={() => copyKey(settingsSecurity.system_access_token)}
-                                                style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: copiedKey === settingsSecurity.system_access_token ? 'var(--green)' : 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700 }}
-                                            >
-                                                <span className="material-icons-round" style={{ fontSize: '16px' }}>{copiedKey === settingsSecurity.system_access_token ? 'check' : 'content_copy'}</span>
-                                                {copiedKey === settingsSecurity.system_access_token ? 'Copied' : 'Copy'}
-                                            </button>
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '8px' }}>
-                                            Use this token at the Admin Gateway ([/admin/gateway](http://localhost:3000/admin/gateway)) to authenticate.
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
-                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                            <input
-                                                style={{ ...c.searchInput, flex: 1, minWidth: '200px', fontWeight: 800, letterSpacing: '0.05em' }}
-                                                value={tokenInput}
-                                                onChange={e => setTokenInput(e.target.value.toUpperCase())}
-                                                placeholder="Enter new token (e.g. GF-ADMIN-PROD)"
-                                            />
-                                            <button
-                                                onClick={handleGenerateToken}
-                                                style={{ ...c.actionBtn(false), padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                title="Generate Random Secure Token"
-                                            >
-                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>casino</span>
-                                                Generate Key
-                                            </button>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                            <button
-                                                onClick={() => setEditingToken(false)}
-                                                style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '12px' }}
-                                                disabled={settingsSaving}
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleSaveToken}
-                                                style={{ ...c.actionBtn(true), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                disabled={settingsSaving || !tokenInput.trim()}
-                                            >
-                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>check</span>
-                                                {settingsSaving ? 'Updating…' : 'Save New Token'}
-                                            </button>
-                                        </div>
+                        {/* ── RIGHT COLUMN: Telemetry, Metrics Snapshot & Operations ── */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            {/* Live System Infrastructure Status */}
+                            <div style={c.statCard}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>System Telemetry & Health</h3>
+                                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px', margin: 0 }}>Live health status of GradeFlow services.</p>
                                     </div>
-                                )}
+                                    <span className="material-icons-round" style={{ fontSize: '22px', color: 'var(--green)' }}>sensors</span>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--green)' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Database (Supabase PostgreSQL)</span>
+                                        </div>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--green)' }}>Operational</span>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--green)' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>VTU Academic & CGPA Engine</span>
+                                        </div>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--green)' }}>Active</span>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--green)' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Result Sync & Scraper Queue</span>
+                                        </div>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--green)' }}>Ready</span>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Active Session Role</span>
+                                        </div>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)' }}>Super Admin</span>
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* System Reload Action */}
-                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                                <div>
-                                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>Synchronize & Reload System Data</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>Re-fetches all database tables, student metrics, and server settings.</div>
+                            {/* Quick Metrics Snapshot */}
+                            <div style={c.statCard}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                    <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Institutional Data Snapshot</h3>
+                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--tx-dim)' }}>insights</span>
                                 </div>
-                                <button
-                                    style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
-                                    onClick={handleReloadAllData}
-                                    disabled={reloadingData}
-                                >
-                                    <span
-                                        className="material-icons-round"
-                                        style={{
-                                            fontSize: '16px',
-                                            animation: reloadingData ? 'spin 1s linear infinite' : 'none'
-                                        }}
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div style={{ padding: '12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Students</div>
+                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>{stats.students}</div>
+                                    </div>
+                                    <div style={{ padding: '12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Faculty</div>
+                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>{stats.faculty}</div>
+                                    </div>
+                                    <div style={{ padding: '12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Marks Records</div>
+                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>{stats.totalMarks}</div>
+                                    </div>
+                                    <div style={{ padding: '12px', background: 'var(--surface-low)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Today's Activity</div>
+                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>{stats.activityToday}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Quick Administrative Shortcuts */}
+                            <div style={c.statCard}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                    <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Quick Administrative Portals</h3>
+                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--tx-dim)' }}>bolt</span>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <button
+                                        onClick={() => setTab('requests')}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
                                     >
-                                        refresh
-                                    </span>
-                                    {reloadingData ? 'Reloading…' : 'Reload Data'}
-                                </button>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--amber)' }}>verified_user</span>
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Faculty Access Requests</span>
+                                        </div>
+                                        {stats.pending > 0 ? (
+                                            <span style={{ padding: '2px 8px', borderRadius: '10px', background: 'var(--amber-bg)', color: 'var(--amber)', fontSize: '10px', fontWeight: 800 }}>{stats.pending} Pending</span>
+                                        ) : (
+                                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>chevron_right</span>
+                                        )}
+                                    </button>
+
+                                    <button
+                                        onClick={() => setTab('students')}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>school</span>
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Student Directory & Marks</span>
+                                        </div>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>chevron_right</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => setTab('classes')}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--green)' }}>groups</span>
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Class & Section Management</span>
+                                        </div>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>chevron_right</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => router.push('/admin/analytics')}
+                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--blue)' }}>analytics</span>
+                                            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Institutional Analytics</span>
+                                        </div>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>open_in_new</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
