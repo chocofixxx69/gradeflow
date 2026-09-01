@@ -55,6 +55,8 @@ export default function LeaderboardPage() {
         fetchLeaderboard();
     }, [fetchLeaderboard]);
 
+    const activeSemester = selectedSemester || data?.targetSemester || 1;
+
     const handleSemesterChange = (sem) => {
         setSelectedSemester(sem);
         const firstSubForSem = (data?.availableSubjects || []).find(s => s.semester === sem);
@@ -67,12 +69,12 @@ export default function LeaderboardPage() {
 
     const handleSubjectChange = (subCode) => {
         setSelectedSubjectCode(subCode);
-        fetchLeaderboard(selectedSemester, subCode, selectedBatch);
+        fetchLeaderboard(activeSemester, subCode, selectedBatch);
     };
 
     const handleBatchChange = (batch) => {
         setSelectedBatch(batch);
-        fetchLeaderboard(selectedSemester, selectedSubjectCode, batch);
+        fetchLeaderboard(activeSemester, selectedSubjectCode, batch);
     };
 
     // Filtered lists based on search query & entry filter
@@ -88,8 +90,15 @@ export default function LeaderboardPage() {
         return res;
     };
 
+    const rawSemesterList = useMemo(() => {
+        if (data?.allSemestersLeaderboard && data.allSemestersLeaderboard[activeSemester]) {
+            return data.allSemestersLeaderboard[activeSemester];
+        }
+        return data?.semesterLeaderboard || [];
+    }, [data, activeSemester]);
+
     const filteredOverall = useMemo(() => applyFilters(data?.overallLeaderboard), [data?.overallLeaderboard, searchQuery, entryFilter]);
-    const filteredSemester = useMemo(() => applyFilters(data?.semesterLeaderboard), [data?.semesterLeaderboard, searchQuery, entryFilter]);
+    const filteredSemester = useMemo(() => applyFilters(rawSemesterList), [rawSemesterList, searchQuery, entryFilter]);
     const filteredSubject = useMemo(() => applyFilters(data?.subjectLeaderboard), [data?.subjectLeaderboard, searchQuery, entryFilter]);
 
     const top3Overall = useMemo(() => (filteredOverall || []).slice(0, 3), [filteredOverall]);
@@ -250,14 +259,17 @@ export default function LeaderboardPage() {
                                 </div>
                             </div>
 
-                            {data.currentUser.semesterRank && (
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Sem {data.targetSemester} SGPA</div>
-                                    <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#047857' }}>
-                                        {data.currentUser.semesterSGPA ? data.currentUser.semesterSGPA.toFixed(2) : '—'}
-                                    </div>
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Sem {activeSemester} SGPA</div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#047857' }}>
+                                    {(() => {
+                                        const semInfo = data.currentUser.semesters?.[activeSemester];
+                                        if (semInfo && semInfo.sgpa > 0) return semInfo.sgpa.toFixed(2);
+                                        if (activeSemester === data.targetSemester && data.currentUser.semesterSGPA) return data.currentUser.semesterSGPA.toFixed(2);
+                                        return '—';
+                                    })()}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -488,7 +500,7 @@ export default function LeaderboardPage() {
                     <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--tx-main)' }}>
                             {activeTab === 'overall' && `Complete Class Ranking — Overall CGPA (${filteredOverall.length} Students)`}
-                            {activeTab === 'semester' && `Semester ${selectedSemester || 1} SGPA Ranking (${filteredSemester.length} Students)`}
+                            {activeTab === 'semester' && `Semester ${activeSemester} SGPA Ranking (${filteredSemester.length} Students)`}
                             {activeTab === 'subject' && `${data?.currentSubject?.subject_name || 'Subject'} Marks Leaderboard (${filteredSubject.length} Students)`}
                         </div>
                     </div>

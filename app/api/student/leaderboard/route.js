@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStudent } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
-import { fetchByChunks } from '../../../../lib/supabase-utils';
-import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
+import { fetchAllPaginated, fetchByChunks } from '../../../../lib/supabase-utils';
+import { calculateAcademicRecord, normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '../../../../lib/subjectCreditResolver';
 
 const supabaseAdmin = getAdminClient();
 
@@ -13,11 +14,14 @@ function fail(message, code = 'ERROR', status = 400) {
     return NextResponse.json({ success: false, error: { code, message } }, { status });
 }
 
+// In-memory module-level cache with 60s TTL for blazing fast responses
+const cohortCache = new Map();
+const CACHE_TTL_MS = 60 * 1000;
+
 // Cohort resolver mapping branch codes and batches including lateral entries
 function resolveCohortConfig(batchOrBranch, currentUsn) {
     let key = (batchOrBranch || '').toUpperCase().trim();
 
-    // Auto-detect from current user USN if not explicitly requested
     if (!key && currentUsn) {
         if (currentUsn.includes('CS')) key = 'CS';
         else if (currentUsn.includes('CD') || currentUsn.includes('DS')) key = 'CD';
@@ -62,13 +66,264 @@ function resolveCohortConfig(batchOrBranch, currentUsn) {
         };
     }
 
-    // Default fallback
     return {
         branch: key,
         code: key,
         name: `Cohort ${key}`,
         patterns: [`${key}%`]
     };
+}
+
+async function getOrComputeCohortData(cohortConfig) {
+    const cacheKey = cohortConfig.code;
+    const now = Date.now();
+    const cached = cohortCache.get(cacheKey);
+
+    if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+        return cached.data;
+    }
+
+    // 1. Fetch students for this cohort
+    const { data: allStudents, error: stuErr } = await supabaseAdmin
+        .from('students')
+        .select('id, usn, name, branch, scheme, semester, lateral_entry')
+        .order('usn', { ascending: true });
+
+    if (stuErr) throw stuErr;
+
+    const students = (allStudents || []).filter(s => {
+        return cohortConfig.patterns.some(p => {
+            const prefix = p.replace('%', '');
+            return s.usn.startsWith(prefix);
+        });
+    });
+
+    const studentUsns = students.map(s => s.usn);
+    const studentMap = Object.fromEntries(students.map(s => [s.usn, s]));
+
+    if (studentUsns.length === 0) {
+        const emptyResult = {
+            students: [],
+            studentMap: {},
+            regularCount: 0,
+            lateralCount: 0,
+            overallLeaderboard: [],
+            allSemestersLeaderboard: {},
+            availableSemesters: [],
+            availableSubjects: [],
+            subjectGroups: {},
+            studentRecords: {}
+        };
+        cohortCache.set(cacheKey, { timestamp: now, data: emptyResult });
+        return emptyResult;
+    }
+
+    // 2. Fetch subject_marks and subject_catalog in parallel
+    const [allMarks, catalogIndex] = await Promise.all([
+        fetchByChunks('subject_marks', 'id, usn, semester, subject_code, subject_name, internal, external, total, grade, credits, passed, is_backlog', 'usn', studentUsns, supabaseAdmin),
+        fetchCatalogIndex(supabaseAdmin)
+    ]);
+
+    // Group marks by USN
+    const marksByUsn = {};
+    const semSet = new Set();
+    (allMarks || []).forEach(m => {
+        if (!marksByUsn[m.usn]) marksByUsn[m.usn] = [];
+        marksByUsn[m.usn].push(m);
+        const sNum = Number(m.semester);
+        if (sNum > 0) semSet.add(sNum);
+    });
+
+    let regularCount = 0;
+    let lateralCount = 0;
+
+    // 3. Compute canonical academic records for each student
+    const studentRecords = {};
+    for (const s of students) {
+        const isLateral = s.lateral_entry === true || /[0-9][A-Z]{2}[0-9]{2}[A-Z]{2,3}4[0-9]{2}/.test(s.usn);
+        if (isLateral) lateralCount++; else regularCount++;
+
+        const sMarks = marksByUsn[s.usn] || [];
+        const rec = await calculateAcademicRecord(sMarks, {
+            usn: s.usn,
+            name: s.name,
+            branch: s.branch || cohortConfig.branch,
+            scheme: s.scheme || '2022',
+            isLateral
+        }, { catalogIndex });
+
+        studentRecords[s.usn] = {
+            ...rec,
+            isLateral
+        };
+    }
+
+    const availableSemesters = Array.from(semSet).sort((a, b) => a - b);
+
+    // 4. Overall Class Leaderboard (CGPA)
+    const overallLeaderboard = students.map(s => {
+        const rec = studentRecords[s.usn];
+        return {
+            usn: s.usn,
+            name: s.name || s.usn,
+            branch: s.branch,
+            isLateral: rec?.isLateral || false,
+            cgpa: rec ? rec.cgpa : 0,
+            earnedCredits: rec ? rec.totalEarnedCredits : 0,
+            regCredits: rec ? rec.totalRegisteredCredits : 0,
+            semestersTracked: rec ? rec.semestersTracked : 0,
+            totalBacklogs: rec ? rec.totalActiveBacklogs : 0
+        };
+    });
+
+    overallLeaderboard.sort((a, b) => {
+        if (b.cgpa !== a.cgpa) return b.cgpa - a.cgpa;
+        if (a.totalBacklogs !== b.totalBacklogs) return a.totalBacklogs - b.totalBacklogs;
+        if (b.earnedCredits !== a.earnedCredits) return b.earnedCredits - a.earnedCredits;
+        return a.usn.localeCompare(b.usn);
+    });
+
+    overallLeaderboard.forEach((item, idx) => {
+        item.rank = idx + 1;
+    });
+
+    // 5. Precompute All Semester SGPA Leaderboards
+    const allSemestersLeaderboard = {};
+    for (const sem of availableSemesters) {
+        const list = students.map(s => {
+            const rec = studentRecords[s.usn];
+            const semStat = rec?.semStats?.[sem];
+            const hasAppeared = !!(semStat && (semStat.totalCredits > 0 || semStat.sgpa > 0));
+            const isLateralExempt = rec?.isLateral && sem < 3;
+
+            let statusText = 'Appeared';
+            if (!hasAppeared) {
+                statusText = isLateralExempt ? 'Lateral Entry (Joined Sem 3)' : 'Not Registered / Discontinued';
+            }
+
+            return {
+                usn: s.usn,
+                name: s.name || s.usn,
+                branch: s.branch,
+                isLateral: rec?.isLateral || false,
+                semester: sem,
+                sgpa: hasAppeared ? semStat.sgpa : null,
+                credits: hasAppeared ? semStat.totalCredits : 0,
+                earnedCredits: hasAppeared ? semStat.earnedCredits : 0,
+                hasAppeared,
+                statusText
+            };
+        });
+
+        list.sort((a, b) => {
+            if (a.hasAppeared && !b.hasAppeared) return -1;
+            if (!a.hasAppeared && b.hasAppeared) return 1;
+            if (a.hasAppeared && b.hasAppeared) {
+                if (b.sgpa !== a.sgpa) return b.sgpa - a.sgpa;
+                if (b.earnedCredits !== a.earnedCredits) return b.earnedCredits - a.earnedCredits;
+            }
+            return a.usn.localeCompare(b.usn);
+        });
+
+        let rankCount = 1;
+        list.forEach(item => {
+            if (item.hasAppeared) {
+                item.rank = rankCount++;
+            } else {
+                item.rank = '—';
+            }
+        });
+
+        allSemestersLeaderboard[sem] = list;
+    }
+
+    // 6. Precompute Subject-Wise Groups with Canonical Grading & Deduplication
+    const subjectGroups = {};
+    const subjectSemCounts = {};
+    const subjectCanonicalNames = {};
+
+    (allMarks || []).forEach(m => {
+        const semNum = Number(m.semester) || 1;
+        const code = (m.subject_code || '').trim().toUpperCase();
+        if (!code) return;
+
+        if (!subjectSemCounts[code]) subjectSemCounts[code] = {};
+        subjectSemCounts[code][semNum] = (subjectSemCounts[code][semNum] || 0) + 1;
+
+        if (m.subject_name && m.subject_name.trim().length > (subjectCanonicalNames[code]?.length || 0)) {
+            subjectCanonicalNames[code] = m.subject_name.trim();
+        }
+
+        if (!subjectGroups[code]) {
+            subjectGroups[code] = {
+                subject_code: code,
+                studentsByUsn: {}
+            };
+        }
+
+        const norm = normalizeSubjectResult(m, '2022', cohortConfig.branch, semNum);
+        const internal = norm.cie_marks ?? Number(m.internal) ?? 0;
+        const external = norm.seeMarks ?? Number(m.external) ?? 0;
+        const total = norm.totalMarks ?? Number(m.total) ?? (internal + external);
+
+        const studentEntry = {
+            usn: m.usn,
+            name: studentMap[m.usn]?.name || m.usn,
+            isLateral: studentRecords[m.usn]?.isLateral || false,
+            internal,
+            external,
+            total,
+            grade: norm.grade,
+            gradePoint: norm.gradePoint,
+            passed: norm.isPassed
+        };
+
+        const existing = subjectGroups[code].studentsByUsn[m.usn];
+        if (!existing) {
+            subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+        } else {
+            const existingPassed = existing.passed ? 1 : 0;
+            const newPassed = studentEntry.passed ? 1 : 0;
+            if (newPassed > existingPassed) {
+                subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+            } else if (newPassed === existingPassed) {
+                if (studentEntry.total > existing.total) {
+                    subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+                } else if (studentEntry.total === existing.total && studentEntry.external > existing.external) {
+                    subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+                }
+            }
+        }
+    });
+
+    const availableSubjects = Object.entries(subjectGroups).map(([code, group]) => {
+        const semCounts = subjectSemCounts[code] || {};
+        const dominantSem = Number(Object.keys(semCounts).reduce((a, b) => semCounts[a] > semCounts[b] ? a : b, 1));
+        const studentList = Object.values(group.studentsByUsn);
+        return {
+            subject_code: code,
+            subject_name: subjectCanonicalNames[code] || code,
+            semester: dominantSem,
+            enrolledCount: studentList.length,
+            students: studentList
+        };
+    }).sort((a, b) => (a.semester - b.semester) || a.subject_code.localeCompare(b.subject_code));
+
+    const computedData = {
+        students,
+        studentMap,
+        regularCount,
+        lateralCount,
+        overallLeaderboard,
+        allSemestersLeaderboard,
+        availableSemesters,
+        availableSubjects,
+        subjectGroups,
+        studentRecords
+    };
+
+    cohortCache.set(cacheKey, { timestamp: now, data: computedData });
+    return computedData;
 }
 
 export async function GET(req) {
@@ -81,36 +336,33 @@ export async function GET(req) {
 
         const requestedBatch = searchParams.get('batch');
         const cohortConfig = resolveCohortConfig(requestedBatch, currentUsn);
-        const selectedSem = parseInt(searchParams.get('semester')) || null;
-        const selectedSubject = searchParams.get('subject_code') || null;
+        const selectedSemParam = parseInt(searchParams.get('semester')) || null;
+        const selectedSubjectParam = searchParams.get('subject_code') || null;
 
-        // 1. Fetch all students matching any of the cohort USN patterns
-        const { data: allStudents, error: stuErr } = await supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, scheme, semester, lateral_entry')
-            .order('usn', { ascending: true });
+        const cohortData = await getOrComputeCohortData(cohortConfig);
+        const {
+            students,
+            studentMap,
+            regularCount,
+            lateralCount,
+            overallLeaderboard,
+            allSemestersLeaderboard,
+            availableSemesters,
+            availableSubjects,
+            studentRecords
+        } = cohortData;
 
-        if (stuErr) throw stuErr;
-
-        const students = (allStudents || []).filter(s => {
-            return cohortConfig.patterns.some(p => {
-                const prefix = p.replace('%', '');
-                return s.usn.startsWith(prefix);
-            });
-        });
-
-        const studentUsns = students.map(s => s.usn);
-        const studentMap = Object.fromEntries(students.map(s => [s.usn, s]));
-
-        if (studentUsns.length === 0) {
+        if (students.length === 0) {
             return ok({
                 batch: cohortConfig.code,
                 batchName: cohortConfig.name,
                 totalStudents: 0,
                 regularCount: 0,
                 lateralCount: 0,
+                targetSemester: 1,
                 overallLeaderboard: [],
                 semesterLeaderboard: [],
+                allSemestersLeaderboard: {},
                 subjectLeaderboard: [],
                 availableSemesters: [],
                 availableSubjects: [],
@@ -118,277 +370,27 @@ export async function GET(req) {
             });
         }
 
-        // 2. Fetch all results, remarks, and subject_marks for these students using chunked fetching
-        const [
-            allResults,
-            allRemarks,
-            allMarks
-        ] = await Promise.all([
-            fetchByChunks('results', 'usn, semester, sgpa, total_credits', 'usn', studentUsns, supabaseAdmin),
-            fetchByChunks('academic_remarks', 'student_usn, semester, sgpa, backlog_count, is_all_clear', 'student_usn', studentUsns, supabaseAdmin),
-            fetchByChunks('subject_marks', 'usn, semester, subject_code, subject_name, internal, external, total, grade, credits, passed, is_backlog', 'usn', studentUsns, supabaseAdmin)
-        ]);
-
-        // 3. Build student performance matrix
-        const GRADE_POINTS = { 'O': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5, 'P': 4, 'F': 0 };
-        function scoreToGradePoint(score, grade) {
-            if (grade && GRADE_POINTS[grade.toUpperCase()] !== undefined && grade.toUpperCase() !== 'P') {
-                return GRADE_POINTS[grade.toUpperCase()];
-            }
-            const s = Number(score) || 0;
-            if (s >= 90) return 10;
-            if (s >= 80) return 9;
-            if (s >= 70) return 8;
-            if (s >= 60) return 7;
-            if (s >= 50) return 6;
-            if (s >= 40) return 4;
-            return 0;
+        // Determine target semester:
+        // If explicitly requested, use it; otherwise default to highest completed semester with >50% students, or 6
+        let targetSem = selectedSemParam;
+        if (!targetSem || !availableSemesters.includes(targetSem)) {
+            // Find highest semester with at least 50% students appeared, default to 6
+            const popularSem = [...availableSemesters].reverse().find(s => {
+                const list = allSemestersLeaderboard[s] || [];
+                const appearedCount = list.filter(item => item.hasAppeared).length;
+                return appearedCount >= Math.floor(students.length * 0.4);
+            });
+            targetSem = popularSem || (availableSemesters.length > 0 ? availableSemesters[availableSemesters.length - 1] : 6);
         }
 
-        let regularCount = 0;
-        let lateralCount = 0;
+        const semesterList = (allSemestersLeaderboard[targetSem] || []).map(s => ({
+            ...s,
+            isCurrentUser: s.usn === currentUsn
+        }));
 
-        const studentStats = {};
-        students.forEach(s => {
-            const isLateral = s.lateral_entry === true || /[0-9][A-Z]{2}[0-9]{2}[A-Z]{2,3}4[0-9]{2}/.test(s.usn);
-            if (isLateral) lateralCount++; else regularCount++;
-
-            studentStats[s.usn] = {
-                usn: s.usn,
-                name: s.name || s.usn,
-                branch: s.branch,
-                scheme: s.scheme,
-                isLateral,
-                semesters: {},
-                totalBacklogs: 0,
-                isCurrentUser: s.usn === currentUsn
-            };
-        });
-
-        const semSet = new Set();
-        const userMarksBySem = {};
-        (allMarks || []).forEach(m => {
-            const semNum = Number(m.semester);
-            if (semNum > 0) semSet.add(semNum);
-            const key = `${m.usn}_${semNum}`;
-            if (!userMarksBySem[key]) userMarksBySem[key] = [];
-            userMarksBySem[key].push(m);
-        });
-
-        (allResults || []).forEach(r => {
-            const s = studentStats[r.usn];
-            if (!s) return;
-            const semNum = Number(r.semester);
-            if (semNum > 0) semSet.add(semNum);
-
-            if (!s.semesters[semNum] || Number(r.sgpa) > (s.semesters[semNum].sgpa || 0)) {
-                s.semesters[semNum] = {
-                    semester: semNum,
-                    sgpa: Number(r.sgpa) || 0,
-                    credits: Number(r.total_credits) || 20
-                };
-            }
-        });
-
-        // Dynamic SGPA calculation for any student missing results slip
-        Object.entries(userMarksBySem).forEach(([key, marks]) => {
-            const [usn, semStr] = key.split('_');
-            const semNum = Number(semStr);
-            const s = studentStats[usn];
-            if (!s) return;
-
-            if (!s.semesters[semNum] || s.semesters[semNum].sgpa === 0) {
-                let earnedPoints = 0;
-                let totalCr = 0;
-                marks.forEach(m => {
-                    const cr = Number(m.credits) || 3;
-                    const gp = scoreToGradePoint(m.total, m.grade);
-                    earnedPoints += (gp * cr);
-                    totalCr += cr;
-                });
-                const calcSGPA = totalCr > 0 ? Number((earnedPoints / totalCr).toFixed(2)) : 0;
-                s.semesters[semNum] = {
-                    semester: semNum,
-                    sgpa: calcSGPA,
-                    credits: totalCr
-                };
-            }
-        });
-
-        (allRemarks || []).forEach(rm => {
-            const s = studentStats[rm.student_usn];
-            if (!s) return;
-            s.totalBacklogs += (Number(rm.backlog_count) || 0);
-        });
-
-        // 4. Calculate Overall CGPA Leaderboard for ALL students in the class
-        const overallList = Object.values(studentStats).map(s => {
-            let totalCredits = 0;
-            let weightedPoints = 0;
-            let semCount = 0;
-
-            Object.values(s.semesters).forEach(sem => {
-                if (sem.sgpa > 0) {
-                    const cr = sem.credits || 20;
-                    totalCredits += cr;
-                    weightedPoints += (sem.sgpa * cr);
-                    semCount++;
-                }
-            });
-
-            const cgpa = totalCredits > 0 ? Number((weightedPoints / totalCredits).toFixed(2)) : 0;
-
-            return {
-                usn: s.usn,
-                name: s.name,
-                branch: s.branch,
-                isLateral: s.isLateral,
-                cgpa,
-                semestersTracked: semCount,
-                totalBacklogs: s.totalBacklogs,
-                isCurrentUser: s.isCurrentUser
-            };
-        });
-
-        // Sort descending by CGPA, then fewest backlogs, then USN
-        overallList.sort((a, b) => {
-            if (b.cgpa !== a.cgpa) return b.cgpa - a.cgpa;
-            if (a.totalBacklogs !== b.totalBacklogs) return a.totalBacklogs - b.totalBacklogs;
-            return a.usn.localeCompare(b.usn);
-        });
-
-        overallList.forEach((item, index) => {
-            item.rank = index + 1;
-        });
-
-        // 5. Available semesters sorted
-        const availableSemesters = Array.from(semSet).sort((a, b) => a - b);
-        const targetSem = selectedSem || (availableSemesters.length > 0 ? availableSemesters[availableSemesters.length - 1] : 6);
-
-        // 6. Semester-Wise SGPA Leaderboard for target semester (Includes ALL cohort students)
-        const semesterList = Object.values(studentStats).map(s => {
-            const semData = s.semesters[targetSem];
-            const hasAppeared = !!(semData && semData.sgpa > 0);
-            const isLateralExempt = s.isLateral && targetSem < 3;
-
-            let statusText = 'Appeared';
-            if (!hasAppeared) {
-                statusText = isLateralExempt ? 'Lateral Entry (Joined Sem 3)' : 'Not Registered / Discontinued';
-            }
-
-            return {
-                usn: s.usn,
-                name: s.name,
-                branch: s.branch,
-                isLateral: s.isLateral,
-                semester: targetSem,
-                sgpa: hasAppeared ? semData.sgpa : null,
-                credits: hasAppeared ? semData.credits : 0,
-                hasAppeared,
-                statusText,
-                isCurrentUser: s.isCurrentUser
-            };
-        });
-
-        // Sort: Active scorers first (SGPA descending), then unappeared/exempt students
-        semesterList.sort((a, b) => {
-            if (a.hasAppeared && !b.hasAppeared) return -1;
-            if (!a.hasAppeared && b.hasAppeared) return 1;
-            if (a.hasAppeared && b.hasAppeared) {
-                if (b.sgpa !== a.sgpa) return b.sgpa - a.sgpa;
-            }
-            return a.usn.localeCompare(b.usn);
-        });
-
-        let rankCount = 1;
-        semesterList.forEach((item) => {
-            if (item.hasAppeared) {
-                item.rank = rankCount++;
-            } else {
-                item.rank = '—';
-            }
-        });
-
-        // 7. Subject-Wise Toppers & Subject Leaderboard (Canonical grading & deduplicated)
-        const subjectGroups = {};
-        const subjectSemCounts = {};
-        const subjectCanonicalNames = {};
-
-        (allMarks || []).forEach(m => {
-            const semNum = Number(m.semester) || 1;
-            const code = (m.subject_code || '').trim().toUpperCase();
-            if (!code) return;
-
-            // Track semester counts to determine authoritative semester
-            if (!subjectSemCounts[code]) subjectSemCounts[code] = {};
-            subjectSemCounts[code][semNum] = (subjectSemCounts[code][semNum] || 0) + 1;
-
-            if (m.subject_name && m.subject_name.trim().length > (subjectCanonicalNames[code]?.length || 0)) {
-                subjectCanonicalNames[code] = m.subject_name.trim();
-            }
-
-            if (!subjectGroups[code]) {
-                subjectGroups[code] = {
-                    subject_code: code,
-                    studentsByUsn: {}
-                };
-            }
-
-            const branch = studentStats[m.usn]?.branch || cohortConfig.branch || 'CS';
-            const norm = normalizeSubjectResult(m, '2022', branch, semNum);
-            const internal = norm.cie_marks ?? Number(m.internal) ?? 0;
-            const external = norm.seeMarks ?? Number(m.external) ?? 0;
-            const total = norm.totalMarks ?? Number(m.total) ?? (internal + external);
-
-            const studentEntry = {
-                usn: m.usn,
-                name: studentMap[m.usn]?.name || m.usn,
-                isLateral: studentStats[m.usn]?.isLateral || false,
-                internal,
-                external,
-                total,
-                grade: norm.grade,
-                gradePoint: norm.gradePoint,
-                passed: norm.isPassed,
-                isCurrentUser: m.usn === currentUsn
-            };
-
-            const existing = subjectGroups[code].studentsByUsn[m.usn];
-            if (!existing) {
-                subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
-            } else {
-                // Deduplicate: Keep best attempt (passed over failed, higher total, higher external)
-                const existingPassed = existing.passed ? 1 : 0;
-                const newPassed = studentEntry.passed ? 1 : 0;
-                if (newPassed > existingPassed) {
-                    subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
-                } else if (newPassed === existingPassed) {
-                    if (studentEntry.total > existing.total) {
-                        subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
-                    } else if (studentEntry.total === existing.total && studentEntry.external > existing.external) {
-                        subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
-                    }
-                }
-            }
-        });
-
-        // Determine dominant semester and format subject list
-        const availableSubjects = Object.entries(subjectGroups).map(([code, group]) => {
-            const semCounts = subjectSemCounts[code] || {};
-            const dominantSem = Number(Object.keys(semCounts).reduce((a, b) => semCounts[a] > semCounts[b] ? a : b, 1));
-            const studentList = Object.values(group.studentsByUsn);
-            return {
-                subject_code: code,
-                subject_name: subjectCanonicalNames[code] || code,
-                semester: dominantSem,
-                enrolledCount: studentList.length,
-                students: studentList
-            };
-        }).sort((a, b) => (a.semester - b.semester) || a.subject_code.localeCompare(b.subject_code));
-
-        // Selected subject ranking or default to first subject in target semester
-        const targetSubjectCode = selectedSubject
-            ? selectedSubject.toUpperCase().trim()
+        // Subject leaderboard for target subject
+        const targetSubjectCode = selectedSubjectParam
+            ? selectedSubjectParam.toUpperCase().trim()
             : availableSubjects.find(s => s.semester === targetSem)?.subject_code || availableSubjects[0]?.subject_code;
 
         let subjectLeaderboard = [];
@@ -412,15 +414,32 @@ export async function GET(req) {
 
             sortedScores.forEach((s, idx) => {
                 s.rank = idx + 1;
+                s.isCurrentUser = s.usn === currentUsn;
             });
 
             subjectLeaderboard = sortedScores;
         }
 
-        // Find current user's ranks
-        const currentUserOverall = overallList.find(s => s.isCurrentUser);
-        const currentUserSem = semesterList.find(s => s.isCurrentUser);
-        const currentUserSub = subjectLeaderboard.find(s => s.isCurrentUser);
+        // Build Current User's Academic Standing across all semesters
+        const currentUserOverall = overallLeaderboard.find(s => s.usn === currentUsn);
+        const currentUserSem = semesterList.find(s => s.usn === currentUsn);
+        const currentUserSub = subjectLeaderboard.find(s => s.usn === currentUsn);
+
+        // Precompute all semester ranks and SGPAs for current user
+        const userSemesters = {};
+        for (const sem of availableSemesters) {
+            const semLeaderboard = allSemestersLeaderboard[sem] || [];
+            const userEntry = semLeaderboard.find(s => s.usn === currentUsn);
+            if (userEntry) {
+                userSemesters[sem] = {
+                    semester: sem,
+                    rank: userEntry.rank,
+                    sgpa: userEntry.sgpa,
+                    credits: userEntry.credits,
+                    hasAppeared: userEntry.hasAppeared
+                };
+            }
+        }
 
         return ok({
             batch: cohortConfig.code,
@@ -442,9 +461,11 @@ export async function GET(req) {
                 semesterSGPA: currentUserSem?.sgpa || null,
                 subjectRank: currentUserSub?.rank || null,
                 subjectTotal: currentUserSub?.total || null,
+                semesters: userSemesters
             },
-            overallLeaderboard: overallList,
+            overallLeaderboard: overallLeaderboard.map(s => ({ ...s, isCurrentUser: s.usn === currentUsn })),
             semesterLeaderboard: semesterList,
+            allSemestersLeaderboard,
             subjectLeaderboard
         });
     } catch (err) {
