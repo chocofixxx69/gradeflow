@@ -162,7 +162,7 @@ async function loginStudent({ usn, email, password }) {
         .maybeSingle();
 
     if (error) throw error;
-    if (!student) return failureResponse('USN not found. Please activate your account first.', 404);
+    if (!student) return failureResponse('USN not found in student directory. Please contact your department.', 404);
 
     if (student.is_suspended) {
         return failureResponse(
@@ -171,11 +171,18 @@ async function loginStudent({ usn, email, password }) {
         );
     }
 
-    if (!student.password_hash) return failureResponse('Account not activated yet. Please activate your account.', 400);
-
-    const passwordMatches = await verifyStudentPassword(password, student.password_hash);
+    const passwordMatches = await verifyStudentPassword(password, student.password_hash, student.name, student.usn);
     if (!passwordMatches) {
-        return failureResponse('Incorrect password. Please try again.', 401);
+        return failureResponse('Incorrect password. Please try again or use your default institutional password.', 401);
+    }
+
+    // If password_hash was not set yet, save the bcrypt hash now
+    if (!student.password_hash) {
+        const newHash = await hashStudentPassword(password);
+        await supabase
+            .from('students')
+            .update({ password_hash: newHash, updated_at: new Date().toISOString() })
+            .eq('id', student.id);
     }
 
     // Students don't get the httpOnly staff cookie — their session is the

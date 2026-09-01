@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Input } from '@/components/ui/Foundation';
 import { Card } from '@/components/ui/Card';
+import RaiseIssueModal from '@/components/RaiseIssueModal';
 // Clerk removed — auth is now fully handled via Supabase password_hash
 
 function StudentAuthContent() {
@@ -20,6 +21,7 @@ function StudentAuthContent() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
 
     // Auto-redirect if already logged in
     useEffect(() => {
@@ -340,13 +342,21 @@ function StudentAuthContent() {
                                 />
 
                                 {mode === 'login' && (
-                                    <div style={{ textAlign: 'right', marginTop: '-10px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-8px' }}>
                                         <button
                                             type="button"
-                                            onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+                                            onClick={() => setIsIssueModalOpen(true)}
+                                            style={{ fontSize: '12px', fontWeight: 600, color: 'var(--tx-muted)', textDecoration: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>help_outline</span>
+                                            Raise Issue / Help
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsIssueModalOpen(true)}
                                             style={{ fontSize: '12px', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                                         >
-                                            Forgot Password? Reset securely
+                                            Forgot Password?
                                         </button>
                                     </div>
                                 )}
@@ -376,9 +386,25 @@ function StudentAuthContent() {
                     </>
                 )}
 
-                <p style={{ ...s.footer, display: mode === 'activate' ? 'none' : 'block' }}>
-                    Your account is linked to your institutional USN. Faculty or admin can pre-create your profile.
-                </p>
+                <div style={{ ...s.footer, display: mode === 'activate' ? 'none' : 'block', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginBottom: '6px' }}>
+                        Default password: <strong>First 2 letters of name + last 3 digits of USN</strong> (e.g. <code>RA063</code>)
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsIssueModalOpen(true)}
+                        style={{ fontSize: '12px', fontWeight: 600, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', textDecoration: 'underline' }}
+                    >
+                        Having trouble? Raise an issue for admin resolution
+                    </button>
+                </div>
+
+                <RaiseIssueModal
+                    isOpen={isIssueModalOpen}
+                    onClose={() => setIsIssueModalOpen(false)}
+                    defaultUserType="student"
+                    defaultIdentifier={email}
+                />
             </Card>
         </div>
     );

@@ -3,6 +3,7 @@ import { requireStudent } from '../../../../lib/server-session';
 import { weightedCGPA, computeBacklogs, getAdminClient } from '../../../../lib/analytics-data';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
+import { generateFormulaPassword, hashStudentPassword } from '../../../../lib/student-auth';
 
 const supabaseAdmin = getAdminClient();
 
@@ -35,13 +36,19 @@ export async function GET(req) {
             const detectedBranch = branchMatch ? branchMatch[1] : '';
             const normalizedBranch = detectedBranch === 'CS' ? 'CSE' : detectedBranch;
 
+            const cleanUSN = usn.toUpperCase().trim();
+            const stuName = session.name || cleanUSN;
+            const formulaPass = generateFormulaPassword(stuName, cleanUSN);
+            const passHash = await hashStudentPassword(formulaPass);
+
             const { data: newProfile, error: insertErr } = await supabaseAdmin
                 .from('students')
                 .insert({
-                    usn: usn.toUpperCase().trim(),
-                    name: session.name || usn,
+                    usn: cleanUSN,
+                    name: stuName,
                     scheme: session.scheme || '2022',
                     branch: session.branch || normalizedBranch || 'CSE',
+                    password_hash: passHash,
                 })
                 .select()
                 .single();

@@ -1,0 +1,322 @@
+'use client';
+
+import { useState } from 'react';
+import { apiRequest } from '../lib/api/client';
+
+export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'student', defaultIdentifier = '' }) {
+    const [userType, setUserType] = useState(defaultUserType);
+    const [identifier, setIdentifier] = useState(defaultIdentifier);
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [issueType, setIssueType] = useState('password_reset');
+    const [subject, setSubject] = useState('');
+    const [description, setDescription] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [successData, setSuccessData] = useState(null);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setBusy(true);
+
+        try {
+            const res = await apiRequest('/api/support/tickets', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_type: userType,
+                    user_identifier: identifier,
+                    user_name: name,
+                    user_email: email,
+                    issue_type: issueType,
+                    subject: subject || (issueType === 'password_reset' ? 'Password Reset Request' : 'Support Request'),
+                    description
+                })
+            });
+
+            setSuccessData(res);
+        } catch (err) {
+            setError(err.message || 'Failed to submit issue ticket. Please try again.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleReset = () => {
+        setSuccessData(null);
+        setError('');
+        setSubject('');
+        setDescription('');
+        onClose();
+    };
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(10, 24, 28, 0.65)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+            <div style={{
+                background: 'var(--surface, #ffffff)', border: '1px solid var(--border, #d1d8da)',
+                borderRadius: '16px', maxWidth: '520px', width: '100%',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.18)', overflow: 'hidden',
+                animation: 'fadeIn 0.2s ease-out'
+            }}>
+                {/* Modal Header */}
+                <div style={{
+                    padding: '18px 24px', borderBottom: '1px solid var(--border, #d1d8da)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: 'var(--surface-low, #fdf6ed)'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '36px', height: '36px', borderRadius: '10px',
+                            background: 'var(--primary, #174B4D)', color: '#ffffff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            <span className="material-icons-round" style={{ fontSize: '20px' }}>help_outline</span>
+                        </div>
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700', color: 'var(--tx-main, #0a181c)' }}>
+                                Institutional Support Desk
+                            </h3>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--tx-muted, #586c6d)' }}>
+                                Raise an issue or request password assistance
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        style={{
+                            background: 'transparent', border: 'none', cursor: 'pointer',
+                            color: 'var(--tx-muted, #586c6d)', padding: '4px', borderRadius: '6px',
+                            display: 'flex', alignItems: 'center'
+                        }}
+                    >
+                        <span className="material-icons-round">close</span>
+                    </button>
+                </div>
+
+                {/* Modal Body */}
+                <div style={{ padding: '24px' }}>
+                    {successData ? (
+                        <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+                            <div style={{
+                                width: '56px', height: '56px', borderRadius: '50%',
+                                background: 'var(--success-bg, #E8F5E9)', color: 'var(--success, #166534)',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                marginBottom: '14px', border: '1px solid var(--success-border, #A5D6A7)'
+                            }}>
+                                <span className="material-icons-round" style={{ fontSize: '32px' }}>check_circle</span>
+                            </div>
+                            <h4 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: '700', color: 'var(--tx-main, #0a181c)' }}>
+                                Ticket Raised Successfully!
+                            </h4>
+                            <div style={{
+                                background: 'var(--surface-low, #fdf6ed)', border: '1px solid var(--border, #d1d8da)',
+                                borderRadius: '10px', padding: '12px 16px', margin: '14px 0 18px 0',
+                                display: 'inline-block'
+                            }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--tx-muted, #586c6d)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Ticket Reference ID
+                                </div>
+                                <div style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary, #174B4D)', fontFamily: 'monospace' }}>
+                                    {successData.ticketNumber}
+                                </div>
+                            </div>
+                            <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: 'var(--tx-muted, #586c6d)', lineHeight: '1.5' }}>
+                                Your problem has been queued in the Administrator Terminal. The admin can solve or reset your password immediately.
+                            </p>
+                            <button
+                                onClick={handleReset}
+                                style={{
+                                    background: 'var(--primary, #174B4D)', color: '#ffffff',
+                                    border: 'none', borderRadius: '8px', padding: '10px 24px',
+                                    fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem'
+                                }}
+                            >
+                                Done
+                            </button>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {error && (
+                                <div style={{
+                                    background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    color: '#b91c1c', padding: '10px 14px', borderRadius: '8px',
+                                    fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
+                                }}>
+                                    <span className="material-icons-round" style={{ fontSize: '18px' }}>error_outline</span>
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            {/* User Type Switcher */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '6px' }}>
+                                    I am raising this as a:
+                                </label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setUserType('student')}
+                                        style={{
+                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            border: userType === 'student' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
+                                            background: userType === 'student' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
+                                            color: userType === 'student' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586c6d)'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>school</span>
+                                        Student
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setUserType('faculty')}
+                                        style={{
+                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            border: userType === 'faculty' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
+                                            background: userType === 'faculty' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
+                                            color: userType === 'faculty' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586c6d)'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>badge</span>
+                                        Faculty
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Identifier Input */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
+                                    {userType === 'student' ? 'University Seat Number (USN) *' : 'Institutional Email *'}
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder={userType === 'student' ? 'e.g. 2AB23CS063' : 'e.g. faculty@institution.edu'}
+                                    value={identifier}
+                                    onChange={(e) => setIdentifier(e.target.value.toUpperCase())}
+                                    style={{
+                                        width: '100%', padding: '10px 12px', borderRadius: '8px',
+                                        border: '1px solid var(--border, #d1d8da)', fontSize: '0.9rem',
+                                        background: '#ffffff', color: 'var(--tx-main, #0a181c)',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Issue Category */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
+                                    Issue Category *
+                                </label>
+                                <select
+                                    value={issueType}
+                                    onChange={(e) => setIssueType(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '10px 12px', borderRadius: '8px',
+                                        border: '1px solid var(--border, #d1d8da)', fontSize: '0.9rem',
+                                        background: '#ffffff', color: 'var(--tx-main, #0a181c)',
+                                        boxSizing: 'border-box'
+                                    }}
+                                >
+                                    <option value="password_reset">🔑 Password Reset / Forgot Password</option>
+                                    <option value="login_issue">🔒 Account Login / Access Problem</option>
+                                    <option value="marks_dispute">📊 Marks / Results Discrepancy</option>
+                                    <option value="profile_correction">📝 Profile / Name / USN Correction</option>
+                                    <option value="other">💬 Other Inquiry / Technical Issue</option>
+                                </select>
+                            </div>
+
+                            {/* Subject */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
+                                    Brief Summary / Subject *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder={issueType === 'password_reset' ? 'e.g. Please reset my account password' : 'e.g. Cannot access 4th semester results'}
+                                    value={subject}
+                                    onChange={(e) => setSubject(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '10px 12px', borderRadius: '8px',
+                                        border: '1px solid var(--border, #d1d8da)', fontSize: '0.9rem',
+                                        background: '#ffffff', color: 'var(--tx-main, #0a181c)',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Description */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
+                                    Description of the Problem *
+                                </label>
+                                <textarea
+                                    required
+                                    rows={3}
+                                    placeholder="Provide any details that will help the administrator assist you..."
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '10px 12px', borderRadius: '8px',
+                                        border: '1px solid var(--border, #d1d8da)', fontSize: '0.9rem',
+                                        background: '#ffffff', color: 'var(--tx-main, #0a181c)',
+                                        fontFamily: 'inherit', resize: 'vertical',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Submit Button */}
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    style={{
+                                        flex: 1, padding: '11px', borderRadius: '8px',
+                                        border: '1px solid var(--border, #d1d8da)', background: '#ffffff',
+                                        color: 'var(--tx-muted, #586c6d)', fontWeight: '600',
+                                        cursor: 'pointer', fontSize: '0.9rem'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={busy}
+                                    style={{
+                                        flex: 2, padding: '11px', borderRadius: '8px',
+                                        border: 'none', background: 'var(--primary, #174B4D)',
+                                        color: '#ffffff', fontWeight: '600',
+                                        cursor: busy ? 'not-allowed' : 'pointer', fontSize: '0.9rem',
+                                        opacity: busy ? 0.7 : 1, display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', gap: '8px'
+                                    }}
+                                >
+                                    {busy ? (
+                                        <>
+                                            <span className="material-icons-round" style={{ animation: 'spin 1s linear infinite' }}>sync</span>
+                                            Submitting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>send</span>
+                                            Submit to Admin
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}

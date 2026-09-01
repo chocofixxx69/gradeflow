@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/server-session';
 import { fetchAllPaginated } from '../../../../../lib/supabase-utils';
 import { getAdminClient } from '../../../../../lib/analytics-data';
+import { generateFormulaPassword, hashStudentPassword } from '../../../../../lib/student-auth';
 
 const supabaseAdmin = getAdminClient();
 
@@ -106,14 +107,20 @@ export async function POST(req) {
 
         if (!usn) return fail('USN is required.', 'MISSING_USN', 400);
 
+        const cleanUSN = usn.toUpperCase().trim();
+        const studentName = name || cleanUSN;
+        const formulaPass = generateFormulaPassword(studentName, cleanUSN);
+        const passHash = await hashStudentPassword(formulaPass);
+
         const { data: student, error } = await supabaseAdmin
             .from('students')
             .upsert({
-                usn: usn.toUpperCase().trim(),
-                name: name || usn.toUpperCase().trim(),
+                usn: cleanUSN,
+                name: studentName,
                 branch: branch || null,
                 scheme: scheme || '2022',
                 semester: semester || 1,
+                password_hash: passHash,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'usn' })
             .select()

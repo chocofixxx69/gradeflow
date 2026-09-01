@@ -4,6 +4,7 @@ import { calculateAcademicRecord, normalizeBranch } from '../../../lib/vtuAcadem
 import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
 import { weightedCGPA, getAdminClient } from '../../../lib/analytics-data';
 import { requireStaff } from '../../../lib/server-session';
+import { generateFormulaPassword, hashStudentPassword } from '../../../lib/student-auth';
 
 const supabaseAdmin = getAdminClient();
 
@@ -238,13 +239,16 @@ export async function POST(req) {
         const uniqueStudents = Array.from(usnMap.values());
         const usns = uniqueStudents.map(s => s.usn);
 
-        // Upsert student profiles into `students` table
-        const toUpsert = uniqueStudents.map(s => {
-            const row = { usn: s.usn, name: s.name || s.usn };
+        // Upsert student profiles into `students` table with formula passwords
+        const toUpsert = await Promise.all(uniqueStudents.map(async s => {
+            const stuName = s.name || s.usn;
+            const formulaPass = generateFormulaPassword(stuName, s.usn);
+            const passHash = await hashStudentPassword(formulaPass);
+            const row = { usn: s.usn, name: stuName, password_hash: passHash };
             if (s.branch) row.branch = s.branch;
             if (s.semester) row.semester = s.semester;
             return row;
-        });
+        }));
 
         for (let i = 0; i < toUpsert.length; i += 100) {
             try {

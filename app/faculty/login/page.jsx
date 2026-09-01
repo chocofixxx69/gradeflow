@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Input } from '@/components/ui/Foundation';
 import { Card, CardContent } from '@/components/ui/Card';
+import RaiseIssueModal from '@/components/RaiseIssueModal';
 
 export default function FacultyLogin() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
     const router = useRouter();
 
     const handleLogin = async (e) => {
@@ -127,6 +129,21 @@ export default function FacultyLogin() {
                         </div>
                     </form>
 
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setIsIssueModalOpen(true)}
+                            style={{
+                                background: 'none', border: 'none', color: 'var(--tx-muted)',
+                                fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '4px', padding: '4px'
+                            }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '15px' }}>help_outline</span>
+                            Forgot password or having trouble? Raise issue to Admin
+                        </button>
+                    </div>
+
                     <div style={s.divider} />
 
                     <div style={s.requestLink}>
@@ -135,6 +152,13 @@ export default function FacultyLogin() {
                             Request faculty access
                         </Link>
                     </div>
+
+                    <RaiseIssueModal
+                        isOpen={isIssueModalOpen}
+                        onClose={() => setIsIssueModalOpen(false)}
+                        defaultUserType="faculty"
+                        defaultIdentifier={email}
+                    />
                 </CardContent>
             </Card>
         </div>

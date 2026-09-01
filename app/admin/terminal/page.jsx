@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
+import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
 import { ConfirmDialog } from '../../../components/ui';
 import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
@@ -63,6 +64,7 @@ function AdminPanelContent() {
     const [activityTypeFilter, setActivityTypeFilter] = useState('all');
     const [activityDateFilter, setActivityDateFilter] = useState('all');
     const [stats, setStats] = useState({ students: 0, pending: 0, faculty: 0, totalMarks: 0, activityToday: 0 });
+    const [openTicketsCount, setOpenTicketsCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
     const [actionId, setActionId] = useState(null);
@@ -280,6 +282,10 @@ function AdminPanelContent() {
                 totalMarks: resData?.counts?.totalMarksRecords || 0,
                 activityToday: todayCount,
             });
+
+            apiRequest('/api/admin/support/tickets').then(tRes => {
+                if (tRes?.stats?.open !== undefined) setOpenTicketsCount(tRes.stats.open);
+            }).catch(() => {});
         } catch (err) {
             console.error('Failed to load admin data:', err);
             setLoadError('Failed to load admin data. Please check your connection and try again.');
@@ -1038,6 +1044,7 @@ function AdminPanelContent() {
         { id: 'students', label: 'Students', icon: 'school' },
         { id: 'classes', label: 'Classes', icon: 'groups' },
         { id: 'requests', label: 'Faculty Access', icon: 'verified_user' },
+        { id: 'support', label: 'Support & Issues', icon: 'support_agent' },
         { id: 'activity', label: 'Activity Log', icon: 'history' },
         { id: 'audit', label: 'System Audit', icon: 'security' },
         { id: 'settings', label: 'Settings', icon: 'settings_suggest' },
@@ -1174,6 +1181,11 @@ function AdminPanelContent() {
                                     {stats.pending}
                                 </span>
                             )}
+                            {n.id === 'support' && openTicketsCount > 0 && (
+                                <span style={{ marginLeft: (sidebarCollapsed && !isMobile) ? '0' : 'auto', background: '#b91c1c', color: '#ffffff', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
+                                    {openTicketsCount}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </nav>
@@ -1220,8 +1232,9 @@ function AdminPanelContent() {
 
                     <div className="gf-stats-grid" style={{ marginBottom: '40px' }}>
                         {[
-                            { label: 'Total Students', val: stats.students, icon: 'people' },
-                            { label: 'Pending Access', val: stats.pending, warn: stats.pending > 0, icon: 'pending_actions' },
+                            { label: 'Total Students', val: stats.students, icon: 'people', link: 'students' },
+                            { label: 'Pending Access', val: stats.pending, warn: stats.pending > 0, icon: 'pending_actions', link: 'requests' },
+                            { label: 'Support Issues', val: openTicketsCount, warn: openTicketsCount > 0, icon: 'support_agent', link: 'support' },
                             { label: 'Active Faculty', val: stats.faculty, icon: 'badge' },
                             { label: 'Academic Records', val: stats.totalMarks, icon: 'inventory_2' },
                             { label: 'Faculty Actions Today', val: stats.activityToday, icon: 'history', link: 'activity' },
@@ -2313,6 +2326,8 @@ function AdminPanelContent() {
                 </>}
 
                 {tab === 'classes' && <ClassesContent embedded={true} />}
+
+                {tab === 'support' && <SupportTicketsContent onStatsUpdate={(s) => setOpenTicketsCount(s?.open || 0)} />}
 
                 {tab === 'audit' && <AuditLogContent />}
 
