@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../lib/server-session';
 import { getGradePoint, getGradeDetails, isFailedSubject } from '../../../lib/vtuGrades';
-import { fetchCatalogIndex, resolveSubjectCredit } from '../../../lib/subjectCreditResolver';
+import { fetchCatalogIndex, resolveSubjectCredit, invalidateCatalogCache } from '../../../lib/subjectCreditResolver';
 import { isAuditCourse, normalizeBranch as normalizeBranchCode } from '../../../lib/vtuAcademicEngine';
 import { getAdminClient } from '../../../lib/analytics-data';
 
@@ -99,6 +99,7 @@ export async function POST(req) {
             .single();
 
         if (error) throw error;
+        invalidateCatalogCache();
 
         // 2. Direct update to existing subject_marks in DB if any exist
         await supabaseAdmin
@@ -141,10 +142,10 @@ export async function PUT(req) {
         // 1. Fetch old record to track changes in subject_code or credits
         let oldRecord = null;
         if (id) {
-            const { data: existing } = await supabaseAdmin.from('subject_catalog').select('*').eq('id', id).maybeSingle();
+            const { data: existing } = await supabaseAdmin.from('subject_catalog').select('subject_code, credits, semester, branch, scheme').eq('id', id).maybeSingle();
             oldRecord = existing;
         } else {
-            const { data: existing } = await supabaseAdmin.from('subject_catalog').select('*').eq('subject_code', cleanCode).maybeSingle();
+            const { data: existing } = await supabaseAdmin.from('subject_catalog').select('subject_code, credits, semester, branch, scheme').eq('subject_code', cleanCode).maybeSingle();
             oldRecord = existing;
         }
 
@@ -169,6 +170,7 @@ export async function PUT(req) {
 
         const { data, error } = await updateQuery.select();
         if (error) throw error;
+        invalidateCatalogCache();
 
         // 3. Directly update subject_marks in DB for all student records
         const markUpdatePayload = {
@@ -229,6 +231,7 @@ export async function DELETE(req) {
 
         const { error } = await query;
         if (error) throw error;
+        invalidateCatalogCache();
 
         return NextResponse.json({ success: true });
     } catch (err) {

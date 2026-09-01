@@ -6,9 +6,6 @@ const nextConfig = {
     },
   },
   webpack: (config, { isServer, dev }) => {
-    if (dev) {
-      config.cache = false;
-    }
     if (isServer) {
       config.optimization = {
         ...config.optimization,

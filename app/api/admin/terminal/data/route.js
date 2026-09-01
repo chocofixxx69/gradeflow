@@ -59,24 +59,27 @@ export async function GET(req) {
             { data: facultyOnboarding },
             { data: marksCount },
             { data: facultyActivity },
-            { data: facultyList },
             { data: documentsCount },
             { data: classes }
         ] = await Promise.all([
-            fetchAllPaginated('students', '*', supabaseAdmin, 'created_at', false),
+            fetchAllPaginated('students', 'id, usn, name, branch, scheme, semester, year, lateral_entry, status, suspended, suspend_reason, created_at, updated_at', supabaseAdmin, 'created_at', false),
             supabaseAdmin.from('faculty_onboarding').select('*').order('created_at', { ascending: false }),
             supabaseAdmin.from('marks').select('id', { count: 'exact', head: true }),
             supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(300),
-            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department'),
             supabaseAdmin.from('documents').select('id', { count: 'exact', head: true }),
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, subject_name, subject_code, faculty_id, created_at')
         ]);
+
+        // Derive facultyList from facultyOnboarding to avoid duplicate query
+        const facultyList = (facultyOnboarding || []).map(f => ({
+            id: f.id, full_name: f.full_name, email: f.email, department: f.department
+        }));
 
         return ok({
             students: students || [],
             facultyOnboarding: facultyOnboarding || [],
             facultyActivity: facultyActivity || [],
-            facultyList: facultyList || [],
+            facultyList,
             classes: classes || [],
             counts: {
                 totalStudents: students?.length || 0,

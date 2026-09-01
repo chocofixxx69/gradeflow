@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
@@ -784,117 +784,129 @@ function AdminPanelContent() {
         }
     };
 
-    const availableBranches = Array.from(new Set(students.map(s => (s.branch || '').toUpperCase()).filter(Boolean))).sort();
+    const availableBranches = useMemo(() => {
+        return Array.from(new Set(students.map(s => (s.branch || '').toUpperCase()).filter(Boolean))).sort();
+    }, [students]);
 
     // Base scoped students matching search, branch, and semester (without status filter) to display accurate counts
-    const baseScopedStudents = students.filter(s => {
+    const baseScopedStudents = useMemo(() => {
         const q = (search || '').toLowerCase().trim();
-        const matchSearch = !q || (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
-        if (!matchSearch) return false;
+        return students.filter(s => {
+            const matchSearch = !q || (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
+            if (!matchSearch) return false;
 
-        if (studentBranchFilter !== 'all') {
-            if ((s.branch || '').toUpperCase() !== studentBranchFilter.toUpperCase()) return false;
-        }
+            if (studentBranchFilter !== 'all') {
+                if ((s.branch || '').toUpperCase() !== studentBranchFilter.toUpperCase()) return false;
+            }
 
-        if (studentSemFilter !== 'all') {
-            if (Number(s.semester) !== Number(studentSemFilter)) return false;
-        }
+            if (studentSemFilter !== 'all') {
+                if (Number(s.semester) !== Number(studentSemFilter)) return false;
+            }
 
-        return true;
-    });
+            return true;
+        });
+    }, [students, search, studentBranchFilter, studentSemFilter]);
 
-    const statusCounts = {
+    const statusCounts = useMemo(() => ({
         all: baseScopedStudents.length,
         active: baseScopedStudents.filter(s => s.activated_at && !s.is_suspended).length,
         pending: baseScopedStudents.filter(s => !s.activated_at && !s.is_suspended).length,
         suspended: baseScopedStudents.filter(s => s.is_suspended).length,
-    };
+    }), [baseScopedStudents]);
 
-    const filtered = baseScopedStudents.filter(s => {
-        if (studentStatusFilter === 'active') {
-            if (!s.activated_at || s.is_suspended) return false;
-        } else if (studentStatusFilter === 'pending') {
-            if (s.activated_at || s.is_suspended) return false;
-        } else if (studentStatusFilter === 'suspended') {
-            if (!s.is_suspended) return false;
-        }
-        return true;
-    }).sort((a, b) => {
-        let cmp = 0;
-        if (sortField === 'name') {
-            const valA = (a.name || a.usn || '').toLowerCase();
-            const valB = (b.name || b.usn || '').toLowerCase();
-            cmp = valA.localeCompare(valB);
-        } else if (sortField === 'semester') {
-            const valA = Number(a.semester) || 0;
-            const valB = Number(b.semester) || 0;
-            cmp = valA - valB;
-        } else if (sortField === 'branch') {
-            const valA = (a.branch || '').toLowerCase();
-            const valB = (b.branch || '').toLowerCase();
-            cmp = valA.localeCompare(valB);
-        } else if (sortField === 'status') {
-            const getScore = s => (s.is_suspended ? 3 : s.activated_at ? 1 : 2);
-            cmp = getScore(a) - getScore(b);
-        } else {
-            // Default: Natural USN order (e.g. 2AB23CD001, 2AB23CD002... 2AB23CS001...)
-            const valA = (a.usn || '').toUpperCase();
-            const valB = (b.usn || '').toUpperCase();
-            cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
-        }
-        return sortDirection === 'asc' ? cmp : -cmp;
-    });
+    const filtered = useMemo(() => {
+        return baseScopedStudents.filter(s => {
+            if (studentStatusFilter === 'active') {
+                if (!s.activated_at || s.is_suspended) return false;
+            } else if (studentStatusFilter === 'pending') {
+                if (s.activated_at || s.is_suspended) return false;
+            } else if (studentStatusFilter === 'suspended') {
+                if (!s.is_suspended) return false;
+            }
+            return true;
+        }).sort((a, b) => {
+            let cmp = 0;
+            if (sortField === 'name') {
+                const valA = (a.name || a.usn || '').toLowerCase();
+                const valB = (b.name || b.usn || '').toLowerCase();
+                cmp = valA.localeCompare(valB);
+            } else if (sortField === 'semester') {
+                const valA = Number(a.semester) || 0;
+                const valB = Number(b.semester) || 0;
+                cmp = valA - valB;
+            } else if (sortField === 'branch') {
+                const valA = (a.branch || '').toLowerCase();
+                const valB = (b.branch || '').toLowerCase();
+                cmp = valA.localeCompare(valB);
+            } else if (sortField === 'status') {
+                const getScore = s => (s.is_suspended ? 3 : s.activated_at ? 1 : 2);
+                cmp = getScore(a) - getScore(b);
+            } else {
+                // Default: Natural USN order (e.g. 2AB23CD001, 2AB23CD002... 2AB23CS001...)
+                const valA = (a.usn || '').toUpperCase();
+                const valB = (b.usn || '').toUpperCase();
+                cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+            }
+            return sortDirection === 'asc' ? cmp : -cmp;
+        });
+    }, [baseScopedStudents, studentStatusFilter, sortField, sortDirection]);
 
     // ── Faculty Scope & Filtering ────────────────────────────
-    const availableFacultyDepts = Array.from(
-        new Set(requests.map(r => (r.department || '').trim()).filter(Boolean))
-    ).sort();
+    const availableFacultyDepts = useMemo(() => {
+        return Array.from(
+            new Set(requests.map(r => (r.department || '').trim()).filter(Boolean))
+        ).sort();
+    }, [requests]);
 
-    const baseScopedFaculty = requests.filter(r => {
+    const baseScopedFaculty = useMemo(() => {
         const q = (facultySearch || '').toLowerCase().trim();
-        const matchSearch = !q ||
-            (r.full_name || '').toLowerCase().includes(q) ||
-            (r.email || '').toLowerCase().includes(q) ||
-            (r.department || '').toLowerCase().includes(q) ||
-            (r.employee_id || '').toLowerCase().includes(q) ||
-            (r.designation || '').toLowerCase().includes(q);
-        if (!matchSearch) return false;
+        return requests.filter(r => {
+            const matchSearch = !q ||
+                (r.full_name || '').toLowerCase().includes(q) ||
+                (r.email || '').toLowerCase().includes(q) ||
+                (r.department || '').toLowerCase().includes(q) ||
+                (r.employee_id || '').toLowerCase().includes(q) ||
+                (r.designation || '').toLowerCase().includes(q);
+            if (!matchSearch) return false;
 
-        if (facultyDeptFilter !== 'all') {
-            if ((r.department || '').toLowerCase() !== facultyDeptFilter.toLowerCase()) return false;
-        }
+            if (facultyDeptFilter !== 'all') {
+                if ((r.department || '').toLowerCase() !== facultyDeptFilter.toLowerCase()) return false;
+            }
 
-        return true;
-    });
+            return true;
+        });
+    }, [requests, facultySearch, facultyDeptFilter]);
 
-    const statusCountsFaculty = {
+    const statusCountsFaculty = useMemo(() => ({
         all: baseScopedFaculty.length,
         approved: baseScopedFaculty.filter(r => r.status === 'approved').length,
         pending: baseScopedFaculty.filter(r => r.status === 'pending').length,
         suspended: baseScopedFaculty.filter(r => r.status === 'suspended').length,
-    };
+    }), [baseScopedFaculty]);
 
-    const filteredFaculty = baseScopedFaculty.filter(r => {
-        if (facultyStatusFilter === 'approved') return r.status === 'approved';
-        if (facultyStatusFilter === 'pending') return r.status === 'pending';
-        if (facultyStatusFilter === 'suspended') return r.status === 'suspended';
-        return true;
-    }).sort((a, b) => {
-        let cmp = 0;
-        if (facultySortField === 'full_name') {
-            cmp = (a.full_name || '').localeCompare(b.full_name || '');
-        } else if (facultySortField === 'department') {
-            cmp = (a.department || '').localeCompare(b.department || '');
-        } else if (facultySortField === 'employee_id') {
-            cmp = (a.employee_id || '').localeCompare(b.employee_id || '');
-        } else if (facultySortField === 'status') {
-            const score = s => (s.status === 'suspended' ? 3 : s.status === 'pending' ? 2 : 1);
-            cmp = score(a) - score(b);
-        } else if (facultySortField === 'created_at') {
-            cmp = new Date(b.created_at || 0) - new Date(a.created_at || 0);
-        }
-        return facultySortDirection === 'asc' ? cmp : -cmp;
-    });
+    const filteredFaculty = useMemo(() => {
+        return baseScopedFaculty.filter(r => {
+            if (facultyStatusFilter === 'approved') return r.status === 'approved';
+            if (facultyStatusFilter === 'pending') return r.status === 'pending';
+            if (facultyStatusFilter === 'suspended') return r.status === 'suspended';
+            return true;
+        }).sort((a, b) => {
+            let cmp = 0;
+            if (facultySortField === 'full_name') {
+                cmp = (a.full_name || '').localeCompare(b.full_name || '');
+            } else if (facultySortField === 'department') {
+                cmp = (a.department || '').localeCompare(b.department || '');
+            } else if (facultySortField === 'employee_id') {
+                cmp = (a.employee_id || '').localeCompare(b.employee_id || '');
+            } else if (facultySortField === 'status') {
+                const score = s => (s.status === 'suspended' ? 3 : s.status === 'pending' ? 2 : 1);
+                cmp = score(a) - score(b);
+            } else if (facultySortField === 'created_at') {
+                cmp = new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            }
+            return facultySortDirection === 'asc' ? cmp : -cmp;
+        });
+    }, [baseScopedFaculty, facultyStatusFilter, facultySortField, facultySortDirection]);
 
     // Calculate SGPA for student marks using canonical grade points and catalog credits
     const calcSGPA = (marks) => {
