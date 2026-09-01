@@ -11,6 +11,7 @@ import {
     resolveRoleFromPath,
     shouldHideNavigation,
 } from './navigationConfig';
+import RaiseIssueModal from './RaiseIssueModal';
 
 function parseSession(value) {
     if (!value) return null;
@@ -39,6 +40,7 @@ export default function Navbar() {
     const [menuOpen, setMenuOpen] = useState(false);
     const [sessionRole, setSessionRole] = useState('student');
     const [collapsed, setCollapsed] = useState(false);
+    const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
     const sidebarRef = useRef(null);
     const mobileMenuButtonRef = useRef(null);
 
@@ -281,17 +283,36 @@ export default function Navbar() {
                     )}
 
                     {user && (
-                        <button
-                            onClick={logout}
-                            className="gf-nav-link gf-nav-link-danger"
-                            style={{ marginTop: '2px' }}
-                            title={collapsed ? 'Sign out' : undefined}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">logout</span>
-                            {!collapsed && <span>Sign out</span>}
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setIsIssueModalOpen(true)}
+                                className="gf-nav-link"
+                                style={{ marginTop: '2px', color: 'var(--primary)' }}
+                                title={collapsed ? 'Help & Support Desk' : undefined}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">help_outline</span>
+                                {!collapsed && <span>Help Desk</span>}
+                            </button>
+
+                            <button
+                                onClick={logout}
+                                className="gf-nav-link gf-nav-link-danger"
+                                style={{ marginTop: '2px' }}
+                                title={collapsed ? 'Sign out' : undefined}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '18px' }} aria-hidden="true">logout</span>
+                                {!collapsed && <span>Sign out</span>}
+                            </button>
+                        </>
                     )}
                 </div>
+
+                <RaiseIssueModal
+                    isOpen={isIssueModalOpen}
+                    onClose={() => setIsIssueModalOpen(false)}
+                    defaultUserType={activeRole === 'faculty' ? 'faculty' : 'student'}
+                    defaultIdentifier={user?.usn || user?.email || ''}
+                />
 
                 <button
                     onClick={() => closeMobileMenu()}
