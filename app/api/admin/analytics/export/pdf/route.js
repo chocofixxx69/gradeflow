@@ -105,6 +105,37 @@ export async function POST(req) {
             });
         }
 
+        // ── Top 10 Toppers by CGPA ──
+        const topCgpa = [...rows].filter(r => r.cgpa > 0).sort((a, b) => b.cgpa - a.cgpa).slice(0, 10);
+        if (topCgpa.length) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Class Toppers (Top 10 — CGPA Wise)', 14, 18);
+            autoTable(doc, {
+                startY: 24,
+                head: [['Rank', 'USN', 'Name', 'Branch', 'Sem', 'CGPA', 'Backlogs']],
+                body: topCgpa.map((r, i) => [`#${i + 1}`, r.usn, r.name, r.branch, r.semester, r.cgpa ? r.cgpa.toFixed(2) : '—', r.total_backlogs]),
+                theme: 'striped',
+                headStyles: { fillColor: [28, 25, 23] },
+                styles: { fontSize: 8.5 },
+            });
+        }
+
+        // ── Top 10 Toppers by SGPA ──
+        const topSgpa = [...rows].filter(r => r.sgpa > 0).sort((a, b) => b.sgpa - a.sgpa).slice(0, 10);
+        if (topSgpa.length) {
+            doc.setFontSize(14);
+            doc.text('Class Toppers (Top 10 — SGPA Wise)', 14, doc.lastAutoTable.finalY + 12);
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 18,
+                head: [['Rank', 'USN', 'Name', 'Branch', 'Sem', 'SGPA', 'Credits']],
+                body: topSgpa.map((r, i) => [`#${i + 1}`, r.usn, r.name, r.branch, r.semester, r.sgpa ? r.sgpa.toFixed(2) : '—', r.earned_credits || r.total_credits || 20]),
+                theme: 'striped',
+                headStyles: { fillColor: [15, 23, 42] },
+                styles: { fontSize: 8.5 },
+            });
+        }
+
         const buffer = Buffer.from(doc.output('arraybuffer'));
         return new NextResponse(buffer, {
             status: 200,

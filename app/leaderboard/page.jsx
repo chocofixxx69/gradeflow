@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
+import { exportLeaderboardPDF, exportLeaderboardCSV } from '../../lib/export-utils';
 import AuthGuard from '../../components/AuthGuard';
 
 export default function LeaderboardPage() {
@@ -115,22 +116,80 @@ export default function LeaderboardPage() {
                         </p>
                     </div>
 
-                    {/* Department Cohort Selector */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Department:</span>
-                        <select
-                            value={selectedBatch || data?.batch || 'CS'}
-                            onChange={(e) => handleBatchChange(e.target.value)}
-                            style={{
-                                padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
-                                background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem'
-                            }}
-                        >
-                            <option value="CS">Computer Science & Engineering (86 Students)</option>
-                            <option value="CI">AI & Design / IoT (33 Students)</option>
-                            <option value="CD">Data Science (28 Students)</option>
-                            <option value="CV">Civil Engineering (3 Students)</option>
-                        </select>
+                    {/* Department Cohort Selector & Export Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Department:</span>
+                            <select
+                                value={selectedBatch || data?.batch || 'CS'}
+                                onChange={(e) => handleBatchChange(e.target.value)}
+                                style={{
+                                    padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
+                                    background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem'
+                                }}
+                            >
+                                <option value="CS">Computer Science & Engineering (86 Students)</option>
+                                <option value="CI">AI & Design / IoT (33 Students)</option>
+                                <option value="CD">Data Science (28 Students)</option>
+                                <option value="CV">Civil Engineering (3 Students)</option>
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                                onClick={() => {
+                                    if (!data) return;
+                                    exportLeaderboardPDF({
+                                        cohortName: data.batchName,
+                                        batchCode: data.batch,
+                                        totalStudents: data.totalStudents,
+                                        regularCount: data.regularCount,
+                                        lateralCount: data.lateralCount,
+                                        targetSemester: selectedSemester || data.targetSemester,
+                                        overallLeaderboard: data.overallLeaderboard,
+                                        semesterLeaderboard: data.semesterLeaderboard,
+                                        subjectLeaderboard: data.subjectLeaderboard,
+                                        currentSubject: data.currentSubject,
+                                        fileName: `${data.batch}_Class_Leaderboard.pdf`
+                                    });
+                                }}
+                                style={{
+                                    padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
+                                    background: 'var(--primary)', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                                }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>picture_as_pdf</span>
+                                Export PDF
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    if (!data) return;
+                                    exportLeaderboardCSV({
+                                        cohortName: data.batchName,
+                                        batchCode: data.batch,
+                                        totalStudents: data.totalStudents,
+                                        regularCount: data.regularCount,
+                                        lateralCount: data.lateralCount,
+                                        targetSemester: selectedSemester || data.targetSemester,
+                                        overallLeaderboard: data.overallLeaderboard,
+                                        semesterLeaderboard: data.semesterLeaderboard,
+                                        subjectLeaderboard: data.subjectLeaderboard,
+                                        currentSubject: data.currentSubject,
+                                        fileName: `${data.batch}_Class_Leaderboard.csv`
+                                    });
+                                }}
+                                style={{
+                                    padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
+                                    background: 'var(--surface-low)', color: 'var(--tx-main)', fontWeight: 800, fontSize: '0.85rem',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                                }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>table_view</span>
+                                Export CSV
+                            </button>
+                        </div>
                     </div>
                 </div>
 

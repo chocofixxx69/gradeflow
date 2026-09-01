@@ -5,7 +5,7 @@ import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
-import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF } from '../lib/export-utils';
+import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF, exportConsolidatedReportCSV } from '../lib/export-utils';
 import { ConfirmDialog } from './ui';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -215,6 +215,40 @@ export function ClassesContent({ embedded = false }) {
             });
         } else {
             exportClassReportPDF({ selectedClass, students, subjectToppers });
+        }
+        setShowExportModal(false);
+    };
+
+    const handleGenerateCsv = () => {
+        try {
+            localStorage.setItem(`gf_faculty_map_${selectedClass.id}_sem_${exportSemester}`, JSON.stringify(facultyMap));
+        } catch (e) {}
+
+        if (exportType === 'consolidated') {
+            exportConsolidatedReportCSV({
+                selectedClass,
+                students,
+                allMarks,
+                subjects: classSubjects,
+                facultyMap,
+                targetSemester: exportSemester,
+                institutionInfo: {
+                    collegeName: 'Anjuman Institute of Technology and Management',
+                    department: `Department of ${selectedClass.branch || 'CSE'}`,
+                    batch: selectedClass.batch || '',
+                    academicYear: selectedClass.academic_year || ''
+                },
+                fileName: `${(selectedClass.name || 'Class').replace(/\s+/g, '_')}_Sem${exportSemester}_Consolidated_Report.csv`
+            });
+        } else {
+            exportClassReportCSV({
+                selectedClass,
+                students,
+                allMarks,
+                subjects: classSubjects,
+                subjectToppers,
+                fileName: `${(selectedClass.name || 'Class').replace(/\s+/g, '_')}_Class_Report.csv`
+            });
         }
         setShowExportModal(false);
     };
@@ -1669,6 +1703,12 @@ export function ClassesContent({ embedded = false }) {
 
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
                             <button style={btn('ghost')} onClick={() => setShowExportModal(false)}>Cancel</button>
+                            <button
+                                style={{ ...btn('ghost'), border: '1px solid var(--border)', background: 'var(--surface-low)', color: 'var(--tx-main)' }}
+                                onClick={handleGenerateCsv}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>table_view</span>Download CSV
+                            </button>
                             <button style={btn('primary')} onClick={handleGeneratePdf}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>picture_as_pdf</span>Generate & Download PDF
                             </button>
