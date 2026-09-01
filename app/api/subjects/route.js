@@ -72,40 +72,51 @@ export async function POST(req) {
 
     try {
         const body = await req.json().catch(() => ({}));
-        const { subject_code, subject_name, credits, semester, scheme = '2022', branch = 'CSE' } = body || {};
+        const { subject_code, subject_name, credits, semester, scheme = '2022', branch = 'CS' } = body || {};
 
         if (!subject_code || !subject_name || credits == null || !semester) {
             return NextResponse.json({ error: 'subject_code, subject_name, credits, and semester are required.' }, { status: 400 });
         }
 
         const cleanCode = subject_code.trim().toUpperCase();
+        const cleanName = subject_name.trim();
         const numCredits = Number(credits);
         const numSem = Number(semester);
+        const normBranch = normalizeBranch(branch);
 
+        // 1. Upsert subject_catalog
         const { data, error } = await supabaseAdmin
             .from('subject_catalog')
             .upsert({
                 subject_code: cleanCode,
-                subject_name: subject_name.trim(),
+                subject_name: cleanName,
                 credits: numCredits,
                 semester: numSem,
                 scheme,
-                branch
+                branch: normBranch
             }, { onConflict: 'scheme,branch,semester,subject_code' })
             .select()
             .single();
 
         if (error) throw error;
 
-        // Run credit cascade in background so API responds in milliseconds
-        if (cleanCode && numCredits != null) {
-            cascadeCreditUpdate(cleanCode, numCredits, branch, numSem, scheme).catch(e => console.error('[POST cascadeCreditUpdate] Error:', e));
-        }
+        // 2. Direct update to existing subject_marks in DB if any exist
+        await supabaseAdmin
+            .from('subject_marks')
+            .update({
+                credits: numCredits,
+                subject_name: cleanName.toUpperCase()
+            })
+            .ilike('subject_code', cleanCode);
+
+        // 3. Cascade credit recalculation in background
+        cascadeCreditUpdate(cleanCode, numCredits, normBranch, numSem, scheme)
+            .catch(e => console.error('[POST cascadeCreditUpdate] Error:', e));
 
         return NextResponse.json({ success: true, subject: data });
     } catch (err) {
         console.error('[POST /api/subjects] Error:', err);
-        return NextResponse.json({ error: 'Failed to create subject.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to create subject: ' + err.message }, { status: 500 });
     }
 }
 
@@ -123,13 +134,31 @@ export async function PUT(req) {
 
         const cleanCode = subject_code.trim().toUpperCase();
         const numCredits = Number(credits);
+        const numSem = semester ? Number(semester) : 1;
+        const cleanName = subject_name ? subject_name.trim() : '';
+        const normBranch = branch ? normalizeBranch(branch) : undefined;
 
+        // 1. Fetch old record to track changes in subject_code or credits
+        let oldRecord = null;
+        if (id) {
+            const { data: existing } = await supabaseAdmin.from('subject_catalog').select('*').eq('id', id).maybeSingle();
+            oldRecord = existing;
+        } else {
+            const { data: existing } = await supabaseAdmin.from('subject_catalog').select('*').eq('subject_code', cleanCode).maybeSingle();
+            oldRecord = existing;
+        }
+
+        const oldCode = oldRecord?.subject_code || cleanCode;
+        const oldCredits = oldRecord?.credits;
+
+        // 2. Update subject_catalog directly
         let updateQuery = supabaseAdmin.from('subject_catalog').update({
-            subject_name: subject_name ? subject_name.trim() : undefined,
+            subject_code: cleanCode,
+            subject_name: cleanName || undefined,
             credits: numCredits,
-            semester: semester ? Number(semester) : undefined,
+            semester: numSem || undefined,
             scheme: scheme || undefined,
-            branch: branch || undefined
+            branch: normBranch || undefined
         });
 
         if (id) {
@@ -139,22 +168,45 @@ export async function PUT(req) {
         }
 
         const { data, error } = await updateQuery.select();
-
         if (error) throw error;
 
-        // Cascade updated credits and recalculate SGPA/CGPA in background
-        if (cleanCode && numCredits != null) {
-            cascadeCreditUpdate(cleanCode, numCredits, branch, semester, scheme).catch(e => console.error('[PUT cascadeCreditUpdate] Error:', e));
+        // 3. Directly update subject_marks in DB for all student records
+        const markUpdatePayload = {
+            subject_code: cleanCode,
+            credits: numCredits
+        };
+        if (cleanName) {
+            markUpdatePayload.subject_name = cleanName.toUpperCase();
+        }
+
+        await supabaseAdmin
+            .from('subject_marks')
+            .update(markUpdatePayload)
+            .ilike('subject_code', oldCode);
+
+        // 4. Update linked classes in DB
+        await supabaseAdmin
+            .from('classes')
+            .update({
+                subject_code: cleanCode,
+                name: cleanName || undefined
+            })
+            .eq('subject_code', oldCode);
+
+        // 5. If credits or semester changed, cascade SGPA recalculation in background
+        if (oldCredits !== numCredits || oldRecord?.semester !== numSem) {
+            cascadeCreditUpdate(cleanCode, numCredits, normBranch || oldRecord?.branch, numSem, scheme || oldRecord?.scheme || '2022')
+                .catch(e => console.error('[PUT cascadeCreditUpdate] Error:', e));
         }
 
         return NextResponse.json({
             success: true,
-            message: `Subject updated successfully.`,
+            message: `Subject updated successfully in catalog, marks, and classes.`,
             subject: data ? data[0] : null
         });
     } catch (err) {
         console.error('[PUT /api/subjects] Error:', err);
-        return NextResponse.json({ error: 'Failed to update subject.' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to update subject: ' + err.message }, { status: 500 });
     }
 }
 

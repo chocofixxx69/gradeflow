@@ -174,17 +174,19 @@ export default function SubjectsPage() {
     // Close modal immediately
     setShowForm(false);
 
-    // 2. Background persistence
+    // 2. Background persistence & DB synchronization
     try {
       if (editingTarget) {
         apiRequest('/api/subjects', {
           method: 'PUT',
           body: JSON.stringify({ id: editingTarget.id, ...payload })
-        }).catch(err => {
-          console.error('Subject update error:', err);
-          setSubjects(prevSubjects);
-          alert('Failed to save subject: ' + err.message);
-        });
+        })
+          .then(() => fetchSubjects())
+          .catch(err => {
+            console.error('Subject update error:', err);
+            setSubjects(prevSubjects);
+            alert('Failed to save subject: ' + err.message);
+          });
 
         logAuditAction({
           action_type: 'EDIT_SUBJECT',
@@ -201,6 +203,7 @@ export default function SubjectsPage() {
         if (created?.subject?.id) {
           setSubjects(prev => prev.map(s => String(s.id).startsWith('temp_') ? created.subject : s));
         }
+        fetchSubjects();
         logAuditAction({
           action_type: 'ADD_SUBJECT',
           entity_type: 'subject_catalog',
