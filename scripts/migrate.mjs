@@ -14,8 +14,10 @@ if (!match) {
     process.exit(1);
 }
 const projectRef = match[1];
-const sql = fs.readFileSync('database/migrations/002_system_settings.sql', 'utf8');
+const migrationFile = process.argv[2] || 'database/migrations/003_student_suspension.sql';
+const sql = fs.readFileSync(migrationFile, 'utf8');
 
+console.log(`Applying ${migrationFile} to project ${projectRef}...`);
 const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
     method: 'POST',
     headers: {

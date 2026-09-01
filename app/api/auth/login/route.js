@@ -147,12 +147,20 @@ async function loginStudent({ usn, email, password }) {
     const supabase = getSupabaseAdmin();
     const { data: student, error } = await supabase
         .from('students')
-        .select('id, usn, name, branch, scheme, password_hash')
+        .select('id, usn, name, branch, scheme, password_hash, is_suspended, suspended_reason')
         .eq('usn', cleanUSN)
         .maybeSingle();
 
     if (error) throw error;
     if (!student) return failureResponse('USN not found. Please activate your account first.', 404);
+
+    if (student.is_suspended) {
+        return failureResponse(
+            student.suspended_reason || 'This student account has been suspended by the Institution Administrator. Please contact the Admin Office.',
+            403
+        );
+    }
+
     if (!student.password_hash) return failureResponse('Account not activated yet. Please activate your account.', 400);
 
     const passwordMatches = await verifyStudentPassword(password, student.password_hash);

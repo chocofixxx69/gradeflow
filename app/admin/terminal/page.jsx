@@ -76,10 +76,18 @@ function AdminPanelContent() {
     const [adminUser, setAdminUser] = useState(null);
     const [copiedKey, setCopiedKey] = useState(null);
 
-    // New Student creation form
-    const [showAddStudent, setShowAddStudent] = useState(false);
-    const [newStudent, setNewStudent] = useState({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
-    const [addError, setAddError] = useState('');
+    // Student Directory & Management States
+    const [selectedUsns, setSelectedUsns] = useState(new Set());
+    const [studentStatusFilter, setStudentStatusFilter] = useState('all');
+    const [studentBranchFilter, setStudentBranchFilter] = useState('all');
+    const [studentSemFilter, setStudentSemFilter] = useState('all');
+    const [studentActionBusy, setStudentActionBusy] = useState(false);
+    const [studentActionMsg, setStudentActionMsg] = useState('');
+    const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+    const [confirmingBulkSuspend, setConfirmingBulkSuspend] = useState(false);
+    const [confirmingSingleDelete, setConfirmingSingleDelete] = useState(null);
+    const [confirmingSuspendStudent, setConfirmingSuspendStudent] = useState(null);
+    const [suspendReasonInput, setSuspendReasonInput] = useState('');
 
     // System Settings States
     const [settingsProfile, setSettingsProfile] = useState({
@@ -371,10 +379,149 @@ function AdminPanelContent() {
         setTimeout(() => setCopiedKey(null), 2000);
     };
 
-    const filtered = students.filter(s =>
-        (s.usn || '').toLowerCase().includes(search.toLowerCase()) ||
-        (s.name || '').toLowerCase().includes(search.toLowerCase())
-    );
+    const handleToggleSuspendStudent = async (student, customReason = null) => {
+        if (!student) return;
+        setStudentActionBusy(true);
+        setStudentActionMsg('');
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'toggle_suspend',
+                    usn: student.usn,
+                    reason: customReason || (student.is_suspended ? '' : (suspendReasonInput || 'Account suspended by Institution Administrator.'))
+                })
+            });
+            setStudentActionMsg(res.message || 'Student status updated.');
+            await loadData();
+            if (selectedStudent && selectedStudent.usn === student.usn) {
+                setSelectedStudent(prev => ({
+                    ...prev,
+                    is_suspended: res.is_suspended,
+                    suspended_at: res.is_suspended ? new Date().toISOString() : null,
+                    suspended_reason: res.is_suspended ? (customReason || suspendReasonInput || 'Account suspended by Institution Administrator.') : null
+                }));
+            }
+            setTimeout(() => setStudentActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to update suspension status: ' + err.message);
+        } finally {
+            setStudentActionBusy(false);
+            setConfirmingSuspendStudent(null);
+            setSuspendReasonInput('');
+        }
+    };
+
+    const handleBulkAction = async (action, reason = null) => {
+        if (selectedUsns.size === 0) return;
+        const usnList = Array.from(selectedUsns);
+        setStudentActionBusy(true);
+        setStudentActionMsg('');
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action,
+                    usns: usnList,
+                    reason: reason || (action === 'bulk_suspend' ? (suspendReasonInput || 'Batch account suspension by Administrator.') : null)
+                })
+            });
+            setStudentActionMsg(res.message || 'Bulk operation completed.');
+            setSelectedUsns(new Set());
+            await loadData();
+            setTimeout(() => setStudentActionMsg(''), 4000);
+        } catch (err) {
+            alert('Bulk operation failed: ' + err.message);
+        } finally {
+            setStudentActionBusy(false);
+            setConfirmingBulkDelete(false);
+            setConfirmingBulkSuspend(false);
+            setSuspendReasonInput('');
+        }
+    };
+
+    const handleSelectAllStudents = (e) => {
+        if (e.target.checked) {
+            setSelectedUsns(new Set(filtered.map(s => s.usn)));
+        } else {
+            setSelectedUsns(new Set());
+        }
+    };
+
+    const handleToggleStudentSelection = (usn, e) => {
+        e.stopPropagation();
+        setSelectedUsns(prev => {
+            const next = new Set(prev);
+            if (next.has(usn)) next.delete(usn);
+            else next.add(usn);
+            return next;
+        });
+    };
+
+    const handleDeleteSingleStudent = async (student) => {
+        if (!student) return;
+        setStudentActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'bulk_delete', usns: [student.usn] })
+            });
+            setStudentActionMsg(res.message || `Student ${student.usn} deleted.`);
+            if (selectedStudent?.usn === student.usn) setSelectedStudent(null);
+            setSelectedUsns(prev => { const n = new Set(prev); n.delete(student.usn); return n; });
+            await loadData();
+            setTimeout(() => setStudentActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to delete student: ' + err.message);
+        } finally {
+            setStudentActionBusy(false);
+            setConfirmingSingleDelete(null);
+        }
+    };
+
+    const handleResetSingleStudentPin = async (student) => {
+        if (!student) return;
+        setStudentActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'bulk_reset_pin', usns: [student.usn] })
+            });
+            setStudentActionMsg(res.message || `Credentials reset for ${student.usn}.`);
+            await loadData();
+            setTimeout(() => setStudentActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to reset credentials: ' + err.message);
+        } finally {
+            setStudentActionBusy(false);
+        }
+    };
+
+    const availableBranches = Array.from(new Set(students.map(s => (s.branch || '').toUpperCase()).filter(Boolean))).sort();
+
+    const filtered = students.filter(s => {
+        const q = search.toLowerCase();
+        const matchSearch = !q || (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
+        if (!matchSearch) return false;
+
+        if (studentStatusFilter === 'active') {
+            if (!s.activated_at || s.is_suspended) return false;
+        } else if (studentStatusFilter === 'pending') {
+            if (s.activated_at || s.is_suspended) return false;
+        } else if (studentStatusFilter === 'suspended') {
+            if (!s.is_suspended) return false;
+        }
+
+        if (studentBranchFilter !== 'all') {
+            if ((s.branch || '').toUpperCase() !== studentBranchFilter.toUpperCase()) return false;
+        }
+
+        if (studentSemFilter !== 'all') {
+            if (Number(s.semester) !== Number(studentSemFilter)) return false;
+        }
+
+        return true;
+    });
 
     // Calculate SGPA for student marks using canonical grade points and catalog credits
     const calcSGPA = (marks) => {
@@ -401,7 +548,7 @@ function AdminPanelContent() {
             display: 'flex', flexDirection: 'column',
             transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-            zIndex: 2500, boxShadow: 'var(--elevation-overlay)', overflowY: 'auto',
+            zIndex: 2500, boxShadow: 'var(--elevation-overlay)', overflow: 'hidden',
         } : {
             width: sidebarCollapsed ? '72px' : '260px',
             minWidth: sidebarCollapsed ? '72px' : '260px',
@@ -409,10 +556,11 @@ function AdminPanelContent() {
             borderRight: '1px solid var(--border)',
             padding: sidebarCollapsed ? 'var(--space-4) var(--space-2)' : 'var(--space-6) var(--space-4)',
             display: 'flex', flexDirection: 'column',
-            position: 'sticky', top: 0, height: '100dvh', overflow: 'auto',
+            position: 'sticky', top: 0, height: '100dvh', overflow: 'hidden',
             transition: 'all 0.2s ease-in-out',
             zIndex: 100,
         },
+        sidebarNavScroll: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' },
         logoRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-2) var(--space-1)' },
         logoBox: {
             width: '36px', height: '36px', background: 'var(--primary)',
@@ -457,6 +605,8 @@ function AdminPanelContent() {
                 approved: ['var(--green-bg)', 'var(--green)'],
                 rejected: ['var(--red-bg)', 'var(--red)'],
                 active: ['var(--green-bg)', 'var(--green)'],
+                suspended: ['var(--red-bg)', 'var(--red)'],
+                banned: ['var(--red-bg)', 'var(--red)'],
             };
             const [bg, cl] = map[status] || ['var(--surface-low)', 'var(--tx-muted)'];
             return { display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: cl };
@@ -620,28 +770,30 @@ function AdminPanelContent() {
                 {(!sidebarCollapsed || isMobile) && <span style={c.adminTag}>Institutional Admin</span>}
                 <div style={c.sep} />
 
-                {nav.map(n => (
-                    <button
-                        key={n.id}
-                        style={{
-                            ...c.navBtn(tab === n.id),
-                            justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
-                            padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
-                        }}
-                        onClick={() => { setTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
-                        title={sidebarCollapsed && !isMobile ? n.label : undefined}
-                    >
-                        <span className="material-icons-round" style={{ fontSize: '18px' }}>{n.icon}</span>
-                        {(!sidebarCollapsed || isMobile) && <span>{n.label}</span>}
-                        {n.id === 'requests' && stats.pending > 0 && (
-                            <span style={{ marginLeft: (sidebarCollapsed && !isMobile) ? '0' : 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
-                                {stats.pending}
-                            </span>
-                        )}
-                    </button>
-                ))}
+                <nav style={c.sidebarNavScroll}>
+                    {nav.map(n => (
+                        <button
+                            key={n.id}
+                            style={{
+                                ...c.navBtn(tab === n.id),
+                                justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
+                                padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
+                            }}
+                            onClick={() => { setTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
+                            title={sidebarCollapsed && !isMobile ? n.label : undefined}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>{n.icon}</span>
+                            {(!sidebarCollapsed || isMobile) && <span>{n.label}</span>}
+                            {n.id === 'requests' && stats.pending > 0 && (
+                                <span style={{ marginLeft: (sidebarCollapsed && !isMobile) ? '0' : 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
+                                    {stats.pending}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </nav>
 
-                <div style={{ ...c.sep, marginTop: 'auto' }} />
+                <div style={{ ...c.sep, flexShrink: 0 }} />
                 {(!sidebarCollapsed || isMobile) && (
                     <div style={{ padding: '0 8px 12px' }}>
                         <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: '14px', border: '1px solid var(--border)' }}>
@@ -766,72 +918,368 @@ function AdminPanelContent() {
 
                 {tab === 'students' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
-                    <h1 style={c.pageTitle}>Student Directory</h1>
-                    <div style={c.tableWrap}>
-                        <div style={c.tableHead}>
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <div style={c.tableTitle}>All Registered Students</div>
-                                <button style={c.actionBtn(true)} onClick={() => setShowAddStudent(true)}>
-                                    <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>add</span>
-                                    Add Student
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+                        <div>
+                            <h1 style={{ ...c.pageTitle, marginBottom: '4px' }}>Student Directory & Access Control</h1>
+                            <p style={{ fontSize: '12px', color: 'var(--tx-muted)', margin: 0 }}>
+                                Manage enrolled students, monitor authentication status, reset student credentials, and impose or lift institutional access bans.
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button style={c.actionBtn(true)} onClick={() => setShowAddStudent(true)}>
+                                <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '4px' }}>person_add</span>
+                                Add Student
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Action notification toast */}
+                    {studentActionMsg && (
+                        <div className="gf-fade-up" style={{ padding: '12px 16px', background: 'var(--surface-low)', border: '1px solid var(--primary)', borderRadius: '12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', fontWeight: 700, color: 'var(--tx-main)' }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>info</span>
+                            <span>{studentActionMsg}</span>
+                        </div>
+                    )}
+
+                    {/* Batch Selection Action Bar */}
+                    {selectedUsns.size > 0 && (
+                        <div className="gf-fade-up" style={{
+                            background: 'var(--surface-low)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '12px',
+                            padding: '12px 18px',
+                            marginBottom: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            boxShadow: 'var(--shadow-sm)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>check_circle</span>
+                                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                    {selectedUsns.size} Student{selectedUsns.size > 1 ? 's' : ''} Selected
+                                </span>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setConfirmingBulkSuspend(true)}
+                                    disabled={studentActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>block</span>
+                                    Ban / Suspend Selected
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleBulkAction('bulk_unban')}
+                                    disabled={studentActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>restore</span>
+                                    Unban / Restore Selected
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleBulkAction('bulk_reset_pin')}
+                                    disabled={studentActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>lock_reset</span>
+                                    Reset PINs
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setConfirmingBulkDelete(true)}
+                                    disabled={studentActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>delete_forever</span>
+                                    Delete Selected
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '11px' }}
+                                    onClick={() => setSelectedUsns(new Set())}
+                                >
+                                    Deselect
                                 </button>
                             </div>
-                            <input style={{ ...c.searchInput, flex: '1 1 220px' }} placeholder="Search USN or Name..." value={search} onChange={e => setSearch(e.target.value)} />
                         </div>
+                    )}
+
+                    <div style={c.tableWrap}>
+                        {/* Filters & Search Header */}
+                        <div style={{ ...c.tableHead, gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 240px', minWidth: '200px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>search</span>
+                                <input
+                                    style={{ ...c.searchInput, width: '100%', flex: 1, border: 'none', background: 'transparent', padding: '6px 0' }}
+                                    placeholder="Search by USN or Student Name..."
+                                    value={search}
+                                    onChange={e => setSearch(e.target.value)}
+                                />
+                                {search && (
+                                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center', padding: '2px' }} onClick={() => setSearch('')}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                {/* Status Filter */}
+                                <select
+                                    value={studentStatusFilter}
+                                    onChange={e => setStudentStatusFilter(e.target.value)}
+                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer' }}
+                                >
+                                    <option value="all">All Statuses ({students.length})</option>
+                                    <option value="active">🟢 Active ({students.filter(s => s.activated_at && !s.is_suspended).length})</option>
+                                    <option value="pending">🟡 Awaiting Activation ({students.filter(s => !s.activated_at && !s.is_suspended).length})</option>
+                                    <option value="suspended">🔴 Suspended / Banned ({students.filter(s => s.is_suspended).length})</option>
+                                </select>
+
+                                {/* Branch Filter */}
+                                {availableBranches.length > 0 && (
+                                    <select
+                                        value={studentBranchFilter}
+                                        onChange={e => setStudentBranchFilter(e.target.value)}
+                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer' }}
+                                    >
+                                        <option value="all">All Branches</option>
+                                        {availableBranches.map(b => (
+                                            <option key={b} value={b}>{b}</option>
+                                        ))}
+                                    </select>
+                                )}
+
+                                {/* Semester Filter */}
+                                <select
+                                    value={studentSemFilter}
+                                    onChange={e => setStudentSemFilter(e.target.value)}
+                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer' }}
+                                >
+                                    <option value="all">All Semesters</option>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(sm => (
+                                        <option key={sm} value={sm}>Semester {sm}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Desktop Table */}
                         {!isMobile ? (
-                            <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
+                            <table style={{ width: '100%', minWidth: '780px', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr>{['Student', 'USN', 'Semester', 'Branch', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
+                                    <tr>
+                                        <th style={{ ...c.th, width: '40px', padding: '14px 16px', textAlign: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={filtered.length > 0 && selectedUsns.size === filtered.length}
+                                                onChange={handleSelectAllStudents}
+                                                style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                title="Select / Deselect all matching students"
+                                            />
+                                        </th>
+                                        <th style={c.th}>Student</th>
+                                        <th style={c.th}>USN</th>
+                                        <th style={c.th}>Semester</th>
+                                        <th style={c.th}>Branch</th>
+                                        <th style={c.th}>Access Status</th>
+                                        <th style={{ ...c.th, textAlign: 'right', paddingRight: '20px' }}>Administrative Actions</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                    {filtered.map(s => (
-                                        <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openStudent(s)} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                            <td style={c.td}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
-                                                    <span style={{ fontWeight: 800 }}>{s.name || 'Student'}</span>
-                                                </div>
+                                    {filtered.map(s => {
+                                        const isSelected = selectedUsns.has(s.usn);
+                                        return (
+                                            <tr
+                                                key={s.id}
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    background: isSelected ? 'var(--surface-low)' : (s.is_suspended ? 'rgba(239, 68, 68, 0.03)' : 'transparent'),
+                                                    transition: 'background 0.12s ease'
+                                                }}
+                                                onClick={() => openStudent(s)}
+                                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-low)'; }}
+                                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = s.is_suspended ? 'rgba(239, 68, 68, 0.03)' : 'transparent'; }}
+                                            >
+                                                <td style={{ ...c.td, width: '40px', padding: '16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={e => handleToggleStudentSelection(s.usn, e)}
+                                                        style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                    />
+                                                </td>
+                                                <td style={c.td}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <div style={{
+                                                            ...c.avatar,
+                                                            border: s.is_suspended ? '2px solid var(--red)' : 'none'
+                                                        }}>
+                                                            {((s.name || s.usn || '?')[0]).toUpperCase()}
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontWeight: 800, color: s.is_suspended ? 'var(--red)' : 'var(--tx-main)' }}>
+                                                                {s.name || 'Student'}
+                                                            </div>
+                                                            {s.lateral_entry && (
+                                                                <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Lateral Entry</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td style={{ ...c.td, fontFamily: 'monospace', color: 'var(--tx-muted)' }}>
+                                                    {s.usn}
+                                                </td>
+                                                <td style={c.td}>Sem {s.semester || '—'}</td>
+                                                <td style={c.td}>{s.branch || '—'}</td>
+                                                <td style={c.td}>
+                                                    {s.is_suspended ? (
+                                                        <span style={c.badge('suspended')}>🔴 Suspended</span>
+                                                    ) : s.activated_at ? (
+                                                        <span style={c.badge('active')}>🟢 Active</span>
+                                                    ) : (
+                                                        <span style={c.badge('pending')}>🟡 Awaiting</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ ...c.td, textAlign: 'right', paddingRight: '20px' }} onClick={e => e.stopPropagation()}>
+                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                        {/* Quick Inspect Drawer */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => openStudent(s)}
+                                                            title="Inspect Academic Marks & Profile"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>visibility</span>
+                                                            Inspect
+                                                        </button>
+
+                                                        {/* Suspend / Unban Toggle */}
+                                                        {s.is_suspended ? (
+                                                            <button
+                                                                style={{ ...c.actionBtn(false), padding: '6px 10px', borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                onClick={() => handleToggleSuspendStudent(s)}
+                                                                disabled={studentActionBusy}
+                                                                title="Unban & Restore Student Portal Access"
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>restore</span>
+                                                                Unban
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                style={{ ...c.actionBtn(false), padding: '6px 10px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                onClick={() => setConfirmingSuspendStudent(s)}
+                                                                disabled={studentActionBusy}
+                                                                title="Ban / Suspend Student Portal Access"
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>block</span>
+                                                                Ban
+                                                            </button>
+                                                        )}
+
+                                                        {/* Reset PIN */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 10px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => handleResetSingleStudentPin(s)}
+                                                            disabled={studentActionBusy}
+                                                            title="Reset Password & Recovery PIN"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>lock_reset</span>
+                                                        </button>
+
+                                                        {/* Delete Student */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 10px', borderColor: 'var(--border)', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => setConfirmingSingleDelete(s)}
+                                                            disabled={studentActionBusy}
+                                                            title="Delete Student from Database"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>delete_outline</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filtered.length === 0 && (
+                                        <tr>
+                                            <td colSpan="7" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)', fontStyle: 'italic' }}>
+                                                No students matching your filter criteria.
                                             </td>
-                                            <td style={{ ...c.td, fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn}</td>
-                                            <td style={c.td}>Sem {s.semester || '—'}</td>
-                                            <td style={c.td}>{s.branch || '—'}</td>
-                                            <td style={c.td}><span style={c.badge(s.activated_at ? 'active' : 'pending')}>{s.activated_at ? 'Active' : 'Awaiting'}</span></td>
                                         </tr>
-                                    ))}
-                                    {filtered.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)', fontStyle: 'italic' }}>No matching students found.</td></tr>}
+                                    )}
                                 </tbody>
                             </table>
                         ) : (
+                            /* Mobile Student Cards */
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-                                {filtered.map(s => (
-                                    <div
-                                        key={s.id}
-                                        onClick={() => openStudent(s)}
-                                        style={{
-                                            background: 'var(--surface-low)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '12px',
-                                            padding: '12px 14px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: '12px',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                            <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
-                                            <div style={{ minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Student'}</div>
-                                                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn} · {s.branch || 'Unassigned'}</div>
+                                {filtered.map(s => {
+                                    const isSelected = selectedUsns.has(s.usn);
+                                    return (
+                                        <div
+                                            key={s.id}
+                                            style={{
+                                                background: isSelected ? 'var(--surface)' : 'var(--surface-low)',
+                                                border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                                                borderRadius: '12px',
+                                                padding: '14px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '12px',
+                                                cursor: 'pointer'
+                                            }}
+                                            onClick={() => openStudent(s)}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={e => handleToggleStudentSelection(s.usn, e)}
+                                                        onClick={e => e.stopPropagation()}
+                                                        style={{ cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
+                                                    />
+                                                    <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Student'}</div>
+                                                        <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn} · {s.branch || 'Unassigned'} · Sem {s.semester || '—'}</div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    {s.is_suspended ? (
+                                                        <span style={c.badge('suspended')}>🔴 Suspended</span>
+                                                    ) : s.activated_at ? (
+                                                        <span style={c.badge('active')}>🟢 Active</span>
+                                                    ) : (
+                                                        <span style={c.badge('pending')}>🟡 Awaiting</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Mobile Card Action Buttons */}
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: '10px' }} onClick={e => e.stopPropagation()}>
+                                                <button style={{ ...c.actionBtn(false), flex: 1, padding: '6px 8px', fontSize: '11px', textAlign: 'center' }} onClick={() => openStudent(s)}>
+                                                    Inspect
+                                                </button>
+                                                {s.is_suspended ? (
+                                                    <button style={{ ...c.actionBtn(false), flex: 1, padding: '6px 8px', fontSize: '11px', borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)' }} onClick={() => handleToggleSuspendStudent(s)}>
+                                                        Unban
+                                                    </button>
+                                                ) : (
+                                                    <button style={{ ...c.actionBtn(false), flex: 1, padding: '6px 8px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)' }} onClick={() => setConfirmingSuspendStudent(s)}>
+                                                        Ban
+                                                    </button>
+                                                )}
+                                                <button style={{ ...c.actionBtn(false), padding: '6px 10px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)' }} onClick={() => handleResetSingleStudentPin(s)} title="Reset PIN">
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>lock_reset</span>
+                                                </button>
+                                                <button style={{ ...c.actionBtn(false), padding: '6px 10px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setConfirmingSingleDelete(s)} title="Delete">
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>delete</span>
+                                                </button>
                                             </div>
                                         </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                                            <span style={c.badge(s.activated_at ? 'active' : 'pending')}>{s.activated_at ? 'Active' : 'Awaiting'}</span>
-                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>Sem {s.semester || '—'}</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {filtered.length === 0 && <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px', fontStyle: 'italic' }}>No matching students found.</div>}
                             </div>
                         )}
@@ -1463,8 +1911,19 @@ function AdminPanelContent() {
                                         {selectedStudent.usn} · {selectedStudent.branch || 'Unassigned'} · Sem {selectedStudent.semester || '—'}
                                     </div>
                                     <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
-                                        Status: <span style={c.badge(selectedStudent.activated_at ? 'active' : 'pending')}>{selectedStudent.activated_at ? 'Activated' : 'Pending'}</span>
+                                        Status: {selectedStudent.is_suspended ? (
+                                            <span style={c.badge('suspended')}>🔴 Suspended (Banned)</span>
+                                        ) : selectedStudent.activated_at ? (
+                                            <span style={c.badge('active')}>🟢 Active</span>
+                                        ) : (
+                                            <span style={c.badge('pending')}>🟡 Awaiting Activation</span>
+                                        )}
                                     </div>
+                                    {selectedStudent.is_suspended && (
+                                        <div style={{ fontSize: '11px', color: 'var(--red)', background: 'var(--red-bg)', padding: '6px 10px', borderRadius: '8px', marginTop: '6px', border: '1px solid var(--red)' }}>
+                                            <strong>Ban Reason:</strong> {selectedStudent.suspended_reason || 'Administrative lock.'}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }} onClick={() => setSelectedStudent(null)}>
@@ -1473,12 +1932,37 @@ function AdminPanelContent() {
                         </div>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
-                            <button style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial' }} onClick={() => setConfirmingPasswordReset(true)}>
-                                <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>lock_reset</span>
-                                Reset Password
+                            {selectedStudent.is_suspended ? (
+                                <button
+                                    style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)', flex: isMobile ? '1 1 100%' : 'initial', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleToggleSuspendStudent(selectedStudent)}
+                                    disabled={studentActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>restore</span>
+                                    Unban & Restore Access
+                                </button>
+                            ) : (
+                                <button
+                                    style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', flex: isMobile ? '1 1 100%' : 'initial', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setConfirmingSuspendStudent(selectedStudent)}
+                                    disabled={studentActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>block</span>
+                                    Ban / Suspend Student
+                                </button>
+                            )}
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => setConfirmingPasswordReset(true)}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>lock_reset</span>
+                                Reset Credentials
                             </button>
-                            <button style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial' }} onClick={deleteStudentEntirely}>
-                                <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>delete_forever</span>
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent', flex: isMobile ? '1 1 calc(50% - 4px)' : 'initial', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => setConfirmingSingleDelete(selectedStudent)}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>delete_forever</span>
                                 Delete Student
                             </button>
                         </div>
@@ -1537,18 +2021,14 @@ function AdminPanelContent() {
                                             ) : (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     {marks.map(m => (
-                                                        <div key={m.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                                                                <div>
-                                                                    <div style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)', fontWeight: 800 }}>{m.subject_code}</div>
-                                                                    <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', wordBreak: 'break-word' }}>{m.subject_name}</div>
-                                                                </div>
-                                                                <span style={c.badge(m.grade === 'F' ? 'rejected' : 'approved')}>{m.grade}</span>
+                                                        <div key={m.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <div>
+                                                                <div style={{ fontWeight: 700, fontSize: '12px' }}>{m.subject_name}</div>
+                                                                <div style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)' }}>{m.subject_code}</div>
                                                             </div>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--surface)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', border: '1px solid var(--border)' }}>
-                                                                <div><span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>CIE:</span> {m.cie_marks ?? m.internal ?? '—'}</div>
-                                                                <div><span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>SEE:</span> {m.see_marks ?? m.external ?? '—'}</div>
-                                                                <div><span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Total:</span> <strong>{m.total_marks ?? m.total ?? '—'}</strong></div>
+                                                            <div style={{ textAlign: 'right' }}>
+                                                                <div style={{ fontSize: '12px', fontWeight: 800 }}>Total: {m.total_marks ?? m.total ?? '—'}</div>
+                                                                <span style={c.badge(m.grade === 'F' ? 'rejected' : 'approved')}>{m.grade}</span>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1578,6 +2058,81 @@ function AdminPanelContent() {
                     </div>
                 </div>
             )}
+
+            {/* SUSPEND STUDENT MODAL */}
+            {confirmingSuspendStudent && (
+                <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setConfirmingSuspendStudent(null); }}>
+                    <div style={c.modalCard} className="gf-fade-up">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '28px', color: 'var(--red)' }}>block</span>
+                            <h2 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.03em' }}>
+                                Ban / Suspend Student Access
+                            </h2>
+                        </div>
+                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '16px', lineHeight: 1.6 }}>
+                            Are you sure you want to suspend access for <strong>{confirmingSuspendStudent.name || confirmingSuspendStudent.usn}</strong> ({confirmingSuspendStudent.usn})?
+                            They will be immediately blocked from logging into the Student Portal.
+                        </p>
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                            Reason for Suspension (Visible to Student upon login attempt)
+                        </label>
+                        <input
+                            style={{ ...c.input, marginBottom: '20px' }}
+                            placeholder="e.g. Disciplinary action, Pending clearance, Examination suspension"
+                            value={suspendReasonInput}
+                            onChange={e => setSuspendReasonInput(e.target.value)}
+                        />
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...c.actionBtn(true), background: 'var(--red)', color: '#FFF', padding: '10px 20px', fontSize: '13px' }}
+                                onClick={() => handleToggleSuspendStudent(confirmingSuspendStudent, suspendReasonInput)}
+                                disabled={studentActionBusy}
+                            >
+                                {studentActionBusy ? 'Suspending…' : 'Confirm Suspension'}
+                            </button>
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '10px 20px', fontSize: '13px' }}
+                                onClick={() => { setConfirmingSuspendStudent(null); setSuspendReasonInput(''); }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* SINGLE DELETE CONFIRM DIALOG */}
+            <ConfirmDialog
+                open={Boolean(confirmingSingleDelete)}
+                title="Permanently Delete Student?"
+                description={`Are you sure you want to delete ${confirmingSingleDelete?.name || confirmingSingleDelete?.usn} (${confirmingSingleDelete?.usn})? This will permanently remove their records, marks, and enrollments.`}
+                confirmLabel="Delete Student"
+                busy={studentActionBusy}
+                onCancel={() => setConfirmingSingleDelete(null)}
+                onConfirm={() => handleDeleteSingleStudent(confirmingSingleDelete)}
+            />
+
+            {/* BULK DELETE CONFIRM DIALOG */}
+            <ConfirmDialog
+                open={confirmingBulkDelete}
+                title={`Permanently Delete ${selectedUsns.size} Student(s)?`}
+                description={`This action CANNOT be undone. All selected student profiles, marks data, and class enrollments will be wiped from the system.`}
+                confirmLabel={`Delete ${selectedUsns.size} Students`}
+                busy={studentActionBusy}
+                onCancel={() => setConfirmingBulkDelete(false)}
+                onConfirm={() => handleBulkAction('bulk_delete')}
+            />
+
+            {/* BULK SUSPEND CONFIRM DIALOG */}
+            <ConfirmDialog
+                open={confirmingBulkSuspend}
+                title={`Suspend & Ban ${selectedUsns.size} Student(s)?`}
+                description={`All selected students will be blocked from logging into the Student Portal until an administrator restores their access.`}
+                confirmLabel={`Suspend ${selectedUsns.size} Students`}
+                busy={studentActionBusy}
+                onCancel={() => setConfirmingBulkSuspend(false)}
+                onConfirm={() => handleBulkAction('bulk_suspend')}
+            />
 
             {/* ADD STUDENT MODAL */}
             {showAddStudent && (
