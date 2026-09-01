@@ -61,7 +61,7 @@ export async function GET(req) {
             { data: facultyActivity },
             { data: facultyList },
             { data: documentsCount },
-            { data: classesCount }
+            { data: classes }
         ] = await Promise.all([
             fetchAllPaginated('students', '*', supabaseAdmin, 'created_at', false),
             supabaseAdmin.from('faculty_onboarding').select('*').order('created_at', { ascending: false }),
@@ -69,7 +69,7 @@ export async function GET(req) {
             supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(300),
             supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department'),
             supabaseAdmin.from('documents').select('id', { count: 'exact', head: true }),
-            supabaseAdmin.from('classes').select('id', { count: 'exact', head: true })
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, subject_name, subject_code, faculty_id, created_at')
         ]);
 
         return ok({
@@ -77,12 +77,14 @@ export async function GET(req) {
             facultyOnboarding: facultyOnboarding || [],
             facultyActivity: facultyActivity || [],
             facultyList: facultyList || [],
+            classes: classes || [],
             counts: {
                 totalStudents: students?.length || 0,
                 totalFacultyOnboarding: facultyOnboarding?.length || 0,
                 totalMarksRecords: marksCount?.count || 0,
                 totalFacultyActivities: facultyActivity?.length || 0,
                 totalDocuments: documentsCount?.count || 0,
+                totalClasses: classes?.length || 0,
             }
         });
     } catch (err) {

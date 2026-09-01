@@ -97,7 +97,35 @@ function AdminPanelContent() {
     const [newStudent, setNewStudent] = useState({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
     const [addError, setAddError] = useState('');
     const [addingStudent, setAddingStudent] = useState(false);
-    const [syncingSemesters, setSyncingSemesters] = useState(false);
+    // Faculty Management States
+    const [classesList, setClassesList] = useState([]);
+    const [facultySearch, setFacultySearch] = useState('');
+    const [facultyStatusFilter, setFacultyStatusFilter] = useState('all');
+    const [facultyDeptFilter, setFacultyDeptFilter] = useState('all');
+    const [facultySortField, setFacultySortField] = useState('full_name');
+    const [facultySortDirection, setFacultySortDirection] = useState('asc');
+    const [selectedFacultyIds, setSelectedFacultyIds] = useState(new Set());
+    const [selectedFaculty, setSelectedFaculty] = useState(null);
+    const [facultyDrawerTab, setFacultyDrawerTab] = useState('classes');
+    const [showAddFaculty, setShowAddFaculty] = useState(false);
+    const [newFaculty, setNewFaculty] = useState({
+        full_name: '',
+        email: '',
+        department: 'Computer Science',
+        designation: 'Assistant Professor',
+        employee_id: '',
+        phone: '',
+    });
+    const [editingFaculty, setEditingFaculty] = useState(null);
+    const [createdFacultyResult, setCreatedFacultyResult] = useState(null);
+    const [confirmingSuspendFaculty, setConfirmingSuspendFaculty] = useState(null);
+    const [facultySuspendReason, setFacultySuspendReason] = useState('');
+    const [confirmingDeleteFaculty, setConfirmingDeleteFaculty] = useState(null);
+    const [confirmingBulkSuspendFaculty, setConfirmingBulkSuspendFaculty] = useState(false);
+    const [confirmingBulkDeleteFaculty, setConfirmingBulkDeleteFaculty] = useState(false);
+    const [confirmingRegenKeyFaculty, setConfirmingRegenKeyFaculty] = useState(null);
+    const [facultyActionBusy, setFacultyActionBusy] = useState(false);
+    const [facultyActionMsg, setFacultyActionMsg] = useState('');
 
     // System Settings States
     const [settingsProfile, setSettingsProfile] = useState({
@@ -240,6 +268,7 @@ function AdminPanelContent() {
             setStudents(s);
             setRequests(r);
             setActivityLogs(enrichedLogs);
+            setClassesList(resData?.classes || []);
 
             const todayStr = new Date().toISOString().slice(0, 10);
             const todayCount = l.filter(x => x.created_at?.startsWith(todayStr)).length;
@@ -555,6 +584,196 @@ function AdminPanelContent() {
         }
     };
 
+    // ── Faculty Action Handlers ──────────────────────────────
+    const handleCreateFaculty = async () => {
+        if (!newFaculty.full_name?.trim() || !newFaculty.email?.trim()) {
+            alert('Full Name and Institutional Email are required.');
+            return;
+        }
+        setFacultyActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/faculty-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'create_faculty',
+                    ...newFaculty
+                })
+            });
+            setCreatedFacultyResult({
+                ...newFaculty,
+                access_key: res.access_key
+            });
+            setShowAddFaculty(false);
+            setNewFaculty({ full_name: '', email: '', department: 'Computer Science', designation: 'Assistant Professor', employee_id: '', phone: '' });
+            setFacultyActionMsg(res.message || 'Faculty member onboarded successfully.');
+            await loadData();
+            setTimeout(() => setFacultyActionMsg(''), 6000);
+        } catch (err) {
+            alert('Failed to onboard faculty: ' + err.message);
+        } finally {
+            setFacultyActionBusy(false);
+        }
+    };
+
+    const handleToggleSuspendFaculty = async (faculty, customReason) => {
+        if (!faculty) return;
+        setFacultyActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/faculty-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'toggle_suspend',
+                    id: faculty.id,
+                    reason: customReason || facultySuspendReason || 'Account suspended by Administrator.'
+                })
+            });
+            setFacultyActionMsg(res.message || 'Faculty status updated.');
+            if (selectedFaculty?.id === faculty.id) {
+                setSelectedFaculty(prev => prev ? ({ ...prev, status: res.status }) : null);
+            }
+            await loadData();
+            setTimeout(() => setFacultyActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to update faculty status: ' + err.message);
+        } finally {
+            setFacultyActionBusy(false);
+            setConfirmingSuspendFaculty(null);
+            setFacultySuspendReason('');
+        }
+    };
+
+    const handleRegenerateFacultyKey = async (faculty) => {
+        if (!faculty) return;
+        setFacultyActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/faculty-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'regenerate_key',
+                    id: faculty.id
+                })
+            });
+            setCreatedFacultyResult({
+                full_name: faculty.full_name,
+                email: faculty.email,
+                access_key: res.generated_access_key
+            });
+            setFacultyActionMsg(res.message || 'New access key generated.');
+            if (selectedFaculty?.id === faculty.id) {
+                setSelectedFaculty(prev => prev ? ({ ...prev, generated_access_key: res.generated_access_key, status: 'approved' }) : null);
+            }
+            await loadData();
+            setTimeout(() => setFacultyActionMsg(''), 6000);
+        } catch (err) {
+            alert('Failed to regenerate key: ' + err.message);
+        } finally {
+            setFacultyActionBusy(false);
+            setConfirmingRegenKeyFaculty(null);
+        }
+    };
+
+    const handleEditFaculty = async () => {
+        if (!editingFaculty) return;
+        setFacultyActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/faculty-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'edit_faculty',
+                    ...editingFaculty
+                })
+            });
+            setFacultyActionMsg(res.message || 'Faculty profile updated.');
+            if (selectedFaculty?.id === editingFaculty.id) {
+                setSelectedFaculty(prev => prev ? ({ ...prev, ...editingFaculty }) : null);
+            }
+            setEditingFaculty(null);
+            await loadData();
+            setTimeout(() => setFacultyActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to update faculty: ' + err.message);
+        } finally {
+            setFacultyActionBusy(false);
+        }
+    };
+
+    const handleDeleteSingleFaculty = async (faculty) => {
+        if (!faculty) return;
+        setFacultyActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/faculty-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'delete_faculty',
+                    id: faculty.id
+                })
+            });
+            setFacultyActionMsg(res.message || 'Faculty member removed.');
+            if (selectedFaculty?.id === faculty.id) setSelectedFaculty(null);
+            setSelectedFacultyIds(prev => { const n = new Set(prev); n.delete(faculty.id); return n; });
+            await loadData();
+            setTimeout(() => setFacultyActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to remove faculty: ' + err.message);
+        } finally {
+            setFacultyActionBusy(false);
+            setConfirmingDeleteFaculty(null);
+        }
+    };
+
+    const handleBulkFacultyAction = async (actionType) => {
+        if (selectedFacultyIds.size === 0) return;
+        setFacultyActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/faculty-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: actionType,
+                    ids: Array.from(selectedFacultyIds),
+                    reason: facultySuspendReason || 'Batch suspension by Administrator.'
+                })
+            });
+            setFacultyActionMsg(res.message || 'Batch operation completed.');
+            setSelectedFacultyIds(new Set());
+            await loadData();
+            setTimeout(() => setFacultyActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed batch faculty action: ' + err.message);
+        } finally {
+            setFacultyActionBusy(false);
+            setConfirmingBulkSuspendFaculty(false);
+            setConfirmingBulkDeleteFaculty(false);
+            setFacultySuspendReason('');
+        }
+    };
+
+    const handleSortFaculty = (field) => {
+        if (facultySortField === field) {
+            setFacultySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setFacultySortField(field);
+            setFacultySortDirection('asc');
+        }
+    };
+
+    const handleToggleFacultySelection = (id, e) => {
+        if (e) e.stopPropagation();
+        setSelectedFacultyIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleSelectAllFaculty = () => {
+        if (selectedFacultyIds.size === filteredFaculty.length) {
+            setSelectedFacultyIds(new Set());
+        } else {
+            setSelectedFacultyIds(new Set(filteredFaculty.map(f => f.id)));
+        }
+    };
+
     const handleSort = (field) => {
         if (sortField === field) {
             setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
@@ -623,6 +842,57 @@ function AdminPanelContent() {
             cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
         }
         return sortDirection === 'asc' ? cmp : -cmp;
+    });
+
+    // ── Faculty Scope & Filtering ────────────────────────────
+    const availableFacultyDepts = Array.from(
+        new Set(requests.map(r => (r.department || '').trim()).filter(Boolean))
+    ).sort();
+
+    const baseScopedFaculty = requests.filter(r => {
+        const q = (facultySearch || '').toLowerCase().trim();
+        const matchSearch = !q ||
+            (r.full_name || '').toLowerCase().includes(q) ||
+            (r.email || '').toLowerCase().includes(q) ||
+            (r.department || '').toLowerCase().includes(q) ||
+            (r.employee_id || '').toLowerCase().includes(q) ||
+            (r.designation || '').toLowerCase().includes(q);
+        if (!matchSearch) return false;
+
+        if (facultyDeptFilter !== 'all') {
+            if ((r.department || '').toLowerCase() !== facultyDeptFilter.toLowerCase()) return false;
+        }
+
+        return true;
+    });
+
+    const statusCountsFaculty = {
+        all: baseScopedFaculty.length,
+        approved: baseScopedFaculty.filter(r => r.status === 'approved').length,
+        pending: baseScopedFaculty.filter(r => r.status === 'pending').length,
+        suspended: baseScopedFaculty.filter(r => r.status === 'suspended').length,
+    };
+
+    const filteredFaculty = baseScopedFaculty.filter(r => {
+        if (facultyStatusFilter === 'approved') return r.status === 'approved';
+        if (facultyStatusFilter === 'pending') return r.status === 'pending';
+        if (facultyStatusFilter === 'suspended') return r.status === 'suspended';
+        return true;
+    }).sort((a, b) => {
+        let cmp = 0;
+        if (facultySortField === 'full_name') {
+            cmp = (a.full_name || '').localeCompare(b.full_name || '');
+        } else if (facultySortField === 'department') {
+            cmp = (a.department || '').localeCompare(b.department || '');
+        } else if (facultySortField === 'employee_id') {
+            cmp = (a.employee_id || '').localeCompare(b.employee_id || '');
+        } else if (facultySortField === 'status') {
+            const score = s => (s.status === 'suspended' ? 3 : s.status === 'pending' ? 2 : 1);
+            cmp = score(a) - score(b);
+        } else if (facultySortField === 'created_at') {
+            cmp = new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        }
+        return facultySortDirection === 'asc' ? cmp : -cmp;
     });
 
     // Calculate SGPA for student marks using canonical grade points and catalog credits
@@ -1458,91 +1728,460 @@ function AdminPanelContent() {
 
                 {tab === 'requests' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
-                    <h1 style={c.pageTitle}>Faculty Onboarding</h1>
-                    <div style={c.tableWrap}>
-                        <div style={c.tableHead}>
-                            <div style={c.tableTitle}>Verification Queue</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+                        <div>
+                            <h1 style={{ ...c.pageTitle, marginBottom: '4px' }}>Faculty Directory & Access Control</h1>
+                            <p style={{ fontSize: '12px', color: 'var(--tx-muted)', margin: 0 }}>
+                                Manage teaching staff credentials, monitor verification status, assign departments, reset access keys, and impose or lift institutional access bans.
+                            </p>
                         </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }} onClick={loadData} disabled={loading}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>refresh</span>
+                                Reload
+                            </button>
+                            <button style={c.actionBtn(true)} onClick={() => setShowAddFaculty(true)}>
+                                <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '4px' }}>person_add</span>
+                                Onboard Faculty Member
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Faculty KPI Metric Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+                        <div style={c.statCard}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Total Faculty</span>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>groups</span>
+                            </div>
+                            <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '6px' }}>{requests.length}</div>
+                        </div>
+                        <div style={c.statCard}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--green)', textTransform: 'uppercase' }}>Active / Approved</span>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--green)' }}>verified</span>
+                            </div>
+                            <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--green)', marginTop: '6px' }}>{statusCountsFaculty.approved}</div>
+                        </div>
+                        <div style={c.statCard}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--amber)', textTransform: 'uppercase' }}>Pending Verification</span>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--amber)' }}>pending_actions</span>
+                            </div>
+                            <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--amber)', marginTop: '6px' }}>{statusCountsFaculty.pending}</div>
+                        </div>
+                        <div style={c.statCard}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--red)', textTransform: 'uppercase' }}>Suspended / Frozen</span>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--red)' }}>block</span>
+                            </div>
+                            <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--red)', marginTop: '6px' }}>{statusCountsFaculty.suspended}</div>
+                        </div>
+                    </div>
+
+                    {/* Action notification toast */}
+                    {facultyActionMsg && (
+                        <div className="gf-fade-up" style={{ padding: '12px 16px', background: 'var(--surface-low)', border: '1px solid var(--primary)', borderRadius: '12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', fontWeight: 700, color: 'var(--tx-main)' }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>info</span>
+                            <span>{facultyActionMsg}</span>
+                        </div>
+                    )}
+
+                    {/* Batch Selection Action Bar */}
+                    {selectedFacultyIds.size > 0 && (
+                        <div className="gf-fade-up" style={{
+                            background: 'var(--surface-low)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '12px',
+                            padding: '12px 18px',
+                            marginBottom: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            boxShadow: 'var(--shadow-sm)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>check_circle</span>
+                                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                    {selectedFacultyIds.size} Faculty Member{selectedFacultyIds.size > 1 ? 's' : ''} Selected
+                                </span>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setConfirmingBulkSuspendFaculty(true)}
+                                    disabled={facultyActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>block</span>
+                                    Ban / Suspend Selected
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleBulkFacultyAction('bulk_restore')}
+                                    disabled={facultyActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>restore</span>
+                                    Approve / Restore Selected
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setConfirmingBulkDeleteFaculty(true)}
+                                    disabled={facultyActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>delete_forever</span>
+                                    Delete Selected
+                                </button>
+                                <button
+                                    style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '11px' }}
+                                    onClick={() => setSelectedFacultyIds(new Set())}
+                                >
+                                    Deselect
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Table Wrap */}
+                    <div style={c.tableWrap}>
+                        {/* Filters & Search Header */}
+                        <div style={{ ...c.tableHead, gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 240px', minWidth: '200px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>search</span>
+                                <input
+                                    style={{ ...c.searchInput, width: '100%', flex: 1, border: 'none', background: 'transparent', padding: '6px 0' }}
+                                    placeholder="Search by Faculty Name, Email, Employee ID..."
+                                    value={facultySearch}
+                                    onChange={e => setFacultySearch(e.target.value)}
+                                />
+                                {facultySearch && (
+                                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center', padding: '2px' }} onClick={() => setFacultySearch('')}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                {/* Status Filter */}
+                                <select
+                                    value={facultyStatusFilter}
+                                    onChange={e => setFacultyStatusFilter(e.target.value)}
+                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                >
+                                    <option value="all">All Statuses ({statusCountsFaculty.all})</option>
+                                    <option value="approved">🟢 Approved / Active ({statusCountsFaculty.approved})</option>
+                                    <option value="pending">🟡 Pending Verification ({statusCountsFaculty.pending})</option>
+                                    <option value="suspended">🔴 Suspended / Frozen ({statusCountsFaculty.suspended})</option>
+                                </select>
+
+                                {/* Department Filter */}
+                                {availableFacultyDepts.length > 0 && (
+                                    <select
+                                        value={facultyDeptFilter}
+                                        onChange={e => setFacultyDeptFilter(e.target.value)}
+                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                    >
+                                        <option value="all">All Departments</option>
+                                        {availableFacultyDepts.map(d => (
+                                            <option key={d} value={d}>{d}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Desktop Table */}
                         {!isMobile ? (
-                            <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse' }}>
+                            <table style={{ width: '100%', minWidth: '820px', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr>{['Faculty Member', 'Employee ID', 'Department', 'Access Key', 'Action'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
+                                    <tr>
+                                        <th style={{ ...c.th, width: '40px', padding: '14px 16px', textAlign: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={filteredFaculty.length > 0 && selectedFacultyIds.size === filteredFaculty.length}
+                                                onChange={handleSelectAllFaculty}
+                                                style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                title="Select / Deselect all matching faculty"
+                                            />
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortFaculty('full_name')} title="Sort by Name">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Faculty Member
+                                                {facultySortField === 'full_name' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {facultySortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortFaculty('department')} title="Sort by Department">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Department & Role
+                                                {facultySortField === 'department' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {facultySortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortFaculty('employee_id')} title="Sort by Employee ID">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Employee ID
+                                                {facultySortField === 'employee_id' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {facultySortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={c.th}>Access Key</th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortFaculty('status')} title="Sort by Status">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Access Status
+                                                {facultySortField === 'status' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {facultySortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, textAlign: 'right', paddingRight: '20px' }}>Administrative Actions</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                    {requests.map(r => (
-                                        <tr key={r.id}>
-                                            <td style={c.td}>
-                                                <div style={{ fontWeight: 800 }}>{r.full_name}</div>
-                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{r.email}</div>
-                                            </td>
-                                            <td style={c.td}>{r.employee_id || 'ID PENDING'}</td>
-                                            <td style={c.td}>{r.department}</td>
-                                            <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '11px', color: 'var(--tx-muted)' }}>
-                                                {r.generated_access_key ? (
-                                                    <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => copyKey(r.generated_access_key)}>
-                                                        {r.generated_access_key}
-                                                        <span className="material-icons-round" style={{ fontSize: '14px', color: copiedKey === r.generated_access_key ? '#16A34A' : 'var(--tx-dim)' }}>
-                                                            {copiedKey === r.generated_access_key ? 'check' : 'content_copy'}
-                                                        </span>
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                            <td style={c.td}>
-                                                {r.status === 'pending' ? (
-                                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                                        <button style={c.actionBtn(true)} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
-                                                            {actionId === r.id ? '...' : 'Approve'}
-                                                        </button>
-                                                        <button style={c.actionBtn(false)} onClick={() => setConfirmingReject(r)}>Decline</button>
+                                    {filteredFaculty.map(r => {
+                                        const isSelected = selectedFacultyIds.has(r.id);
+                                        return (
+                                            <tr
+                                                key={r.id}
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    background: isSelected ? 'var(--surface-low)' : (r.status === 'suspended' ? 'rgba(239, 68, 68, 0.03)' : 'transparent'),
+                                                    transition: 'background 0.12s ease'
+                                                }}
+                                                onClick={() => setSelectedFaculty(r)}
+                                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-low)'; }}
+                                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = r.status === 'suspended' ? 'rgba(239, 68, 68, 0.03)' : 'transparent'; }}
+                                            >
+                                                <td style={{ ...c.td, width: '40px', padding: '16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={e => handleToggleFacultySelection(r.id, e)}
+                                                        style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                    />
+                                                </td>
+                                                <td style={c.td}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <div style={c.avatar}>{((r.full_name || '?')[0]).toUpperCase()}</div>
+                                                        <div>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>{r.full_name}</div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{r.email}</div>
+                                                        </div>
                                                     </div>
-                                                ) : (
-                                                    <span style={c.badge(r.status)}>{r.status?.toUpperCase()}</span>
-                                                )}
+                                                </td>
+                                                <td style={c.td}>
+                                                    <div style={{ fontWeight: 700, fontSize: '12px' }}>{r.department || 'General'}</div>
+                                                    <div style={{ fontSize: '10px', color: 'var(--tx-muted)', textTransform: 'uppercase', fontWeight: 800 }}>{r.designation || 'Faculty'}</div>
+                                                </td>
+                                                <td style={c.td}>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '11px', color: r.employee_id ? 'var(--tx-main)' : 'var(--tx-dim)', fontWeight: r.employee_id ? 700 : 400 }}>
+                                                        {r.employee_id || 'ID PENDING'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '11px' }} onClick={e => e.stopPropagation()}>
+                                                    {r.generated_access_key ? (
+                                                        <button
+                                                            style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--tx-main)' }}
+                                                            onClick={() => copyKey(r.generated_access_key)}
+                                                            title="Click to copy access key"
+                                                        >
+                                                            {r.generated_access_key}
+                                                            <span className="material-icons-round" style={{ fontSize: '13px', color: copiedKey === r.generated_access_key ? '#16A34A' : 'var(--tx-dim)' }}>
+                                                                {copiedKey === r.generated_access_key ? 'check' : 'content_copy'}
+                                                            </span>
+                                                        </button>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--tx-dim)' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td style={c.td}>
+                                                    {r.status === 'suspended' ? (
+                                                        <span style={c.badge('suspended')}>🔴 Suspended</span>
+                                                    ) : r.status === 'approved' ? (
+                                                        <span style={c.badge('approved')}>🟢 Approved</span>
+                                                    ) : (
+                                                        <span style={c.badge('pending')}>🟡 Pending</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ ...c.td, textAlign: 'right', paddingRight: '20px' }} onClick={e => e.stopPropagation()}>
+                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                        {/* Inspect */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => setSelectedFaculty(r)}
+                                                            title="Inspect Faculty Profile & Assigned Classes"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>visibility</span>
+                                                            Inspect
+                                                        </button>
+
+                                                        {/* Suspend / Restore */}
+                                                        {r.status === 'suspended' ? (
+                                                            <button
+                                                                style={{ ...c.actionBtn(false), padding: '6px 10px', borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                onClick={() => handleToggleSuspendFaculty(r)}
+                                                                disabled={facultyActionBusy}
+                                                                title="Restore Faculty Access"
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>restore</span>
+                                                                Unban
+                                                            </button>
+                                                        ) : r.status === 'pending' ? (
+                                                            <button
+                                                                style={{ ...c.actionBtn(true), padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                onClick={() => handleToggleSuspendFaculty(r, 'Account approved.')}
+                                                                disabled={facultyActionBusy}
+                                                                title="Approve Faculty Access"
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>check_circle</span>
+                                                                Approve
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                style={{ ...c.actionBtn(false), padding: '6px 10px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                onClick={() => setConfirmingSuspendFaculty(r)}
+                                                                disabled={facultyActionBusy}
+                                                                title="Suspend / Ban Faculty Access"
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>block</span>
+                                                                Ban
+                                                            </button>
+                                                        )}
+
+                                                        {/* Regen Key */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 8px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => setConfirmingRegenKeyFaculty(r)}
+                                                            disabled={facultyActionBusy}
+                                                            title="Regenerate Access Key & Reset Password"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>key</span>
+                                                        </button>
+
+                                                        {/* Edit */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 8px', borderColor: 'var(--border)', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => setEditingFaculty({ ...r })}
+                                                            disabled={facultyActionBusy}
+                                                            title="Edit Faculty Profile"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>edit</span>
+                                                        </button>
+
+                                                        {/* Delete */}
+                                                        <button
+                                                            style={{ ...c.actionBtn(false), padding: '6px 8px', borderColor: 'var(--border)', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            onClick={() => setConfirmingDeleteFaculty(r)}
+                                                            disabled={facultyActionBusy}
+                                                            title="Delete Faculty Member"
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>delete_outline</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filteredFaculty.length === 0 && (
+                                        <tr>
+                                            <td colSpan="7" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)', fontStyle: 'italic' }}>
+                                                No faculty members matching your filter criteria.
                                             </td>
                                         </tr>
-                                    ))}
-                                    {requests.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No faculty requests yet.</td></tr>}
+                                    )}
                                 </tbody>
                             </table>
                         ) : (
+                            /* Mobile Cards */
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-                                {requests.map(r => (
-                                    <div key={r.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                                            <div style={{ minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.full_name || 'Faculty Member'}</div>
-                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', wordBreak: 'break-all' }}>{r.email}</div>
+                                {filteredFaculty.map(r => {
+                                    const isSelected = selectedFacultyIds.has(r.id);
+                                    return (
+                                        <div
+                                            key={r.id}
+                                            style={{
+                                                background: isSelected ? 'var(--surface)' : 'var(--surface-low)',
+                                                border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                                                borderRadius: '12px',
+                                                padding: '14px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '12px',
+                                                cursor: 'pointer'
+                                            }}
+                                            onClick={() => setSelectedFaculty(r)}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={e => handleToggleFacultySelection(r.id, e)}
+                                                        onClick={e => e.stopPropagation()}
+                                                        style={{ cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
+                                                    />
+                                                    <div style={c.avatar}>{((r.full_name || '?')[0]).toUpperCase()}</div>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.full_name}</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', wordBreak: 'break-all' }}>{r.email}</div>
+                                                    </div>
+                                                </div>
+                                                <span style={c.badge(r.status)}>{r.status?.toUpperCase()}</span>
                                             </div>
-                                            <span style={c.badge(r.status)}>{r.status?.toUpperCase() || 'PENDING'}</span>
-                                        </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--surface)', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', border: '1px solid var(--border)' }}>
-                                            <div><span style={{ color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', fontSize: '9px' }}>Dept:</span> {r.department || '—'}</div>
-                                            <div><span style={{ color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', fontSize: '9px' }}>Emp ID:</span> {r.employee_id || 'PENDING'}</div>
-                                        </div>
-                                        {r.status === 'pending' && (
-                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                                <button style={{ ...c.actionBtn(true), flex: 1, padding: '9px' }} onClick={() => approveRequest(r.id)} disabled={actionId === r.id}>
-                                                    {actionId === r.id ? '...' : 'Approve Access'}
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--surface)', padding: '8px 10px', borderRadius: '8px', fontSize: '11px', border: '1px solid var(--border)' }}>
+                                                <div><span style={{ color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', fontSize: '9px' }}>Dept:</span> {r.department || '—'}</div>
+                                                <div><span style={{ color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', fontSize: '9px' }}>Emp ID:</span> {r.employee_id || 'PENDING'}</div>
+                                            </div>
+
+                                            {/* Mobile Card Action Buttons */}
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: '10px' }} onClick={e => e.stopPropagation()}>
+                                                <button style={{ ...c.actionBtn(false), flex: 1, padding: '6px 8px', fontSize: '11px', textAlign: 'center' }} onClick={() => setSelectedFaculty(r)}>
+                                                    Inspect
                                                 </button>
-                                                <button style={{ ...c.actionBtn(false), flex: 1, padding: '9px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setConfirmingReject(r)}>Decline</button>
+                                                {r.status === 'suspended' ? (
+                                                    <button style={{ ...c.actionBtn(false), flex: 1, padding: '6px 8px', fontSize: '11px', borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)' }} onClick={() => handleToggleSuspendFaculty(r)}>
+                                                        Unban
+                                                    </button>
+                                                ) : r.status === 'pending' ? (
+                                                    <button style={{ ...c.actionBtn(true), flex: 1, padding: '6px 8px', fontSize: '11px' }} onClick={() => handleToggleSuspendFaculty(r, 'Approved.')}>
+                                                        Approve
+                                                    </button>
+                                                ) : (
+                                                    <button style={{ ...c.actionBtn(false), flex: 1, padding: '6px 8px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)' }} onClick={() => setConfirmingSuspendFaculty(r)}>
+                                                        Ban
+                                                    </button>
+                                                )}
+                                                <button style={{ ...c.actionBtn(false), padding: '6px 10px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)' }} onClick={() => setConfirmingRegenKeyFaculty(r)} title="Regen Key">
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>key</span>
+                                                </button>
+                                                <button style={{ ...c.actionBtn(false), padding: '6px 10px', fontSize: '11px', borderColor: 'var(--border)', color: 'var(--tx-muted)' }} onClick={() => setEditingFaculty({ ...r })} title="Edit">
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>edit</span>
+                                                </button>
+                                                <button style={{ ...c.actionBtn(false), padding: '6px 10px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setConfirmingDeleteFaculty(r)} title="Delete">
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>delete</span>
+                                                </button>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
-                                {requests.length === 0 && <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No faculty requests yet.</div>}
+                                        </div>
+                                    );
+                                })}
+                                {filteredFaculty.length === 0 && <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px', fontStyle: 'italic' }}>No matching faculty members found.</div>}
                             </div>
                         )}
                     </div>
-
-                    <ConfirmDialog
-                        open={Boolean(confirmingReject)}
-                        title="Decline faculty request?"
-                        description={`${confirmingReject?.full_name || 'This applicant'} will need to submit a new registration request to gain access.`}
-                        confirmLabel="Decline"
-                        busy={actionId === confirmingReject?.id}
-                        onCancel={() => setConfirmingReject(null)}
-                        onConfirm={() => rejectRequest(confirmingReject.id)}
-                    />
                 </>}
 
                 {tab === 'activity' && <>
@@ -2347,6 +2986,404 @@ function AdminPanelContent() {
                     </div>
                 </div>
             )}
+
+            {/* ══════════════════════════════════════════════════════
+                FACULTY DETAIL DRAWER & MODALS
+            ══════════════════════════════════════════════════════ */}
+
+            {/* FACULTY DETAIL DRAWER */}
+            {selectedFaculty && (
+                <div style={c.overlay} onClick={e => { if (e.target === e.currentTarget) setSelectedFaculty(null); }}>
+                    <div style={c.drawer} className="gf-fade-up">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '20px', minWidth: 0, flex: 1 }}>
+                                <div style={{ ...c.avatar, width: isMobile ? '48px' : '64px', height: isMobile ? '48px' : '64px', fontSize: isMobile ? '18px' : '22px', borderRadius: '14px' }}>
+                                    {((selectedFaculty.full_name || '?')[0]).toUpperCase()}
+                                </div>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {selectedFaculty.full_name}
+                                    </h2>
+                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
+                                        {selectedFaculty.email} · {selectedFaculty.department || 'General'}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <span>Role: <strong>{selectedFaculty.designation || 'Assistant Professor'}</strong></span>
+                                        <span>•</span>
+                                        <span>Emp ID: <strong>{selectedFaculty.employee_id || 'ID PENDING'}</strong></span>
+                                        <span>•</span>
+                                        <span>
+                                            {selectedFaculty.status === 'suspended' ? (
+                                                <span style={c.badge('suspended')}>🔴 Suspended</span>
+                                            ) : selectedFaculty.status === 'approved' ? (
+                                                <span style={c.badge('approved')}>🟢 Approved</span>
+                                            ) : (
+                                                <span style={c.badge('pending')}>🟡 Pending Verification</span>
+                                            )}
+                                        </span>
+                                    </div>
+                                    {selectedFaculty.status === 'suspended' && (
+                                        <div style={{ fontSize: '11px', color: 'var(--red)', background: 'var(--red-bg)', padding: '6px 10px', borderRadius: '8px', marginTop: '6px', border: '1px solid var(--red)' }}>
+                                            <strong>Suspension Reason:</strong> {selectedFaculty.suspended_reason || 'Administrative access freeze.'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', flexShrink: 0 }} onClick={() => setSelectedFaculty(null)}>
+                                <span className="material-icons-round" style={{ fontSize: '24px' }}>close</span>
+                            </button>
+                        </div>
+
+                        {/* Access Key Display Card */}
+                        <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                            <div>
+                                <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Institutional Access Key</div>
+                                <div style={{ fontSize: '16px', fontFamily: 'monospace', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px', letterSpacing: '0.05em' }}>
+                                    {selectedFaculty.generated_access_key || 'NO KEY ASSIGNED'}
+                                </div>
+                            </div>
+                            {selectedFaculty.generated_access_key && (
+                                <button
+                                    style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px' }}
+                                    onClick={() => copyKey(selectedFaculty.generated_access_key)}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '16px', color: copiedKey === selectedFaculty.generated_access_key ? 'var(--green)' : 'var(--tx-main)' }}>
+                                        {copiedKey === selectedFaculty.generated_access_key ? 'check' : 'content_copy'}
+                                    </span>
+                                    {copiedKey === selectedFaculty.generated_access_key ? 'Copied!' : 'Copy Key'}
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Drawer Actions Row */}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
+                            {selectedFaculty.status === 'suspended' ? (
+                                <button
+                                    style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--green)', color: 'var(--green)', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleToggleSuspendFaculty(selectedFaculty)}
+                                    disabled={facultyActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>restore</span>
+                                    Restore Access
+                                </button>
+                            ) : selectedFaculty.status === 'pending' ? (
+                                <button
+                                    style={{ ...c.actionBtn(true), padding: '8px 14px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleToggleSuspendFaculty(selectedFaculty, 'Account approved.')}
+                                    disabled={facultyActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>check_circle</span>
+                                    Approve Faculty
+                                </button>
+                            ) : (
+                                <button
+                                    style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setConfirmingSuspendFaculty(selectedFaculty)}
+                                    disabled={facultyActionBusy}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>block</span>
+                                    Suspend Access
+                                </button>
+                            )}
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--amber)', color: 'var(--amber)', background: 'var(--amber-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => setConfirmingRegenKeyFaculty(selectedFaculty)}
+                                disabled={facultyActionBusy}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>key</span>
+                                Regenerate Key & Reset Password
+                            </button>
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--border)', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => setEditingFaculty({ ...selectedFaculty })}
+                                disabled={facultyActionBusy}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>edit</span>
+                                Edit Profile
+                            </button>
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => setConfirmingDeleteFaculty(selectedFaculty)}
+                                disabled={facultyActionBusy}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>delete_forever</span>
+                                Delete Faculty
+                            </button>
+                        </div>
+
+                        {/* Tab navigation */}
+                        <div style={c.tabRow}>
+                            <button style={c.tabBtn(facultyDrawerTab === 'classes')} onClick={() => setFacultyDrawerTab('classes')}>
+                                Assigned Classes ({classesList.filter(cl => cl.faculty_id === selectedFaculty.id).length})
+                            </button>
+                            <button style={c.tabBtn(facultyDrawerTab === 'activity')} onClick={() => setFacultyDrawerTab('activity')}>
+                                Activity History ({activityLogs.filter(l => l.faculty_id === selectedFaculty.id).length})
+                            </button>
+                        </div>
+
+                        {/* Tab 1: Assigned Classes */}
+                        {facultyDrawerTab === 'classes' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {classesList.filter(cl => cl.faculty_id === selectedFaculty.id).length > 0 ? (
+                                    classesList.filter(cl => cl.faculty_id === selectedFaculty.id).map(cl => (
+                                        <div key={cl.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)' }}>{cl.name}</div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                    {cl.branch || '—'} · Sem {cl.semester || '—'} {cl.section ? `· Sec ${cl.section}` : ''}
+                                                    {cl.subject_code ? ` · ${cl.subject_code}` : ''}
+                                                </div>
+                                            </div>
+                                            <span style={c.badge('approved')}>ACTIVE CLASS</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>
+                                        No active classes assigned to this faculty member yet.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Tab 2: Activity Logs */}
+                        {facultyDrawerTab === 'activity' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {activityLogs.filter(l => l.faculty_id === selectedFaculty.id).length > 0 ? (
+                                    activityLogs.filter(l => l.faculty_id === selectedFaculty.id).slice(0, 50).map(l => {
+                                        const [bg, clr] = getActionColor(l.action_type);
+                                        return (
+                                            <div key={l.id} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: clr }}>
+                                                            {l.action_type}
+                                                        </span>
+                                                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>
+                                                            {l.target_usn ? `Target USN: ${l.target_usn}` : (l.details || 'Faculty Action')}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: '10px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                                        {l.created_at ? new Date(l.created_at).toLocaleString() : '—'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>
+                                        No recorded activity logs for this faculty member.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ONBOARD FACULTY MODAL */}
+            {showAddFaculty && (
+                <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setShowAddFaculty(false); }}>
+                    <div style={c.modalCard} className="gf-fade-up">
+                        <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '8px', letterSpacing: '-0.03em' }}>Onboard Faculty Member</h2>
+                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '24px', lineHeight: 1.6 }}>
+                            Register a new faculty member. A secure institutional Access Key will be automatically generated for them to link their GradeFlow account.
+                        </p>
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Full Name *</label>
+                        <input style={c.input} placeholder="e.g. Dr. Ramesh Kumar" value={newFaculty.full_name} onChange={e => setNewFaculty(p => ({ ...p, full_name: e.target.value }))} />
+                        
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Institutional Email *</label>
+                        <input style={c.input} type="email" placeholder="e.g. ramesh@anjuman.edu.in" value={newFaculty.email} onChange={e => setNewFaculty(p => ({ ...p, email: e.target.value }))} />
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Department</label>
+                                <input style={c.input} placeholder="e.g. Computer Science" value={newFaculty.department} onChange={e => setNewFaculty(p => ({ ...p, department: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Designation</label>
+                                <input style={c.input} placeholder="e.g. Assistant Professor" value={newFaculty.designation} onChange={e => setNewFaculty(p => ({ ...p, designation: e.target.value }))} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Employee ID</label>
+                                <input style={c.input} placeholder="e.g. AITM-CS-042" value={newFaculty.employee_id} onChange={e => setNewFaculty(p => ({ ...p, employee_id: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Phone (Optional)</label>
+                                <input style={c.input} placeholder="+91 98765 43210" value={newFaculty.phone} onChange={e => setNewFaculty(p => ({ ...p, phone: e.target.value }))} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '12px' }}>
+                            <button style={{ ...c.actionBtn(true), padding: '12px 24px', fontSize: '13px' }} onClick={handleCreateFaculty} disabled={facultyActionBusy}>
+                                {facultyActionBusy ? 'Onboarding…' : 'Onboard & Generate Key'}
+                            </button>
+                            <button style={{ ...c.actionBtn(false), padding: '12px 24px', fontSize: '13px' }} onClick={() => setShowAddFaculty(false)}>Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* EDIT FACULTY MODAL */}
+            {editingFaculty && (
+                <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setEditingFaculty(null); }}>
+                    <div style={c.modalCard} className="gf-fade-up">
+                        <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '8px', letterSpacing: '-0.03em' }}>Edit Faculty Profile</h2>
+                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '24px' }}>
+                            Update institutional details and role assignments for {editingFaculty.full_name}.
+                        </p>
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Full Name</label>
+                        <input style={c.input} value={editingFaculty.full_name || ''} onChange={e => setEditingFaculty(p => ({ ...p, full_name: e.target.value }))} />
+                        
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Institutional Email</label>
+                        <input style={c.input} value={editingFaculty.email || ''} onChange={e => setEditingFaculty(p => ({ ...p, email: e.target.value }))} />
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Department</label>
+                                <input style={c.input} value={editingFaculty.department || ''} onChange={e => setEditingFaculty(p => ({ ...p, department: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Designation</label>
+                                <input style={c.input} value={editingFaculty.designation || ''} onChange={e => setEditingFaculty(p => ({ ...p, designation: e.target.value }))} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Employee ID</label>
+                                <input style={c.input} value={editingFaculty.employee_id || ''} onChange={e => setEditingFaculty(p => ({ ...p, employee_id: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Phone</label>
+                                <input style={c.input} value={editingFaculty.phone || ''} onChange={e => setEditingFaculty(p => ({ ...p, phone: e.target.value }))} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '12px' }}>
+                            <button style={{ ...c.actionBtn(true), padding: '12px 24px', fontSize: '13px' }} onClick={handleEditFaculty} disabled={facultyActionBusy}>
+                                {facultyActionBusy ? 'Saving…' : 'Save Changes'}
+                            </button>
+                            <button style={{ ...c.actionBtn(false), padding: '12px 24px', fontSize: '13px' }} onClick={() => setEditingFaculty(null)}>Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* KEY GENERATED SUCCESS DIALOG */}
+            {createdFacultyResult && (
+                <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setCreatedFacultyResult(null); }}>
+                    <div style={c.modalCard} className="gf-fade-up">
+                        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '28px', color: 'var(--green)' }}>check_circle</span>
+                        </div>
+                        <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '8px' }}>Faculty Access Key Generated</h2>
+                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '20px', lineHeight: 1.6 }}>
+                            Provide this access key to <strong>{createdFacultyResult.full_name}</strong> ({createdFacultyResult.email}). They will use it to activate or access their Faculty Portal.
+                        </p>
+
+                        <div style={{ background: 'var(--surface-low)', border: '1.5px dashed var(--primary)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                            <div>
+                                <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Access Key</div>
+                                <div style={{ fontSize: '18px', fontFamily: 'monospace', fontWeight: 900, color: 'var(--primary)', letterSpacing: '0.06em', marginTop: '2px' }}>
+                                    {createdFacultyResult.access_key}
+                                </div>
+                            </div>
+                            <button
+                                style={{ ...c.actionBtn(true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                onClick={() => copyKey(createdFacultyResult.access_key)}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>
+                                    {copiedKey === createdFacultyResult.access_key ? 'check' : 'content_copy'}
+                                </span>
+                                {copiedKey === createdFacultyResult.access_key ? 'Copied' : 'Copy'}
+                            </button>
+                        </div>
+
+                        <button style={{ ...c.actionBtn(true), width: '100%', padding: '12px', fontSize: '13px' }} onClick={() => setCreatedFacultyResult(null)}>
+                            Done
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* FACULTY SUSPEND WITH REASON DIALOG */}
+            {confirmingSuspendFaculty && (
+                <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setConfirmingSuspendFaculty(null); }}>
+                    <div style={c.modalCard} className="gf-fade-up">
+                        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '28px', color: 'var(--red)' }}>block</span>
+                        </div>
+                        <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '8px' }}>Suspend Faculty Access?</h2>
+                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '20px', lineHeight: 1.6 }}>
+                            Are you sure you want to suspend access for <strong>{confirmingSuspendFaculty.full_name}</strong> ({confirmingSuspendFaculty.email})? They will be immediately blocked from logging into the Faculty Portal.
+                        </p>
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Suspension Reason (Optional)</label>
+                        <input
+                            style={c.input}
+                            placeholder="e.g. Term ended / Administrative review"
+                            value={facultySuspendReason}
+                            onChange={e => setFacultySuspendReason(e.target.value)}
+                        />
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...c.actionBtn(true), background: 'var(--red)', color: '#fff', padding: '12px 24px', fontSize: '13px' }}
+                                onClick={() => handleToggleSuspendFaculty(confirmingSuspendFaculty, facultySuspendReason)}
+                                disabled={facultyActionBusy}
+                            >
+                                {facultyActionBusy ? 'Suspending…' : 'Suspend Faculty Access'}
+                            </button>
+                            <button style={{ ...c.actionBtn(false), padding: '12px 24px', fontSize: '13px' }} onClick={() => setConfirmingSuspendFaculty(null)}>Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* FACULTY SINGLE DELETE CONFIRM */}
+            <ConfirmDialog
+                open={Boolean(confirmingDeleteFaculty)}
+                title="Permanently Remove Faculty Member?"
+                description={`Are you sure you want to delete ${confirmingDeleteFaculty?.full_name} (${confirmingDeleteFaculty?.email})? Any classes assigned to this professor will be unlinked safely.`}
+                confirmLabel="Delete Faculty"
+                busy={facultyActionBusy}
+                onCancel={() => setConfirmingDeleteFaculty(null)}
+                onConfirm={() => handleDeleteSingleFaculty(confirmingDeleteFaculty)}
+            />
+
+            {/* FACULTY BULK DELETE CONFIRM */}
+            <ConfirmDialog
+                open={confirmingBulkDeleteFaculty}
+                title={`Permanently Remove ${selectedFacultyIds.size} Faculty Members?`}
+                description={`This will permanently remove the selected faculty accounts and unlink their class assignments.`}
+                confirmLabel={`Delete ${selectedFacultyIds.size} Members`}
+                busy={facultyActionBusy}
+                onCancel={() => setConfirmingBulkDeleteFaculty(false)}
+                onConfirm={() => handleBulkFacultyAction('bulk_delete')}
+            />
+
+            {/* FACULTY BULK SUSPEND CONFIRM */}
+            <ConfirmDialog
+                open={confirmingBulkSuspendFaculty}
+                title={`Suspend ${selectedFacultyIds.size} Faculty Accounts?`}
+                description={`All selected faculty members will be immediately blocked from accessing the Faculty Portal.`}
+                confirmLabel={`Suspend ${selectedFacultyIds.size} Faculty`}
+                busy={facultyActionBusy}
+                onCancel={() => setConfirmingBulkSuspendFaculty(false)}
+                onConfirm={() => handleBulkFacultyAction('bulk_suspend')}
+            />
+
+            {/* FACULTY REGEN KEY CONFIRM */}
+            <ConfirmDialog
+                open={Boolean(confirmingRegenKeyFaculty)}
+                title="Regenerate Access Key & Reset Password?"
+                description={`A new access key will be generated for ${confirmingRegenKeyFaculty?.full_name}. Their previous password will be invalidated until they log in with the new key.`}
+                confirmLabel="Regenerate Key"
+                busy={facultyActionBusy}
+                onCancel={() => setConfirmingRegenKeyFaculty(null)}
+                onConfirm={() => handleRegenerateFacultyKey(confirmingRegenKeyFaculty)}
+            />
         </div>
     );
 }

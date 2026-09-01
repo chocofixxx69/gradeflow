@@ -104,13 +104,23 @@ async function loginFaculty({ email, password }) {
         .from('faculty_onboarding')
         .select('*')
         .eq('email', normalizedEmail)
-        .eq('status', 'approved')
         .maybeSingle();
 
     if (error) throw error;
 
     if (!faculty) {
-        return failureResponse('No approved faculty account found for this email.', 401);
+        return failureResponse('No faculty account found for this institutional email.', 401);
+    }
+
+    if (faculty.status === 'suspended') {
+        return failureResponse(
+            faculty.suspended_reason || 'Your faculty account access has been suspended by the Institution Administrator. Please contact the Admin Office.',
+            403
+        );
+    }
+
+    if (faculty.status !== 'approved') {
+        return failureResponse(`Your faculty account is currently pending verification (${faculty.status}).`, 401);
     }
 
     const passwordMatches = await bcrypt.compare(password, faculty.password || '');
