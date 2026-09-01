@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStudent } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 import { fetchByChunks } from '../../../../lib/supabase-utils';
+import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
 
 const supabaseAdmin = getAdminClient();
 
@@ -308,42 +309,82 @@ export async function GET(req) {
             }
         });
 
-        // 7. Subject-Wise Toppers & Subject Leaderboard
+        // 7. Subject-Wise Toppers & Subject Leaderboard (Canonical grading & deduplicated)
         const subjectGroups = {};
+        const subjectSemCounts = {};
+        const subjectCanonicalNames = {};
+
         (allMarks || []).forEach(m => {
-            const semNum = Number(m.semester);
+            const semNum = Number(m.semester) || 1;
             const code = (m.subject_code || '').trim().toUpperCase();
             if (!code) return;
+
+            // Track semester counts to determine authoritative semester
+            if (!subjectSemCounts[code]) subjectSemCounts[code] = {};
+            subjectSemCounts[code][semNum] = (subjectSemCounts[code][semNum] || 0) + 1;
+
+            if (m.subject_name && m.subject_name.trim().length > (subjectCanonicalNames[code]?.length || 0)) {
+                subjectCanonicalNames[code] = m.subject_name.trim();
+            }
 
             if (!subjectGroups[code]) {
                 subjectGroups[code] = {
                     subject_code: code,
-                    subject_name: m.subject_name || code,
-                    semester: semNum,
-                    students: []
+                    studentsByUsn: {}
                 };
             }
 
-            subjectGroups[code].students.push({
+            const branch = studentStats[m.usn]?.branch || cohortConfig.branch || 'CS';
+            const norm = normalizeSubjectResult(m, '2022', branch, semNum);
+            const internal = norm.cie_marks ?? Number(m.internal) ?? 0;
+            const external = norm.seeMarks ?? Number(m.external) ?? 0;
+            const total = norm.totalMarks ?? Number(m.total) ?? (internal + external);
+
+            const studentEntry = {
                 usn: m.usn,
                 name: studentMap[m.usn]?.name || m.usn,
                 isLateral: studentStats[m.usn]?.isLateral || false,
-                internal: Number(m.internal) || 0,
-                external: Number(m.external) || 0,
-                total: Number(m.total) || 0,
-                grade: m.grade || '—',
-                passed: m.passed !== false,
+                internal,
+                external,
+                total,
+                grade: norm.grade,
+                gradePoint: norm.gradePoint,
+                passed: norm.isPassed,
                 isCurrentUser: m.usn === currentUsn
-            });
+            };
+
+            const existing = subjectGroups[code].studentsByUsn[m.usn];
+            if (!existing) {
+                subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+            } else {
+                // Deduplicate: Keep best attempt (passed over failed, higher total, higher external)
+                const existingPassed = existing.passed ? 1 : 0;
+                const newPassed = studentEntry.passed ? 1 : 0;
+                if (newPassed > existingPassed) {
+                    subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+                } else if (newPassed === existingPassed) {
+                    if (studentEntry.total > existing.total) {
+                        subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+                    } else if (studentEntry.total === existing.total && studentEntry.external > existing.external) {
+                        subjectGroups[code].studentsByUsn[m.usn] = studentEntry;
+                    }
+                }
+            }
         });
 
-        // Build list of all available subjects in this cohort
-        const availableSubjects = Object.values(subjectGroups).map(sg => ({
-            subject_code: sg.subject_code,
-            subject_name: sg.subject_name,
-            semester: sg.semester,
-            enrolledCount: sg.students.length
-        })).sort((a, b) => (a.semester - b.semester) || a.subject_code.localeCompare(b.subject_code));
+        // Determine dominant semester and format subject list
+        const availableSubjects = Object.entries(subjectGroups).map(([code, group]) => {
+            const semCounts = subjectSemCounts[code] || {};
+            const dominantSem = Number(Object.keys(semCounts).reduce((a, b) => semCounts[a] > semCounts[b] ? a : b, 1));
+            const studentList = Object.values(group.studentsByUsn);
+            return {
+                subject_code: code,
+                subject_name: subjectCanonicalNames[code] || code,
+                semester: dominantSem,
+                enrolledCount: studentList.length,
+                students: studentList
+            };
+        }).sort((a, b) => (a.semester - b.semester) || a.subject_code.localeCompare(b.subject_code));
 
         // Selected subject ranking or default to first subject in target semester
         const targetSubjectCode = selectedSubject
@@ -353,18 +394,19 @@ export async function GET(req) {
         let subjectLeaderboard = [];
         let currentSubjectInfo = null;
 
-        if (targetSubjectCode && subjectGroups[targetSubjectCode]) {
-            const group = subjectGroups[targetSubjectCode];
+        const selectedSubObj = availableSubjects.find(s => s.subject_code === targetSubjectCode);
+        if (selectedSubObj) {
             currentSubjectInfo = {
-                subject_code: group.subject_code,
-                subject_name: group.subject_name,
-                semester: group.semester,
-                totalStudents: group.students.length
+                subject_code: selectedSubObj.subject_code,
+                subject_name: selectedSubObj.subject_name,
+                semester: selectedSubObj.semester,
+                totalStudents: selectedSubObj.students.length
             };
 
-            const sortedScores = [...group.students].sort((a, b) => {
+            const sortedScores = [...selectedSubObj.students].sort((a, b) => {
                 if (b.total !== a.total) return b.total - a.total;
                 if (b.external !== a.external) return b.external - a.external;
+                if (b.internal !== a.internal) return b.internal - a.internal;
                 return a.usn.localeCompare(b.usn);
             });
 

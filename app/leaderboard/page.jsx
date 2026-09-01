@@ -57,7 +57,12 @@ export default function LeaderboardPage() {
 
     const handleSemesterChange = (sem) => {
         setSelectedSemester(sem);
-        fetchLeaderboard(sem, null, selectedBatch);
+        const firstSubForSem = (data?.availableSubjects || []).find(s => s.semester === sem);
+        const nextSubCode = firstSubForSem ? firstSubForSem.subject_code : '';
+        if (nextSubCode) {
+            setSelectedSubjectCode(nextSubCode);
+        }
+        fetchLeaderboard(sem, nextSubCode || null, selectedBatch);
     };
 
     const handleSubjectChange = (subCode) => {
@@ -642,13 +647,23 @@ export default function LeaderboardPage() {
                                                         </span>
                                                     </td>
                                                     <td style={{ padding: '14px 18px', textAlign: 'center' }}>
-                                                        <span style={{
-                                                            padding: '2px 8px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 900,
-                                                            background: item.grade === 'O' || item.grade === 'A+' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
-                                                            color: item.grade === 'O' || item.grade === 'A+' ? '#047857' : 'var(--tx-main)'
-                                                        }}>
-                                                            {item.grade}
-                                                        </span>
+                                                        {(() => {
+                                                            const g = (item.grade || '').trim().toUpperCase();
+                                                            const isHigh = g === 'O' || g === 'A+';
+                                                            const isMid = g === 'A' || g === 'B+';
+                                                            const isPass = g === 'B' || g === 'C' || g === 'P';
+                                                            const isFail = g === 'F' || g === 'AB' || g === 'FAIL';
+                                                            const bg = isHigh ? 'rgba(16, 185, 129, 0.12)' : isMid ? 'rgba(23, 75, 77, 0.10)' : isPass ? 'rgba(217, 119, 6, 0.12)' : isFail ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-low)';
+                                                            const color = isHigh ? '#047857' : isMid ? 'var(--primary)' : isPass ? '#b45309' : isFail ? '#b91c1c' : 'var(--tx-muted)';
+                                                            return (
+                                                                <span style={{
+                                                                    padding: '3px 9px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 900,
+                                                                    background: bg, color: color
+                                                                }}>
+                                                                    {item.grade || '—'}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                 </>
                                             )}

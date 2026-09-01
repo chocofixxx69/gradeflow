@@ -293,26 +293,37 @@ export function ClassesContent({ embedded = false }) {
     }, []);
 
     const computeToppers = (marks, studs, sem, remarks = null) => {
-        const filtered = marks.filter(m => m.semester === sem);
+        const filtered = marks.filter(m => Number(m.semester) === Number(sem));
         const bySubj = {};
         const byStudent = {};
         filtered.forEach(m => {
-            if (!bySubj[m.subject_code]) bySubj[m.subject_code] = [];
-            bySubj[m.subject_code].push(m);
+            const code = (m.subject_code || '').trim().toUpperCase();
+            if (!code) return;
+            if (!bySubj[code]) bySubj[code] = {};
+            
+            // Deduplicate per student for subject topper
+            const existing = bySubj[code][m.usn];
+            if (!existing || Number(m.total || 0) > Number(existing.total || 0)) {
+                bySubj[code][m.usn] = m;
+            }
+
             if (!byStudent[m.usn]) byStudent[m.usn] = 0;
-            byStudent[m.usn] += m.total || 0;
+            byStudent[m.usn] += Number(m.total || 0);
         });
         const nameMap = Object.fromEntries(studs.map(s => [s.usn, s.name]));
-        const result = Object.entries(bySubj).map(([code, rows]) => ({
-            code,
-            name: rows[0].subject_name || code,
-            allScores: rows.sort((a, b) => b.total - a.total).map(r => ({ usn: r.usn, name: nameMap[r.usn] || r.usn, total: r.total }))
-        })).sort((a, b) => a.code.localeCompare(b.code));
+        const result = Object.entries(bySubj).map(([code, studentMap]) => {
+            const rows = Object.values(studentMap);
+            return {
+                code,
+                name: rows[0]?.subject_name || code,
+                allScores: rows.sort((a, b) => (Number(b.total || 0) - Number(a.total || 0)) || (Number(b.external || 0) - Number(a.external || 0)) || (Number(b.internal || 0) - Number(a.internal || 0))).map(r => ({ usn: r.usn, name: nameMap[r.usn] || r.usn, total: Number(r.total || 0), internal: Number(r.internal || 0), external: Number(r.external || 0) }))
+            };
+        }).sort((a, b) => a.code.localeCompare(b.code));
         setSubjectToppers(result);
 
         let fullSem = [];
-        if (remarks && remarks.some(r => r.semester === sem && r.sgpa !== null)) {
-            fullSem = remarks.filter(r => r.semester === sem && r.sgpa !== null).map(r => ({ usn: r.student_usn, name: nameMap[r.student_usn] || r.student_usn, score: r.sgpa, type: 'SGPA' })).sort((a, b) => b.score - a.score);
+        if (remarks && remarks.some(r => Number(r.semester) === Number(sem) && r.sgpa !== null)) {
+            fullSem = remarks.filter(r => Number(r.semester) === Number(sem) && r.sgpa !== null).map(r => ({ usn: r.student_usn, name: nameMap[r.student_usn] || r.student_usn, score: Number(r.sgpa), type: 'SGPA' })).sort((a, b) => b.score - a.score);
         } else {
             fullSem = Object.entries(byStudent).map(([usn, total]) => ({ usn, name: nameMap[usn] || usn, score: total, type: 'Marks' })).sort((a, b) => b.score - a.score);
         }
