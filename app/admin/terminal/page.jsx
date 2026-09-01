@@ -88,6 +88,7 @@ function AdminPanelContent() {
     const [confirmingSingleDelete, setConfirmingSingleDelete] = useState(null);
     const [confirmingSuspendStudent, setConfirmingSuspendStudent] = useState(null);
     const [suspendReasonInput, setSuspendReasonInput] = useState('');
+    const [syncingSemesters, setSyncingSemesters] = useState(false);
 
     const [sortField, setSortField] = useState('usn');
     const [sortDirection, setSortDirection] = useState('asc');
