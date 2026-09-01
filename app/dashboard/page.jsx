@@ -124,6 +124,9 @@ function StudentDashboardView({
                             </p>
                         </div>
                         <div className={styles.profileActions}>
+                            <Button variant="primary" iconStart="emoji_events" onClick={() => router.push('/leaderboard')} density="compact">
+                                Class Leaderboard
+                            </Button>
                             {totalSubjects > 0 && (
                                 <Button variant="secondary" iconStart="picture_as_pdf" onClick={downloadPDF} disabled={pdfLoading} loading={pdfLoading} density="compact">
                                     {pdfLoading ? 'Generating...' : 'PDF Transcript'}
