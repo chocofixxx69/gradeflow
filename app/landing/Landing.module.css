@@ -227,6 +227,7 @@
   background: var(--surface-low);
   width: 100%;
   box-sizing: border-box;
+  scroll-margin-top: 80px;
 }
 
 .sectionInner {
@@ -384,6 +385,7 @@
   background: var(--bg);
   width: 100%;
   box-sizing: border-box;
+  scroll-margin-top: 80px;
 }
 
 .featuresGrid {

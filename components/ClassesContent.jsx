@@ -30,7 +30,7 @@ const S = {
     subtitle: { fontSize: '13px', color: 'var(--tx-muted)', marginBottom: 'var(--space-6)' },
     card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', padding: 'var(--space-6)' },
     input: { background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)', padding: '10px 14px', fontSize: '14px', color: 'var(--tx-main)', fontWeight: 600, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
-    sel: { background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)', padding: '10px 14px', fontSize: '14px', color: 'var(--tx-main)', fontWeight: 600, outline: 'none', fontFamily: 'inherit', width: '100%' },
+    sel: { background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)', padding: '10px 36px 10px 14px', fontSize: '14px', color: 'var(--tx-main)', fontWeight: 600, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23586C6D' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'calc(100% - 12px) center', backgroundSize: '15px 15px' },
     label: { display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.06em' },
     th: { padding: '10px var(--space-4)', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'left' },
     td: { padding: '13px var(--space-4)', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: 600, color: 'var(--tx-main)' },
@@ -180,7 +180,7 @@ export function ClassesContent({ embedded = false }) {
     const openPdfExportModal = async () => {
         if (!selectedClass) return;
         setMsg('');
-        const initialSem = Number(selectedClass.semester) || 4;
+        const initialSem = semFilter && semFilter !== 'all' ? Number(semFilter) : (Number(selectedClass.semester) || 1);
         setExportSemester(initialSem);
         setShowExportModal(true);
         await loadSemesterExportData(initialSem);
@@ -972,28 +972,28 @@ export function ClassesContent({ embedded = false }) {
                             </span>
                         </div>
 
-                        <select style={{ ...S.sel, width: 'auto', minWidth: '150px' }} value={facultyFilter} onChange={e => setFacultyFilter(e.target.value)}>
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '175px' }} value={facultyFilter} onChange={e => setFacultyFilter(e.target.value)}>
                             <option value="all">👨‍🏫 All Faculty ({facultyList.length})</option>
                             {facultyList.map(f => (
                                 <option key={f.id} value={f.id}>{f.full_name}</option>
                             ))}
                         </select>
 
-                        <select style={{ ...S.sel, width: 'auto', minWidth: '130px' }} value={semesterFilter} onChange={e => setSemesterFilter(e.target.value)}>
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '145px' }} value={semesterFilter} onChange={e => setSemesterFilter(e.target.value)}>
                             <option value="all">All Semesters</option>
                             {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
                                 <option key={s} value={s}>Semester {s}</option>
                             ))}
                         </select>
 
-                        <select style={{ ...S.sel, width: 'auto', minWidth: '120px' }} value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '140px' }} value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
                             <option value="all">All Branches</option>
                             {branches.map(b => (
                                 <option key={b.code} value={b.code}>{b.code}</option>
                             ))}
                         </select>
 
-                        <select style={{ ...S.sel, width: 'auto', minWidth: '110px' }} value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '135px' }} value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
                             <option value="all">All Sections</option>
                             {['A', 'B', 'C', 'D', 'E', 'F'].map(sec => (
                                 <option key={sec} value={sec}>Section {sec}</option>
@@ -1626,9 +1626,9 @@ export function ClassesContent({ embedded = false }) {
                                 onChange={(e) => handleSemesterChange(e.target.value)}
                                 style={{ ...S.sel, width: 'auto', flex: 1, padding: '6px 12px', fontSize: '13px', fontWeight: 700 }}
                             >
-                                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                                {(availableSems.length > 0 ? availableSems : Array.from({ length: Number(selectedClass?.semester) || 8 }, (_, i) => i + 1)).map(s => (
                                     <option key={s} value={s}>
-                                        Semester {s} {s === Number(selectedClass.semester) ? '(Class Default)' : ''}
+                                        Semester {s} {s === Number(selectedClass?.semester) ? '(Current Semester)' : ''}
                                     </option>
                                 ))}
                             </select>

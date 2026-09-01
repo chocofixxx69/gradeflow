@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchByChunks } from '../../../lib/supabase-utils';
-import { calculateAcademicRecord } from '../../../lib/vtuAcademicEngine';
+import { calculateAcademicRecord, normalizeBranch } from '../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
 import { weightedCGPA, getAdminClient } from '../../../lib/analytics-data';
 import { requireStaff } from '../../../lib/server-session';
@@ -135,14 +135,44 @@ export async function GET(req) {
             const semNum = Number(exportSem);
             exportMarksData = (marks || []).filter(m => Number(m.semester) === semNum);
             
+            // subject_catalog stores branch under its canonical short code (e.g. "AI"),
+            // but classes.branch can hold whatever label the class was created with
+            // (e.g. "AIML") — normalize the same way the SGPA/credit engine already
+            // does (lib/vtuAcademicEngine.js) so the catalog lookup actually matches.
+            const catalogBranch = normalizeBranch(classData?.branch) || 'CS';
             const { data: catData } = await supabaseAdmin
                 .from('subject_catalog')
                 .select('id, subject_code, subject_name, credits')
                 .eq('scheme', classData?.scheme || '2022')
-                .eq('branch', classData?.branch || 'CS')
+                .eq('branch', catalogBranch)
                 .eq('semester', semNum);
 
-            exportCatData = catData || [];
+            // Ground truth only: a subject column exists if and only if at least one real
+            // mark row exists for it among this roster. subject_catalog is used purely to
+            // enrich the display name/credits for a code that IS backed by real marks — it
+            // never contributes a column on its own. This was a deliberate simplification:
+            // the catalog carries generic elective/NSS placeholder rows (BXX613X, BNSK658)
+            // whose real offered variant surfaces under a completely different code and name
+            // (BCS613B "Computer Vision", BPEK658 "Physical Education"), and it also carries
+            // stale/duplicate curriculum entries for shared branches (e.g. "AI" catalog rows
+            // that don't match what was actually taught/examined for a given cohort). No
+            // dedup heuristic (by name, by digit-slot) can reliably tell "genuinely not yet
+            // assessed" apart from "wrong/duplicate catalog seed" — so instead of guessing,
+            // catalog-only rows are simply never shown. This guarantees the report can never
+            // contain a column with zero real data.
+            const catByCode = new Map((catData || []).map(c => [c.subject_code, c]));
+            const markCodes = Array.from(new Set((exportMarksData || []).map(m => m.subject_code)));
+
+            exportCatData = markCodes.map(code => {
+                const cat = catByCode.get(code);
+                const sample = exportMarksData.find(m => m.subject_code === code);
+                return {
+                    id: cat?.id || code,
+                    subject_code: code,
+                    subject_name: cat?.subject_name || sample?.subject_name || code,
+                    credits: cat?.credits ?? sample?.credits ?? null,
+                };
+            }).sort((a, b) => a.subject_code.localeCompare(b.subject_code));
         }
 
         return NextResponse.json({ 

@@ -18,9 +18,8 @@ export default function LandingPage() {
                 </Link>
 
                 <nav className={styles.navCenter} aria-label="Landing Navigation">
-                    <a href="#features" className={styles.navLink}>Features</a>
                     <a href="#portals" className={styles.navLink}>Portals</a>
-                    <Link href="/calculator" className={styles.navLink}>Calculator</Link>
+                    <a href="#features" className={styles.navLink}>Features</a>
                     <Link href="/curriculum" className={styles.navLink}>Curriculum</Link>
                     <Link href="/guide" className={styles.navLink}>Guide</Link>
                 </nav>
@@ -77,11 +76,6 @@ export default function LandingPage() {
                         Faculty Access
                     </Button>
                 </div>
-
-                <Link href="/calculator" className={styles.heroQuickLink}>
-                    <span className="material-icons-round" style={{ fontSize: '16px', flexShrink: 0 }}>calculate</span>
-                    <span>Need a quick calculation? Try Open SGPA Calculator →</span>
-                </Link>
             </section>
 
             {/* Role Gateway / Portals Section */}
@@ -238,9 +232,9 @@ export default function LandingPage() {
                                     <span className="material-icons-round">picture_as_pdf</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Python PDF Marksheet Parser</h3>
+                            <h3 className={styles.featureTitle}>Intelligent Marksheet Parser</h3>
                             <p className={styles.featureText}>
-                                Backend Python bridge extracts subject codes, internals, externals, and grades directly from official VTU marksheet PDFs.
+                                Upload official VTU provisional result sheets to automatically extract subject codes, internals, externals, and grades without manual entry.
                             </p>
                         </div>
 
@@ -251,9 +245,9 @@ export default function LandingPage() {
                                     <span className="material-icons-round">cloud_sync</span>
                                 </div>
                             </div>
-                            <h3 className={styles.featureTitle}>Real-Time VTU Portal Scraper</h3>
+                            <h3 className={styles.featureTitle}>Direct USN Result Sync</h3>
                             <p className={styles.featureText}>
-                                Connects to live VTU result portals to fetch semester marks directly by USN, with automated captcha resolution and sync.
+                                Seamlessly fetch and synchronize university semester results directly using your USN with automated data validation.
                             </p>
                         </div>
 
@@ -292,7 +286,6 @@ export default function LandingPage() {
                     <div className={styles.footerLinks}>
                         <Link href="/auth/student" className={styles.footerLink}>Student Portal</Link>
                         <Link href="/faculty/login" className={styles.footerLink}>Faculty Portal</Link>
-                        <Link href="/calculator" className={styles.footerLink}>SGPA Calculator</Link>
                         <Link href="/curriculum" className={styles.footerLink}>Curriculum</Link>
                         <Link href="/guide" className={styles.footerLink}>User Guide</Link>
                     </div>
