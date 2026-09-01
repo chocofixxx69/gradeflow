@@ -89,6 +89,9 @@ function AdminPanelContent() {
     const [confirmingSuspendStudent, setConfirmingSuspendStudent] = useState(null);
     const [suspendReasonInput, setSuspendReasonInput] = useState('');
 
+    const [sortField, setSortField] = useState('usn');
+    const [sortDirection, setSortDirection] = useState('asc');
+
     // New Student creation form
     const [showAddStudent, setShowAddStudent] = useState(false);
     const [newStudent, setNewStudent] = useState({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
@@ -552,20 +555,22 @@ function AdminPanelContent() {
         }
     };
 
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortField(field);
+            setSortDirection('asc');
+        }
+    };
+
     const availableBranches = Array.from(new Set(students.map(s => (s.branch || '').toUpperCase()).filter(Boolean))).sort();
 
-    const filtered = students.filter(s => {
-        const q = search.toLowerCase();
+    // Base scoped students matching search, branch, and semester (without status filter) to display accurate counts
+    const baseScopedStudents = students.filter(s => {
+        const q = (search || '').toLowerCase().trim();
         const matchSearch = !q || (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
         if (!matchSearch) return false;
-
-        if (studentStatusFilter === 'active') {
-            if (!s.activated_at || s.is_suspended) return false;
-        } else if (studentStatusFilter === 'pending') {
-            if (s.activated_at || s.is_suspended) return false;
-        } else if (studentStatusFilter === 'suspended') {
-            if (!s.is_suspended) return false;
-        }
 
         if (studentBranchFilter !== 'all') {
             if ((s.branch || '').toUpperCase() !== studentBranchFilter.toUpperCase()) return false;
@@ -576,6 +581,48 @@ function AdminPanelContent() {
         }
 
         return true;
+    });
+
+    const statusCounts = {
+        all: baseScopedStudents.length,
+        active: baseScopedStudents.filter(s => s.activated_at && !s.is_suspended).length,
+        pending: baseScopedStudents.filter(s => !s.activated_at && !s.is_suspended).length,
+        suspended: baseScopedStudents.filter(s => s.is_suspended).length,
+    };
+
+    const filtered = baseScopedStudents.filter(s => {
+        if (studentStatusFilter === 'active') {
+            if (!s.activated_at || s.is_suspended) return false;
+        } else if (studentStatusFilter === 'pending') {
+            if (s.activated_at || s.is_suspended) return false;
+        } else if (studentStatusFilter === 'suspended') {
+            if (!s.is_suspended) return false;
+        }
+        return true;
+    }).sort((a, b) => {
+        let cmp = 0;
+        if (sortField === 'name') {
+            const valA = (a.name || a.usn || '').toLowerCase();
+            const valB = (b.name || b.usn || '').toLowerCase();
+            cmp = valA.localeCompare(valB);
+        } else if (sortField === 'semester') {
+            const valA = Number(a.semester) || 0;
+            const valB = Number(b.semester) || 0;
+            cmp = valA - valB;
+        } else if (sortField === 'branch') {
+            const valA = (a.branch || '').toLowerCase();
+            const valB = (b.branch || '').toLowerCase();
+            cmp = valA.localeCompare(valB);
+        } else if (sortField === 'status') {
+            const getScore = s => (s.is_suspended ? 3 : s.activated_at ? 1 : 2);
+            cmp = getScore(a) - getScore(b);
+        } else {
+            // Default: Natural USN order (e.g. 2AB23CD001, 2AB23CD002... 2AB23CS001...)
+            const valA = (a.usn || '').toUpperCase();
+            const valB = (b.usn || '').toUpperCase();
+            cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        return sortDirection === 'asc' ? cmp : -cmp;
     });
 
     // Calculate SGPA for student marks using canonical grade points and catalog credits
@@ -1107,12 +1154,12 @@ function AdminPanelContent() {
                                 <select
                                     value={studentStatusFilter}
                                     onChange={e => setStudentStatusFilter(e.target.value)}
-                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer' }}
+                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
                                 >
-                                    <option value="all">All Statuses ({students.length})</option>
-                                    <option value="active">🟢 Active ({students.filter(s => s.activated_at && !s.is_suspended).length})</option>
-                                    <option value="pending">🟡 Awaiting Activation ({students.filter(s => !s.activated_at && !s.is_suspended).length})</option>
-                                    <option value="suspended">🔴 Suspended / Banned ({students.filter(s => s.is_suspended).length})</option>
+                                    <option value="all">All Statuses ({statusCounts.all})</option>
+                                    <option value="active">🟢 Active ({statusCounts.active})</option>
+                                    <option value="pending">🟡 Awaiting Activation ({statusCounts.pending})</option>
+                                    <option value="suspended">🔴 Suspended / Banned ({statusCounts.suspended})</option>
                                 </select>
 
                                 {/* Branch Filter */}
@@ -1120,7 +1167,7 @@ function AdminPanelContent() {
                                     <select
                                         value={studentBranchFilter}
                                         onChange={e => setStudentBranchFilter(e.target.value)}
-                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer' }}
+                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
                                     >
                                         <option value="all">All Branches</option>
                                         {availableBranches.map(b => (
@@ -1133,7 +1180,7 @@ function AdminPanelContent() {
                                 <select
                                     value={studentSemFilter}
                                     onChange={e => setStudentSemFilter(e.target.value)}
-                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer' }}
+                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
                                 >
                                     <option value="all">All Semesters</option>
                                     {[1, 2, 3, 4, 5, 6, 7, 8].map(sm => (
@@ -1157,11 +1204,56 @@ function AdminPanelContent() {
                                                 title="Select / Deselect all matching students"
                                             />
                                         </th>
-                                        <th style={c.th}>Student</th>
-                                        <th style={c.th}>USN</th>
-                                        <th style={c.th}>Semester</th>
-                                        <th style={c.th}>Branch</th>
-                                        <th style={c.th}>Access Status</th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('name')} title="Sort by Student Name">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Student
+                                                {sortField === 'name' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('usn')} title="Sort by USN">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                USN
+                                                {sortField === 'usn' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('semester')} title="Sort by Semester">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Semester
+                                                {sortField === 'semester' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('branch')} title="Sort by Branch">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Branch
+                                                {sortField === 'branch' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                        <th style={{ ...c.th, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('status')} title="Sort by Status">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Access Status
+                                                {sortField === 'status' && (
+                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                                                        {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
                                         <th style={{ ...c.th, textAlign: 'right', paddingRight: '20px' }}>Administrative Actions</th>
                                     </tr>
                                 </thead>
