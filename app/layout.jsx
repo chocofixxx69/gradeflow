@@ -28,16 +28,11 @@ export default function RootLayout({ children }) {
     return (
         <html lang="en" data-theme="light" suppressHydrationWarning>
             <head>
-                <link
-                    href="https://fonts.googleapis.com/icon?family=Material+Icons+Round"
-                    rel="preload"
-                    as="style"
-                />
+                <link rel="preconnect" href="https://fonts.googleapis.com" />
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
                 <link
                     href="https://fonts.googleapis.com/icon?family=Material+Icons+Round"
                     rel="stylesheet"
-                    media="print"
-                    onLoad="this.media='all'"
                 />
             </head>
             <body className={inter.className} suppressHydrationWarning>
