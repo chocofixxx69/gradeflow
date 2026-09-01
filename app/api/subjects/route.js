@@ -97,8 +97,10 @@ export async function POST(req) {
 
         if (error) throw error;
 
-        // Sync credits to existing subject_marks if any
-        await cascadeCreditUpdate(cleanCode, numCredits, branch, numSem, scheme);
+        // Run credit cascade in background so API responds in milliseconds
+        if (cleanCode && numCredits != null) {
+            cascadeCreditUpdate(cleanCode, numCredits, branch, numSem, scheme).catch(e => console.error('[POST cascadeCreditUpdate] Error:', e));
+        }
 
         return NextResponse.json({ success: true, subject: data });
     } catch (err) {
@@ -140,13 +142,14 @@ export async function PUT(req) {
 
         if (error) throw error;
 
-        // Cascade updated credits and recalculate SGPA/CGPA strictly for students of the specified branch
-        const affectedCount = await cascadeCreditUpdate(cleanCode, numCredits, branch, semester, scheme);
+        // Cascade updated credits and recalculate SGPA/CGPA in background
+        if (cleanCode && numCredits != null) {
+            cascadeCreditUpdate(cleanCode, numCredits, branch, semester, scheme).catch(e => console.error('[PUT cascadeCreditUpdate] Error:', e));
+        }
 
         return NextResponse.json({
             success: true,
-            message: `Subject updated. Recalculated SGPA for ${affectedCount} student semester records in ${branch || 'all'} branch.`,
-            recalculatedCount: affectedCount,
+            message: `Subject updated successfully.`,
             subject: data ? data[0] : null
         });
     } catch (err) {

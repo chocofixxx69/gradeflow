@@ -145,69 +145,100 @@ export default function SubjectsPage() {
   const handleSave = async () => {
     if (!formData.name?.trim() || !formData.code?.trim()) return alert('Name and Code are required.');
     if (Number(formData.credits) < 0) return alert('Credits must be a positive number.');
-    setSaving(true);
-    try {
-      const payload = {
-        subject_name: formData.name.trim(),
-        subject_code: formData.code.trim().toUpperCase(),
-        credits: Number(formData.credits),
-        semester: Number(formData.semester),
-        scheme,
-        branch,
-      };
+    
+    const cleanCode = formData.code.trim().toUpperCase();
+    const cleanName = formData.name.trim();
+    const cleanCredits = Number(formData.credits);
+    const cleanSemester = Number(formData.semester);
 
-      let res;
-      if (editing) {
-        await apiRequest('/api/subjects', {
+    const payload = {
+      subject_name: cleanName,
+      subject_code: cleanCode,
+      credits: cleanCredits,
+      semester: cleanSemester,
+      scheme,
+      branch,
+    };
+
+    // 1. Instant Optimistic UI Update (0ms delay)
+    const prevSubjects = [...subjects];
+    const editingTarget = editing;
+
+    if (editingTarget) {
+      setSubjects(prev => prev.map(s => s.id === editingTarget.id ? { ...s, ...payload } : s));
+    } else {
+      const tempId = 'temp_' + Date.now();
+      setSubjects(prev => [...prev, { id: tempId, ...payload }]);
+    }
+    
+    // Close modal immediately
+    setShowForm(false);
+
+    // 2. Background persistence
+    try {
+      if (editingTarget) {
+        apiRequest('/api/subjects', {
           method: 'PUT',
-          body: JSON.stringify({ id: editing.id, ...payload })
+          body: JSON.stringify({ id: editingTarget.id, ...payload })
+        }).catch(err => {
+          console.error('Subject update error:', err);
+          setSubjects(prevSubjects);
+          alert('Failed to save subject: ' + err.message);
         });
-        await logAuditAction({
+
+        logAuditAction({
           action_type: 'EDIT_SUBJECT',
           entity_type: 'subject_catalog',
-          entity_id: editing.id,
-          old_values: { subject_name: editing.subject_name, subject_code: editing.subject_code, credits: editing.credits, semester: editing.semester },
+          entity_id: editingTarget.id,
+          old_values: { subject_name: editingTarget.subject_name, subject_code: editingTarget.subject_code, credits: editingTarget.credits, semester: editingTarget.semester },
           new_values: payload
-        });
+        }).catch(() => null);
       } else {
         const created = await apiRequest('/api/subjects', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
-        await logAuditAction({
+        if (created?.subject?.id) {
+          setSubjects(prev => prev.map(s => String(s.id).startsWith('temp_') ? created.subject : s));
+        }
+        logAuditAction({
           action_type: 'ADD_SUBJECT',
           entity_type: 'subject_catalog',
           entity_id: created?.id || 'NEW',
           new_values: payload
-        });
+        }).catch(() => null);
       }
-      fetchSubjects();
-      setShowForm(false);
     } catch (err) {
+      setSubjects(prevSubjects);
       alert(err.message);
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleBranchSave = async () => {
     if (!branchData.code?.trim() || !branchData.label?.trim()) return alert('Code and Label are required.');
-    setSaving(true);
+    const newBranch = {
+      code: branchData.code.trim().toUpperCase(),
+      label: branchData.label.trim(),
+      name: branchData.label.trim()
+    };
+    
+    // Instant Optimistic update
+    setBranches(prev => [...prev.filter(b => b.code !== newBranch.code), newBranch]);
+    setBranch(newBranch.code);
+    setShowBranchForm(false);
+    setBranchData({ code: '', label: '' });
+
     try {
       await apiRequest('/api/system/meta', {
         method: 'POST',
         body: JSON.stringify({
-          code: branchData.code.trim().toUpperCase(),
-          label: branchData.label.trim()
+          code: newBranch.code,
+          label: newBranch.label
         })
       }).catch(() => null);
-      await fetchBranches();
-      setShowBranchForm(false);
-      setBranchData({ code: '', label: '' });
+      fetchBranches();
     } catch (err) {
-      alert(err.message);
-    } finally {
-      setSaving(false);
+      console.error('Add branch error:', err);
     }
   };
 
