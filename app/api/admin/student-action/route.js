@@ -232,6 +232,137 @@ export async function POST(req) {
             });
         }
 
+        // 8. Sync All Semesters from VTU Results & Class Enrollments
+        if (action === 'sync_semesters') {
+            const fetchAllPaged = async (table, select) => {
+                const all = [];
+                let from = 0;
+                const pageSize = 1000;
+                while (true) {
+                    const { data, error } = await supabaseAdmin.from(table).select(select).range(from, from + pageSize - 1);
+                    if (error) throw error;
+                    if (data) all.push(...data);
+                    if (!data || data.length < pageSize) break;
+                    from += pageSize;
+                }
+                return all;
+            };
+
+            const [students, subjMarks, classEnrollments] = await Promise.all([
+                fetchAllPaged('students', 'id, usn, semester'),
+                fetchAllPaged('subject_marks', 'usn, semester'),
+                fetchAllPaged('class_students', 'usn, classes(semester)')
+            ]);
+
+            const marksMap = {};
+            for (const m of subjMarks) {
+                if (!m.usn) continue;
+                const u = m.usn.toUpperCase().trim();
+                if (!marksMap[u]) marksMap[u] = [];
+                marksMap[u].push(Number(m.semester));
+            }
+
+            const classMap = {};
+            for (const ce of classEnrollments) {
+                if (!ce.usn || !ce.classes?.semester) continue;
+                const u = ce.usn.toUpperCase().trim();
+                if (!classMap[u]) classMap[u] = [];
+                classMap[u].push(Number(ce.classes.semester));
+            }
+
+            let updatedCount = 0;
+            const updates = [];
+
+            for (const s of students) {
+                const u = (s.usn || '').toUpperCase().trim();
+                const sMarks = marksMap[u] || [];
+                const maxMarkSem = sMarks.length > 0 ? Math.max(...sMarks) : 0;
+                const sClasses = classMap[u] || [];
+                const maxClassSem = sClasses.length > 0 ? Math.max(...sClasses) : 0;
+
+                let computedSem = Number(s.semester) || 1;
+
+                if (maxClassSem > 0) {
+                    computedSem = maxClassSem;
+                } else if (maxMarkSem > 0) {
+                    computedSem = Math.min(maxMarkSem + 1, 8);
+                }
+
+                if (computedSem !== Number(s.semester)) {
+                    updates.push(supabaseAdmin.from('students').update({ semester: computedSem }).eq('id', s.id));
+                    updatedCount++;
+                }
+            }
+
+            if (updates.length > 0) {
+                for (let i = 0; i < updates.length; i += 20) {
+                    await Promise.all(updates.slice(i, i + 20));
+                }
+            }
+
+            return NextResponse.json({
+                success: true,
+                updatedCount,
+                totalStudents: students.length,
+                message: `Successfully synchronized semesters across all students (${updatedCount} updated).`
+            });
+        }
+
+        // 9. Bulk Promote Selected Students (+1 Semester)
+        if (action === 'bulk_promote') {
+            const targetUsns = Array.isArray(usns) ? usns.map(u => String(u).toUpperCase().trim()).filter(Boolean) : [];
+            if (targetUsns.length === 0) {
+                return NextResponse.json({ error: 'No USNs provided for semester promotion.' }, { status: 400 });
+            }
+
+            const { data: stds } = await supabaseAdmin
+                .from('students')
+                .select('id, usn, semester')
+                .in('usn', targetUsns);
+
+            let promotedCount = 0;
+            const updates = (stds || []).map(s => {
+                const currentSem = Number(s.semester) || 1;
+                const nextSem = Math.min(currentSem + 1, 8);
+                if (nextSem !== currentSem) {
+                    promotedCount++;
+                    return supabaseAdmin.from('students').update({ semester: nextSem }).eq('id', s.id);
+                }
+                return Promise.resolve();
+            });
+
+            await Promise.all(updates);
+
+            return NextResponse.json({
+                success: true,
+                count: promotedCount,
+                message: `Promoted ${promotedCount} student(s) to the next academic semester.`
+            });
+        }
+
+        // 10. Update Single Student Semester
+        if (action === 'update_student_semester') {
+            if (!usn) return NextResponse.json({ error: 'Student USN is required.' }, { status: 400 });
+            const cleanUsn = String(usn).toUpperCase().trim();
+            const targetSem = Number(body?.semester);
+            if (!targetSem || targetSem < 1 || targetSem > 8) {
+                return NextResponse.json({ error: 'Valid semester between 1 and 8 is required.' }, { status: 400 });
+            }
+
+            const { error: updErr } = await supabaseAdmin
+                .from('students')
+                .update({ semester: targetSem })
+                .eq('usn', cleanUsn);
+
+            if (updErr) throw updErr;
+
+            return NextResponse.json({
+                success: true,
+                semester: targetSem,
+                message: `Student ${cleanUsn} semester updated to Semester ${targetSem}.`
+            });
+        }
+
         return NextResponse.json({ error: 'Unknown action specified.' }, { status: 400 });
     } catch (err) {
         console.error('[POST /api/admin/student-action]', err);

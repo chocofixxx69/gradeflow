@@ -94,6 +94,7 @@ function AdminPanelContent() {
     const [newStudent, setNewStudent] = useState({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
     const [addError, setAddError] = useState('');
     const [addingStudent, setAddingStudent] = useState(false);
+    const [syncingSemesters, setSyncingSemesters] = useState(false);
 
     // System Settings States
     const [settingsProfile, setSettingsProfile] = useState({
@@ -258,7 +259,7 @@ function AdminPanelContent() {
         setSelectedStudent(student);
         setDetailTab('marks');
         try {
-            const data = await apiRequest('/api/admin/terminal/data', { query: { student_id: student.id } });
+            const data = await apiRequest('/api/admin/terminal/data', { query: { student_id: student.id, usn: student.usn } });
             setStudentDetails({ marks: data?.marks || [], docs: data?.documents || [] });
         } catch (err) {
             console.error('Error fetching student details:', err);
@@ -507,6 +508,47 @@ function AdminPanelContent() {
             setAddError(err.message || 'Failed to create student.');
         } finally {
             setAddingStudent(false);
+        }
+    };
+
+    const handleSyncAllSemesters = async () => {
+        setSyncingSemesters(true);
+        setStudentActionMsg('');
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'sync_semesters' })
+            });
+            setStudentActionMsg(res.message || 'Semesters synchronized.');
+            await loadData();
+            setTimeout(() => setStudentActionMsg(''), 5000);
+        } catch (err) {
+            alert('Failed to sync semesters: ' + err.message);
+        } finally {
+            setSyncingSemesters(false);
+        }
+    };
+
+    const handleUpdateStudentSemester = async (student, newSem) => {
+        if (!student) return;
+        setStudentActionBusy(true);
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'update_student_semester',
+                    usn: student.usn,
+                    semester: Number(newSem)
+                })
+            });
+            setStudentActionMsg(res.message || `Student semester updated.`);
+            setSelectedStudent(prev => prev ? ({ ...prev, semester: Number(newSem) }) : null);
+            await loadData();
+            setTimeout(() => setStudentActionMsg(''), 4000);
+        } catch (err) {
+            alert('Failed to update semester: ' + err.message);
+        } finally {
+            setStudentActionBusy(false);
         }
     };
 
@@ -939,6 +981,20 @@ function AdminPanelContent() {
                             </p>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
+                                onClick={handleSyncAllSemesters}
+                                disabled={syncingSemesters}
+                                title="Automatically synchronize and promote all students based on their latest VTU marks"
+                            >
+                                <span
+                                    className="material-icons-round"
+                                    style={{ fontSize: '16px', color: 'var(--primary)', animation: syncingSemesters ? 'spin 1s linear infinite' : 'none' }}
+                                >
+                                    sync
+                                </span>
+                                {syncingSemesters ? 'Syncing Semesters…' : 'Sync Semesters from Results'}
+                            </button>
                             <button style={c.actionBtn(true)} onClick={() => setShowAddStudent(true)}>
                                 <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '4px' }}>person_add</span>
                                 Add Student
@@ -977,6 +1033,15 @@ function AdminPanelContent() {
                             </div>
 
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button
+                                    style={{ ...c.actionBtn(false), borderColor: 'var(--primary)', color: 'var(--primary)', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleBulkAction('bulk_promote')}
+                                    disabled={studentActionBusy}
+                                    title="Promote selected students by +1 Semester"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>school</span>
+                                    Promote (+1 Sem)
+                                </button>
                                 <button
                                     style={{ ...c.actionBtn(false), borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-bg)', display: 'flex', alignItems: 'center', gap: '4px' }}
                                     onClick={() => setConfirmingBulkSuspend(true)}
@@ -1921,9 +1986,30 @@ function AdminPanelContent() {
                                 <div style={{ minWidth: 0, flex: 1 }}>
                                     <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedStudent.name || 'Student'}</h2>
                                     <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
-                                        {selectedStudent.usn} · {selectedStudent.branch || 'Unassigned'} · Sem {selectedStudent.semester || '—'}
+                                        {selectedStudent.usn} · {selectedStudent.branch || 'Unassigned'}
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Current Semester:</span>
+                                        <select
+                                            value={selectedStudent.semester || 1}
+                                            onChange={e => handleUpdateStudentSemester(selectedStudent, e.target.value)}
+                                            style={{ ...c.searchInput, width: 'auto', padding: '4px 10px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                                        >
+                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(sm => (
+                                                <option key={sm} value={sm}>Semester {sm}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px', borderColor: 'var(--primary)', color: 'var(--primary)', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                            onClick={() => handleUpdateStudentSemester(selectedStudent, Math.min((Number(selectedStudent.semester) || 1) + 1, 8))}
+                                            disabled={Number(selectedStudent.semester) >= 8 || studentActionBusy}
+                                            title="Promote student to next academic semester"
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '13px' }}>school</span>
+                                            +1 Promote
+                                        </button>
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '6px' }}>
                                         Status: {selectedStudent.is_suspended ? (
                                             <span style={c.badge('suspended')}>🔴 Suspended (Banned)</span>
                                         ) : selectedStudent.activated_at ? (

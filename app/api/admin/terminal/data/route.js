@@ -19,17 +19,36 @@ export async function GET(req) {
 
         const { searchParams } = new URL(req.url);
         const studentId = searchParams.get('student_id');
+        const usn = (searchParams.get('usn') || '').toUpperCase().trim();
 
         // If specific student_id details are requested
         if (studentId) {
-            const [{ data: marks }, { data: docs }] = await Promise.all([
+            // `marks` (manually-entered, keyed by student_id) covers only a small
+            // fraction of records — the vast majority of real results live in
+            // `subject_marks`, populated by the VTU scraper and keyed by usn, not
+            // student_id. Querying `marks` alone made this panel show "No marks
+            // synced" for almost every student even though their real results exist.
+            const [{ data: manualMarks }, { data: scrapedMarks }, { data: docs }] = await Promise.all([
                 supabaseAdmin.from('marks').select('*').eq('student_id', studentId).order('semester', { ascending: true }),
+                usn
+                    ? supabaseAdmin.from('subject_marks').select('*').eq('usn', usn).order('semester', { ascending: true })
+                    : Promise.resolve({ data: [] }),
                 supabaseAdmin.from('documents').select('*').eq('student_id', studentId).order('created_at', { ascending: false })
             ]);
 
+            const combinedMarks = [
+                ...(manualMarks || []),
+                ...(scrapedMarks || []).map(m => ({
+                    ...m,
+                    cie_marks: m.internal,
+                    see_marks: m.external,
+                    total_marks: m.total,
+                })),
+            ];
+
             return ok({
                 studentId,
-                marks: marks || [],
+                marks: combinedMarks,
                 documents: docs || []
             });
         }
