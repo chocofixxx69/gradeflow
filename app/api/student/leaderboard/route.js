@@ -65,6 +65,21 @@ export async function GET(req) {
         ]);
 
         // 3. Build student performance matrix
+        const GRADE_POINTS = { 'O': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5, 'P': 4, 'F': 0 };
+        function scoreToGradePoint(score, grade) {
+            if (grade && GRADE_POINTS[grade.toUpperCase()] !== undefined && grade.toUpperCase() !== 'P') {
+                return GRADE_POINTS[grade.toUpperCase()];
+            }
+            const s = Number(score) || 0;
+            if (s >= 90) return 10;
+            if (s >= 80) return 9;
+            if (s >= 70) return 8;
+            if (s >= 60) return 7;
+            if (s >= 50) return 6;
+            if (s >= 40) return 4;
+            return 0;
+        }
+
         const studentStats = {};
         students.forEach(s => {
             studentStats[s.usn] = {
@@ -79,6 +94,16 @@ export async function GET(req) {
         });
 
         const semSet = new Set();
+        // Index subject_marks by user and semester for fallback calculation
+        const userMarksBySem = {};
+        (allMarks || []).forEach(m => {
+            const semNum = Number(m.semester);
+            if (semNum > 0) semSet.add(semNum);
+            const key = `${m.usn}_${semNum}`;
+            if (!userMarksBySem[key]) userMarksBySem[key] = [];
+            userMarksBySem[key].push(m);
+        });
+
         (allResults || []).forEach(r => {
             const s = studentStats[r.usn];
             if (!s) return;
@@ -90,6 +115,31 @@ export async function GET(req) {
                     semester: semNum,
                     sgpa: Number(r.sgpa) || 0,
                     credits: Number(r.total_credits) || 20
+                };
+            }
+        });
+
+        // For any student who has subject_marks in a semester but no results entry, calculate SGPA dynamically
+        Object.entries(userMarksBySem).forEach(([key, marks]) => {
+            const [usn, semStr] = key.split('_');
+            const semNum = Number(semStr);
+            const s = studentStats[usn];
+            if (!s) return;
+
+            if (!s.semesters[semNum] || s.semesters[semNum].sgpa === 0) {
+                let earnedPoints = 0;
+                let totalCr = 0;
+                marks.forEach(m => {
+                    const cr = Number(m.credits) || 3;
+                    const gp = scoreToGradePoint(m.total, m.grade);
+                    earnedPoints += (gp * cr);
+                    totalCr += cr;
+                });
+                const calcSGPA = totalCr > 0 ? Number((earnedPoints / totalCr).toFixed(2)) : 0;
+                s.semesters[semNum] = {
+                    semester: semNum,
+                    sgpa: calcSGPA,
+                    credits: totalCr
                 };
             }
         });
