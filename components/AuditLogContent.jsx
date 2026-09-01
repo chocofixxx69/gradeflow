@@ -40,7 +40,23 @@ export function AuditLogContent() {
             ]);
             const auditData = auditRes?.logs || [];
             const actData = termRes?.facultyActivity || [];
-            const combined = [...(auditData || []), ...(actData || [])].sort(
+            const facultyList = termRes?.facultyList || [];
+            const facultyById = Object.fromEntries(facultyList.map(f => [f.id, f]));
+
+            // faculty_activity rows only ever carry faculty_id + a name snapshot taken at
+            // the time of the action — join the live faculty_onboarding record here so a
+            // faculty member's current email/department always show, even for older rows
+            // logged before that faculty's profile changed.
+            const enrichedActData = actData.map(l => {
+                const fac = facultyById[l.faculty_id];
+                return {
+                    ...l,
+                    faculty_name: l.faculty_name || fac?.full_name || null,
+                    faculty_email: l.faculty_email || fac?.email || null,
+                };
+            });
+
+            const combined = [...(auditData || []), ...enrichedActData].sort(
                 (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
             );
             setLogs(combined);

@@ -81,13 +81,126 @@ function AdminPanelContent() {
     const [newStudent, setNewStudent] = useState({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
     const [addError, setAddError] = useState('');
 
+    // System Settings States
+    const [settingsProfile, setSettingsProfile] = useState({
+        institution_name: 'Anjuman Institute of Technology and Management',
+        institution_code: 'AITM',
+        affiliation: 'Visvesvaraya Technological University (VTU)',
+        academic_year: '2024-2025',
+        default_scheme: '2022',
+        environment: 'GradeFlow Intelligence Suite',
+        primary_region: 'South Asia (VTU-HQ)',
+    });
+    const [settingsSecurity, setSettingsSecurity] = useState({
+        system_access_token: 'GF-ADMIN-PROD',
+        session_expiry_hours: 24,
+    });
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const [settingsSaving, setSettingsSaving] = useState(false);
+    const [settingsMsg, setSettingsMsg] = useState('');
+    const [settingsError, setSettingsError] = useState('');
+    const [editingToken, setEditingToken] = useState(false);
+    const [tokenInput, setTokenInput] = useState('');
+    const [reloadingData, setReloadingData] = useState(false);
+    const [reloadDataSuccess, setReloadDataSuccess] = useState(false);
+
+    const fetchSettings = useCallback(async () => {
+        setSettingsLoading(true);
+        try {
+            const res = await apiRequest('/api/admin/settings');
+            if (res?.settings) {
+                if (res.settings.profile) setSettingsProfile(res.settings.profile);
+                if (res.settings.security) setSettingsSecurity(res.settings.security);
+            }
+        } catch (err) {
+            console.error('Failed to load settings:', err);
+        } finally {
+            setSettingsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         const sessionStr = localStorage.getItem('admin_session');
         if (sessionStr) {
             setAdminUser(JSON.parse(sessionStr));
         }
         loadData();
+        fetchSettings();
     }, []);
+
+    const handleSaveSettings = async () => {
+        setSettingsSaving(true);
+        setSettingsMsg('');
+        setSettingsError('');
+        try {
+            await apiRequest('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify({
+                    profile: settingsProfile,
+                    security: settingsSecurity,
+                }),
+            });
+            setSettingsMsg('✓ System settings updated successfully!');
+            setTimeout(() => setSettingsMsg(''), 4000);
+        } catch (err) {
+            setSettingsError('Failed to save settings: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSettingsSaving(false);
+        }
+    };
+
+    const handleSaveToken = async () => {
+        const newToken = tokenInput.trim().toUpperCase();
+        if (!newToken) return;
+        setSettingsSaving(true);
+        setSettingsMsg('');
+        setSettingsError('');
+        try {
+            await apiRequest('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify({
+                    security: {
+                        ...settingsSecurity,
+                        system_access_token: newToken,
+                    },
+                }),
+            });
+            setSettingsSecurity(prev => ({ ...prev, system_access_token: newToken }));
+            setEditingToken(false);
+            setSettingsMsg(`✓ System Access Token updated to ${newToken}!`);
+            setTimeout(() => setSettingsMsg(''), 4000);
+        } catch (err) {
+            setSettingsError('Failed to update token: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSettingsSaving(false);
+        }
+    };
+
+    const handleGenerateToken = () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 8; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        setTokenInput(`GF-${code}`);
+    };
+
+    const handleReloadAllData = async () => {
+        setReloadingData(true);
+        setReloadDataSuccess(false);
+        try {
+            await Promise.all([
+                loadData(),
+                fetchSettings(),
+            ]);
+            setReloadDataSuccess(true);
+            setTimeout(() => setReloadDataSuccess(false), 3000);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setReloadingData(false);
+        }
+    };
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -936,41 +1049,236 @@ function AdminPanelContent() {
                 {tab === 'settings' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
                     <h1 style={c.pageTitle}>System Settings</h1>
-                    <div style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+                    {settingsMsg && (
+                        <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green)', fontWeight: 700, fontSize: '13px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>check_circle</span>
+                            {settingsMsg}
+                        </div>
+                    )}
+
+                    {settingsError && (
+                        <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid var(--red)', fontWeight: 700, fontSize: '13px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>error</span>
+                            {settingsError}
+                        </div>
+                    )}
+
+                    {reloadDataSuccess && (
+                        <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green)', fontWeight: 700, fontSize: '13px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>sync</span>
+                            ✓ All system records, student profiles, faculty data, and configurations reloaded!
+                        </div>
+                    )}
+
+                    <div style={{ maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+                        {/* Institutional Profile */}
                         <div style={c.statCard}>
-                            <h3 style={{ fontSize: '16px', fontWeight: 800, marginBottom: '20px' }}>Institutional Profile</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                 <div>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Environment</label>
-                                    <input style={{ ...c.searchInput, width: '100%' }} value="GradeFlow Intelligence" readOnly />
+                                    <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Institutional Profile</h3>
+                                    <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px', margin: 0 }}>Configure college details, active academic year, and default syllabus scheme.</p>
                                 </div>
+                                <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--primary)' }}>school</span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
                                 <div>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Primary Region</label>
-                                    <input style={{ ...c.searchInput, width: '100%' }} value="South Asia (VTU-HQ)" readOnly />
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Institution Name</label>
+                                    <input
+                                        style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                        value={settingsProfile.institution_name}
+                                        onChange={e => setSettingsProfile(prev => ({ ...prev, institution_name: e.target.value }))}
+                                        placeholder="e.g. Anjuman Institute of Technology and Management"
+                                    />
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Institution Code</label>
+                                        <input
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                            value={settingsProfile.institution_code}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, institution_code: e.target.value.toUpperCase() }))}
+                                            placeholder="e.g. AITM"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Affiliation / University</label>
+                                        <input
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                            value={settingsProfile.affiliation}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, affiliation: e.target.value }))}
+                                            placeholder="e.g. Visvesvaraya Technological University (VTU)"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Academic Year</label>
+                                        <select
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
+                                            value={settingsProfile.academic_year}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, academic_year: e.target.value }))}
+                                        >
+                                            <option value="2025-2026">2025-2026</option>
+                                            <option value="2024-2025">2024-2025</option>
+                                            <option value="2023-2024">2023-2024</option>
+                                            <option value="2022-2023">2022-2023</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Default Syllabus Scheme</label>
+                                        <select
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}
+                                            value={settingsProfile.default_scheme}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, default_scheme: e.target.value }))}
+                                        >
+                                            <option value="2022">2022 Scheme (NEP)</option>
+                                            <option value="2025">2025 Scheme (NEP)</option>
+                                            <option value="2018">2018 Scheme (CBCS)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Environment</label>
+                                        <input
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                            value={settingsProfile.environment}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, environment: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', letterSpacing: '0.05em' }}>Primary Region</label>
+                                        <input
+                                            style={{ ...c.searchInput, width: '100%', boxSizing: 'border-box' }}
+                                            value={settingsProfile.primary_region}
+                                            onChange={e => setSettingsProfile(prev => ({ ...prev, primary_region: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                    <button
+                                        style={{ ...c.actionBtn(true), display: 'flex', alignItems: 'center', gap: '6px' }}
+                                        onClick={handleSaveSettings}
+                                        disabled={settingsSaving}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>{settingsSaving ? 'hourglass_top' : 'save'}</span>
+                                        {settingsSaving ? 'Saving Changes…' : 'Save Profile Changes'}
+                                    </button>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Security & Authentication */}
                         <div style={c.statCard}>
-                            <h3 style={{ fontSize: '16px', fontWeight: 800, marginBottom: '20px' }}>Security & Auth</h3>
-                            <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '16px', lineHeight: 1.6 }}>
-                                Administrator access is secured with encrypted credentials and role-based access control.
-                            </p>
-                            
-                            <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-                                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>System Access Token</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <code style={{ fontSize: '15px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.05em' }}>GF-ADMIN-PROD</code>
-                                    <button onClick={() => copyKey('GF-ADMIN-PROD')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)' }}>
-                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>{copiedKey === 'GF-ADMIN-PROD' ? 'check' : 'content_copy'}</span>
-                                    </button>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                <div>
+                                    <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Security & Authentication</h3>
+                                    <p style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px', margin: 0 }}>
+                                        Administrator access is secured with encrypted credentials, role-based access control, and a System Access Token.
+                                    </p>
                                 </div>
-                                <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '8px' }}>Use this code at the Gateway to authenticate.</div>
+                                <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--amber)' }}>security</span>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button style={c.actionBtn(false)} onClick={() => loadData()}>
-                                    <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>refresh</span>
-                                    Reload Data
+                            {/* System Access Token Section */}
+                            <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Access Token</label>
+                                    {!editingToken && (
+                                        <button
+                                            onClick={() => { setTokenInput(settingsSecurity.system_access_token); setEditingToken(true); }}
+                                            style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '13px' }}>edit</span>
+                                            Edit Token
+                                        </button>
+                                    )}
+                                </div>
+
+                                {!editingToken ? (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                            <code style={{ fontSize: '16px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', background: 'var(--surface)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                {settingsSecurity.system_access_token}
+                                            </code>
+                                            <button
+                                                onClick={() => copyKey(settingsSecurity.system_access_token)}
+                                                style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: copiedKey === settingsSecurity.system_access_token ? 'var(--green)' : 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700 }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '16px' }}>{copiedKey === settingsSecurity.system_access_token ? 'check' : 'content_copy'}</span>
+                                                {copiedKey === settingsSecurity.system_access_token ? 'Copied' : 'Copy'}
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '8px' }}>
+                                            Use this token at the Admin Gateway ([/admin/gateway](http://localhost:3000/admin/gateway)) to authenticate.
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            <input
+                                                style={{ ...c.searchInput, flex: 1, minWidth: '200px', fontWeight: 800, letterSpacing: '0.05em' }}
+                                                value={tokenInput}
+                                                onChange={e => setTokenInput(e.target.value.toUpperCase())}
+                                                placeholder="Enter new token (e.g. GF-ADMIN-PROD)"
+                                            />
+                                            <button
+                                                onClick={handleGenerateToken}
+                                                style={{ ...c.actionBtn(false), padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                title="Generate Random Secure Token"
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>casino</span>
+                                                Generate Key
+                                            </button>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                            <button
+                                                onClick={() => setEditingToken(false)}
+                                                style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '12px' }}
+                                                disabled={settingsSaving}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSaveToken}
+                                                style={{ ...c.actionBtn(true), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                disabled={settingsSaving || !tokenInput.trim()}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>check</span>
+                                                {settingsSaving ? 'Updating…' : 'Save New Token'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* System Reload Action */}
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>Synchronize & Reload System Data</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>Re-fetches all database tables, student metrics, and server settings.</div>
+                                </div>
+                                <button
+                                    style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
+                                    onClick={handleReloadAllData}
+                                    disabled={reloadingData}
+                                >
+                                    <span
+                                        className="material-icons-round"
+                                        style={{
+                                            fontSize: '16px',
+                                            animation: reloadingData ? 'spin 1s linear infinite' : 'none'
+                                        }}
+                                    >
+                                        refresh
+                                    </span>
+                                    {reloadingData ? 'Reloading…' : 'Reload Data'}
                                 </button>
                             </div>
                         </div>

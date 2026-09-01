@@ -47,13 +47,29 @@ function failureResponse(error, status = 401) {
 async function loginAdmin({ email, password, systemToken }) {
     const trimmedEmail = String(email || '').trim().toLowerCase();
     const trimmedPassword = String(password || '').trim();
-    const gatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
+    const cleanToken = String(systemToken || '').trim();
+    const fallbackGatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
 
-    if (systemToken !== gatekeeper) {
+    const supabase = getSupabaseAdmin();
+
+    let activeToken = fallbackGatekeeper;
+    try {
+        const { data: secSetting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'security_auth')
+            .maybeSingle();
+        if (secSetting?.value?.system_access_token) {
+            activeToken = secSetting.value.system_access_token;
+        }
+    } catch (e) {
+        // Fallback to env
+    }
+
+    if (cleanToken !== activeToken && cleanToken !== fallbackGatekeeper) {
         return failureResponse('Invalid System Access Token. Access Denied.', 403);
     }
 
-    const supabase = getSupabaseAdmin();
     const { data: admin, error } = await supabase
         .from('admin_users')
         .select('id, email, password_hash')

@@ -11,10 +11,13 @@ export async function POST(req) {
         const { action, usn, data } = body;
 
         // 1. Log action in Supabase 'faculty_activity' — attributed to the
-        // authenticated session, never a client-supplied id.
+        // authenticated session, never a client-supplied id. faculty_name comes
+        // from the signed session token (set at login from faculty_onboarding.full_name,
+        // see app/api/auth/login/route.js) — never a hardcoded placeholder, so the
+        // admin Activity Log shows who actually performed the action.
         await supabase.from('faculty_activity').insert({
             faculty_id: session.sub,
-            faculty_name: 'System Hook',
+            faculty_name: session.name || session.email || 'Unknown',
             target_usn: usn,
             action_type: action,
             sync_status: 'SUCCESS'
