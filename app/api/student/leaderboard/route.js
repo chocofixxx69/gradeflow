@@ -264,26 +264,48 @@ export async function GET(req) {
         const availableSemesters = Array.from(semSet).sort((a, b) => a - b);
         const targetSem = selectedSem || (availableSemesters.length > 0 ? availableSemesters[availableSemesters.length - 1] : 6);
 
-        // 6. Semester-Wise SGPA Leaderboard for target semester
-        const semesterList = Object.values(studentStats)
-            .filter(s => s.semesters[targetSem] && s.semesters[targetSem].sgpa > 0)
-            .map(s => ({
+        // 6. Semester-Wise SGPA Leaderboard for target semester (Includes ALL cohort students)
+        const semesterList = Object.values(studentStats).map(s => {
+            const semData = s.semesters[targetSem];
+            const hasAppeared = !!(semData && semData.sgpa > 0);
+            const isLateralExempt = s.isLateral && targetSem < 3;
+
+            let statusText = 'Appeared';
+            if (!hasAppeared) {
+                statusText = isLateralExempt ? 'Lateral Entry (Joined Sem 3)' : 'Not Registered / Discontinued';
+            }
+
+            return {
                 usn: s.usn,
                 name: s.name,
+                branch: s.branch,
                 isLateral: s.isLateral,
                 semester: targetSem,
-                sgpa: s.semesters[targetSem].sgpa,
-                credits: s.semesters[targetSem].credits,
+                sgpa: hasAppeared ? semData.sgpa : null,
+                credits: hasAppeared ? semData.credits : 0,
+                hasAppeared,
+                statusText,
                 isCurrentUser: s.isCurrentUser
-            }));
+            };
+        });
 
+        // Sort: Active scorers first (SGPA descending), then unappeared/exempt students
         semesterList.sort((a, b) => {
-            if (b.sgpa !== a.sgpa) return b.sgpa - a.sgpa;
+            if (a.hasAppeared && !b.hasAppeared) return -1;
+            if (!a.hasAppeared && b.hasAppeared) return 1;
+            if (a.hasAppeared && b.hasAppeared) {
+                if (b.sgpa !== a.sgpa) return b.sgpa - a.sgpa;
+            }
             return a.usn.localeCompare(b.usn);
         });
 
-        semesterList.forEach((item, index) => {
-            item.rank = index + 1;
+        let rankCount = 1;
+        semesterList.forEach((item) => {
+            if (item.hasAppeared) {
+                item.rank = rankCount++;
+            } else {
+                item.rank = '—';
+            }
         });
 
         // 7. Subject-Wise Toppers & Subject Leaderboard

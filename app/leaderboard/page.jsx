@@ -546,15 +546,25 @@ export default function LeaderboardPage() {
                                             {activeTab === 'semester' && (
                                                 <>
                                                     <td style={{ padding: '14px 18px', textAlign: 'center' }}>
-                                                        <span style={{
-                                                            fontWeight: 900, fontSize: '1.05rem',
-                                                            color: item.sgpa >= 8.5 ? '#047857' : item.sgpa >= 7.0 ? 'var(--primary)' : 'var(--tx-main)'
-                                                        }}>
-                                                            {item.sgpa ? item.sgpa.toFixed(2) : '—'}
-                                                        </span>
+                                                        {item.hasAppeared && item.sgpa !== null ? (
+                                                            <span style={{
+                                                                fontWeight: 900, fontSize: '1.05rem',
+                                                                color: item.sgpa >= 8.5 ? '#047857' : item.sgpa >= 7.0 ? 'var(--primary)' : 'var(--tx-main)'
+                                                            }}>
+                                                                {item.sgpa.toFixed(2)}
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{
+                                                                padding: '3px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 800,
+                                                                background: item.isLateral ? 'rgba(217, 119, 6, 0.12)' : 'var(--surface-low)',
+                                                                color: item.isLateral ? '#b45309' : 'var(--tx-muted)'
+                                                            }}>
+                                                                {item.statusText || 'Not Appeared'}
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                                                        {item.credits || 20} Credits
+                                                        {item.hasAppeared ? `${item.credits || 20} Credits` : '—'}
                                                     </td>
                                                 </>
                                             )}
