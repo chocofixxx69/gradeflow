@@ -89,6 +89,12 @@ function AdminPanelContent() {
     const [confirmingSuspendStudent, setConfirmingSuspendStudent] = useState(null);
     const [suspendReasonInput, setSuspendReasonInput] = useState('');
 
+    // New Student creation form
+    const [showAddStudent, setShowAddStudent] = useState(false);
+    const [newStudent, setNewStudent] = useState({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
+    const [addError, setAddError] = useState('');
+    const [addingStudent, setAddingStudent] = useState(false);
+
     // System Settings States
     const [settingsProfile, setSettingsProfile] = useState({
         institution_name: 'Anjuman Institute of Technology and Management',
@@ -305,31 +311,6 @@ function AdminPanelContent() {
         }
     };
 
-    const addStudent = async () => {
-        if (!newStudent.usn || newStudent.usn.length < 5) {
-            setAddError('Please enter a valid USN.'); return;
-        }
-        setAddError('');
-        try {
-            await apiRequest('/api/admin/terminal/data', {
-                method: 'POST',
-                body: JSON.stringify({
-                    usn: newStudent.usn.toUpperCase(),
-                    name: newStudent.name || newStudent.usn.toUpperCase(),
-                    branch: newStudent.branch,
-                    scheme: newStudent.scheme,
-                    semester: newStudent.semester,
-                })
-            });
-            setShowAddStudent(false);
-            setNewStudent({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
-            await loadData();
-        } catch (err) {
-            console.error('Add student error:', err);
-            setAddError('Failed to add student. Please check the details and try again.');
-        }
-    };
-
     const resetStudentCredentials = async () => {
         if (!selectedStudent) return;
         setResettingPassword(true);
@@ -494,6 +475,38 @@ function AdminPanelContent() {
             alert('Failed to reset credentials: ' + err.message);
         } finally {
             setStudentActionBusy(false);
+        }
+    };
+
+    const addStudent = async () => {
+        const cleanUsn = String(newStudent.usn || '').toUpperCase().trim();
+        if (!cleanUsn) {
+            setAddError('USN is required.');
+            return;
+        }
+        setAddError('');
+        setAddingStudent(true);
+        try {
+            const res = await apiRequest('/api/admin/student-action', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'create_student',
+                    usn: cleanUsn,
+                    name: newStudent.name.trim(),
+                    branch: (newStudent.branch || '').toUpperCase().trim(),
+                    scheme: newStudent.scheme || '2022',
+                    semester: Number(newStudent.semester) || 1
+                })
+            });
+            setStudentActionMsg(res.message || `Student ${cleanUsn} created successfully.`);
+            setShowAddStudent(false);
+            setNewStudent({ usn: '', name: '', branch: '', scheme: '2022', semester: 1 });
+            await loadData();
+            setTimeout(() => setStudentActionMsg(''), 4000);
+        } catch (err) {
+            setAddError(err.message || 'Failed to create student.');
+        } finally {
+            setAddingStudent(false);
         }
     };
 

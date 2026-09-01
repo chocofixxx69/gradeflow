@@ -193,6 +193,45 @@ export async function POST(req) {
             });
         }
 
+        // 7. Create Student
+        if (action === 'create_student') {
+            const cleanUsn = String(usn || '').toUpperCase().trim();
+            if (!cleanUsn) return NextResponse.json({ error: 'Student USN is required.' }, { status: 400 });
+
+            const { name, branch, scheme, semester } = body || {};
+
+            const { data: existing } = await supabaseAdmin
+                .from('students')
+                .select('id')
+                .eq('usn', cleanUsn)
+                .maybeSingle();
+
+            if (existing) {
+                return NextResponse.json({ error: `A student with USN ${cleanUsn} already exists.` }, { status: 409 });
+            }
+
+            const { data: newRow, error: insertErr } = await supabaseAdmin
+                .from('students')
+                .insert({
+                    usn: cleanUsn,
+                    name: name || null,
+                    branch: branch || null,
+                    scheme: scheme || '2022',
+                    semester: Number(semester) || 1,
+                    is_suspended: false
+                })
+                .select()
+                .single();
+
+            if (insertErr) throw insertErr;
+
+            return NextResponse.json({
+                success: true,
+                student: newRow,
+                message: `Student ${cleanUsn} successfully created.`
+            });
+        }
+
         return NextResponse.json({ error: 'Unknown action specified.' }, { status: 400 });
     } catch (err) {
         console.error('[POST /api/admin/student-action]', err);
