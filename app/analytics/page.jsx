@@ -7,6 +7,7 @@ import AuthGuard from '../../components/AuthGuard';
 import { EmptyState, LoadingState, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
 import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject } from '../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '../../lib/subjectCreditResolver';
 import { supabase } from '../../lib/supabase';
 import {
     ResponsiveContainer,
@@ -43,7 +44,7 @@ function AnalyticsContent() {
     const [yearBackRisk, setYearBackRisk] = useState({ hasRisk: false, risks: [], level: 'NONE', totalActiveBacklogs: 0 });
     const [subjectPassRates, setSubjectPassRates] = useState([]);
 
-    const calcSGPA = (subjects) => {
+    const calcSGPA = (subjects, catalogIndex) => {
         const excludeGrades = ['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE'];
 
         // Deduplicate per subject code — keep best grade
@@ -61,10 +62,13 @@ function AnalyticsContent() {
         const poolItems = Object.values(subjectsPool);
         const validSubs = poolItems.filter(m => !excludeGrades.includes((m.grade || '').trim().toUpperCase()));
 
-        // Credit-weighted SGPA — canonical calculation
+        // Credit-weighted SGPA — canonical calculation. `catalogIndex` must be
+        // passed through: without it, resolveSubjectCredits always returns
+        // { credits: null, source: 'unresolved' } and every subject gets
+        // silently dropped from the sum (SGPA/CGPA would come out as 0).
         let totalCredits = 0, totalCreditPoints = 0, backlogs = 0;
         validSubs.forEach(m => {
-            const norm = normalizeSubjectResult(m, '2022');
+            const norm = normalizeSubjectResult(m, '2022', null, null, catalogIndex);
             if (norm.isAudit || norm.isUnresolved) return;
 
             if (norm.credits > 0) {
@@ -99,7 +103,10 @@ function AnalyticsContent() {
     const fetchStudentAnalytics = async (usn) => {
         setLoading(true);
         try {
-            const res = await apiRequest('/api/student/results', { headers: getStudentAuthHeaders() });
+            const [res, catalogIndex] = await Promise.all([
+                apiRequest('/api/student/results', { headers: getStudentAuthHeaders() }),
+                fetchCatalogIndex(supabase)
+            ]);
             const marks1 = [];
             const marks2 = res?.subjectMarks || [];
 
@@ -156,7 +163,7 @@ function AnalyticsContent() {
             const semData = Object.entries(semGroups)
                 .sort(([a], [b]) => parseInt(a) - parseInt(b))
                 .map(([sem, subjects]) => {
-                    const stats = calcSGPA(subjects);
+                    const stats = calcSGPA(subjects, catalogIndex);
                     return {
                         semester: parseInt(sem),
                         sgpa: stats.sgpa,

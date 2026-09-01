@@ -223,23 +223,32 @@ function matchesBranch(usn, studentBranch, targetBranch) {
  * 3-4 awaited queries per student back-to-back, which routinely blew past the
  * serverless function timeout and left the client's Save button hung forever
  * even though the update may have partially landed.
+ *
+ * Scoped to the WHOLE (scheme, branch, semester), not just rows whose stored
+ * subject_code matches the one just edited. VTU electives are catalogued under
+ * a generic family/slot code (e.g. BCS405X, BXX654X) while a student's actual
+ * mark row carries the specific chosen variant (BCS405A, BEE654B) — an edit to
+ * the slot's credit would match zero subject_marks rows under an exact-code
+ * filter and silently update nobody. Re-resolving every subject in the affected
+ * semester against the live catalog (same resolver the rest of the app uses)
+ * catches that case and self-heals any other staleness in the same sweep,
+ * instead of only fixing the one code that happened to be edited.
  */
 async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null, targetSemester = null, scheme = '2022') {
     try {
-        // 1. Fetch all subject_marks matching this subject code
-        let marksQuery = supabaseAdmin
+        if (!targetSemester) return 0; // Semester-scoped recompute requires a semester.
+        const semNum = Number(targetSemester);
+
+        // 1. Find every student with subject_marks in this semester, then keep
+        //    only those whose resolved branch matches the edited catalog row's branch.
+        const { data: semMarksAll } = await supabaseAdmin
             .from('subject_marks')
-            .select('id, usn, semester, subject_code');
+            .select('usn')
+            .eq('semester', semNum);
 
-        if (targetSemester) {
-            marksQuery = marksQuery.eq('semester', Number(targetSemester));
-        }
+        const usns = Array.from(new Set((semMarksAll || []).map(m => m.usn.toUpperCase())));
+        if (usns.length === 0) return 0;
 
-        const { data: allMarks } = await marksQuery.eq('subject_code', subjectCode);
-        if (!allMarks || allMarks.length === 0) return 0;
-
-        // Fetch student profiles (id + branch) to check branch matching
-        const usns = Array.from(new Set(allMarks.map(m => m.usn.toUpperCase())));
         const { data: profiles } = await supabaseAdmin
             .from('students')
             .select('id, usn, branch')
@@ -248,7 +257,6 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
         const profileMap = new Map();
         (profiles || []).forEach(p => profileMap.set(p.usn.toUpperCase(), p));
 
-        // Filter USNs that match the target branch
         const matchedUsns = new Set();
         usns.forEach(usn => {
             const stBranch = profileMap.get(usn)?.branch;
@@ -258,61 +266,49 @@ async function cascadeCreditUpdate(subjectCode, newCredits, targetBranch = null,
         });
 
         if (matchedUsns.size === 0) return 0;
-
         const matchedUsnArray = Array.from(matchedUsns);
-
-        // 2. Update credits ONLY for subject_marks of students belonging to matched USNs
-        //    (chunks run in parallel — each chunk is an independent update)
-        const chunks = [];
-        for (let i = 0; i < matchedUsnArray.length; i += 100) {
-            chunks.push(matchedUsnArray.slice(i, i + 100));
-        }
-        await Promise.all(chunks.map(chunk => {
-            let updateQ = supabaseAdmin
-                .from('subject_marks')
-                .update({ credits: newCredits })
-                .eq('subject_code', subjectCode)
-                .in('usn', chunk);
-
-            if (targetSemester) {
-                updateQ = updateQ.eq('semester', Number(targetSemester));
-            }
-            return updateQ;
-        }));
-
-        // 3. Deduplicate (usn, semester) pairs to recalculate SGPA
-        const pairsMap = new Map();
-        const semestersInvolved = new Set();
-        allMarks.forEach(row => {
-            const u = row.usn.toUpperCase();
-            if (matchedUsns.has(u) && row.semester) {
-                const key = `${u}_${row.semester}`;
-                pairsMap.set(key, { usn: u, semester: Number(row.semester) });
-                semestersInvolved.add(Number(row.semester));
-            }
-        });
-
-        const pairs = Array.from(pairsMap.values());
-        if (pairs.length === 0) return 0;
+        const semestersInvolved = new Set([semNum]);
+        const pairs = matchedUsnArray.map(usn => ({ usn, semester: semNum }));
 
         const excludeGrades = new Set(['PP', 'NP', 'W', 'DX', 'AU', 'X', 'NE']);
         const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
 
-        // 4. Fetch every subject_marks row for every affected (usn, semester) in ONE query,
-        //    then group in memory — instead of one query per pair.
+        // 2. Fetch every subject_marks row for every matched student in this semester.
         const { data: allSemMarks } = await supabaseAdmin
             .from('subject_marks')
             .select('*')
             .in('usn', matchedUsnArray)
-            .in('semester', Array.from(semestersInvolved));
+            .eq('semester', semNum);
 
         const semMarksByPair = new Map();
         (allSemMarks || []).forEach(m => {
             const key = `${m.usn.toUpperCase()}_${Number(m.semester)}`;
-            if (!pairsMap.has(key)) return;
             if (!semMarksByPair.has(key)) semMarksByPair.set(key, []);
             semMarksByPair.get(key).push(m);
         });
+
+        // 3. Re-resolve every subject's credit fresh from the catalog and write back
+        //    any that drifted from what's stored — not just the edited subject_code.
+        const creditFixes = [];
+        semMarksByPair.forEach((rows, key) => {
+            const usn = key.split('_')[0];
+            const studentBranch = normalizeBranchCode(profileMap.get(usn)?.branch || targetBranch, usn);
+            rows.forEach(m => {
+                const code = (m.subject_code || '').trim().toUpperCase();
+                if (isAuditCourse(code)) return;
+                const resolved = resolveSubjectCredit(catalogIndex, { scheme, branch: studentBranch, semester: semNum, subject_code: code });
+                if (resolved.credits !== null && Number(resolved.credits) !== Number(m.credits)) {
+                    creditFixes.push({ id: m.id, credits: resolved.credits });
+                    m.credits = resolved.credits; // keep in-memory copy consistent for the SGPA pass below
+                }
+            });
+        });
+
+        if (creditFixes.length) {
+            await Promise.all(creditFixes.map(f =>
+                supabaseAdmin.from('subject_marks').update({ credits: f.credits }).eq('id', f.id)
+            ));
+        }
 
         // 5. Recalculate SGPA per pair (pure in-memory computation, no I/O)
         const recalculated = pairs.map(({ usn, semester }) => {
