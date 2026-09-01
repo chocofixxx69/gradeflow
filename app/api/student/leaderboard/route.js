@@ -12,6 +12,64 @@ function fail(message, code = 'ERROR', status = 400) {
     return NextResponse.json({ success: false, error: { code, message } }, { status });
 }
 
+// Cohort resolver mapping branch codes and batches including lateral entries
+function resolveCohortConfig(batchOrBranch, currentUsn) {
+    let key = (batchOrBranch || '').toUpperCase().trim();
+
+    // Auto-detect from current user USN if not explicitly requested
+    if (!key && currentUsn) {
+        if (currentUsn.includes('CS')) key = 'CS';
+        else if (currentUsn.includes('CD') || currentUsn.includes('DS')) key = 'CD';
+        else if (currentUsn.includes('CI')) key = 'CI';
+        else if (currentUsn.includes('CV')) key = 'CV';
+        else {
+            const match = currentUsn.match(/^([0-9][A-Z]{2}[0-9]{2}[A-Z]{2,3})/);
+            key = match ? match[1] : currentUsn.slice(0, 7);
+        }
+    }
+
+    if (key === 'CS' || key === '2AB23CS' || key === '2AB24CS') {
+        return {
+            branch: 'CS',
+            code: 'CS',
+            name: 'Computer Science & Engineering',
+            patterns: ['2AB23CS%', '2AB24CS%']
+        };
+    }
+    if (key === 'CD' || key === 'DS' || key === '2AB23CD' || key === '2AB24CD') {
+        return {
+            branch: 'CD',
+            code: 'CD',
+            name: 'Computer Science (Data Science)',
+            patterns: ['2AB23CD%', '2AB24CD%']
+        };
+    }
+    if (key === 'CI' || key === '2AB23CI' || key === '2AB24CI') {
+        return {
+            branch: 'CI',
+            code: 'CI',
+            name: 'Computer Science (AI & Design)',
+            patterns: ['2AB23CI%', '2AB24CI%']
+        };
+    }
+    if (key === 'CV' || key === '2AB23CV') {
+        return {
+            branch: 'CV',
+            code: 'CV',
+            name: 'Civil Engineering',
+            patterns: ['2AB23CV%']
+        };
+    }
+
+    // Default fallback
+    return {
+        branch: key,
+        code: key,
+        name: `Cohort ${key}`,
+        patterns: [`${key}%`]
+    };
+}
+
 export async function GET(req) {
     try {
         const { session, error: authError } = requireStudent(req);
@@ -20,30 +78,36 @@ export async function GET(req) {
         const currentUsn = session.usn?.toUpperCase().trim();
         const { searchParams } = new URL(req.url);
 
-        // Derive batch prefix (e.g. 2AB23CS from 2AB23CS043)
-        const match = currentUsn.match(/^([0-9][A-Z]{2}[0-9]{2}[A-Z]{2,3})/);
-        const defaultBatch = match ? match[1] : currentUsn.slice(0, 7);
-        const requestedBatch = (searchParams.get('batch') || defaultBatch).toUpperCase().trim();
+        const requestedBatch = searchParams.get('batch');
+        const cohortConfig = resolveCohortConfig(requestedBatch, currentUsn);
         const selectedSem = parseInt(searchParams.get('semester')) || null;
         const selectedSubject = searchParams.get('subject_code') || null;
 
-        // 1. Fetch all students in this batch cohort
-        const { data: batchStudents, error: stuErr } = await supabaseAdmin
+        // 1. Fetch all students matching any of the cohort USN patterns
+        const { data: allStudents, error: stuErr } = await supabaseAdmin
             .from('students')
-            .select('id, usn, name, branch, scheme, semester')
-            .ilike('usn', `${requestedBatch}%`)
+            .select('id, usn, name, branch, scheme, semester, lateral_entry')
             .order('usn', { ascending: true });
 
         if (stuErr) throw stuErr;
 
-        const students = batchStudents || [];
+        const students = (allStudents || []).filter(s => {
+            return cohortConfig.patterns.some(p => {
+                const prefix = p.replace('%', '');
+                return s.usn.startsWith(prefix);
+            });
+        });
+
         const studentUsns = students.map(s => s.usn);
         const studentMap = Object.fromEntries(students.map(s => [s.usn, s]));
 
         if (studentUsns.length === 0) {
             return ok({
-                batch: requestedBatch,
+                batch: cohortConfig.code,
+                batchName: cohortConfig.name,
                 totalStudents: 0,
+                regularCount: 0,
+                lateralCount: 0,
                 overallLeaderboard: [],
                 semesterLeaderboard: [],
                 subjectLeaderboard: [],
@@ -80,13 +144,20 @@ export async function GET(req) {
             return 0;
         }
 
+        let regularCount = 0;
+        let lateralCount = 0;
+
         const studentStats = {};
         students.forEach(s => {
+            const isLateral = s.lateral_entry === true || /[0-9][A-Z]{2}[0-9]{2}[A-Z]{2,3}4[0-9]{2}/.test(s.usn);
+            if (isLateral) lateralCount++; else regularCount++;
+
             studentStats[s.usn] = {
                 usn: s.usn,
                 name: s.name || s.usn,
                 branch: s.branch,
                 scheme: s.scheme,
+                isLateral,
                 semesters: {},
                 totalBacklogs: 0,
                 isCurrentUser: s.usn === currentUsn
@@ -94,7 +165,6 @@ export async function GET(req) {
         });
 
         const semSet = new Set();
-        // Index subject_marks by user and semester for fallback calculation
         const userMarksBySem = {};
         (allMarks || []).forEach(m => {
             const semNum = Number(m.semester);
@@ -119,7 +189,7 @@ export async function GET(req) {
             }
         });
 
-        // For any student who has subject_marks in a semester but no results entry, calculate SGPA dynamically
+        // Dynamic SGPA calculation for any student missing results slip
         Object.entries(userMarksBySem).forEach(([key, marks]) => {
             const [usn, semStr] = key.split('_');
             const semNum = Number(semStr);
@@ -171,6 +241,7 @@ export async function GET(req) {
                 usn: s.usn,
                 name: s.name,
                 branch: s.branch,
+                isLateral: s.isLateral,
                 cgpa,
                 semestersTracked: semCount,
                 totalBacklogs: s.totalBacklogs,
@@ -191,7 +262,7 @@ export async function GET(req) {
 
         // 5. Available semesters sorted
         const availableSemesters = Array.from(semSet).sort((a, b) => a - b);
-        const targetSem = selectedSem || (availableSemesters.length > 0 ? availableSemesters[availableSemesters.length - 1] : 1);
+        const targetSem = selectedSem || (availableSemesters.length > 0 ? availableSemesters[availableSemesters.length - 1] : 6);
 
         // 6. Semester-Wise SGPA Leaderboard for target semester
         const semesterList = Object.values(studentStats)
@@ -199,6 +270,7 @@ export async function GET(req) {
             .map(s => ({
                 usn: s.usn,
                 name: s.name,
+                isLateral: s.isLateral,
                 semester: targetSem,
                 sgpa: s.semesters[targetSem].sgpa,
                 credits: s.semesters[targetSem].credits,
@@ -233,6 +305,7 @@ export async function GET(req) {
             subjectGroups[code].students.push({
                 usn: m.usn,
                 name: studentMap[m.usn]?.name || m.usn,
+                isLateral: studentStats[m.usn]?.isLateral || false,
                 internal: Number(m.internal) || 0,
                 external: Number(m.external) || 0,
                 total: Number(m.total) || 0,
@@ -242,7 +315,7 @@ export async function GET(req) {
             });
         });
 
-        // Build list of all available subjects in this batch
+        // Build list of all available subjects in this cohort
         const availableSubjects = Object.values(subjectGroups).map(sg => ({
             subject_code: sg.subject_code,
             subject_name: sg.subject_name,
@@ -280,34 +353,17 @@ export async function GET(req) {
             subjectLeaderboard = sortedScores;
         }
 
-        // 8. Subject Toppers Summary for Target Semester
-        const semesterSubjectToppers = availableSubjects
-            .filter(s => s.semester === targetSem)
-            .map(sub => {
-                const group = subjectGroups[sub.subject_code];
-                if (!group || group.students.length === 0) return null;
-
-                const sorted = [...group.students].sort((a, b) => b.total - a.total);
-                const highestScore = sorted[0]?.total || 0;
-                const topStudents = sorted.filter(s => s.total === highestScore);
-
-                return {
-                    subject_code: sub.subject_code,
-                    subject_name: sub.subject_name,
-                    highestTotal: highestScore,
-                    toppers: topStudents.map(t => ({ usn: t.usn, name: t.name, total: t.total, internal: t.internal, external: t.external, grade: t.grade }))
-                };
-            })
-            .filter(Boolean);
-
         // Find current user's ranks
         const currentUserOverall = overallList.find(s => s.isCurrentUser);
         const currentUserSem = semesterList.find(s => s.isCurrentUser);
         const currentUserSub = subjectLeaderboard.find(s => s.isCurrentUser);
 
         return ok({
-            batch: requestedBatch,
+            batch: cohortConfig.code,
+            batchName: cohortConfig.name,
             totalStudents: students.length,
+            regularCount,
+            lateralCount,
             targetSemester: targetSem,
             availableSemesters,
             availableSubjects,
@@ -315,6 +371,7 @@ export async function GET(req) {
             currentUser: {
                 usn: currentUsn,
                 name: studentMap[currentUsn]?.name || currentUsn,
+                isLateral: currentUserOverall?.isLateral || false,
                 overallRank: currentUserOverall?.rank || null,
                 overallCGPA: currentUserOverall?.cgpa || null,
                 semesterRank: currentUserSem?.rank || null,
@@ -324,8 +381,7 @@ export async function GET(req) {
             },
             overallLeaderboard: overallList,
             semesterLeaderboard: semesterList,
-            subjectLeaderboard,
-            semesterSubjectToppers
+            subjectLeaderboard
         });
     } catch (err) {
         console.error('[GET /api/student/leaderboard]', err);

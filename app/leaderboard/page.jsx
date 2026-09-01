@@ -13,6 +13,7 @@ export default function LeaderboardPage() {
     const [selectedSubjectCode, setSelectedSubjectCode] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBatch, setSelectedBatch] = useState('');
+    const [entryFilter, setEntryFilter] = useState('all'); // 'all' | 'regular' | 'lateral'
 
     const fetchLeaderboard = useCallback(async (sem = null, sub = null, batch = null) => {
         setLoading(true);
@@ -68,31 +69,26 @@ export default function LeaderboardPage() {
         fetchLeaderboard(selectedSemester, selectedSubjectCode, batch);
     };
 
-    // Filtered lists based on search query
-    const filteredOverall = useMemo(() => {
-        const list = data?.overallLeaderboard || [];
-        if (!searchQuery) return list;
-        const q = searchQuery.toLowerCase();
-        return list.filter(s => s.name?.toLowerCase().includes(q) || s.usn?.toLowerCase().includes(q));
-    }, [data?.overallLeaderboard, searchQuery]);
+    // Filtered lists based on search query & entry filter
+    const applyFilters = (list) => {
+        if (!list) return [];
+        let res = list;
+        if (entryFilter === 'regular') res = res.filter(s => !s.isLateral);
+        if (entryFilter === 'lateral') res = res.filter(s => s.isLateral);
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            res = res.filter(s => s.name?.toLowerCase().includes(q) || s.usn?.toLowerCase().includes(q));
+        }
+        return res;
+    };
 
-    const filteredSemester = useMemo(() => {
-        const list = data?.semesterLeaderboard || [];
-        if (!searchQuery) return list;
-        const q = searchQuery.toLowerCase();
-        return list.filter(s => s.name?.toLowerCase().includes(q) || s.usn?.toLowerCase().includes(q));
-    }, [data?.semesterLeaderboard, searchQuery]);
+    const filteredOverall = useMemo(() => applyFilters(data?.overallLeaderboard), [data?.overallLeaderboard, searchQuery, entryFilter]);
+    const filteredSemester = useMemo(() => applyFilters(data?.semesterLeaderboard), [data?.semesterLeaderboard, searchQuery, entryFilter]);
+    const filteredSubject = useMemo(() => applyFilters(data?.subjectLeaderboard), [data?.subjectLeaderboard, searchQuery, entryFilter]);
 
-    const filteredSubject = useMemo(() => {
-        const list = data?.subjectLeaderboard || [];
-        if (!searchQuery) return list;
-        const q = searchQuery.toLowerCase();
-        return list.filter(s => s.name?.toLowerCase().includes(q) || s.usn?.toLowerCase().includes(q));
-    }, [data?.subjectLeaderboard, searchQuery]);
-
-    const top3Overall = useMemo(() => (data?.overallLeaderboard || []).slice(0, 3), [data?.overallLeaderboard]);
-    const top3Semester = useMemo(() => (data?.semesterLeaderboard || []).slice(0, 3), [data?.semesterLeaderboard]);
-    const top3Subject = useMemo(() => (data?.subjectLeaderboard || []).slice(0, 3), [data?.subjectLeaderboard]);
+    const top3Overall = useMemo(() => (filteredOverall || []).slice(0, 3), [filteredOverall]);
+    const top3Semester = useMemo(() => (filteredSemester || []).slice(0, 3), [filteredSemester]);
+    const top3Subject = useMemo(() => (filteredSubject || []).slice(0, 3), [filteredSubject]);
 
     const getMedal = (rank) => {
         if (rank === 1) return { icon: '🥇', label: '1st Place', color: '#D97706', bg: 'rgba(245, 158, 11, 0.12)' };
@@ -114,25 +110,26 @@ export default function LeaderboardPage() {
                             </h1>
                         </div>
                         <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--tx-muted)' }}>
-                            Real-time academic rankings, class toppers, and subject-wise scoreboards for cohort <strong>{data?.batch || 'Class'}</strong> ({data?.totalStudents || 0} Students).
+                            Department: <strong>{data?.batchName || data?.batch || 'Class'}</strong> — Total <strong>{data?.totalStudents || 0} Students</strong>
+                            {data?.lateralCount > 0 && ` (${data.regularCount} Regular + ${data.lateralCount} Lateral Entry)`}.
                         </p>
                     </div>
 
-                    {/* Batch Cohort Selector */}
+                    {/* Department Cohort Selector */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Batch:</span>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Department:</span>
                         <select
-                            value={selectedBatch || data?.batch || ''}
+                            value={selectedBatch || data?.batch || 'CS'}
                             onChange={(e) => handleBatchChange(e.target.value)}
                             style={{
                                 padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
                                 background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem'
                             }}
                         >
-                            <option value="2AB23CS">2AB23CS (Computer Science)</option>
-                            <option value="2AB23CD">2AB23CD (Data Science)</option>
-                            <option value="2AB23CI">2AB23CI (AI / Info Tech)</option>
-                            <option value="2AB24CS">2AB24CS (CS 2024)</option>
+                            <option value="CS">Computer Science & Engineering (86 Students)</option>
+                            <option value="CI">AI & Design / IoT (33 Students)</option>
+                            <option value="CD">Data Science (28 Students)</option>
+                            <option value="CV">Civil Engineering (3 Students)</option>
                         </select>
                     </div>
                 </div>
@@ -155,8 +152,18 @@ export default function LeaderboardPage() {
                                 {((data.currentUser.name || data.currentUser.usn || '?')[0]).toUpperCase()}
                             </div>
                             <div>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Your Academic Standing
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        Your Academic Standing
+                                    </span>
+                                    {data.currentUser.isLateral && (
+                                        <span style={{
+                                            padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem',
+                                            fontWeight: 800, background: 'rgba(217, 119, 6, 0.15)', color: '#b45309'
+                                        }}>
+                                            Lateral Entry
+                                        </span>
+                                    )}
                                 </div>
                                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx-main)' }}>
                                     {data.currentUser.name} ({data.currentUser.usn})
@@ -239,10 +246,10 @@ export default function LeaderboardPage() {
                     </button>
                 </div>
 
-                {/* Sub-Filters & Selectors */}
+                {/* Sub-Filters, Selectors & Entry Filter */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                     {/* Search Bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', minWidth: '260px', flex: '1 1 260px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', minWidth: '240px', flex: '1 1 240px' }}>
                         <span className="material-icons-round" style={{ color: 'var(--tx-muted)', fontSize: '18px' }}>search</span>
                         <input
                             type="text"
@@ -252,6 +259,45 @@ export default function LeaderboardPage() {
                             style={{ border: 'none', outline: 'none', width: '100%', fontSize: '0.88rem', background: 'transparent', color: 'var(--tx-main)' }}
                         />
                     </div>
+
+                    {/* Entry Type Filter Pills */}
+                    {data?.lateralCount > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--surface-low)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <button
+                                onClick={() => setEntryFilter('all')}
+                                style={{
+                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                    background: entryFilter === 'all' ? 'var(--surface)' : 'transparent',
+                                    color: entryFilter === 'all' ? 'var(--tx-main)' : 'var(--tx-muted)',
+                                    boxShadow: entryFilter === 'all' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
+                                }}
+                            >
+                                All ({data.totalStudents})
+                            </button>
+                            <button
+                                onClick={() => setEntryFilter('regular')}
+                                style={{
+                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                    background: entryFilter === 'regular' ? 'var(--surface)' : 'transparent',
+                                    color: entryFilter === 'regular' ? 'var(--tx-main)' : 'var(--tx-muted)',
+                                    boxShadow: entryFilter === 'regular' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
+                                }}
+                            >
+                                Regular ({data.regularCount})
+                            </button>
+                            <button
+                                onClick={() => setEntryFilter('lateral')}
+                                style={{
+                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                    background: entryFilter === 'lateral' ? 'var(--surface)' : 'transparent',
+                                    color: entryFilter === 'lateral' ? '#b45309' : 'var(--tx-muted)',
+                                    boxShadow: entryFilter === 'lateral' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
+                                }}
+                            >
+                                Lateral Entry ({data.lateralCount})
+                            </button>
+                        </div>
+                    )}
 
                     {/* Semester Selector for Semester or Subject Tab */}
                     {(activeTab === 'semester' || activeTab === 'subject') && (
@@ -340,9 +386,19 @@ export default function LeaderboardPage() {
                                         </span>
                                     </div>
 
-                                    <h4 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                        {topper.name}
-                                    </h4>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                        <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                            {topper.name}
+                                        </h4>
+                                        {topper.isLateral && (
+                                            <span style={{
+                                                padding: '1px 5px', borderRadius: '4px', fontSize: '0.65rem',
+                                                fontWeight: 800, background: 'rgba(217, 119, 6, 0.15)', color: '#b45309'
+                                            }}>
+                                                Lateral
+                                            </span>
+                                        )}
+                                    </div>
                                     <div style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: 'var(--tx-muted)', marginBottom: '10px' }}>
                                         {topper.usn}
                                     </div>
@@ -435,7 +491,7 @@ export default function LeaderboardPage() {
                                             </td>
 
                                             <td style={{ padding: '14px 18px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                     <span style={{ color: isMe ? 'var(--primary)' : 'var(--tx-main)', fontWeight: isMe ? 800 : 700 }}>
                                                         {item.name}
                                                     </span>
@@ -445,6 +501,14 @@ export default function LeaderboardPage() {
                                                             fontWeight: 900, background: 'var(--primary)', color: '#ffffff'
                                                         }}>
                                                             YOU
+                                                        </span>
+                                                    )}
+                                                    {item.isLateral && (
+                                                        <span style={{
+                                                            padding: '2px 6px', borderRadius: '4px', fontSize: '0.68rem',
+                                                            fontWeight: 800, background: 'rgba(217, 119, 6, 0.12)', color: '#b45309'
+                                                        }}>
+                                                            Lateral
                                                         </span>
                                                     )}
                                                 </div>
