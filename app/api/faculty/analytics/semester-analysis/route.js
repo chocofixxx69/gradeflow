@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
@@ -53,13 +53,7 @@ export async function GET(req) {
                 studentsList = stData || [];
             }
         } else {
-            let query = supabaseAdmin
-                .from('students')
-                .select('id, usn, name, branch, semester, year, lateral_entry')
-                .ilike('branch', `%${branch}%`)
-                .limit(500);
-
-            const { data: stData } = await query;
+            const stData = await fetchDynamicStudents(supabaseAdmin, { branch });
             let filtered = stData || [];
 
             if (batch) {
@@ -86,12 +80,8 @@ export async function GET(req) {
             });
         }
 
-        // 2. Fetch subject marks for these students in this semester
-        const { data: allMarks } = await supabaseAdmin
-            .from('subject_marks')
-            .select('*')
-            .in('usn', studentUsns)
-            .eq('semester', semester);
+        // 2. Fetch subject marks dynamically for these students in this semester
+        const allMarks = await fetchDynamicMarks(supabaseAdmin, { usns: studentUsns, semester });
 
         // 3. Fetch catalog subjects for this branch and semester
         const { data: catSubjects } = await supabaseAdmin

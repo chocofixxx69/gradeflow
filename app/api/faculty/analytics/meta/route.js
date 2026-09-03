@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { extractBatchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 
@@ -43,17 +43,18 @@ export async function GET(req) {
         const [
             { data: rawClasses },
             { data: catalogSubjects },
-            { data: rawStudents },
             { data: metaBranches }
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').order('semester', { ascending: true }),
-            supabaseAdmin.from('students').select('branch, year, usn, lateral_entry').limit(2000),
             supabaseAdmin.from('branches').select('code, label')
         ]);
 
-        // 1. Derive distinct batches from students (academic cohorts) and classes
-        const batchSet = new Set(['2025', '2024', '2023', '2022', '2021']);
+        // Dynamically fetch all students from the database without arbitrary limits
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry' });
+
+        // 1. Derive distinct batches dynamically from database students and classes
+        const batchSet = new Set();
         (rawStudents || []).forEach(s => {
             const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
             if (cohort) {
@@ -69,6 +70,12 @@ export async function GET(req) {
                 if (yearPart && yearPart.length === 4) batchSet.add(yearPart);
             }
         });
+
+        // If no records in database yet, generate dynamic range around current calendar year
+        if (batchSet.size === 0) {
+            const cur = new Date().getFullYear();
+            for (let y = cur; y >= cur - 4; y--) batchSet.add(String(y));
+        }
 
         const batches = Array.from(batchSet).sort().reverse();
 

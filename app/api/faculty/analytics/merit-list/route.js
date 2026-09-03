@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getAdminClient, computeBacklogs, weightedCGPA, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
@@ -34,15 +34,8 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students for this branch
-        let query = supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, semester, year, lateral_entry')
-            .ilike('branch', `%${branch}%`)
-            .limit(1000);
-
-        const { data: rawStudents, error: stuErr } = await query;
-        if (stuErr) throw stuErr;
+        // 1. Fetch students dynamically for this branch without limits
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
 
         let students = rawStudents || [];
         if (batch) {
@@ -59,25 +52,17 @@ export async function GET(req) {
 
         const usns = students.map(s => s.usn);
 
-        // 2. Fetch marks and remarks
-        let marksQuery = supabaseAdmin
-            .from('subject_marks')
-            .select('usn, semester, subject_code, internal, external, total, grade, passed')
-            .in('usn', usns);
+        // 2. Fetch marks and remarks dynamically
+        const marks = await fetchDynamicMarks(supabaseAdmin, {
+            usns,
+            semester,
+            select: 'usn, semester, subject_code, internal, external, total, grade, passed'
+        });
 
-        if (semester) {
-            marksQuery = marksQuery.eq('semester', semester);
-        }
-
-        const [
-            { data: rawMarks },
-            { data: rawRemarks }
-        ] = await Promise.all([
-            marksQuery,
-            supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa').in('student_usn', usns)
-        ]);
-
-        const marks = rawMarks || [];
+        const { data: rawRemarks } = await supabaseAdmin
+            .from('academic_remarks')
+            .select('student_usn, semester, sgpa')
+            .in('student_usn', usns.slice(0, 300));
         const remarks = rawRemarks || [];
 
         const marksByUsn = new Map();

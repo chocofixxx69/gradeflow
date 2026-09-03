@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
+import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
@@ -32,14 +32,8 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students for this branch & batch
-        let query = supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, semester, year, lateral_entry')
-            .ilike('branch', `%${branch}%`)
-            .limit(500);
-
-        const { data: stData } = await query;
+        // 1. Fetch students dynamically for this branch & batch without limits
+        const stData = await fetchDynamicStudents(supabaseAdmin, { branch });
         let students = stData || [];
 
         if (batch) {
@@ -62,22 +56,15 @@ export async function GET(req) {
 
         const usns = students.map(s => s.usn);
 
-        // 2. Fetch all subject marks & remarks for these students up to target semester
-        const [
-            { data: marksData },
-            { data: remarksData }
-        ] = await Promise.all([
-            supabaseAdmin
-                .from('subject_marks')
-                .select('*')
-                .in('usn', usns)
-                .lte('semester', upToSemester),
-            supabaseAdmin
-                .from('academic_remarks')
-                .select('student_usn, semester, sgpa')
-                .in('student_usn', usns)
-                .lte('semester', upToSemester)
-        ]);
+        // 2. Fetch all subject marks dynamically up to target semester
+        const rawMarks = await fetchDynamicMarks(supabaseAdmin, { usns });
+        const marksData = (rawMarks || []).filter(m => Number(m.semester) <= upToSemester);
+
+        const { data: remarksData } = await supabaseAdmin
+            .from('academic_remarks')
+            .select('student_usn, semester, sgpa')
+            .in('student_usn', usns.slice(0, 300))
+            .lte('semester', upToSemester);
 
         // Group remarks and marks by USN
         const remarksByUsn = new Map();

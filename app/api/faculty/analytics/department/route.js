@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getAdminClient, computeBacklogs, weightedCGPA, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
@@ -33,15 +33,8 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students in this department
-        let stuQuery = supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, semester, year, lateral_entry')
-            .ilike('branch', `%${branch}%`)
-            .limit(1000);
-
-        const { data: rawStudents, error: stuErr } = await stuQuery;
-        if (stuErr) throw stuErr;
+        // 1. Fetch students in this department dynamically without limits
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
 
         let students = rawStudents || [];
         if (batch) {
@@ -59,22 +52,14 @@ export async function GET(req) {
 
         const usns = students.map(s => s.usn);
 
-        // 2. Fetch subject marks and remarks
-        const [
-            { data: rawMarks },
-            { data: rawRemarks }
-        ] = await Promise.all([
-            supabaseAdmin
-                .from('subject_marks')
-                .select('usn, semester, subject_code, internal, external, total, grade, passed')
-                .in('usn', usns),
-            supabaseAdmin
-                .from('academic_remarks')
-                .select('student_usn, semester, sgpa')
-                .in('student_usn', usns)
-        ]);
+        // 2. Fetch subject marks and remarks dynamically
+        const marks = await fetchDynamicMarks(supabaseAdmin, { usns, select: 'usn, semester, subject_code, internal, external, total, grade, passed' });
 
-        const marks = rawMarks || [];
+        const { data: rawRemarks } = await supabaseAdmin
+            .from('academic_remarks')
+            .select('student_usn, semester, sgpa')
+            .in('student_usn', usns.slice(0, 300));
+
         const remarks = rawRemarks || [];
 
         // Group marks by semester & student

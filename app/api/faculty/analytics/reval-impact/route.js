@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
@@ -31,15 +31,8 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch real students matching branch and batch
-        let query = supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, year, lateral_entry')
-            .ilike('branch', `%${branch}%`)
-            .limit(1000);
-
-        const { data: rawStudents, error: stuErr } = await query;
-        if (stuErr) throw stuErr;
+        // 1. Fetch real students matching branch and batch dynamically without limits
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' });
 
         let students = rawStudents || [];
         if (batch) {

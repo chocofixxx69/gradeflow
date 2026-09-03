@@ -38,29 +38,38 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Build base query for students
-        let query = supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, semester, year, email, phone, is_inactive, lateral_entry, created_at');
+        // 1. Build dynamic query for students without arbitrary caps
+        let allStudents = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+            let q = supabaseAdmin
+                .from('students')
+                .select('id, usn, name, branch, semester, year, email, phone, is_inactive, lateral_entry, created_at');
 
-        if (branch && branch !== 'ALL') {
-            query = query.ilike('branch', `%${branch}%`);
+            if (branch && branch !== 'ALL') {
+                q = q.ilike('branch', `%${branch}%`);
+            }
+
+            if (semester) {
+                q = q.eq('semester', semester);
+            }
+
+            if (status === 'active') {
+                q = q.or('is_inactive.is.null,is_inactive.eq.false');
+            } else if (status === 'inactive') {
+                q = q.eq('is_inactive', true);
+            }
+
+            q = q.range(from, from + pageSize - 1);
+            const { data, error } = await q;
+            if (error) throw error;
+            if (data && data.length > 0) allStudents.push(...data);
+            if (!data || data.length < pageSize) break;
+            from += pageSize;
         }
 
-        if (semester) {
-            query = query.eq('semester', semester);
-        }
-
-        if (status === 'active') {
-            query = query.or('is_inactive.is.null,is_inactive.eq.false');
-        } else if (status === 'inactive') {
-            query = query.eq('is_inactive', true);
-        }
-
-        const { data: rawStudents, error: stuErr } = await query;
-        if (stuErr) throw stuErr;
-
-        let students = rawStudents || [];
+        let students = allStudents;
 
         // 2. Client-side filter for batch & text search (covering USN, Name, Email)
         if (batch && batch !== 'all') {

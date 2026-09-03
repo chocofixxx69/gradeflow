@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { extractBatchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
@@ -32,14 +32,8 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch all students in this department
-        const { data: rawStudents, error: stuErr } = await supabaseAdmin
-            .from('students')
-            .select('id, usn, name, branch, year, lateral_entry')
-            .ilike('branch', `%${branch}%`)
-            .limit(1000);
-
-        if (stuErr) throw stuErr;
+        // 1. Fetch all students in this department dynamically without limits
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' });
 
         const students = rawStudents || [];
         if (students.length === 0) {
@@ -56,15 +50,13 @@ export async function GET(req) {
             studentsByBatch.set(bYear, list);
         });
 
-        // 2. Fetch all subject marks for this department & semester
+        // 2. Fetch all subject marks dynamically for this department & semester
         const allUsns = students.map(s => s.usn);
-        const { data: rawMarks } = await supabaseAdmin
-            .from('subject_marks')
-            .select('usn, subject_code, subject_name, internal, external, total, grade, passed')
-            .in('usn', allUsns)
-            .eq('semester', semester);
-
-        const marks = rawMarks || [];
+        const marks = await fetchDynamicMarks(supabaseAdmin, {
+            usns: allUsns,
+            semester,
+            select: 'usn, subject_code, subject_name, internal, external, total, grade, passed'
+        });
 
         const marksByUsn = new Map();
         marks.forEach(m => {
