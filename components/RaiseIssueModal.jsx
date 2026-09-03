@@ -53,22 +53,60 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
     };
 
     return (
-        <div style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(10, 24, 28, 0.65)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-        }}>
-            <div style={{
-                background: 'var(--surface, #ffffff)', border: '1px solid var(--border, #d1d8da)',
-                borderRadius: '16px', maxWidth: '520px', width: '100%',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.18)', overflow: 'hidden',
-                animation: 'fadeIn 0.2s ease-out'
-            }}>
+        <>
+        {/* Inject mobile styles */}
+        <style>{`
+            @keyframes raiseFadeIn { from { opacity:0; transform: scale(0.97); } to { opacity:1; transform: scale(1); } }
+            @keyframes raiseSlideUp { from { opacity:0; transform: translateY(24px); } to { opacity:1; transform: translateY(0); } }
+            .ri-overlay {
+                position: fixed; inset: 0; left: 0; top: 0;
+                width: 100vw; height: 100dvh;
+                z-index: 9999;
+                background: rgba(10, 24, 28, 0.65);
+                backdrop-filter: blur(6px);
+                display: flex; align-items: center; justify-content: center;
+                padding: 16px;
+                box-sizing: border-box;
+            }
+            .ri-dialog {
+                background: var(--surface, #ffffff);
+                border: 1px solid var(--border, #d1d8da);
+                border-radius: 16px;
+                max-width: 520px; width: 100%;
+                max-height: 90dvh;
+                display: flex; flex-direction: column;
+                box-shadow: 0 20px 48px rgba(0,0,0,0.22);
+                overflow: hidden;
+                animation: raiseFadeIn 0.18s ease-out;
+            }
+            @media (max-width: 600px) {
+                .ri-overlay {
+                    align-items: flex-end;
+                    padding: 0;
+                }
+                .ri-dialog {
+                    border-radius: 20px 20px 0 0;
+                    max-width: 100%;
+                    max-height: 92dvh;
+                    animation: raiseSlideUp 0.22s ease-out;
+                    padding-bottom: env(safe-area-inset-bottom, 0px);
+                }
+                .ri-drag-handle {
+                    display: flex !important;
+                }
+            }
+        `}</style>
+        <div className="ri-overlay" onClick={onClose}>
+            <div className="ri-dialog" role="dialog" aria-modal="true" aria-labelledby="ri-title" onClick={e => e.stopPropagation()}>
+                {/* Drag handle (mobile only) */}
+                <div className="ri-drag-handle" style={{ display: 'none', justifyContent: 'center', paddingTop: '10px', flexShrink: 0 }}>
+                    <div style={{ width: '36px', height: '4px', borderRadius: '2px', background: 'var(--border, #d1d8da)' }} />
+                </div>
                 {/* Modal Header */}
                 <div style={{
-                    padding: '18px 24px', borderBottom: '1px solid var(--border, #d1d8da)',
+                    padding: '14px 18px', borderBottom: '1px solid var(--border, #d1d8da)',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'var(--surface-low, #fdf6ed)'
+                    background: 'var(--surface-low, #fdf6ed)', flexShrink: 0
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{
@@ -89,10 +127,12 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                     </div>
                     <button
                         onClick={onClose}
+                        aria-label="Close"
                         style={{
                             background: 'transparent', border: 'none', cursor: 'pointer',
-                            color: 'var(--tx-muted, #586c6d)', padding: '4px', borderRadius: '6px',
-                            display: 'flex', alignItems: 'center'
+                            color: 'var(--tx-muted, #586c6d)', borderRadius: '6px',
+                            minWidth: '40px', minHeight: '40px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}
                     >
                         <span className="material-icons-round">close</span>
@@ -100,7 +140,7 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                 </div>
 
                 {/* Modal Body */}
-                <div style={{ padding: '24px' }}>
+                <div style={{ padding: '24px', overflowY: 'auto' }}>
                     {successData ? (
                         <div style={{ textAlign: 'center', padding: '16px 8px' }}>
                             <div style={{
@@ -163,7 +203,7 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                         type="button"
                                         onClick={() => setUserType('student')}
                                         style={{
-                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                                            padding: '8px 12px', minHeight: '44px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
                                             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                                             border: userType === 'student' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
                                             background: userType === 'student' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
@@ -177,7 +217,7 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                         type="button"
                                         onClick={() => setUserType('faculty')}
                                         style={{
-                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                                            padding: '8px 12px', minHeight: '44px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
                                             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                                             border: userType === 'faculty' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
                                             background: userType === 'faculty' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
@@ -280,7 +320,7 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                     type="button"
                                     onClick={onClose}
                                     style={{
-                                        flex: 1, padding: '11px', borderRadius: '8px',
+                                        flex: 1, padding: '11px', minHeight: '44px', borderRadius: '8px',
                                         border: '1px solid var(--border, #d1d8da)', background: '#ffffff',
                                         color: 'var(--tx-muted, #586c6d)', fontWeight: '600',
                                         cursor: 'pointer', fontSize: '0.9rem'
@@ -292,7 +332,7 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                     type="submit"
                                     disabled={busy}
                                     style={{
-                                        flex: 2, padding: '11px', borderRadius: '8px',
+                                        flex: 2, padding: '11px', minHeight: '44px', borderRadius: '8px',
                                         border: 'none', background: 'var(--primary, #174B4D)',
                                         color: '#ffffff', fontWeight: '600',
                                         cursor: busy ? 'not-allowed' : 'pointer', fontSize: '0.9rem',
@@ -318,5 +358,6 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                 </div>
             </div>
         </div>
+        </>
     );
 }
