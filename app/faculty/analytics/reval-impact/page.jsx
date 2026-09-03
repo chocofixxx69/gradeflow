@@ -231,7 +231,7 @@ function RevalImpactContent() {
             </div>
 
             {/* Scope Filter Toolbar */}
-            <Card style={{ marginBottom: '20px' }}>
+            <Card style={{ marginBottom: '12px' }}>
                 <CardContent style={{ padding: '16px 20px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
                         <div>
@@ -261,9 +261,45 @@ function RevalImpactContent() {
                                 options={[{ value: '', label: 'All Batches' }, ...meta.batches.map(b => ({ value: b, label: `${b.slice(-2)} Batch (${b})` }))]}
                             />
                         </div>
+                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                            <button
+                                type="button"
+                                onClick={() => { setBranch('ALL'); setSemester('ALL'); setBatch(''); }}
+                                style={{
+                                    height: '38px', padding: '0 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                                    cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px',
+                                    background: branch === 'ALL' && semester === 'ALL' && !batch
+                                        ? 'var(--surface-alt)' : 'var(--accent)',
+                                    color: branch === 'ALL' && semester === 'ALL' && !batch
+                                        ? 'var(--tx-muted)' : '#fff',
+                                    border: '1.5px solid ' + (branch === 'ALL' && semester === 'ALL' && !batch ? 'var(--border)' : 'var(--accent)'),
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>people</span>
+                                Show All Students
+                            </button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Active-filter notice */}
+            {(branch !== 'ALL' || semester !== 'ALL' || batch) && (
+                <div style={{
+                    marginBottom: '16px', padding: '10px 16px', borderRadius: '8px',
+                    background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)',
+                    display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--tx-main)'
+                }}>
+                    <span className="material-icons-round" style={{ fontSize: '18px', color: '#6366F1' }}>filter_list</span>
+                    <span>
+                        Showing filtered view — <strong>{branch !== 'ALL' ? branch : 'All Branches'}</strong>
+                        {semester !== 'ALL' ? <>, Sem <strong>{semester}</strong></> : ', All Semesters'}
+                        {batch ? <>, Batch <strong>{batch}</strong></> : null}.
+                        &nbsp;Click <strong>Show All Students</strong> to see all {report.summary?.totalApplications || 0} records across the entire college.
+                    </span>
+                </div>
+            )}
 
             {/* 7 Metric KPI Strip */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 155px), 1fr))', gap: '12px', marginBottom: '24px' }}>
