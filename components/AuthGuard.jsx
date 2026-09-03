@@ -56,9 +56,8 @@ function checkSessionSync(role, facultyAllowed) {
 export default function AuthGuard({ children, role = 'any', facultyAllowed = false }) {
     const router = useRouter();
     const pathname = usePathname();
-    const initialAuth = checkSessionSync(role, facultyAllowed);
-    const [authState, setAuthState] = useState(initialAuth.state);
-    const [userType, setUserType] = useState(initialAuth.userType);
+    const [authState, setAuthState] = useState('loading');
+    const [userType, setUserType] = useState(null);
 
     useEffect(() => {
         const verifySession = async () => {
