@@ -250,7 +250,7 @@ function EligibilityRegisterContent() {
                     <div style={{ color: 'var(--tx-muted)', lineHeight: '1.4' }}>
                         {targetSemester === 3 && 'VTU Minimum 20 Credits Rule: Students must earn at least 20 credits in 1st Year (Semesters 1 & 2) and must not carry more than 4 backlogs to move to 2nd Year (Semester 3).'}
                         {targetSemester === 5 && 'VTU 3rd Year Progression: Students must not carry more than 4 backlogs from Semesters 1, 2, 3, and 4 combined to be admitted to 3rd Year (Semester 5).'}
-                        {targetSemester === 7 && 'VTU ZERO 1ST-YEAR BACKLOGS RULE: Any student carrying uncleared backlogs from 1st Year (Semesters 1 & 2) CANNOT enter 7th Semester (all 1st-year subjects must be 100% cleared). In addition, students must not carry more than 4 backlogs from Semesters 3 to 6 combined.'}
+                        {targetSemester === 7 && 'VTU ZERO 1ST-YEAR BACKLOGS RULE: Any student carrying uncleared backlogs from 1st Year (Semesters 1 & 2) CANNOT enter 7th Semester (all 1st-year subjects must be 100% cleared). There is no backlog limit on 2nd and 3rd year subjects to enter 4th year.'}
                     </div>
                 </div>
             </div>

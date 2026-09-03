@@ -107,18 +107,13 @@ export async function GET(req) {
                 }
             }
             // Rule 3: Admission to 7th Semester (Year 4 entry)
-            // VTU Regulation: ANY student carrying backlogs from 1st year CANNOT enter 7th Semester!
+            // VTU Regulation: ANY student carrying backlogs from 1st year CANNOT enter 7th Semester (all 1st-year subjects must be cleared).
+            // There is NO limit on backlogs from 2nd year and 3rd year to enter 4th year.
             else if (targetSemester === 7) {
                 const sem1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
                 if (sem1And2Backlogs.length > 0 && !isLE) {
                     isEligible = false;
                     reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
-                }
-
-                const year2And3Backlogs = activeBacklogs.filter(b => Number(b.semester) > 2 && Number(b.semester) <= 6);
-                if (year2And3Backlogs.length > 4) {
-                    isEligible = false;
-                    reasons.push(`Carrying ${year2And3Backlogs.length} backlogs from Semesters 3 to 6 (Maximum allowed: 4).`);
                 }
             }
             // Generic fallback for any other semester
