@@ -71,8 +71,6 @@ const FALLBACK_PG_URLS = [
     { exam_name: "Dec 24/Jan 25 Reval (PG)", url: "https://results.vtu.ac.in/DJRVcbcs25/index.php" },
 ];
 
-const SCHEME_KEYS = ['2022', '2025', 'pg'];
-
 // Helper to seed URLs for a specific scheme
 async function autoSeedScheme(faculty_id, targetScheme) {
     try {

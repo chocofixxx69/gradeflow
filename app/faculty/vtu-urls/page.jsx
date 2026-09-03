@@ -88,12 +88,10 @@ function VtuUrlManagerContent() {
             if (json.success) {
                 setNewUrl('');
                 setNewExamName('');
-                const schemeLabel = targetAddScheme === 'both'
+                const addedToLabel = targetAddScheme === 'both'
                     ? 'both 2022 & 2025 Schemes'
-                    : targetAddScheme === 'pg'
-                        ? 'PG Scheme (MBA/MCA)'
-                        : `${targetAddScheme} Scheme`;
-                setMessage(`✓ URL registered successfully for ${schemeLabel}!`);
+                    : `${schemeLabel(targetAddScheme)} Scheme`;
+                setMessage(`✓ URL registered successfully for ${addedToLabel}!`);
                 fetchVtuUrls(selectedScheme);
             } else {
                 setMessage(json.error || 'Failed to add URL.');
@@ -377,7 +375,7 @@ function VtuUrlManagerContent() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--tx-muted)' }}>
                             <span>Targeting:</span>
                             <span style={c.schemeBadge(selectedScheme)}>
-                                {selectedScheme} Scheme
+                                {schemeLabel(selectedScheme)} Scheme
                             </span>
                         </div>
                     </div>
@@ -451,11 +449,11 @@ function VtuUrlManagerContent() {
                                 Configured Portals ({vtuUrls.length})
                             </h3>
                             <span style={c.schemeBadge(selectedScheme)}>
-                                {selectedScheme} Scheme
+                                {schemeLabel(selectedScheme)} Scheme
                             </span>
                         </div>
                         <p style={{ fontSize: '12px', color: 'var(--tx-dim)', marginTop: '2px' }}>
-                            {schemeCounts[selectedScheme]?.active ?? 0} of {vtuUrls.length} portals currently enabled for {selectedScheme} Scheme scraping.
+                            {schemeCounts[selectedScheme]?.active ?? 0} of {vtuUrls.length} portals currently enabled for {schemeLabel(selectedScheme)} Scheme scraping.
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -472,14 +470,14 @@ function VtuUrlManagerContent() {
                             size="sm"
                             variant="ghost"
                             style={{ color: 'var(--green, #0d9f57)', fontWeight: 700 }}>
-                            Enable All ({selectedScheme})
+                            Enable All ({schemeLabel(selectedScheme)})
                         </Button>
                         <Button
                             onClick={() => toggleAllUrls(false)}
                             size="sm"
                             variant="ghost"
                             style={{ color: 'var(--red, #e02424)', fontWeight: 700 }}>
-                            Disable All ({selectedScheme})
+                            Disable All ({schemeLabel(selectedScheme)})
                         </Button>
                     </div>
                 </div>
@@ -488,7 +486,7 @@ function VtuUrlManagerContent() {
                 <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
                     {fetching ? (
                         <div style={{ textAlign: 'center', padding: '40px', color: 'var(--tx-dim)' }}>
-                            Loading {selectedScheme} Scheme portals...
+                            Loading {schemeLabel(selectedScheme)} Scheme portals...
                         </div>
                     ) : vtuUrls.map(u => (
                         <div key={u.id} style={{
@@ -506,7 +504,7 @@ function VtuUrlManagerContent() {
                                         {u.exam_name || 'Unnamed Exam'}
                                     </span>
                                     <span style={c.schemeBadge(u.scheme || selectedScheme)}>
-                                        {u.scheme || selectedScheme}
+                                        {schemeLabel(u.scheme || selectedScheme)}
                                     </span>
                                 </div>
                                 <div style={{
@@ -549,7 +547,7 @@ function VtuUrlManagerContent() {
                                     variant="ghost"
                                     size="sm"
                                     style={{ padding: 'var(--space-2)', color: 'var(--tx-dim)' }}
-                                    title={`Delete URL from ${selectedScheme} scheme`}
+                                    title={`Delete URL from ${schemeLabel(selectedScheme)} scheme`}
                                     aria-label="Delete"
                                 >
                                     <span className="material-icons-round" style={{ fontSize: '20px' }}>delete_outline</span>
@@ -570,10 +568,10 @@ function VtuUrlManagerContent() {
                                 link_off
                             </span>
                             <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '4px' }}>
-                                No portals configured for {selectedScheme} Scheme yet.
+                                No portals configured for {schemeLabel(selectedScheme)} Scheme yet.
                             </div>
                             <p style={{ fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '400px', margin: '0 auto' }}>
-                                Add a new result URL above or click &ldquo;Register URL&rdquo; to set up your first result portal for {selectedScheme} Scheme.
+                                Add a new result URL above or click &ldquo;Register URL&rdquo; to set up your first result portal for {schemeLabel(selectedScheme)} Scheme.
                             </p>
                         </div>
                     )}
@@ -582,8 +580,8 @@ function VtuUrlManagerContent() {
 
             <ConfirmDialog
                 open={Boolean(confirmingRemove)}
-                title={`Delete this ${selectedScheme} Scheme URL?`}
-                description={`This removes "${confirmingRemove?.exam_name || confirmingRemove?.url || 'this portal'}" from ${selectedScheme} Scheme scraping configuration. This action cannot be undone.`}
+                title={`Delete this ${schemeLabel(selectedScheme)} Scheme URL?`}
+                description={`This removes "${confirmingRemove?.exam_name || confirmingRemove?.url || 'this portal'}" from ${schemeLabel(selectedScheme)} Scheme scraping configuration. This action cannot be undone.`}
                 busy={removing}
                 onCancel={() => setConfirmingRemove(null)}
                 onConfirm={() => removeVtuUrl(confirmingRemove.id)}
