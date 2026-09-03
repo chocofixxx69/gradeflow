@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,10 @@ export async function GET(req) {
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
         const batch = searchParams.get('batch') || '';
+
+        const cacheKey = `reval_impact:${branch}:${semester}:${batch}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -168,7 +173,7 @@ export async function GET(req) {
         const totalApplications = deltaRoster.length;
         const netPassRateGain = totalApplications > 0 ? Number(((clearedCount / totalApplications) * 100).toFixed(1)) : 0;
 
-        return ok({
+        const payload = {
             summary: {
                 totalApplications,
                 upgradedCount,
@@ -179,7 +184,11 @@ export async function GET(req) {
             deltaRoster,
             branch,
             semester
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/reval-impact]', err);
         return fail('Failed to compile revaluation impact analysis: ' + (err.message || err), 'REVAL_ERROR', 500);

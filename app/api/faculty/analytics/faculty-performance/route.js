@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,10 @@ export async function GET(req) {
         const semesterFilter = searchParams.get('semester') && searchParams.get('semester') !== 'all' 
             ? parseInt(searchParams.get('semester'), 10) 
             : null;
+
+        const cacheKey = `fac_perf:${branchFilter}:${semesterFilter || 'all'}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -211,10 +216,14 @@ export async function GET(req) {
         // Sort by pass rate descending
         performanceList.sort((a, b) => b.pass_rate - a.pass_rate || a.faculty_name.localeCompare(b.faculty_name));
 
-        return ok({
+        const payload = {
             faculty: performanceList,
             totalFaculty: performanceList.length
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/faculty-performance]', err);
         return fail('Failed to fetch faculty performance: ' + (err.message || err), 'FACULTY_PERFORMANCE_ERROR', 500);

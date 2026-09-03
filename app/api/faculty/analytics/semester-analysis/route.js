@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -25,6 +26,10 @@ export async function GET(req) {
         const batch = searchParams.get('batch') || '';
         const classId = searchParams.get('classId') || '';
         const section = searchParams.get('section') || '';
+
+        const cacheKey = `sem_analysis:${branch}:${semester}:${batch}:${classId}:${section}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -316,7 +321,7 @@ export async function GET(req) {
 
         const passPercentage = totalAppeared > 0 ? Number(((totalPassed / totalAppeared) * 100).toFixed(1)) : 0;
 
-        return ok({
+        const payload = {
             students: studentsProcessed,
             subjects: subjectCols,
             summary: {
@@ -329,7 +334,11 @@ export async function GET(req) {
             subjectTallies,
             backlogRoster,
             filtersApplied: { branch, semester, batch, classId, section }
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/semester-analysis]', err);
         return fail('Failed to compute semester analysis: ' + (err.message || err), 'ANALYSIS_ERROR', 500);

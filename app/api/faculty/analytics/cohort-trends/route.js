@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,10 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
+
+        const cacheKey = `cohort_trends:${branch}:${semester}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -163,13 +168,17 @@ export async function GET(req) {
             };
         }).sort((a, b) => a.code.localeCompare(b.code));
 
-        return ok({
+        const payload = {
             branch,
             semester,
             batches: sortedBatches,
             batchComparison,
             subjectTrends
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/cohort-trends]', err);
         return fail('Failed to compile batch cohort trends: ' + (err.message || err), 'COHORT_TRENDS_ERROR', 500);

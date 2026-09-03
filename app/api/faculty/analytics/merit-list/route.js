@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -25,6 +26,10 @@ export async function GET(req) {
         const semester = searchParams.get('semester') && searchParams.get('semester') !== 'all'
             ? parseInt(searchParams.get('semester'), 10)
             : null;
+
+        const cacheKey = `merit_list:${branch}:${batch}:${semester || 'all'}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -182,7 +187,7 @@ export async function GET(req) {
             ? Number((rankedStudents.reduce((acc, r) => acc + r.gpa, 0) / rankedStudents.length).toFixed(2))
             : 0;
 
-        return ok({
+        const payload = {
             summary: {
                 totalRanked: rankedStudents.length,
                 highestScore,
@@ -193,7 +198,11 @@ export async function GET(req) {
             },
             podium,
             rankedStudents
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/merit-list]', err);
         return fail('Failed to compile merit rank list: ' + (err.message || err), 'MERIT_LIST_ERROR', 500);

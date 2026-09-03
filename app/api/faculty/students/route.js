@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,10 @@ export async function GET(req) {
         const search = (searchParams.get('search') || '').trim().toLowerCase();
         const status = searchParams.get('status') || 'all'; // 'all' | 'active' | 'inactive'
         const backlogsFilter = searchParams.get('backlogsFilter') || 'all'; // 'all' | 'clear' | 'backlogs'
+
+        const cacheKey = `students_dir:${page}:${limit}:${branch}:${semester || 'all'}:${batch}:${search}:${status}:${backlogsFilter}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -189,7 +194,7 @@ export async function GET(req) {
             finalStudents = finalStudents.filter(s => s.total_backlogs > 0);
         }
 
-        return ok({
+        const payload = {
             students: finalStudents,
             pagination: {
                 total: totalStudents,
@@ -197,7 +202,11 @@ export async function GET(req) {
                 limit,
                 totalPages: Math.ceil(totalStudents / limit) || 1
             }
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/students]', err);
         return fail('Failed to fetch students directory: ' + (err.message || err), 'STUDENTS_DIRECTORY_ERROR', 500);

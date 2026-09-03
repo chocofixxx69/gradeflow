@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,10 @@ export async function GET(req) {
         const batch = searchParams.get('batch') || '';
         const threshold = parseInt(searchParams.get('threshold') || '1', 10); // min backlogs to show
         const search = (searchParams.get('search') || '').trim().toLowerCase();
+
+        const cacheKey = `backlogs:${branch}:${batch}:${threshold}:${search}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -137,7 +142,7 @@ export async function GET(req) {
         // Subject concentration ranked by highest failure count
         const subjectConcentration = Array.from(subjectFailCount.values()).sort((a, b) => b.count - a.count);
 
-        return ok({
+        const payload = {
             summary: {
                 totalCarriers: ledger.length,
                 totalArrearsSubjects: totalArrearsSubjectsCount,
@@ -148,7 +153,11 @@ export async function GET(req) {
             },
             ledger,
             subjectConcentration
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/backlogs]', err);
         return fail('Failed to compile standing backlogs register: ' + (err.message || err), 'BACKLOGS_ERROR', 500);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,10 @@ export async function GET(req) {
         if (!subjectCode) {
             return fail('subjectCode is required.', 'MISSING_SUBJECT_CODE', 400);
         }
+
+        const cacheKey = `subject_analytics:${subjectCode}:${branch}:${semester}:${batch}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -158,7 +163,7 @@ export async function GET(req) {
             percentage: appeared > 0 ? Number(((count / appeared) * 100).toFixed(1)) : 0
         }));
 
-        return ok({
+        const payload = {
             subject: {
                 code: subjectCode,
                 name: catData?.subject_name || marks[0]?.subject_name || subjectCode,
@@ -178,7 +183,11 @@ export async function GET(req) {
             topPerformers,
             roster: studentRoster,
             filtersApplied: { subjectCode, branch, semester, batch }
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/subject]', err);
         return fail('Failed to fetch subject analytics: ' + (err.message || err), 'SUBJECT_ANALYTICS_ERROR', 500);

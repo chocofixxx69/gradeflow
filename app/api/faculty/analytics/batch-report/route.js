@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -23,6 +24,10 @@ export async function GET(req) {
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
         const upToSemester = Math.min(8, Math.max(1, parseInt(searchParams.get('upToSemester') || '6', 10)));
+
+        const cacheKey = `batch_report:${branch}:${batch}:${upToSemester}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -223,7 +228,7 @@ export async function GET(req) {
 
         const avgCGPA = cgpaCount > 0 ? Number((totalCgpaSum / cgpaCount).toFixed(2)) : 0;
 
-        return ok({
+        const payload = {
             students: processedStudents,
             upToSemester,
             summary: {
@@ -234,7 +239,11 @@ export async function GET(req) {
                 lateralCount
             },
             filtersApplied: { branch, batch, upToSemester }
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/batch-report]', err);
         return fail('Failed to generate batch report: ' + (err.message || err), 'BATCH_REPORT_ERROR', 500);

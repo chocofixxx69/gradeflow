@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -30,6 +31,10 @@ export async function GET(req) {
         if (usnList.length === 0) {
             return ok({ students: [], trajectory: [], subjectComparison: [] });
         }
+
+        const cacheKey = `compare:${usnList.sort().join(',')}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -204,11 +209,15 @@ export async function GET(req) {
             };
         }).sort((a, b) => a.code.localeCompare(b.code));
 
-        return ok({
+        const payload = {
             students: processedStudents,
             trajectory,
             subjectComparison
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/compare]', err);
         return fail('Failed to compare students: ' + (err.message || err), 'COMPARE_ERROR', 500);

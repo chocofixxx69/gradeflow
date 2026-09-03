@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,11 @@ export async function GET(req) {
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
+
+        const cachedMeta = getCached('analytics_meta_all');
+        if (cachedMeta) {
+            return ok(cachedMeta);
+        }
 
         const supabaseAdmin = getAdminClient();
 
@@ -98,13 +104,17 @@ export async function GET(req) {
             credits: s.credits
         }));
 
-        return ok({
+        const payload = {
             batches,
             branches,
             semesters: [1, 2, 3, 4, 5, 6, 7, 8],
             subjects,
             classes: rawClasses || []
-        });
+        };
+
+        setCached('analytics_meta_all', payload, 120_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/meta]', err);
         return fail('Failed to fetch analytics metadata: ' + (err.message || err), 'META_ERROR', 500);

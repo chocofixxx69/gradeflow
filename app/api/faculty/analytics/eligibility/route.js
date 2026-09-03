@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -23,6 +24,10 @@ export async function GET(req) {
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
         const targetSemester = parseInt(searchParams.get('targetSemester') || '5', 10); // Typically Sem 3, 5, or 7
+
+        const cacheKey = `eligibility:${branch}:${batch}:${targetSemester}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -162,7 +167,7 @@ export async function GET(req) {
         const detainedCount = detainedStudents.length;
         const eligibilityRate = totalEvaluated > 0 ? Number(((eligibleCount / totalEvaluated) * 100).toFixed(1)) : 0;
 
-        return ok({
+        const payload = {
             summary: {
                 totalEvaluated,
                 eligibleCount,
@@ -173,7 +178,11 @@ export async function GET(req) {
             detainedStudents,
             targetSemester,
             filtersApplied: { branch, batch, targetSemester }
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/eligibility]', err);
         return fail('Failed to evaluate vertical progression eligibility: ' + (err.message || err), 'ELIGIBILITY_ERROR', 500);

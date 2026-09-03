@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getCached, setCached } from '@/lib/server-cache';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -24,6 +25,10 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
+
+        const cacheKey = `dept_overview:${branch}:${batch}`;
+        const cached = getCached(cacheKey);
+        if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
@@ -172,7 +177,7 @@ export async function GET(req) {
         // Overall Backlogs for department
         const allBacklogs = computeBacklogs(marks);
 
-        return ok({
+        const payload = {
             department: branch,
             batch: batch || 'All Batches',
             summary: {
@@ -182,7 +187,11 @@ export async function GET(req) {
                 totalBacklogs: allBacklogs.totalBacklogs
             },
             semesters: semesterRows
-        });
+        };
+
+        setCached(cacheKey, payload, 30_000);
+
+        return ok(payload);
     } catch (err) {
         console.error('[GET /api/faculty/analytics/department]', err);
         return fail('Failed to fetch department overview: ' + (err.message || err), 'DEPT_OVERVIEW_ERROR', 500);
