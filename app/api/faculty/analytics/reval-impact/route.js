@@ -149,7 +149,7 @@ export async function GET(req) {
                 }
 
                 const formattedAppliedDate = attempt.scraped_at ? new Date(attempt.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-                const formattedRegularDate = prior.scraped_at ? new Date(prior.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                const formattedRegularDate = prior?.scraped_at ? new Date(prior.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
                 deltaRoster.push({
                     usn,
@@ -166,11 +166,11 @@ export async function GET(req) {
                     isCleared: outcome === 'Cleared Backlog',
                     revalExam: attempt.exam_name || 'Reval',
                     revalExamLabel: formatExamSession(attempt.exam_name),
-                    regularExam: prior.exam_name || 'Regular',
-                    regularExamLabel: formatExamSession(prior.exam_name),
+                    regularExam: prior?.exam_name || 'Regular',
+                    regularExamLabel: formatExamSession(prior?.exam_name),
                     appliedDate: formattedAppliedDate,
                     regularDate: formattedRegularDate,
-                    credits: attempt.credits || prior.credits || 3,
+                    credits: attempt.credits || prior?.credits || 3,
                 });
             });
         });
