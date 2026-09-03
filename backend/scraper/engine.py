@@ -418,15 +418,13 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 6)
                     sem = max(sems) if sems else 1
 
                 # Structured Table Display (Cleaned for Terminal)
-                header = f"║ {'Code':<12} ║ {'Subject Name':<50} ║ {'INT':<3} ║ {'EXT':<3} ║ {'TOT':<3} ║ {'RESULT':<6} ║"
-                sep = "╠" + "═"*14 + "╬" + "═"*52 + "╬" + "═"*5 + "╬" + "═"*5 + "╬" + "═"*5 + "╬" + "═"*8 + "╣"
-                top = "╔" + "═"*14 + "╦" + "═"*52 + "╦" + "═"*5 + "╦" + "═"*5 + "╦" + "═"*5 + "╦" + "═"*8 + "╗"
-                bot = "╚" + "═"*14 + "╩" + "═"*52 + "╩" + "═"*5 + "╩" + "═"*5 + "╩" + "═"*5 + "╩" + "═"*8 + "╝"
+                header = f"| {'Code':<12} | {'Subject Name':<50} | {'INT':<3} | {'EXT':<3} | {'TOT':<3} | {'RESULT':<8} |"
+                div = "+" + "-"*14 + "+" + "-"*52 + "+" + "-"*5 + "+" + "-"*5 + "+" + "-"*5 + "+" + "-"*10 + "+"
                 
                 print(f"\n      => [MARKS] {name} | Semester {sem}", file=sys.stderr)
-                print(f"      {top}", file=sys.stderr)
+                print(f"      {div}", file=sys.stderr)
                 print(f"      {header}", file=sys.stderr)
-                print(f"      {sep}", file=sys.stderr)
+                print(f"      {div}", file=sys.stderr)
                 
                 backlogs_found = []
                 for _s in subjects:
@@ -441,13 +439,12 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 6)
                     if _s.get('is_backlog'):
                         backlogs_found.append(f"{code} ({g})")
 
-                    # Colorize Failures in terminal if possible (using indicators)
                     fail_mark = "!!" if _s.get('is_backlog') else "  "
-                    print(f"      ║ {code:<12} ║ {sname:<50} ║ {i:<3} ║ {e:<3} ║ {t:<3} ║ {g:<6}{fail_mark}║", file=sys.stderr)
+                    print(f"      | {code:<12} | {sname:<50} | {i:<3} | {e:<3} | {t:<3} | {g:<6}{fail_mark}|", file=sys.stderr)
                 
-                print(f"      {bot}", file=sys.stderr)
+                print(f"      {div}", file=sys.stderr)
                 if backlogs_found:
-                    print(f"      ⚠️  BACKLOGS ALERT: {', '.join(backlogs_found)}", file=sys.stderr)
+                    print(f"      [BACKLOGS ALERT] {', '.join(backlogs_found)}", file=sys.stderr)
 
                 return {"url_short": url_short, "name": name, "semester": sem, "subjects": subjects}
 
@@ -491,6 +488,16 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
     if not urls:
         print(f"\n[ENGINE] 0 active URLs for {target_scheme} Scheme. Skipping {usn}.", file=sys.stderr)
         return False
+
+    adm_yr = None
+    m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', usn)
+    if m:
+        try: adm_yr = int(m.group(1))
+        except ValueError: pass
+
+    # For students admitted in 2024 (e.g. 2AB24...), filter out portals held prior to their admission (2023 / early 2024):
+    if adm_yr == 24:
+        urls = [u for u in urls if not re.search(r'(?:23|cbcs24|RVcbcs24)/index\.php', u)]
 
     print(f"\n[ENGINE] Scraping {usn} under {target_scheme} Scheme ({len(urls)} portals)...", file=sys.stderr, flush=True)
 
@@ -558,11 +565,14 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
                                 s_sem = _extract_sem(s["subject_code"]) or res["semester"] or 1
                                 groups.setdefault(s_sem, []).append(s)
                             for sem, subs in groups.items():
-                                _save_db(usn, resolved_name, sem, u, subs)
-                                saved_semesters.add(sem)
+                                if _save_db(usn, resolved_name, sem, u, subs):
+                                    saved_semesters.add(sem)
 
                             if target_scheme == "2025" and 1 in saved_semesters and 2 in saved_semesters:
                                 print(f"    [+] Both Semester 1 & 2 captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
+                                break
+                            if adm_yr == 24 and {1, 2, 3, 4}.issubset(saved_semesters):
+                                print(f"    [+] All 4 Semesters (Sem 1-4) captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
                                 break
 
                 try: page.close()
@@ -753,53 +763,57 @@ def _save_db(usn, name, sem, url, subs):
         existing_by_code = {r["subject_code"]: r for r in existing_res.data} if existing_res.data else {}
 
         scoped_url = f"{url.split('#')[0]}#sem-{sem}"
-        res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": scoped_url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 0) for s in subs)}, on_conflict="usn,exam_url").execute()
-        if res.data:
-            r_id = res.data[0]["id"]
-
-            # Append-only attempt history (subject_mark_attempts) — every raw
-            # scraped attempt, one row each, never overwritten. subject_marks
-            # below intentionally keeps only the single best attempt per
-            # subject per VTU policy, which is correct for SGPA/CGPA/backlogs
-            # but destroys the "before" value a revaluation delta report needs.
-            # This insert is purely additive and does not affect subject_marks,
-            # SGPA, or any existing calculation.
+        for attempt in range(1, 4):
             try:
-                attempt_rows = [{
-                    "result_id": r_id, "usn": usn, "semester": sem,
-                    "subject_code": s.get("subject_code"), "subject_name": s.get("subject_name"),
-                    "internal": s.get("internal"), "external": s.get("external"), "total": s.get("total"),
-                    "grade": s.get("grade"), "credits": s.get("credits"), "passed": s.get("passed"),
-                    "exam_name": exam_alias,
-                } for s in subs]
-                if attempt_rows:
-                    supabase.table("subject_mark_attempts").insert(attempt_rows).execute()
+                res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": scoped_url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 0) for s in subs)}, on_conflict="usn,exam_url").execute()
+                if res.data:
+                    r_id = res.data[0]["id"]
+
+                    # Append-only attempt history (subject_mark_attempts)
+                    try:
+                        attempt_rows = [{
+                            "result_id": r_id, "usn": usn, "semester": sem,
+                            "subject_code": s.get("subject_code"), "subject_name": s.get("subject_name"),
+                            "internal": s.get("internal"), "external": s.get("external"), "total": s.get("total"),
+                            "grade": s.get("grade"), "credits": s.get("credits"), "passed": s.get("passed"),
+                            "exam_name": exam_alias,
+                        } for s in subs]
+                        if attempt_rows:
+                            supabase.table("subject_mark_attempts").insert(attempt_rows).execute()
+                    except Exception as e:
+                        print(f"      [WARN] Could not record attempt history: {e}")
+
+                    # Filters subs: never let a re-scrape overwrite a better existing attempt
+                    filtered_subs = []
+                    for s in subs:
+                        code = s["subject_code"]
+                        prev = existing_by_code.get(code)
+                        if prev:
+                            prev_rank = _attempt_rank(prev.get("passed"), prev.get("grade"))
+                            new_rank = _attempt_rank(s["passed"], s["grade"])
+                            if new_rank < prev_rank or (new_rank == prev_rank and (s.get("total") or 0) <= (prev.get("total") or 0)):
+                                print(f"      - Skipping {code} (existing record is an equal-or-better attempt: kept grade={prev.get('grade')} total={prev.get('total')} over new grade={s['grade']} total={s.get('total')})")
+                                continue
+                        s_clean = {k: v for k, v in s.items() if k != 'announced_date' or v}
+                        filtered_subs.append({**s_clean, "result_id": r_id, "usn": usn, "semester": sem})
+
+                    if filtered_subs:
+                        supabase.table("subject_marks").upsert(filtered_subs, on_conflict="usn,subject_code,semester").execute()
+                        print(f"      [SAVED] DB Saved Sem {sem}: {len(filtered_subs)} subjects | SGPA: {sgpa}")
+                    else:
+                        print(f"      [INFO] Sem {sem}: No new data to update (already updated with passing marks)")
+                return True
             except Exception as e:
-                print(f"      [WARN] Could not record attempt history: {e}")
-
-            # Filters subs: never let a re-scrape (e.g. a revaluation result) overwrite
-            # a strictly better existing attempt. VTU policy: the higher of the original
-            # and revaluation marks always stands, even if revaluation comes back lower.
-            filtered_subs = []
-            for s in subs:
-                code = s["subject_code"]
-                prev = existing_by_code.get(code)
-                if prev:
-                    prev_rank = _attempt_rank(prev.get("passed"), prev.get("grade"))
-                    new_rank = _attempt_rank(s["passed"], s["grade"])
-                    if new_rank < prev_rank or (new_rank == prev_rank and (s.get("total") or 0) <= (prev.get("total") or 0)):
-                        print(f"      - Skipping {code} (existing record is an equal-or-better attempt: kept grade={prev.get('grade')} total={prev.get('total')} over new grade={s['grade']} total={s.get('total')})")
-                        continue
-                s_clean = {k: v for k, v in s.items() if k != 'announced_date' or v}
-                filtered_subs.append({**s_clean, "result_id": r_id, "usn": usn, "semester": sem})
-
-            if filtered_subs:
-                supabase.table("subject_marks").upsert(filtered_subs, on_conflict="usn,subject_code,semester").execute()
-                print(f"      [SAVED] DB Saved Sem {sem}: {len(filtered_subs)} subjects | SGPA: {sgpa}")
-            else:
-                print(f"      [INFO] Sem {sem}: No new data to update (already updated with passing marks)")
+                if attempt < 3:
+                    time.sleep(0.5 * attempt)
+                    continue
+                else:
+                    print(f"      [ERROR] DB Error: {e}")
+                    return False
+        return False
     except Exception as e:
         print(f"      [ERROR] DB Error: {e}")
+        return False
 
 def _recalculate_remarks(usn):
     try:

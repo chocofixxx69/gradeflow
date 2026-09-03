@@ -16,6 +16,7 @@ import sys
 import os
 import json
 import time
+import re
 import concurrent.futures
 
 # Configure stdout and stderr for UTF-8 on Windows terminals
@@ -166,17 +167,41 @@ def main() -> None:
             from scraper.config import supabase
             from collections import defaultdict
             # Only consider a student complete if they have BOTH Sem 1 and Sem 2 in the results table!
-            resp = supabase.table("results").select("usn, semester").execute()
+            # Fetch all existing results using pagination (bypasses PostgREST 1000-row default limit)
+            all_results = []
+            offset = 0
+            chunk = 1000
+            while True:
+                resp = supabase.table("results").select("usn, semester").in_("usn", usn_list).range(offset, offset + chunk - 1).execute()
+                rows = resp.data or []
+                all_results.extend(rows)
+                if len(rows) < chunk:
+                    break
+                offset += chunk
+
             sems_by_usn = defaultdict(set)
-            for r in (resp.data or []):
+            for r in all_results:
                 u = r.get("usn")
                 sem = r.get("semester")
                 if u and sem is not None:
                     sems_by_usn[u.upper()].add(int(sem))
 
-            complete_usns = {u for u, sems in sems_by_usn.items() if (1 in sems and 2 in sems)}
-            print(f"[INFO] Found {len(complete_usns)} students with BOTH Sem 1 & Sem 2 complete in Supabase.", file=sys.stderr)
-            partial = len([u for u, sems in sems_by_usn.items() if not (1 in sems and 2 in sems)])
+            def is_student_complete(u, sems):
+                is_lateral = bool(re.search(r'[A-Z]{2}4\d{2}$', u)) or (u.startswith('2AB25') and '4' in u[7:])
+                if is_lateral:
+                    return {3, 4}.issubset(sems)
+                m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', u)
+                if m:
+                    y = int(m.group(1))
+                    if y >= 25:
+                        return (1 in sems and 2 in sems)
+                    elif y == 24:
+                        return {1, 2, 3, 4}.issubset(sems)
+                return len(sems) >= 2
+
+            complete_usns = {u for u, sems in sems_by_usn.items() if is_student_complete(u, sems)}
+            print(f"[INFO] Found {len(complete_usns)} students already complete in Supabase.", file=sys.stderr)
+            partial = len([u for u, sems in sems_by_usn.items() if not is_student_complete(u, sems)])
             if partial > 0:
                 print(f"[INFO] {partial} student(s) have incomplete semesters and will be automatically re-scraped to fetch missing data.", file=sys.stderr)
         except Exception as err:
@@ -187,7 +212,7 @@ def main() -> None:
     
     for i, usn in enumerate(usn_list):
         if not args.force and usn in complete_usns:
-            print(f"[{i+1}/{len(usn_list)}] Skipping {usn} (Both Sem 1 & 2 already complete in Supabase)", file=sys.stderr)
+            print(f"[{i+1}/{len(usn_list)}] Skipping {usn} (All available semesters already complete in Supabase)", file=sys.stderr)
             results_summary.append({
                 "usn": usn,
                 "status": "SKIPPED",

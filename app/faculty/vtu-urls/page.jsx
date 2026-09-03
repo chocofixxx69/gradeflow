@@ -9,16 +9,20 @@ import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } fr
 import { Input, Button } from '@/components/ui/Foundation';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
+const SCHEME_LABELS = { '2022': '2022', '2025': '2025', 'pg': 'PG (MBA/MCA)' };
+const schemeLabel = (s) => SCHEME_LABELS[s] || s;
+
 function VtuUrlManagerContent() {
-    const [selectedScheme, setSelectedScheme] = useState('2022'); // '2022' | '2025'
+    const [selectedScheme, setSelectedScheme] = useState('2022'); // '2022' | '2025' | 'pg'
     const [vtuUrls, setVtuUrls] = useState([]);
     const [schemeCounts, setSchemeCounts] = useState({
         '2022': { total: 0, active: 0 },
-        '2025': { total: 0, active: 0 }
+        '2025': { total: 0, active: 0 },
+        'pg': { total: 0, active: 0 }
     });
     const [newUrl, setNewUrl] = useState('');
     const [newExamName, setNewExamName] = useState('');
-    const [targetAddScheme, setTargetAddScheme] = useState('2022'); // '2022' | '2025' | 'both'
+    const [targetAddScheme, setTargetAddScheme] = useState('2022'); // '2022' | '2025' | 'pg' | 'both'
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(false);
     const [message, setMessage] = useState('');
@@ -145,8 +149,8 @@ function VtuUrlManagerContent() {
             });
             fetchVtuUrls(selectedScheme);
             setMessage(is_active
-                ? `✓ All ${selectedScheme} Scheme URLs enabled for scraping.`
-                : `✓ All ${selectedScheme} Scheme URLs disabled for scraping.`
+                ? `✓ All ${schemeLabel(selectedScheme)} Scheme URLs enabled for scraping.`
+                : `✓ All ${schemeLabel(selectedScheme)} Scheme URLs disabled for scraping.`
             );
         } catch (e) {
             setMessage('Network error.');
@@ -172,7 +176,7 @@ function VtuUrlManagerContent() {
             if (json.success) {
                 setMessage(selectedScheme === '2022'
                     ? '✓ All 26 official 2022 Scheme portals restored and enabled!'
-                    : `✓ All official ${selectedScheme} Scheme portals restored and enabled!`
+                    : `✓ All official ${schemeLabel(selectedScheme)} Scheme portals restored and enabled!`
                 );
                 fetchVtuUrls(selectedScheme);
             }
@@ -213,13 +217,16 @@ function VtuUrlManagerContent() {
             color: active ? 'var(--green, #0d9f57)' : 'var(--red, #e02424)',
             letterSpacing: '0.04em'
         }),
-        schemeBadge: (scheme) => ({
-            fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: 'var(--radius-2)',
-            background: scheme === '2025' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(59, 130, 246, 0.12)',
-            color: scheme === '2025' ? '#8b5cf6' : '#2563eb',
-            border: `1px solid ${scheme === '2025' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-            display: 'inline-flex', alignItems: 'center', gap: '4px'
-        }),
+        schemeBadge: (scheme) => {
+            const color = scheme === '2025' ? '#8b5cf6' : scheme === 'pg' ? '#d97706' : '#2563eb';
+            return {
+                fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: 'var(--radius-2)',
+                background: `${color}1f`,
+                color,
+                border: `1px solid ${color}4d`,
+                display: 'inline-flex', alignItems: 'center', gap: '4px'
+            };
+        },
         msg: (ok) => ({
             fontSize: '13px', fontWeight: 700, color: ok ? 'var(--green, #0d9f57)' : 'var(--red, #e02424)',
             marginBottom: 'var(--space-4)',
@@ -314,7 +321,47 @@ function VtuUrlManagerContent() {
                         {schemeCounts['2025']?.active ?? 0}/{schemeCounts['2025']?.total ?? 0} Active
                     </span>
                 </button>
+
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedScheme === 'pg'}
+                    style={c.tabButton(selectedScheme === 'pg')}
+                    onClick={() => handleSchemeChange('pg')}
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px', color: selectedScheme === 'pg' ? '#d97706' : 'inherit' }}>
+                        workspace_premium
+                    </span>
+                    <span>PG Scheme (MBA/MCA)</span>
+                    <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        background: selectedScheme === 'pg' ? 'rgba(217, 119, 6, 0.12)' : 'var(--border, #e2e8f0)',
+                        color: selectedScheme === 'pg' ? '#d97706' : 'var(--tx-dim, #94a3b8)'
+                    }}>
+                        {schemeCounts['pg']?.active ?? 0}/{schemeCounts['pg']?.total ?? 0} Active
+                    </span>
+                </button>
             </div>
+
+            {selectedScheme === 'pg' && (
+                <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    padding: '12px 16px', borderRadius: 'var(--radius-4, 8px)',
+                    background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.25)',
+                    marginBottom: 'var(--space-5, 20px)', fontSize: '12.5px', color: 'var(--tx-main)'
+                }}>
+                    <span className="material-icons-round" style={{ fontSize: '18px', color: '#d97706', marginTop: '1px' }}>info</span>
+                    <span>
+                        These portals are VTU&rsquo;s regular result-lookup forms — the same ones the BE side already uses. VTU&rsquo;s exam-session
+                        pages route every program&rsquo;s results (B.E, M.Tech, PG, B.Sc, etc.) through identical shared forms, so these are the
+                        strongest known candidates for MBA/MCA lookups. This hasn&rsquo;t yet been confirmed end-to-end against a real MBA/MCA USN —
+                        treat results here as provisional until verified.
+                    </span>
+                </div>
+            )}
 
             <Card style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-6))' }}>
                 {/* Add New Result Portal Form */}

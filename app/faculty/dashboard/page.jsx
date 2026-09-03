@@ -687,19 +687,18 @@ function FacultyDashboardContent() {
 
         // If it's a new USN search, clear previous student data immediately
         const cleanUSN = targetUsn.toUpperCase().trim();
-        if (student?.usn !== cleanUSN) {
-            setStudent(null);
-            setMarks({});
-            setSgpas({});
-            setSemStats({});
-            setCgpa(0);
-        }
+        // Clear previous student data to ensure fresh calculation on every lookup
+        setStudent(null);
+        setMarks({});
+        setSgpas({});
+        setSemStats({});
+        setCgpa(0);
 
         if (!silent) setLoading(true);
         setMessage('');
 
         try {
-            const resData = await apiRequest('/api/faculty/dashboard', { query: { search_usn: cleanUSN } });
+            const resData = await apiRequest('/api/faculty/dashboard', { query: { search_usn: cleanUSN, _t: Date.now() } });
             const profile = resData?.profile || { usn: cleanUSN, name: cleanUSN };
             const studentMarks = [];
             const resultMarks = resData?.recentResults || [];

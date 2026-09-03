@@ -4,7 +4,6 @@ export const NAV_CONFIG = {
     { key: 'leaderboard', label: 'Class Leaderboard', href: '/leaderboard', icon: 'emoji_events', group: 'Academic Tools' },
     { key: 'analytics', label: 'Analytics', href: '/analytics', icon: 'insights', group: 'Academic Tools' },
     { key: 'calculator', label: 'Calculator', href: '/calculator', icon: 'calculate', group: 'Academic Tools' },
-    { key: 'vault', label: 'Batch Results Upload', href: '/vault', icon: 'upload_file', group: 'Academic Tools' },
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   faculty: [
