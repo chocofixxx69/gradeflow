@@ -25,13 +25,14 @@ function RevalImpactContent() {
 
     // Scope Filters
     const [branch, setBranch] = useState('ALL');
-    const [semester, setSemester] = useState(3);
+    const [semester, setSemester] = useState('ALL'); // 'ALL' or '1', '2', etc.
     const [batch, setBatch] = useState('');
 
     // Search & View Controls
     const [searchQuery, setSearchQuery] = useState('');
     const [outcomeFilter, setOutcomeFilter] = useState('ALL');
     const [viewMode, setViewMode] = useState('roster'); // 'roster' | 'student'
+    const [selectedStudent, setSelectedStudent] = useState(null); // for student dossier modal
 
     // Data
     const [report, setReport] = useState({
@@ -39,7 +40,7 @@ function RevalImpactContent() {
         deltaRoster: [],
         studentRoster: [],
         branch: 'ALL',
-        semester: 3
+        semester: 'ALL'
     });
 
     // 1. Fetch metadata
@@ -123,7 +124,7 @@ function RevalImpactContent() {
         // 1. Summary
         const summaryData = [
             ['GradeFlow - Revaluation Impact & Grade Delta Analysis'],
-            [`Department: ${branch}`, `Semester: Sem ${semester}`, `Batch: ${batch || 'All'}`],
+            [`Department: ${branch}`, `Semester: ${semester === 'ALL' ? 'All Semesters (Cumulative)' : `Sem ${semester}`}`, `Batch: ${batch || 'All'}`],
             [`Generated on: ${new Date().toLocaleString()}`],
             [],
             ['Total Students Applied', report.summary.totalStudents || report.studentRoster?.length || 0],
@@ -138,11 +139,13 @@ function RevalImpactContent() {
         XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
         // 2. Delta Roster
-        const headers = ['#', 'USN', 'Student Name', 'Subject Code', 'Subject Name', 'Exam Cycle / Session', 'When Applied / Declared', 'Pre-Marks', 'Pre-Grade', 'Post-Marks', 'Post-Grade', 'Delta (+/-)', 'Outcome'];
+        const headers = ['#', 'Semester', 'USN', 'Student Name', 'Total Subjects Put By Student', 'Subject Code', 'Subject Name', 'Exam Cycle / Session', 'When Applied / Declared', 'Pre-Marks', 'Pre-Grade', 'Post-Marks', 'Post-Grade', 'Delta (+/-)', 'Outcome'];
         const rows = (filteredRoster || []).map((d, idx) => [
             idx + 1,
+            `Sem ${d.semester}`,
             d.usn,
             d.name,
+            d.totalStudentApplications || 1,
             d.subject_code,
             d.subject_name,
             d.revalExamLabel || d.revalExam,
@@ -167,15 +170,16 @@ function RevalImpactContent() {
 
         doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text(`VTU Revaluation Impact & Grade Delta Report (${branch} - Sem ${semester})`, 14, 14);
+        doc.text(`VTU Revaluation Impact & Grade Delta Report (${branch} - ${semester === 'ALL' ? 'All Semesters' : `Sem ${semester}`})`, 14, 14);
 
         doc.setFontSize(8.5);
         doc.setFont('helvetica', 'normal');
         doc.text(`Students: ${report.summary.totalStudents || report.studentRoster?.length || 0} | Subjects: ${report.summary.totalApplications} | Upgraded: ${report.summary.upgradedCount} | Cleared: ${report.summary.clearedCount} | Net Gain: ${report.summary.netPassRateGain}% | Date: ${new Date().toLocaleDateString()}`, 14, 20);
 
-        const tableHead = [['#', 'USN', 'Name', 'Subject', 'Exam Session', 'When Declared', 'Pre', 'Post', 'Delta', 'Outcome']];
+        const tableHead = [['#', 'Sem', 'USN', 'Name', 'Subject', 'Exam Session', 'When Declared', 'Pre', 'Post', 'Delta', 'Outcome']];
         const tableBody = (filteredRoster || []).map((d, idx) => [
             idx + 1,
+            `S${d.semester}`,
             d.usn,
             d.name,
             `${d.subject_code}\n${d.subject_name}`,
@@ -207,7 +211,7 @@ function RevalImpactContent() {
                     <PageHeaderEyebrow>University Examinations &bull; VTU Engine</PageHeaderEyebrow>
                     <PageHeaderTitle>Revaluation Impact &amp; Grade Delta Analysis</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Complete student-by-student ledger tracking which subjects were put for revaluation, when they were applied/declared, and the real before-and-after mark changes.
+                        Complete student-by-student ledger tracking all subjects put for revaluation, total subject counts, examination sessions, and real before-and-after mark changes.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -242,8 +246,11 @@ function RevalImpactContent() {
                             <Select
                                 label="Semester"
                                 value={semester}
-                                onChange={e => setSemester(Number(e.target.value))}
-                                options={meta.semesters.map(s => ({ value: s, label: `Semester ${s}` }))}
+                                onChange={e => setSemester(e.target.value)}
+                                options={[
+                                    { value: 'ALL', label: 'ALL - All Semesters (Degree Lifetime History)' },
+                                    ...meta.semesters.map(s => ({ value: String(s), label: `Semester ${s}` }))
+                                ]}
                             />
                         </div>
                         <div>
@@ -258,8 +265,8 @@ function RevalImpactContent() {
                 </CardContent>
             </Card>
 
-            {/* 6 Metric KPI Strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '12px', marginBottom: '24px' }}>
+            {/* 7 Metric KPI Strip */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 155px), 1fr))', gap: '12px', marginBottom: '24px' }}>
                 {[
                     { label: 'Students Applied', value: report.summary.totalStudents || report.studentRoster?.length || 0, color: 'var(--tx-main)', icon: 'people' },
                     { label: 'Subjects Revalued', value: report.summary.totalApplications, color: 'var(--tx-main)', icon: 'assignment' },
@@ -286,7 +293,7 @@ function RevalImpactContent() {
                         <span className="material-icons-round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--tx-dim)', fontSize: '18px' }}>search</span>
                         <input
                             type="text"
-                            placeholder="Search by student name, USN, subject, or exam session..."
+                            placeholder="Search student name, USN, subject code/name, or exam session..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             style={{
@@ -343,7 +350,7 @@ function RevalImpactContent() {
                         }}
                     >
                         <span className="material-icons-round" style={{ fontSize: '16px' }}>view_list</span>
-                        Detailed Subject Ledger
+                        Subject Ledger ({filteredRoster.length})
                     </button>
                     <button
                         onClick={() => setViewMode('student')}
@@ -382,26 +389,27 @@ function RevalImpactContent() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>
-                                        <th style={{ padding: '12px 14px', textAlign: 'left', width: '45px' }}>#</th>
+                                        <th style={{ padding: '12px 12px', textAlign: 'left', width: '40px' }}>#</th>
+                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '65px' }}>Sem</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', width: '130px' }}>USN</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '160px' }}>Student Name</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '180px' }}>Student Name</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '220px' }}>Subject (Which Subject Put)</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '180px' }}>When Put &amp; Exam Session</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '90px' }}>Pre-Score</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '90px' }}>Post-Score</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '75px' }}>Delta</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'center', width: '140px' }}>Outcome</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '190px' }}>When Put &amp; Exam Session</th>
+                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '85px' }}>Pre-Score</th>
+                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '85px' }}>Post-Score</th>
+                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '70px' }}>Delta</th>
+                                        <th style={{ padding: '12px 14px', textAlign: 'center', width: '140px' }}>Outcome</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredRoster.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                            <td colSpan={10} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
                                                 {loading ? 'Analyzing revaluation deltas...' : (
                                                     <>
                                                         <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--tx-dim)', marginBottom: '8px' }}>search_off</span>
                                                         <div>No revaluation records found matching your filters.</div>
-                                                        <div style={{ fontSize: '11px', marginTop: '6px' }}>Try clearing your search query, or select another branch or semester.</div>
+                                                        <div style={{ fontSize: '11px', marginTop: '6px' }}>Try selecting "ALL - All Semesters" or clearing search filters.</div>
                                                     </>
                                                 )}
                                             </td>
@@ -411,21 +419,43 @@ function RevalImpactContent() {
                                             const isCleared = d.isCleared;
                                             const isUpgraded = d.delta > 0;
                                             const isDecreased = d.delta < 0;
+                                            const studentObj = report.studentRoster?.find(s => s.usn === d.usn);
+
                                             return (
                                                 <tr
-                                                    key={`${d.usn}-${d.subject_code}-${idx}`}
+                                                    key={`${d.usn}-${d.semester}-${d.subject_code}-${idx}`}
                                                     style={{
                                                         borderBottom: '1px solid var(--border-low)',
                                                         background: isCleared ? 'rgba(16, 185, 129, 0.04)' : isUpgraded ? 'rgba(59, 130, 246, 0.03)' : isDecreased ? 'rgba(239, 68, 68, 0.02)' : 'transparent'
                                                     }}
                                                 >
-                                                    <td style={{ padding: '12px 14px', color: 'var(--tx-dim)', fontSize: '12px' }}>{idx + 1}</td>
-                                                    <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
-                                                        <Link href={`/faculty/students/${d.usn}`} style={{ color: 'var(--primary)', textDecoration: 'none' }}>
-                                                            {d.usn}
-                                                        </Link>
+                                                    <td style={{ padding: '12px 12px', color: 'var(--tx-dim)', fontSize: '12px' }}>{idx + 1}</td>
+                                                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-main)', border: '1px solid var(--border-low)' }}>
+                                                            Sem {d.semester}
+                                                        </span>
                                                     </td>
-                                                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{d.name}</td>
+                                                    <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
+                                                        <button
+                                                            onClick={() => setSelectedStudent(studentObj || { usn: d.usn, name: d.name, applications: [d], totalSubjectsPut: 1, semesters: [d.semester] })}
+                                                            style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 800, padding: 0, textDecoration: 'underline' }}
+                                                        >
+                                                            {d.usn}
+                                                        </button>
+                                                    </td>
+                                                    <td style={{ padding: '12px 16px' }}>
+                                                        <div style={{ fontWeight: 600, color: 'var(--tx-main)' }}>{d.name}</div>
+                                                        {d.totalStudentApplications > 1 && (
+                                                            <div style={{ marginTop: '2px' }}>
+                                                                <span
+                                                                    onClick={() => setSelectedStudent(studentObj)}
+                                                                    style={{ fontSize: '10.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366F1', cursor: 'pointer', border: '1px solid rgba(99, 102, 241, 0.25)' }}
+                                                                >
+                                                                    Put {d.totalStudentApplications} subjects total &rarr;
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td style={{ padding: '12px 16px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                             <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--tx-main)', fontSize: '13px' }}>
@@ -435,7 +465,7 @@ function RevalImpactContent() {
                                                                 {d.credits} Cr
                                                             </span>
                                                         </div>
-                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px', lineHeight: 1.3 }}>
+                                                        <div style={{ fontSize: '11.5px', color: 'var(--tx-muted)', marginTop: '2px', lineHeight: 1.3, fontWeight: 500 }}>
                                                             {d.subject_name}
                                                         </div>
                                                     </td>
@@ -469,7 +499,7 @@ function RevalImpactContent() {
                                                             <span style={{ color: 'var(--tx-dim)' }}>0</span>
                                                         )}
                                                     </td>
-                                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                                                         <span style={{
                                                             display: 'inline-block',
                                                             padding: '4px 10px', borderRadius: '6px',
@@ -494,7 +524,7 @@ function RevalImpactContent() {
 
             {/* VIEW MODE 2: Grouped by Student Cards */}
             {viewMode === 'student' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {filteredStudents.length === 0 ? (
                         <Card>
                             <CardContent style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
@@ -504,74 +534,85 @@ function RevalImpactContent() {
                         </Card>
                     ) : (
                         filteredStudents.map(stu => (
-                            <Card key={stu.usn} style={{ overflow: 'hidden' }}>
-                                <CardHeader style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '14px' }}>
+                            <Card key={stu.usn} style={{ overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                <CardHeader style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px', flexShrink: 0 }}>
                                             {stu.name?.[0]?.toUpperCase() || 'S'}
                                         </div>
                                         <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--tx-main)' }}>{stu.name}</span>
-                                                <Link href={`/faculty/students/${stu.usn}`} style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '13px', color: 'var(--primary)', textDecoration: 'none' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontWeight: 800, fontSize: '16px', color: 'var(--tx-main)' }}>{stu.name}</span>
+                                                <Link href={`/faculty/students/${stu.usn}`} style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '13.5px', color: 'var(--primary)', textDecoration: 'none' }}>
                                                     {stu.usn}
                                                 </Link>
+                                                <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.12)', color: '#6366F1', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+                                                    🎓 Put {stu.totalSubjectsPut} Subject(s) for Revaluation
+                                                </span>
                                             </div>
-                                            <div style={{ fontSize: '11.5px', color: 'var(--tx-dim)', marginTop: '2px' }}>
-                                                Put {stu.filteredApps.length} subject(s) for revaluation in Semester {semester}
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                                Semesters Applied: <strong>{stu.semesters.map(s => `Sem ${s}`).join(', ')}</strong>
                                             </div>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                         {stu.cleared > 0 && (
-                                            <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                                                {stu.cleared} Backlog Cleared
+                                            <span style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 800, background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                                🟢 {stu.cleared} Backlog Cleared
                                             </span>
                                         )}
                                         {stu.upgraded > 0 && (
-                                            <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                                                {stu.upgraded} Upgraded
+                                            <span style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 800, background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                                🔵 {stu.upgraded} Upgraded
                                             </span>
                                         )}
                                         {stu.decreased > 0 && (
-                                            <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
-                                                {stu.decreased} Decreased
+                                            <span style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 800, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                                                🔴 {stu.decreased} Decreased
                                             </span>
                                         )}
                                         {stu.confirmed > 0 && (
-                                            <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, background: 'var(--surface)', color: 'var(--tx-muted)', border: '1px solid var(--border)' }}>
-                                                {stu.confirmed} Confirmed
+                                            <span style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 800, background: 'var(--surface)', color: 'var(--tx-muted)', border: '1px solid var(--border)' }}>
+                                                ⚪ {stu.confirmed} Confirmed
                                             </span>
                                         )}
                                     </div>
                                 </CardHeader>
-                                <CardContent style={{ padding: '14px 20px' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '12px' }}>
+                                <CardContent style={{ padding: '16px 20px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: '14px' }}>
                                         {stu.filteredApps.map(app => (
                                             <div
-                                                key={app.subject_code}
+                                                key={`${app.subject_code}-${app.semester}`}
                                                 style={{
                                                     border: '1px solid var(--border)',
-                                                    borderRadius: '8px',
-                                                    padding: '12px',
+                                                    borderRadius: '10px',
+                                                    padding: '14px',
                                                     background: app.isCleared ? 'rgba(16, 185, 129, 0.04)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.03)' : 'var(--surface-low)',
                                                     display: 'flex',
                                                     flexDirection: 'column',
-                                                    gap: '8px'
+                                                    gap: '10px'
                                                 }}
                                             >
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                     <div>
-                                                        <div style={{ fontWeight: 800, fontSize: '13px', fontFamily: 'monospace', color: 'var(--tx-main)' }}>
-                                                            {app.subject_code}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span style={{ fontSize: '10.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: 'var(--surface)', color: 'var(--tx-main)', border: '1px solid var(--border)' }}>
+                                                                Sem {app.semester}
+                                                            </span>
+                                                            <span style={{ fontWeight: 800, fontSize: '13.5px', fontFamily: 'monospace', color: 'var(--tx-main)' }}>
+                                                                {app.subject_code}
+                                                            </span>
+                                                            <span style={{ fontSize: '10.5px', color: 'var(--tx-dim)' }}>
+                                                                ({app.credits} Cr)
+                                                            </span>
                                                         </div>
-                                                        <div style={{ fontSize: '11.5px', color: 'var(--tx-muted)', marginTop: '2px', fontWeight: 600 }}>
+                                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '3px', fontWeight: 600 }}>
                                                             {app.subject_name}
                                                         </div>
                                                     </div>
                                                     <span style={{
-                                                        padding: '3px 8px', borderRadius: '4px',
-                                                        fontSize: '10.5px', fontWeight: 800,
+                                                        padding: '3px 8px', borderRadius: '5px',
+                                                        fontSize: '11px', fontWeight: 800,
                                                         background: app.isCleared ? 'rgba(16, 185, 129, 0.15)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.15)' : app.delta < 0 ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface)',
                                                         color: app.isCleared ? '#10B981' : app.delta > 0 ? '#3B82F6' : app.delta < 0 ? '#EF4444' : 'var(--tx-muted)',
                                                         border: `1px solid ${app.isCleared ? 'rgba(16, 185, 129, 0.3)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.3)' : 'var(--border)'}`
@@ -580,26 +621,26 @@ function RevalImpactContent() {
                                                     </span>
                                                 </div>
 
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-low)', fontSize: '12px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-low)', fontSize: '12.5px' }}>
                                                     <div>
-                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block' }}>Regular Score</span>
-                                                        <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>{app.preMarks}</span> ({app.preGrade})
+                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block', fontWeight: 700 }}>Regular Exam</span>
+                                                        <span style={{ fontWeight: 800, color: 'var(--tx-main)', fontSize: '14px' }}>{app.preMarks}</span> <span style={{ fontSize: '11.5px', fontWeight: 800, color: app.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>({app.preGrade})</span>
                                                     </div>
-                                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>arrow_forward</span>
+                                                    <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>arrow_forward</span>
                                                     <div>
-                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block' }}>Reval Score</span>
-                                                        <span style={{ fontWeight: 900, color: app.isCleared ? '#10B981' : app.delta > 0 ? 'var(--primary)' : 'var(--tx-main)' }}>{app.postMarks}</span> ({app.postGrade})
+                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block', fontWeight: 700 }}>Reval Result</span>
+                                                        <span style={{ fontWeight: 900, color: app.isCleared ? '#10B981' : app.delta > 0 ? 'var(--primary)' : 'var(--tx-main)', fontSize: '14px' }}>{app.postMarks}</span> <span style={{ fontSize: '11.5px', fontWeight: 800, color: app.isCleared ? '#10B981' : 'var(--tx-main)' }}>({app.postGrade})</span>
                                                     </div>
                                                     <div>
-                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block' }}>Delta</span>
-                                                        <span style={{ fontWeight: 900, color: app.delta > 0 ? '#10B981' : app.delta < 0 ? '#EF4444' : 'var(--tx-dim)' }}>
+                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block', fontWeight: 700 }}>Score Delta</span>
+                                                        <span style={{ fontWeight: 900, fontSize: '14px', color: app.delta > 0 ? '#10B981' : app.delta < 0 ? '#EF4444' : 'var(--tx-dim)' }}>
                                                             {app.delta > 0 ? `+${app.delta}` : app.delta}
                                                         </span>
                                                     </div>
                                                 </div>
 
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--tx-dim)' }}>
-                                                    <span><strong>Session:</strong> {app.revalExamLabel || app.revalExam}</span>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--tx-dim)', flexWrap: 'wrap', gap: '6px' }}>
+                                                    <span><strong>Exam Session:</strong> {app.revalExamLabel || app.revalExam}</span>
                                                     <span><strong>Declared:</strong> {app.appliedDate}</span>
                                                 </div>
                                             </div>
@@ -609,6 +650,122 @@ function RevalImpactContent() {
                             </Card>
                         ))
                     )}
+                </div>
+            )}
+
+            {/* Student Dossier Modal */}
+            {selectedStudent && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 9999,
+                    background: 'rgba(0, 0, 0, 0.65)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    backdropFilter: 'blur(4px)'
+                }}>
+                    <div style={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '750px',
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+                    }}>
+                        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-low)' }}>
+                            <div>
+                                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Student Revaluation Dossier</div>
+                                <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--tx-main)', marginTop: '2px' }}>
+                                    {selectedStudent.name} <span style={{ fontFamily: 'monospace', color: 'var(--primary)', fontSize: '15px' }}>({selectedStudent.usn})</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                    Submitted {selectedStudent.applications?.length || 1} subject(s) for university revaluation
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedStudent(null)}
+                                style={{ background: 'var(--surface)', border: '1px solid var(--border)', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--tx-main)' }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '18px' }}>close</span>
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {selectedStudent.applications?.map((app, idx) => (
+                                <div
+                                    key={idx}
+                                    style={{
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '10px',
+                                        padding: '14px',
+                                        background: app.isCleared ? 'rgba(16, 185, 129, 0.05)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.04)' : 'var(--surface-low)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ fontSize: '11px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: 'var(--surface)', color: 'var(--tx-main)', border: '1px solid var(--border)' }}>
+                                                    Sem {app.semester}
+                                                </span>
+                                                <span style={{ fontWeight: 800, fontSize: '14px', fontFamily: 'monospace', color: 'var(--tx-main)' }}>
+                                                    {app.subject_code}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px', fontWeight: 600 }}>
+                                                {app.subject_name}
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            padding: '3px 8px', borderRadius: '4px',
+                                            fontSize: '11px', fontWeight: 800,
+                                            background: app.isCleared ? 'rgba(16, 185, 129, 0.15)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.15)' : 'var(--surface)',
+                                            color: app.isCleared ? '#10B981' : app.delta > 0 ? '#3B82F6' : 'var(--tx-muted)'
+                                        }}>
+                                            {app.outcome}
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-low)' }}>
+                                        <div>
+                                            <span style={{ fontSize: '10.5px', color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block' }}>Regular Exam</span>
+                                            <span style={{ fontWeight: 800, fontSize: '14px' }}>{app.preMarks}</span> ({app.preGrade})
+                                        </div>
+                                        <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>arrow_forward</span>
+                                        <div>
+                                            <span style={{ fontSize: '10.5px', color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block' }}>Reval Score</span>
+                                            <span style={{ fontWeight: 900, fontSize: '14px', color: app.isCleared ? '#10B981' : app.delta > 0 ? 'var(--primary)' : 'inherit' }}>{app.postMarks}</span> ({app.postGrade})
+                                        </div>
+                                        <div>
+                                            <span style={{ fontSize: '10.5px', color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block' }}>Delta</span>
+                                            <span style={{ fontWeight: 900, fontSize: '14px', color: app.delta > 0 ? '#10B981' : app.delta < 0 ? '#EF4444' : 'var(--tx-dim)' }}>
+                                                {app.delta > 0 ? `+${app.delta}` : app.delta}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--tx-dim)' }}>
+                                        <span><strong>Exam Cycle:</strong> {app.revalExamLabel || app.revalExam}</span>
+                                        <span><strong>Date Declared:</strong> {app.appliedDate}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', justifyContent: 'flex-end' }}>
+                            <Button onClick={() => setSelectedStudent(null)} variant="secondary">
+                                Close Dossier
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

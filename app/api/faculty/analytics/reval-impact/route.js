@@ -41,8 +41,9 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
-        const semester = parseInt(searchParams.get('semester') || '3', 10);
+        const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
+        const semParam = (searchParams.get('semester') || 'ALL').toUpperCase().trim();
+        const semester = (semParam === 'ALL' || !semParam) ? 'ALL' : parseInt(semParam, 10);
         const batch = searchParams.get('batch') || '';
 
         const supabaseAdmin = getAdminClient();
@@ -56,11 +57,16 @@ export async function GET(req) {
 
         const studentByUsn = new Map(students.map(s => [s.usn, s]));
 
-        // Fetch attempts for this semester directly without query param length overflow
-        const { data: rawAttempts, error: attemptsErr } = await supabaseAdmin
+        // Fetch attempts for this semester or all semesters directly
+        let query = supabaseAdmin
             .from('subject_mark_attempts')
-            .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, scraped_at')
-            .eq('semester', semester);
+            .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, scraped_at');
+
+        if (semester !== 'ALL' && !isNaN(semester)) {
+            query = query.eq('semester', semester);
+        }
+
+        const { data: rawAttempts, error: attemptsErr } = await query;
 
         if (attemptsErr) throw attemptsErr;
 
@@ -69,9 +75,9 @@ export async function GET(req) {
             if (branch === 'ALL' && !batch) return true;
             return studentByUsn.has(a.usn);
         });
-        const bySubject = new Map(); // `${usn}|${subject_code}` -> attempt rows, each tagged with isReval
+        const bySubject = new Map(); // `${usn}|${semester}|${subject_code}` -> attempt rows, each tagged with isReval
         attempts.forEach(a => {
-            const key = `${a.usn}|${(a.subject_code || '').toUpperCase()}`;
+            const key = `${a.usn}|${a.semester}|${(a.subject_code || '').toUpperCase()}`;
             const list = bySubject.get(key) || [];
             list.push({ ...a, isReval: Boolean(a.exam_name && /rv/i.test(a.exam_name)) });
             bySubject.set(key, list);
@@ -130,6 +136,7 @@ export async function GET(req) {
                 deltaRoster.push({
                     usn,
                     name: stu?.name || usn,
+                    semester: attempt.semester,
                     subject_code: attempt.subject_code,
                     subject_name: attempt.subject_name || attempt.subject_code,
                     preMarks: preScore,
@@ -150,13 +157,15 @@ export async function GET(req) {
             });
         });
 
-        // Group by student so faculty can see which student put which subjects and when
+        // Group by student so faculty can see which student put which subjects, how many subjects, and when
         const studentMap = new Map();
         deltaRoster.forEach(d => {
             const entry = studentMap.get(d.usn) || {
                 usn: d.usn,
                 name: d.name,
+                branch: studentByUsn.get(d.usn)?.branch || 'Engineering',
                 applications: [],
+                semesters: new Set(),
                 totalDelta: 0,
                 upgraded: 0,
                 cleared: 0,
@@ -164,6 +173,7 @@ export async function GET(req) {
                 confirmed: 0,
             };
             entry.applications.push(d);
+            entry.semesters.add(d.semester);
             entry.totalDelta += d.delta;
             if (d.outcome === 'Cleared Backlog') entry.cleared++;
             else if (d.delta > 0) entry.upgraded++;
@@ -171,7 +181,19 @@ export async function GET(req) {
             else entry.confirmed++;
             studentMap.set(d.usn, entry);
         });
-        const studentRoster = Array.from(studentMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+        // Calculate totalStudentApplications and sort applications per student
+        const studentRoster = Array.from(studentMap.values()).map(s => ({
+            ...s,
+            semesters: Array.from(s.semesters).sort((a, b) => a - b),
+            totalSubjectsPut: s.applications.length,
+            applications: s.applications.sort((a, b) => a.semester - b.semester || a.subject_code.localeCompare(b.subject_code)),
+        })).sort((a, b) => b.totalSubjectsPut - a.totalSubjectsPut || a.name.localeCompare(b.name));
+
+        // Inject totalStudentApplications into each delta row
+        deltaRoster.forEach(d => {
+            d.totalStudentApplications = studentMap.get(d.usn)?.applications.length || 1;
+        });
 
         const totalApplications = deltaRoster.length;
         const netPassRateGain = totalApplications > 0 ? Number(((clearedCount / totalApplications) * 100).toFixed(1)) : 0;
