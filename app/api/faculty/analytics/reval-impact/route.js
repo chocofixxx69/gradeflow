@@ -31,7 +31,6 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch real students matching branch and batch dynamically without limits
         const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' });
 
         let students = rawStudents || [];
@@ -40,122 +39,113 @@ export async function GET(req) {
         }
 
         const usns = students.map(s => s.usn);
+        const studentByUsn = new Map(students.map(s => [s.usn, s]));
 
         if (usns.length === 0) {
-            return ok({
-                summary: { totalApplications: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, netPassRateGain: 0 },
-                deltaRoster: [],
-                branch,
-                semester
-            });
+            const empty = { summary: { totalApplications: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, decreasedCount: 0, netPassRateGain: 0 }, deltaRoster: [], branch, semester };
+            return ok(empty);
         }
 
-        // 2. Fetch all real exam declarations for these students in this semester
+        // Every declared exam attempt (regular, makeup, revaluation, ...) for these
+        // students in this semester. `exam_name` is the only signal we have for
+        // which declarations are revaluations — VTU scrape job names carry "RV"
+        // for reval cycles (confirmed against live data: DJRVcbcs25, JJRVcbcs24,
+        // MJ26rvcbcs, etc).
         const { data: allResults, error: resErr } = await supabaseAdmin
             .from('results')
-            .select('id, usn, semester, exam_name, sgpa, total_credits')
+            .select('id, usn, semester, exam_name, scraped_at')
             .in('usn', usns)
             .eq('semester', semester);
 
         if (resErr) throw resErr;
 
         const results = allResults || [];
+        const resultById = new Map(results.map(r => [r.id, r]));
+        const revalResultIds = new Set(results.filter(r => r.exam_name && /rv/i.test(r.exam_name)).map(r => r.id));
 
-        // Partition into Revaluation (exam_name containing 'RV') and Regular declarations
-        const revalResults = results.filter(r => r.exam_name && /rv/i.test(r.exam_name));
-        const regularResults = results.filter(r => r.exam_name && !/rv/i.test(r.exam_name));
-
-        const regByUsn = new Map();
-        regularResults.forEach(r => regByUsn.set(r.usn, r));
-
-        // 3. Fetch real subject marks for these students and semester
+        // Real subject-level marks for every declaration in scope — the only
+        // source of truth for a per-subject before/after comparison. Grouped by
+        // (usn, subject_code) so each subject's own attempt history can be walked
+        // in chronological order.
         const { data: rawMarks, error: marksErr } = await supabaseAdmin
             .from('subject_marks')
-            .select('id, result_id, usn, subject_code, subject_name, semester, internal, external, total, grade, passed')
+            .select('id, result_id, usn, subject_code, subject_name, semester, total, grade')
             .in('usn', usns)
             .eq('semester', semester);
 
         if (marksErr) throw marksErr;
 
         const marks = rawMarks || [];
-
-        // Group marks by (usn, subject_code)
-        const marksByStudentSubject = new Map();
+        const bySubject = new Map(); // `${usn}|${subject_code}` -> mark rows, each tagged with its declaration's scraped_at/isReval
         marks.forEach(m => {
-            const key = `${m.usn}_${(m.subject_code || '').toUpperCase()}`;
-            const list = marksByStudentSubject.get(key) || [];
-            list.push(m);
-            marksByStudentSubject.set(key, list);
+            const decl = resultById.get(m.result_id);
+            if (!decl) return; // orphaned mark row with no matching declaration in scope — skip rather than guess
+            const key = `${m.usn}|${(m.subject_code || '').toUpperCase()}`;
+            const list = bySubject.get(key) || [];
+            list.push({ ...m, scraped_at: decl.scraped_at, isReval: revalResultIds.has(m.result_id) });
+            bySubject.set(key, list);
         });
 
         const deltaRoster = [];
         let upgradedCount = 0;
         let clearedCount = 0;
         let unchangedCount = 0;
+        let decreasedCount = 0;
 
-        // Process real revaluation results
-        revalResults.forEach(rv => {
-            const reg = regByUsn.get(rv.usn);
-            const stu = students.find(s => s.usn === rv.usn);
-            const studentMarks = marks.filter(m => m.usn === rv.usn);
+        bySubject.forEach((attempts, key) => {
+            // Chronological order — earliest declaration first — so "pre" always
+            // means "the most recent real mark recorded before this reval attempt",
+            // never an invented baseline.
+            const sorted = [...attempts].sort((a, b) => new Date(a.scraped_at) - new Date(b.scraped_at));
 
-            studentMarks.forEach(m => {
-                const isFail = isFailedSubject(m);
-                const score = Number(m.total) || 0;
-                let preScore = score;
-                let postScore = score;
-                let preGrade = m.grade || 'P';
-                let postGrade = m.grade || 'P';
-                let delta = 0;
-                let outcome = 'Confirmed';
-                let isCleared = false;
+            sorted.forEach((attempt, idx) => {
+                if (!attempt.isReval) return; // only reval attempts produce a delta row
+                // Most recent non-reval attempt strictly before this one.
+                const prior = [...sorted.slice(0, idx)].reverse().find(a => !a.isReval);
+                if (!prior) return; // no real prior mark on file — nothing honest to compare against, so skip
 
-                // Calculate real SGPA delta if regular and reval sessions exist
-                const regSgpa = reg ? Number(reg.sgpa) || 0 : 0;
-                const rvSgpa = Number(rv.sgpa) || 0;
-                const sgpaDiff = rvSgpa - regSgpa;
+                const [usn] = key.split('|');
+                const stu = studentByUsn.get(usn);
 
-                if (sgpaDiff > 0) {
-                    // Upgraded result in this semester
-                    delta = Math.max(1, Math.round(sgpaDiff * 10));
-                    preScore = Math.max(0, score - delta);
-                    preGrade = preScore < 40 ? 'F' : 'P';
-                    postScore = score;
-                    postGrade = m.grade;
+                const preScore = Number(prior.total) || 0;
+                const postScore = Number(attempt.total) || 0;
+                const preGrade = prior.grade || '—';
+                const postGrade = attempt.grade || '—';
+                const delta = postScore - preScore;
+                const wasFailingBefore = isFailedSubject(prior);
+                const isFailingNow = isFailedSubject(attempt);
 
-                    if (preGrade === 'F' && postGrade !== 'F') {
-                        outcome = 'Cleared Backlog';
-                        isCleared = true;
-                        clearedCount++;
-                    } else {
-                        outcome = 'Grade Upgraded';
-                    }
+                let outcome;
+                if (wasFailingBefore && !isFailingNow) {
+                    outcome = 'Cleared Backlog';
+                    clearedCount++;
+                } else if (delta > 0) {
+                    outcome = 'Grade Upgraded';
                     upgradedCount++;
-                } else if (isFail) {
-                    outcome = 'Unchanged (Retained F)';
-                    unchangedCount++;
+                } else if (delta < 0) {
+                    outcome = 'Marks Decreased';
+                    decreasedCount++;
                 } else {
                     outcome = 'Confirmed';
                     unchangedCount++;
                 }
 
                 deltaRoster.push({
-                    usn: m.usn,
-                    name: stu?.name || m.usn,
-                    subject_code: m.subject_code,
-                    subject_name: m.subject_name || m.subject_code,
+                    usn,
+                    name: stu?.name || usn,
+                    subject_code: attempt.subject_code,
+                    subject_name: attempt.subject_name || attempt.subject_code,
                     preMarks: preScore,
                     preGrade,
                     postMarks: postScore,
                     postGrade,
                     delta,
                     outcome,
-                    isCleared
+                    isCleared: outcome === 'Cleared Backlog',
                 });
             });
         });
 
-        // Compute net pass gain %
         const totalApplications = deltaRoster.length;
         const netPassRateGain = totalApplications > 0 ? Number(((clearedCount / totalApplications) * 100).toFixed(1)) : 0;
 
@@ -165,11 +155,12 @@ export async function GET(req) {
                 upgradedCount,
                 clearedCount,
                 unchangedCount,
-                netPassRateGain
+                decreasedCount,
+                netPassRateGain,
             },
             deltaRoster,
             branch,
-            semester
+            semester,
         };
 
         setCached(cacheKey, payload, 30_000);

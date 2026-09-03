@@ -30,7 +30,7 @@ function RevalImpactContent() {
 
     // Data
     const [report, setReport] = useState({
-        summary: { totalApplications: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, netPassRateGain: 0 },
+        summary: { totalApplications: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, decreasedCount: 0, netPassRateGain: 0 },
         deltaRoster: [],
         branch: 'CS',
         semester: 3
@@ -161,7 +161,7 @@ function RevalImpactContent() {
                     <PageHeaderEyebrow>University Examinations</PageHeaderEyebrow>
                     <PageHeaderTitle>Revaluation Impact &amp; Grade Delta Analysis</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Before-and-after examination delta tracking marks gains, grade upgrades, and backlogs cleared via revaluation.
+                        Real before-and-after comparison for subjects that were actually revalued and have a prior recorded mark on file. Revaluations without a prior mark on record are not shown — nothing here is estimated.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -215,9 +215,10 @@ function RevalImpactContent() {
             {/* 4 Impact Metric Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '14px', marginBottom: '24px' }}>
                 {[
-                    { label: 'Applications Evaluated', value: report.summary.totalApplications, color: 'var(--tx-main)' },
+                    { label: 'Subjects With Real Before/After Data', value: report.summary.totalApplications, color: 'var(--tx-main)' },
                     { label: 'Grades Upgraded', value: report.summary.upgradedCount, color: '#3B82F6' },
                     { label: 'Backlogs Cleared via Reval', value: report.summary.clearedCount, color: '#10B981' },
+                    { label: 'Marks Decreased', value: report.summary.decreasedCount ?? 0, color: '#EF4444' },
                     { label: 'Net Pass Rate Gain', value: `+${report.summary.netPassRateGain}%`, color: '#6366F1' },
                 ].map(item => (
                     <div key={item.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -256,7 +257,12 @@ function RevalImpactContent() {
                                 {report.deltaRoster.length === 0 ? (
                                     <tr>
                                         <td colSpan={10} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
-                                            {loading ? 'Analyzing revaluation deltas...' : 'No revaluation entries found for selected semester.'}
+                                            {loading ? 'Analyzing revaluation deltas...' : (
+                                                <>
+                                                    <div>No subject has both a revaluation mark and a prior recorded mark on file for this scope.</div>
+                                                    <div style={{ fontSize: '11px', marginTop: '6px' }}>This report only shows a subject when the original (pre-reval) mark was actually captured by the scraper — it never estimates one. Try a different branch, semester, or batch.</div>
+                                                </>
+                                            )}
                                         </td>
                                     </tr>
                                 ) : (
@@ -300,6 +306,8 @@ function RevalImpactContent() {
                                                 <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 900 }}>
                                                     {d.delta > 0 ? (
                                                         <span style={{ color: '#10B981' }}>+{d.delta}</span>
+                                                    ) : d.delta < 0 ? (
+                                                        <span style={{ color: '#EF4444' }}>{d.delta}</span>
                                                     ) : (
                                                         <span style={{ color: 'var(--tx-dim)' }}>0</span>
                                                     )}

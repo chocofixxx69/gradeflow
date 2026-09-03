@@ -62,7 +62,7 @@ export async function GET(req) {
         // 2. Fetch subject marks dynamically across all semesters
         const marks = await fetchDynamicMarks(supabaseAdmin, {
             usns,
-            select: 'usn, semester, subject_code, subject_name, credits, internal, external, total, grade, passed'
+            select: 'usn, semester, subject_code, subject_name, credits, internal, external, total, grade, passed, is_backlog'
         });
 
         const marksByUsn = new Map();

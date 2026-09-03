@@ -109,7 +109,17 @@ function EligibilityRegisterContent() {
     const handleExportExcel = () => {
         const wb = XLSX.utils.book_new();
 
-        // 1. Detained Sheet
+        // 1. Disclaimer sheet — the credit/backlog thresholds this report applies
+        // are NOT confirmed against an official VTU regulation document; do not
+        // treat "Detained" here as final without independent verification.
+        const wsDisclaimer = XLSX.utils.aoa_to_sheet([
+            ['UNVERIFIED THRESHOLDS — DO NOT ACT ON THIS WITHOUT CONFIRMATION'],
+            ['The credit/backlog limits used to produce this register (20 credits for Sem 3, 4-backlog caps, the Sem-7 first-year-clearance rule) have not been confirmed against an official VTU regulation document for the applicable scheme/regulation year.'],
+            ['Verify against the official VTU circular before treating any student as detained.'],
+        ]);
+        XLSX.utils.book_append_sheet(wb, wsDisclaimer, 'READ FIRST');
+
+        // 2. Detained Sheet
         const detainedHeaders = ['#', 'USN', 'Name', 'Department', 'Earned Cr', 'Backlogs', 'Detention Reasons', 'Uncleared Subjects'];
         const detainedRows = (report.detainedStudents || []).map((s, idx) => [
             idx + 1,
@@ -153,10 +163,16 @@ function EligibilityRegisterContent() {
         doc.setFont('helvetica', 'normal');
         doc.text(`Branch: ${branch} | Batch: ${batch || 'All'} | Evaluated: ${report.summary.totalEvaluated} | Eligible: ${report.summary.eligibleCount} | Detained: ${report.summary.detainedCount} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bolditalic');
+        doc.setTextColor(185, 28, 28);
+        doc.text('UNVERIFIED THRESHOLDS: these credit/backlog limits are not confirmed against an official VTU regulation document. Verify before acting.', 14, 26);
+        doc.setTextColor(0, 0, 0);
+
         // Detained list
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.text(`DETAINED STUDENTS (BARRED FROM ENROLLMENT IN SEMESTER ${targetSemester})`, 14, 28);
+        doc.text(`DETAINED STUDENTS (BARRED FROM ENROLLMENT IN SEMESTER ${targetSemester})`, 14, 33);
 
         const dHead = [['#', 'USN', 'Name', 'Branch', 'Backlogs', 'Reason for Detention']];
         const dBody = (report.detainedStudents || []).map((s, idx) => [
@@ -171,7 +187,7 @@ function EligibilityRegisterContent() {
         autoTable(doc, {
             head: dHead,
             body: dBody,
-            startY: 31,
+            startY: 36,
             theme: 'striped',
             styles: { fontSize: 8, cellPadding: 2 },
             headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255] }
@@ -205,6 +221,16 @@ function EligibilityRegisterContent() {
                         Evaluates VTU vertical progression rules to compute eligible vs detained cohorts prior to semester enrollment.
                     </PageHeaderSubtitle>
                 </PageHeader>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '12px 16px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', marginBottom: '20px' }}>
+                <span className="material-icons-round" style={{ fontSize: '20px', color: '#EF4444', flexShrink: 0 }}>warning</span>
+                <div style={{ fontSize: '12.5px', color: 'var(--tx-main)', lineHeight: 1.5 }}>
+                    <strong>Unverified thresholds — do not act on this without confirmation.</strong> The credit/backlog limits used here (20 credits for Sem 3, 4-backlog caps, the Sem-7 first-year-clearance rule) have not been confirmed against an official VTU regulation document for your specific scheme/regulation year. They may not match the actual rule that applies to your students. Verify against the official VTU circular before treating any student here as "detained."
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <Button onClick={handleExportExcel} variant="ghost">
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>description</span>
