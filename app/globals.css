@@ -281,6 +281,11 @@ body.gf-drawer-open {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* Alias used by ClientLayoutWrapper — must inherit all .app-layout rules */
+.app-layout-authenticated {
+  /* inherits from .app-layout — no additional rules needed */
+}
+
 .main-content {
   grid-column: 2;
   grid-row: 2;
@@ -1019,11 +1024,13 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
     height: 100dvh;
     padding: max(var(--space-5), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left));
     transform: translateX(-100%);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    visibility: hidden;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.25s;
     z-index: var(--z-drawer);
     box-shadow: var(--elevation-overlay);
     overflow-y: auto;
     overflow-x: hidden;
+    will-change: transform;
   }
 
   .gf-sidebar-nav {
@@ -1032,6 +1039,7 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
 
   .gf-sidebar.active {
     transform: translateX(0);
+    visibility: visible;
   }
 
   body.gf-drawer-open .gf-mobile-menu-btn {
