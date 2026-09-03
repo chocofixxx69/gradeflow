@@ -184,7 +184,10 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
     print(f"    [>] Checking {url_short}...", file=sys.stderr, flush=True)
     
     try:
-        page.goto(url, wait_until="load", timeout=25000)
+        # domcontentloaded, not load: "load" blocks until every stylesheet,
+        # font and image has finished, but the only element this flow needs is
+        # the captcha, and the is_visible() wait below already guarantees it.
+        page.goto(url, wait_until="domcontentloaded", timeout=25000)
     except Exception as e:
         print(f"    [!] Failed to load {url_short}: Time out or error.", file=sys.stderr, flush=True)
         return None
@@ -207,7 +210,7 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
         captcha_text = solve_captcha(captcha_bytes)
         if not captcha_text:
             print(f"    [!] Attempt {attempt+1}: Solver error.", file=sys.stderr)
-            page.reload(wait_until="load")
+            page.reload(wait_until="domcontentloaded")
             continue
 
         # 2. Submit Form
@@ -265,7 +268,7 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
         if ("invalid" in alert_msg and "captcha" in alert_msg) or \
            ("captcha" in html_lower and "invalid" in html_lower and "student name" not in html_lower):
             print(f"    [!] Attempt {attempt+1}: Invalid captcha. Retrying...", file=sys.stderr)
-            try: page.reload(wait_until="load")
+            try: page.reload(wait_until="domcontentloaded")
             except: pass
             continue
             
@@ -298,17 +301,47 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
         if not is_still_on_form and (has_table or page.locator("td").count() > 15):
             print(f"    [+] {url_short}: Result found! Parsing...", file=sys.stderr)
             
-            # Find the student name
+            # Find the student name. VTU's various exam-year/scheme portals
+            # (regular vs. reval vs. NEP-format pages) don't all use the same
+            # label wording or layout, so try several label variants before
+            # falling back to a structural search.
             name = "Unknown"
+            def _looks_like_name(v):
+                v = (v or "").strip()
+                if not v or v.upper() == usn.upper(): return False
+                if not re.search(r"[A-Za-z]{2,}", v): return False
+                if re.search(r"\d{3,}", v): return False  # names don't carry long digit runs
+                return len(v) <= 60
             try:
-                # Common VTU name patterns
                 content_text = page.evaluate("() => document.body.innerText")
-                name_match = re.search(r"Student Name\s*:\s*(.*)", content_text, re.IGNORECASE)
-                if name_match:
-                    name = name_match.group(1).split("\n")[0].strip()
-                else:
-                    # Fallback locator
-                    name = page.locator("td:has-text(':')").nth(1).inner_text().split(":")[-1].strip()
+                for label_pat in (
+                    r"Student\s*Name",
+                    r"Candidate\s*Name",
+                    r"Name\s+of\s+(?:the\s+)?(?:Student|Candidate)",
+                ):
+                    m = re.search(label_pat + r"\s*:\s*(.+)", content_text, re.IGNORECASE)
+                    if m:
+                        candidate = m.group(1).split("\n")[0].strip()
+                        if _looks_like_name(candidate):
+                            name = candidate
+                            break
+
+                # Structural fallback: find whichever cell holds this student's
+                # own USN and read the cell right after it — VTU almost always
+                # prints USN and Name as an adjacent label/value or side-by-side
+                # pair, regardless of what the label text itself says.
+                if name == "Unknown":
+                    # Must cover BOTH layouts: the older portals render real
+                    # tables, while the 2025/NEP pages render div.divTableCell
+                    # (same split the subject parser below has to make). A
+                    # td-only search silently finds nothing on the div pages.
+                    cells = page.locator("td, th, div.divTableCell").evaluate_all("els => els.map(e => e.textContent.trim())")
+                    for i, c in enumerate(cells):
+                        if usn.upper() in c.upper() and i + 1 < len(cells):
+                            candidate = cells[i + 1].split(":")[-1].strip()
+                            if _looks_like_name(candidate):
+                                name = candidate
+                                break
             except: pass
             
             # Semester
@@ -391,7 +424,7 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
         try:
             if captcha_img.is_visible(timeout=500):
                 print(f"    [!] Attempt {attempt+1}: Still on form. Retrying...", file=sys.stderr)
-                try: page.reload(wait_until="load")
+                try: page.reload(wait_until="domcontentloaded")
                 except: pass
                 continue
         except: pass
@@ -420,7 +453,7 @@ def deduce_scheme_from_usn(usn: str) -> str:
             pass
     return "2022"
 
-def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
+def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None):
     usn = usn.strip().upper()
     target_scheme = str(scheme).strip() if scheme else deduce_scheme_from_usn(usn)
     urls = get_vtu_urls(faculty_id, scheme=target_scheme)
@@ -433,17 +466,24 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
     # Preload EasyOCR model in background thread
     threading.Thread(target=get_easyocr, daemon=True).start()
 
-    # Determine optimal CPU browser concurrency (default: 3 workers)
-    concurrency_env = os.getenv("SCRAPER_CONCURRENCY", "3")
-    try:
-        max_workers = max(1, min(int(concurrency_env), len(urls)))
-    except ValueError:
-        max_workers = min(3, len(urls))
+    # Determine CPU browser concurrency (Burst Mode = all portals in parallel)
+    if concurrency:
+        max_workers = max(1, min(concurrency, len(urls)))
+    elif burst or os.getenv("BURST_MODE", "1") in ("1", "true", "yes"):
+        concurrency_env = os.getenv("SCRAPER_CONCURRENCY", "")
+        max_workers = int(concurrency_env) if concurrency_env.isdigit() else len(urls)
+        max_workers = max(1, min(max_workers, len(urls)))
+    else:
+        concurrency_env = os.getenv("SCRAPER_CONCURRENCY", "4")
+        max_workers = int(concurrency_env) if concurrency_env.isdigit() else 4
+        max_workers = max(1, min(max_workers, len(urls)))
 
     results_dict = {}
+    found_count = 0
     lock = threading.Lock()
 
     def _worker_scan_urls(worker_id: int, worker_urls: list):
+        nonlocal found_count
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(
@@ -458,6 +498,20 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
                     ]
                 )
                 context = browser.new_context(user_agent="Mozilla/5.0")
+
+                # Drop dead-weight resources to maximize network throughput
+                def _block_dead_weight(route, request):
+                    if request.resource_type in ("stylesheet", "font", "media"):
+                        try: route.abort()
+                        except: pass
+                    else:
+                        try: route.continue_()
+                        except: pass
+                try:
+                    context.route("**/*", _block_dead_weight)
+                except Exception:
+                    pass
+
                 page = context.new_page()
 
                 dialog_log = []
@@ -472,6 +526,14 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
                     if res:
                         with lock:
                             results_dict[u] = res
+                            found_count += 1
+                            # LIVE DATABASE STREAMING: Save immediately to Supabase
+                            groups = {}
+                            for s in res["subjects"]:
+                                s_sem = _extract_sem(s["subject_code"]) or res["semester"] or 1
+                                groups.setdefault(s_sem, []).append(s)
+                            for sem, subs in groups.items():
+                                _save_db(usn, res["name"] or usn, sem, u, subs)
 
                 browser.close()
         except Exception as e:
@@ -486,7 +548,8 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
         for idx, u in enumerate(urls):
             partitions[idx % max_workers].append(u)
 
-        print(f"[ENGINE] Launching {max_workers} parallel CPU browser workers with shared CUDA GPU solver...", file=sys.stderr, flush=True)
+        mode_desc = "FULL BURST" if max_workers >= len(urls) else f"{max_workers}-TAB BURST"
+        print(f"[ENGINE] Launching {mode_desc} ({max_workers} parallel browser tabs) with RTX 4060 GPU solver...", file=sys.stderr, flush=True)
         threads = []
         for i, part in enumerate(partitions):
             if not part:
@@ -502,23 +565,9 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
         for t in threads:
             t.join()
 
-    # Process and save results in original URL order
-    found_count = 0
-    for u in urls:
-        if u in results_dict:
-            res = results_dict[u]
-            found_count += 1
-            groups = {}
-            for s in res["subjects"]:
-                s_sem = _extract_sem(s["subject_code"]) or res["semester"] or 1
-                groups.setdefault(s_sem, []).append(s)
-
-            for sem, subs in groups.items():
-                _save_db(usn, res["name"] or usn, sem, u, subs)
-        
     if found_count > 0:
         _recalculate_remarks(usn)
-        print(f"[SUCCESS] {usn}: Success")
+        print(f"[SUCCESS] {usn}: Success (Saved {found_count} semester/exam records)")
     else:
         print(f"[WARNING] {usn}: No results")
     return found_count > 0
@@ -594,8 +643,14 @@ def _save_db(usn, name, sem, url, subs):
         scheme = _get_student_scheme(usn)
         branch = _parse_branch(usn)
         # Persist student master info including scheme
-        updates = {"usn": usn, "name": name, "semester": sem, "scheme": scheme}
+        updates = {"usn": usn, "semester": sem, "scheme": scheme}
         if branch: updates["branch"] = branch
+        # Only write a name when this page actually gave us one. Every exam
+        # URL calls _save_db in turn, and a plain unconditional overwrite here
+        # meant one page with an unrecognized name layout ("Unknown") could
+        # clobber a real name a different page had already saved correctly.
+        if name and name.strip() and name.strip().upper() != "UNKNOWN":
+            updates["name"] = name.strip()
         try:
             supabase.table("students").upsert(updates, on_conflict="usn").execute()
         except Exception:

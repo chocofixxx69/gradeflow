@@ -23,9 +23,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scraper.engine import scrape_all_semesters  # type: ignore
 
 
-def _scrape_worker(usn: str, scheme: str = None) -> dict:
+def _scrape_worker(usn: str, scheme: str = None, tabs: int = None) -> dict:
     try:
-        found = scrape_all_semesters(usn, scheme=scheme)
+        found = scrape_all_semesters(usn, scheme=scheme, burst=True, concurrency=tabs)
         return {
             "usn": usn,
             "status": "SUCCESS" if found else "NO DATA",
@@ -43,7 +43,7 @@ def _scrape_worker(usn: str, scheme: str = None) -> dict:
 def scrape_one(usn: str) -> None:
     """Run the engine for a single USN and print a short JSON summary."""
     print(f"\n=== Scraping {usn} ===", file=sys.stderr)
-    found = scrape_all_semesters(usn)
+    found = scrape_all_semesters(usn, burst=True)
     status = "scraped & stored" if found else "no data found"
     result = {"usn": usn, "status": status}
     print(json.dumps(result, indent=2))
@@ -51,19 +51,23 @@ def scrape_one(usn: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Scrape VTU results for many USNs."
+        description="Scrape VTU results for many USNs in GPU+CPU Burst Mode."
     )
     parser.add_argument(
         "usns", nargs="*",
-        help="One or more USNs to scrape (e.g. 2AB23CS013)."
+        help="One or more USNs to scrape (e.g. 2AB25CS021)."
     )
     parser.add_argument(
         "-f", "--file", dest="filename",
-        help="Path to a text file containing USNs, one per line."
+        help="Path to a text or CSV file containing USNs."
     )
     parser.add_argument(
-        "-w", "--workers", dest="workers", type=int, default=3,
-        help="Number of parallel worker threads to speed up scraping (default: 3)."
+        "--students", "-w", "--workers", dest="students", type=int, default=2,
+        help="Number of students to scrape simultaneously in burst mode (e.g. 2, 3, or 4). Default: 2."
+    )
+    parser.add_argument(
+        "--tabs", "-t", dest="tabs", type=int, default=None,
+        help="Number of concurrent portal tabs per student (default: all portals in burst mode)."
     )
     parser.add_argument(
         "-b", "--branch", dest="branch", type=str, default=None,
@@ -168,19 +172,19 @@ def main() -> None:
             to_scrape.append(usn)
 
     if to_scrape:
-        workers = max(1, args.workers)
-        print(f"\n[INFO] Scraping {len(to_scrape)} USNs using {workers} parallel worker(s)...\n", file=sys.stderr)
+        workers = max(1, args.students)
+        print(f"\n[INFO] Scraping {len(to_scrape)} USNs ({workers} concurrent student(s) in Burst Mode)...\n", file=sys.stderr)
         
         if workers == 1:
             for i, usn in enumerate(to_scrape):
                 print(f"[{i+1}/{len(to_scrape)}] Processing {usn}...", file=sys.stderr)
-                res = _scrape_worker(usn, scheme=args.scheme)
+                res = _scrape_worker(usn, scheme=args.scheme, tabs=args.tabs)
                 results_summary.append(res)
                 if i < len(to_scrape) - 1:
                     time.sleep(1)
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-                future_to_usn = {executor.submit(_scrape_worker, usn, args.scheme): usn for usn in to_scrape}
+                future_to_usn = {executor.submit(_scrape_worker, usn, args.scheme, args.tabs): usn for usn in to_scrape}
                 for future in concurrent.futures.as_completed(future_to_usn):
                     res = future.result()
                     results_summary.append(res)
