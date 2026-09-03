@@ -397,14 +397,37 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50
 
     return None
 
-def scrape_all_semesters(usn: str, faculty_id=None):
-    urls = get_vtu_urls(faculty_id)
-    if not urls:
-        print(f"\n[ENGINE] Faculty has 0 active URLs. Skipping {usn}.", file=sys.stderr)
-        return False
-        
+def deduce_scheme_from_usn(usn: str) -> str:
+    """Deduces VTU curriculum scheme from USN or database.
+    22, 23, 24 admission years -> '2022' Scheme (NEP).
+    25+ admission years -> '2025' Scheme.
+    """
+    clean = usn.strip().upper()
+    try:
+        res = supabase.table("students").select("scheme").eq("usn", clean).limit(1).execute()
+        if res.data and res.data[0].get("scheme"):
+            return str(res.data[0]["scheme"])
+    except Exception:
+        pass
+
+    m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', clean)
+    if m:
+        try:
+            yr = int(m.group(1))
+            return "2025" if yr >= 25 else "2022"
+        except ValueError:
+            pass
+    return "2022"
+
+def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
     usn = usn.strip().upper()
-    print(f"\n[ENGINE] Scraping {usn} ({len(urls)} portals)...", file=sys.stderr, flush=True)
+    target_scheme = str(scheme).strip() if scheme else deduce_scheme_from_usn(usn)
+    urls = get_vtu_urls(faculty_id, scheme=target_scheme)
+    if not urls:
+        print(f"\n[ENGINE] 0 active URLs for {target_scheme} Scheme. Skipping {usn}.", file=sys.stderr)
+        return False
+
+    print(f"\n[ENGINE] Scraping {usn} under {target_scheme} Scheme ({len(urls)} portals)...", file=sys.stderr, flush=True)
     
     found_count = 0
     with sync_playwright() as p:
@@ -505,15 +528,8 @@ def _get_catalog_index():
     return _catalog_index_cache
 
 def _get_student_scheme(usn):
-    """Looks up the student's known scheme; defaults to '2022' when unknown,
-    matching the app-wide default (lib/vtuAcademicEngine.js and friends)."""
-    try:
-        res = supabase.table("students").select("scheme").eq("usn", usn).limit(1).execute()
-        if res.data and res.data[0].get("scheme"):
-            return res.data[0]["scheme"]
-    except Exception:
-        pass
-    return "2022"
+    """Looks up the student's known scheme; deduces from USN if unknown."""
+    return deduce_scheme_from_usn(usn)
 
 def _attempt_rank(passed, grade):
     """Ranks a subject attempt for best-of comparison: PASS > FAIL > ABSENT.
@@ -528,10 +544,15 @@ def _attempt_rank(passed, grade):
 
 def _save_db(usn, name, sem, url, subs):
     try:
+        scheme = _get_student_scheme(usn)
         branch = _parse_branch(usn)
-        # Update branch if we parsed it
-        updates = {"usn": usn, "name": name, "semester": sem}
+        # Persist student master info including scheme
+        updates = {"usn": usn, "name": name, "semester": sem, "scheme": scheme}
         if branch: updates["branch"] = branch
+        try:
+            supabase.table("students").upsert(updates, on_conflict="usn").execute()
+        except Exception:
+            pass
         
         # Canonical credit resolution: subject_catalog is the ONLY credit
         # authority (see backend/scraper/credit_resolver.py — same algorithm
@@ -644,5 +665,6 @@ if __name__ == "__main__":
     
     usn = sys.argv[1] if len(sys.argv) > 1 else input("Enter USN: ")
     faculty_id = sys.argv[2] if len(sys.argv) > 2 else None
+    scheme = sys.argv[3] if len(sys.argv) > 3 else None
     
-    scrape_all_semesters(usn, faculty_id=faculty_id)
+    scrape_all_semesters(usn, faculty_id=faculty_id, scheme=scheme)

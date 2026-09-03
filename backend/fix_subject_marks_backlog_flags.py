@@ -66,7 +66,8 @@ for m in marks:
         
         supabase.table("subject_marks").update({
             "is_backlog": True,
-            "grade": expected_grade
+            "grade": expected_grade,
+            "passed": False
         }).eq("id", m_id).execute()
 
 print("="*70)

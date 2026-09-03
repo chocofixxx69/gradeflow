@@ -674,12 +674,14 @@ function FacultyDashboardContent() {
         }
 
         const cleanUSN = targetUsn.toUpperCase().trim();
+        const admissionYear = parseInt(cleanUSN.substring(3, 5), 10) || 22;
+        const targetScheme = student?.scheme || (admissionYear >= 25 ? '2025' : '2022');
 
         // Stop any existing polling before starting a new one
         stopScraping(true);
 
         setScraping(true);
-        setScrapeProgress(`Initializing deep scan for ${cleanUSN}...`);
+        setScrapeProgress(`Initializing ${targetScheme} Scheme deep scan for ${cleanUSN}...`);
         setMessage('');
 
         try {
@@ -690,7 +692,8 @@ function FacultyDashboardContent() {
                     usn: cleanUSN,
                     role: 'faculty',
                     force: true,
-                    faculty_id: faculty?.id
+                    faculty_id: faculty?.id,
+                    scheme: targetScheme
                 }),
             });
             const json = await res.json();
@@ -705,7 +708,8 @@ function FacultyDashboardContent() {
 
             if (json.jobId || json.status === 'queued') {
                 const jobId = json.jobId;
-                setScrapeProgress(`Job ${jobId?.substring(0, 6)} queued. Scanning VTU portals for ${cleanUSN}...`);
+                const activeScheme = json.scheme || targetScheme;
+                setScrapeProgress(`Job ${jobId?.substring(0, 6)} queued. Scanning ${activeScheme} Scheme portals for ${cleanUSN}...`);
 
                 let attempts = 0;
                 pollRef.current = setInterval(async () => {

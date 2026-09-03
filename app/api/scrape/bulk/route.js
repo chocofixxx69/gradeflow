@@ -40,13 +40,18 @@ export async function POST(req) {
 
         for (let i = 0; i < usns.length; i += chunkSize) {
             const chunk = usns.slice(i, i + chunkSize);
-            const insertPayload = chunk.map((usn) => ({
-                usn: usn.toUpperCase(),
-                faculty_id: faculty_id || null,
-                status: 'queued',
-                notes: `Bulk Trigger via URL: ${base_url}`
-                // Note: You could adapt your schema to store the target URL per job if needed
-            }));
+            const insertPayload = chunk.map((usn) => {
+                const clean = (usn || '').toUpperCase().trim();
+                const yr = parseInt(clean.substring(3, 5), 10) || 22;
+                const scheme = yr >= 25 ? '2025' : '2022';
+                return {
+                    usn: clean,
+                    faculty_id: faculty_id || null,
+                    status: 'queued',
+                    scheme,
+                    notes: `Bulk Trigger via URL: ${base_url}`
+                };
+            });
 
             const { error } = await supabase
                 .from('scraper_jobs')

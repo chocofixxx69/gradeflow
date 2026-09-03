@@ -72,8 +72,10 @@ def process_queued_jobs(limit: int = 10, quiet: bool = False):
             "started_at": "now()"
         }).eq("id", job_id).execute()
 
+        job_scheme = job.get("scheme")
+
         try:
-            success = scrape_all_semesters(usn, faculty_id=faculty_id)
+            success = scrape_all_semesters(usn, faculty_id=faculty_id, scheme=job_scheme)
 
             final_status = "finished" if success else "no_result"
             supabase.table("scraper_jobs").update({

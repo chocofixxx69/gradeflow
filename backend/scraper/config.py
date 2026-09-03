@@ -46,31 +46,41 @@ FALLBACK_URLS = [
 def get_vtu_urls(faculty_id=None, scheme=None):
     """Return portal URLs in ascending chronological order (oldest exam first).
 
-    `scheme` picks which canonical BE-only table to read when no faculty
-    override applies ('2022' -> vtu_urls_2022_scheme, '2025' ->
-    vtu_urls_2025_scheme, anything else/None -> union of both, since a
-    portal serves any BE USN regardless of admission-year scheme).
+    `scheme` strictly determines which scheme's portals to query ('2022' or '2025').
+    If faculty_id is provided, their configured URLs for THAT specific scheme are loaded.
+    If none configured for that scheme or faculty_id is None, falls back to the canonical scheme table.
     """
     try:
+        scheme_str = str(scheme).strip() if scheme else None
         if faculty_id:
-            # Check if this faculty has been seeded in the system
-            check = supabase.table("faculty_vtu_urls").select("id").eq("faculty_id", faculty_id).limit(1).execute()
-            if check.data is not None and len(check.data) > 0:
-                # Faculty is in the system — STRICTLY respect their active URLs.
-                # If they disabled everything, return [] so the scraper skips — do NOT fall through.
-                resp = supabase.table("faculty_vtu_urls")\
-                    .select("url")\
-                    .eq("faculty_id", faculty_id)\
-                    .eq("is_active", True)\
-                    .order("sort_order", desc=False)\
-                    .execute()
+            # Check if this faculty has active URLs for this specific scheme
+            query = supabase.table("faculty_vtu_urls")\
+                .select("url")\
+                .eq("faculty_id", faculty_id)\
+                .eq("is_active", True)
+            
+            if scheme_str:
+                query = query.eq("scheme", scheme_str)
+            
+            resp = query.order("sort_order", desc=False).execute()
+            if resp.data is not None and len(resp.data) > 0:
                 return [r["url"] for r in resp.data]
-            # Faculty not seeded yet — fall through to global scheme tables below
+            
+            # If faculty explicitly configured this scheme and turned all URLs OFF, respect that and return []!
+            all_for_scheme = supabase.table("faculty_vtu_urls")\
+                .select("id")\
+                .eq("faculty_id", faculty_id)
+            if scheme_str:
+                all_for_scheme = all_for_scheme.eq("scheme", scheme_str)
+            check_exist = all_for_scheme.limit(1).execute()
+            if check_exist.data and len(check_exist.data) > 0:
+                return []
+            # Faculty not seeded for this scheme yet — fall through to global scheme tables below
 
         tables = {
             "2022": ["vtu_urls_2022_scheme"],
             "2025": ["vtu_urls_2025_scheme"],
-        }.get(scheme, ["vtu_urls_2022_scheme", "vtu_urls_2025_scheme"])
+        }.get(scheme_str, ["vtu_urls_2022_scheme"] if scheme_str == "2022" else (["vtu_urls_2025_scheme"] if scheme_str == "2025" else ["vtu_urls_2022_scheme", "vtu_urls_2025_scheme"]))
 
         urls, seen = [], set()
         for table in tables:
@@ -87,5 +97,8 @@ def get_vtu_urls(faculty_id=None, scheme=None):
             return urls
     except Exception as e:
         print(f"[config] get_vtu_urls error: {e}", file=sys.stderr)
-    # Last resort: hardcoded list (only when DB is completely unreachable)
+
+    # Last resort fallback:
+    if scheme_str == "2025":
+        return [u for u in FALLBACK_URLS if any(y in u for y in ("25", "26", "D5J6", "JJ25"))]
     return FALLBACK_URLS

@@ -23,9 +23,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scraper.engine import scrape_all_semesters  # type: ignore
 
 
-def _scrape_worker(usn: str) -> dict:
+def _scrape_worker(usn: str, scheme: str = None) -> dict:
     try:
-        found = scrape_all_semesters(usn)
+        found = scrape_all_semesters(usn, scheme=scheme)
         return {
             "usn": usn,
             "status": "SUCCESS" if found else "NO DATA",
@@ -72,6 +72,11 @@ def main() -> None:
     parser.add_argument(
         "--skip-existing", dest="skip_existing", action="store_true", default=True,
         help="Skip USNs already saved in Supabase (default: True)."
+    )
+    parser.add_argument(
+        "-s", "--scheme", dest="scheme", type=str, default=None,
+        choices=["2022", "2025"],
+        help="Target VTU curriculum scheme ('2022' or '2025'). Defaults to auto-detect."
     )
     parser.add_argument(
         "--force", dest="force", action="store_true",
@@ -169,13 +174,13 @@ def main() -> None:
         if workers == 1:
             for i, usn in enumerate(to_scrape):
                 print(f"[{i+1}/{len(to_scrape)}] Processing {usn}...", file=sys.stderr)
-                res = _scrape_worker(usn)
+                res = _scrape_worker(usn, scheme=args.scheme)
                 results_summary.append(res)
                 if i < len(to_scrape) - 1:
                     time.sleep(1)
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-                future_to_usn = {executor.submit(_scrape_worker, usn): usn for usn in to_scrape}
+                future_to_usn = {executor.submit(_scrape_worker, usn, args.scheme): usn for usn in to_scrape}
                 for future in concurrent.futures.as_completed(future_to_usn):
                     res = future.result()
                     results_summary.append(res)

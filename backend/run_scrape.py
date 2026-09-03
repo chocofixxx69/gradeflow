@@ -22,8 +22,11 @@ def main():
         print("[ERROR] No USN supplied.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"[INFO] Starting scrape for {usn} …", file=sys.stderr)
-    found = scrape_all_semesters(usn)
+    scheme = sys.argv[2].strip() if len(sys.argv) > 2 else None
+    faculty_id = sys.argv[3].strip() if len(sys.argv) > 3 else None
+
+    print(f"[INFO] Starting scrape for {usn} (Scheme: {scheme or 'auto-detect'}) …", file=sys.stderr)
+    found = scrape_all_semesters(usn, faculty_id=faculty_id, scheme=scheme)
 
     if found:
         result = {
