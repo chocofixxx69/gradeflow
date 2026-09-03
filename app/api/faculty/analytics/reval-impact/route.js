@@ -121,17 +121,16 @@ export async function GET(req) {
                 if (!prior) {
                     prior = sorted.find(a => !a.isReval);
                 }
-                if (!prior) return; // no real prior mark on file — skip
 
                 const [usn] = key.split('|');
                 const stu = studentByUsn.get(usn);
 
-                const preScore = Number(prior.total) || 0;
+                const preScore = prior ? (Number(prior.total) || 0) : (Number(attempt.total) || 0);
                 const postScore = Number(attempt.total) || 0;
-                const preGrade = prior.grade || '—';
+                const preGrade = prior ? (prior.grade || '—') : (attempt.grade || '—');
                 const postGrade = attempt.grade || '—';
                 const delta = postScore - preScore;
-                const wasFailingBefore = isFailedSubject(prior);
+                const wasFailingBefore = prior ? isFailedSubject(prior) : isFailedSubject(attempt);
                 const isFailingNow = isFailedSubject(attempt);
 
                 let outcome;
