@@ -32,9 +32,9 @@ function EligibilityRegisterContent() {
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
     const [targetSemester, setTargetSemester] = useState(() => {
         const s = Number(initialSaved.semester);
-        if (s === 3 || s === 5 || s === 7) return s;
-        if ((initialSaved.batch || '2023').includes('23')) return 7;
-        return 5;
+        if (s === 3 || s === 7) return s;
+        if ((initialSaved.batch || '2023').includes('24')) return 3;
+        return 7;
     });
     const [activeTab, setActiveTab] = useState('all'); // 'all' | 'detained' | 'eligible'
     const [searchQuery, setSearchQuery] = useState('');
@@ -42,7 +42,7 @@ function EligibilityRegisterContent() {
     const initialData = getCachedApiData('/api/faculty/analytics/eligibility', {
         branch: initialSaved.branch || 'CS',
         ...(initialSaved.batch ? { batch: initialSaved.batch } : {}),
-        targetSemester: (initialSaved.batch || '2023').includes('23') ? 7 : 5
+        targetSemester: (initialSaved.batch || '2023').includes('24') ? 3 : 7
     });
 
     // Data
@@ -248,13 +248,12 @@ function EligibilityRegisterContent() {
                         </div>
                         <div>
                             <Select
-                                label="Target Semester for Admission"
+                                label="Target Progression Stage"
                                 value={targetSemester}
                                 onChange={e => setTargetSemester(Number(e.target.value))}
                                 options={[
-                                    { value: 7, label: 'Admission to Semester 7 (Year 4)' },
-                                    { value: 5, label: 'Admission to Semester 5 (Year 3)' },
-                                    { value: 3, label: 'Admission to Semester 3 (Year 2)' },
+                                    { value: 7, label: 'Moving to 4th Year (Semester 7)' },
+                                    { value: 3, label: 'Moving to 2nd Year (Semester 3)' },
                                 ]}
                             />
                         </div>
@@ -275,12 +274,11 @@ function EligibilityRegisterContent() {
                 <span className="material-icons-round" style={{ color: 'var(--primary)', fontSize: '22px', marginTop: '1px' }}>policy</span>
                 <div>
                     <div style={{ fontWeight: 800, color: 'var(--tx-main)', marginBottom: '2px' }}>
-                        VTU Vertical Progression Regulation in effect for Semester {targetSemester}:
+                        VTU Vertical Progression Regulation in effect for {targetSemester === 7 ? 'Moving to 4th Year (Semester 7)' : 'Moving to 2nd Year (Semester 3)'}:
                     </div>
                     <div style={{ color: 'var(--tx-muted)', lineHeight: '1.4' }}>
                         {targetSemester === 3 && 'VTU Minimum 20 Credits Rule: Students must earn at least 20 credits in 1st Year (Semesters 1 & 2) and must not carry more than 4 backlogs to move to 2nd Year (Semester 3).'}
-                        {targetSemester === 5 && 'VTU 3rd Year Progression: Students must not carry more than 4 backlogs from Semesters 1, 2, 3, and 4 combined to be admitted to 3rd Year (Semester 5).'}
-                        {targetSemester === 7 && 'VTU ZERO 1ST-YEAR BACKLOGS RULE: Any student carrying uncleared backlogs from 1st Year (Semesters 1 & 2) CANNOT enter 7th Semester (all 1st-year subjects must be 100% cleared). There is no backlog limit on 2nd and 3rd year subjects to enter 4th year.'}
+                        {targetSemester === 7 && 'VTU ZERO 1ST-YEAR BACKLOGS RULE: Any student carrying uncleared backlogs from 1st Year (Semesters 1 & 2) CANNOT move to 4th Year (all 1st-year subjects must be 100% cleared). There is no backlog limit on 2nd and 3rd year subjects.'}
                     </div>
                 </div>
             </div>
