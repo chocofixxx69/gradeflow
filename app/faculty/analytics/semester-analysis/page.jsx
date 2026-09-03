@@ -106,6 +106,8 @@ function SemesterAnalysisContent() {
     const filteredStudents = (data.students || []).filter(s => {
         if (statusFilter === 'passed' && (s.arrearsCount > 0 || !s.hasData)) return false;
         if (statusFilter === 'failed' && (s.arrearsCount === 0 || !s.hasData)) return false;
+        if (statusFilter === 'appeared' && !s.hasData) return false;
+        if (statusFilter === 'not_appeared' && s.hasData) return false;
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase().trim();
         return (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
@@ -426,6 +428,22 @@ function SemesterAnalysisContent() {
                             transition: 'all 0.2s ease'
                         }}
                     >
+                        Total Enrolled: <strong>{data.summary.totalEnrolled || data.students.length}</strong>
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter(statusFilter === 'appeared' ? 'all' : 'appeared')}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border)',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: statusFilter === 'appeared' ? 'var(--primary)' : 'var(--surface)',
+                            color: statusFilter === 'appeared' ? '#FFFFFF' : 'var(--tx-main)',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
                         Appeared: <strong>{data.summary.totalAppeared}</strong>
                     </button>
                     <button
@@ -460,6 +478,24 @@ function SemesterAnalysisContent() {
                     >
                         Arrears: <strong>{data.summary.totalFailed}</strong>
                     </button>
+                    {(data.summary.totalNotAppeared > 0 || ((data.summary.totalEnrolled || data.students.length) - data.summary.totalAppeared > 0)) && (
+                        <button
+                            onClick={() => setStatusFilter(statusFilter === 'not_appeared' ? 'all' : 'not_appeared')}
+                            style={{
+                                padding: '6px 14px',
+                                borderRadius: '8px',
+                                border: '1px solid rgba(100, 116, 139, 0.3)',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                background: statusFilter === 'not_appeared' ? '#64748B' : 'rgba(100, 116, 139, 0.1)',
+                                color: statusFilter === 'not_appeared' ? '#FFFFFF' : 'var(--tx-dim)',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            Did Not Appear: <strong>{data.summary.totalNotAppeared || ((data.summary.totalEnrolled || data.students.length) - data.summary.totalAppeared)}</strong>
+                        </button>
+                    )}
                 </div>
             </div>
 

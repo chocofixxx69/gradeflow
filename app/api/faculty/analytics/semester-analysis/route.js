@@ -29,7 +29,7 @@ export async function GET(req) {
         const classId = searchParams.get('classId') || '';
         const section = searchParams.get('section') || '';
 
-        const cacheKey = `sem_analysis_v3:${branch || 'ALL'}:${semester}:${batch}:${classId}:${section}`;
+        const cacheKey = `sem_analysis_v4:${branch || 'ALL'}:${semester}:${batch}:${classId}:${section}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
@@ -330,7 +330,9 @@ export async function GET(req) {
             students: studentsProcessed,
             subjects: subjectCols,
             summary: {
+                totalEnrolled: studentsList.length,
                 totalAppeared,
+                totalNotAppeared: Math.max(0, studentsList.length - totalAppeared),
                 totalPassed,
                 totalFailed,
                 passPercentage,
