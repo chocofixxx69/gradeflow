@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { matchesBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -80,13 +81,7 @@ export async function GET(req) {
             const student = studentMap.get(m.usn);
             if (!student) return !branch; // If branch filter was applied, only keep matched students
             if (batch) {
-                const b2 = batch.slice(-2);
-                if (student.year && String(student.year) === String(batch)) return true;
-                if (student.usn) {
-                    const match = student.usn.match(/[0-9][A-Z]{2}([0-9]{2})[A-Z]{2}[0-9]{3}/i);
-                    if (match && match[1] === b2) return true;
-                }
-                return false;
+                return matchesBatch(student.usn, batch, student.year);
             }
             return true;
         });

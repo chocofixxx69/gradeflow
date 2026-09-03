@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { matchesBatch } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 
 export const dynamic = 'force-dynamic';
@@ -43,15 +44,7 @@ export async function GET(req) {
 
         let students = rawStudents || [];
         if (batch) {
-            const b2 = batch.slice(-2);
-            students = students.filter(s => {
-                if (s.year && String(s.year) === String(batch)) return true;
-                if (s.usn) {
-                    const m = s.usn.match(/[0-9][A-Z]{2}([0-9]{2})[A-Z]{2}[0-9]{3}/i);
-                    if (m && m[1] === b2) return true;
-                }
-                return false;
-            });
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year));
         }
 
         if (search) {

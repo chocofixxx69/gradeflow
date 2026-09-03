@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { matchesBatch } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 
 export const dynamic = 'force-dynamic';
@@ -63,15 +64,7 @@ export async function GET(req) {
 
         // 2. Client-side filter for batch & text search (covering USN, Name, Email)
         if (batch && batch !== 'all') {
-            const batch2Digits = batch.slice(-2);
-            students = students.filter(s => {
-                if (s.year && String(s.year) === String(batch)) return true;
-                if (s.usn) {
-                    const m = s.usn.match(/[0-9][A-Z]{2}([0-9]{2})[A-Z]{2}[0-9]{3}/i);
-                    if (m && m[1] === batch2Digits) return true;
-                }
-                return false;
-            });
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year));
         }
 
         if (search) {

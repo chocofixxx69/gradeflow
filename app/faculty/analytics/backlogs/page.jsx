@@ -194,7 +194,7 @@ function BacklogsRegisterContent() {
                                 label="Intake Batch"
                                 value={batch}
                                 onChange={e => setBatch(e.target.value)}
-                                options={[{ value: '', label: 'All Batches' }, ...meta.batches.map(b => ({ value: b, label: `${b} Batch` }))]}
+                                options={[{ value: '', label: 'All Batches' }, ...meta.batches.map(b => ({ value: b, label: `${b.slice(-2)} Batch (${b})` }))]}
                             />
                         </div>
                         <div>

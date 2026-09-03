@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { extractBatchFromUsn } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -50,8 +51,8 @@ export async function GET(req) {
         students.forEach(s => {
             let bYear = s.year ? String(s.year) : null;
             if (!bYear && s.usn) {
-                const m = s.usn.match(/[0-9][A-Z]{2}([0-9]{2})[A-Z]{2}[0-9]{3}/i);
-                if (m) bYear = '20' + m[1];
+                const parsed = extractBatchFromUsn(s.usn);
+                if (parsed) bYear = parsed.fullYear;
             }
             if (!bYear) bYear = 'Unknown';
             const list = studentsByBatch.get(bYear) || [];

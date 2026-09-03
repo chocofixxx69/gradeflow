@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { extractBatchFromUsn } from '@/lib/semester-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,12 +56,9 @@ export async function GET(req) {
         const batchSet = new Set(['2025', '2024', '2023', '2022', '2021']);
         (rawStudents || []).forEach(s => {
             if (s.year) batchSet.add(String(s.year));
-            if (s.usn && s.usn.length >= 5) {
-                // VTU USN format: e.g. 1VA22CS001 -> '22' -> 2022
-                const match = s.usn.match(/[0-9][A-Z]{2}([0-9]{2})[A-Z]{2}[0-9]{3}/i);
-                if (match && match[1]) {
-                    batchSet.add('20' + match[1]);
-                }
+            const parsed = extractBatchFromUsn(s.usn);
+            if (parsed) {
+                batchSet.add(parsed.fullYear);
             }
         });
         (rawClasses || []).forEach(c => {

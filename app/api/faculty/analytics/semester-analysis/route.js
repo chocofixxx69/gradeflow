@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { matchesBatch } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -62,15 +63,7 @@ export async function GET(req) {
             let filtered = stData || [];
 
             if (batch) {
-                const batchYear2Digits = batch.slice(-2);
-                filtered = filtered.filter(s => {
-                    if (s.year && String(s.year) === String(batch)) return true;
-                    if (s.usn) {
-                        const m = s.usn.match(/[0-9][A-Z]{2}([0-9]{2})[A-Z]{2}[0-9]{3}/i);
-                        if (m && m[1] === batchYear2Digits) return true;
-                    }
-                    return false;
-                });
+                filtered = filtered.filter(s => matchesBatch(s.usn, batch, s.year));
             }
 
             studentsList = filtered;
