@@ -25,8 +25,12 @@ def get_easyocr():
                         device_name = torch.cuda.get_device_name(0)
                         vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
                         print(f"[CAPTCHA] Engine: CUDA GPU ({device_name}, {vram_gb:.1f} GB VRAM)", file=sys.stderr)
-                        # Enable cuDNN benchmark for constant input sizes
-                        torch.backends.cudnn.benchmark = True
+                        # Avoid cudnn.benchmark on variable images to prevent workspace memory leaks
+                        torch.backends.cudnn.benchmark = False
+                        try:
+                            torch.cuda.set_per_process_memory_fraction(0.35)
+                        except Exception:
+                            pass
                     else:
                         cores = os.cpu_count() or 1
                         torch.set_num_threads(max(1, cores))
@@ -152,7 +156,18 @@ def solve_captcha(image_bytes: bytes) -> str:
         with _solver_lock:
             with torch.inference_mode():
                 for image in variants:
-                    text, conf = _read_variant(ocr, image)
+                    try:
+                        text, conf = _read_variant(ocr, image)
+                    except (torch.cuda.OutOfMemoryError, RuntimeError) as cuda_err:
+                        if "out of memory" in str(cuda_err).lower():
+                            print(f"[CAPTCHA] CUDA OOM caught. Flushing VRAM cache...", file=sys.stderr)
+                            try:
+                                torch.cuda.empty_cache()
+                            except Exception:
+                                pass
+                            text, conf = _read_variant(ocr, image)
+                        else:
+                            raise
                     if not text:
                         continue
                     votes[text] = votes.get(text, 0) + 1
@@ -169,4 +184,10 @@ def solve_captcha(image_bytes: bytes) -> str:
 
     except Exception as e:
         print(f"[CAPTCHA] Solver fatal: {e}", file=sys.stderr)
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
     return ""

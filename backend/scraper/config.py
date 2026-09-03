@@ -44,21 +44,14 @@ FALLBACK_2022_URLS = [
 ]
 
 FALLBACK_2025_URLS = [
-    "https://results.vtu.ac.in/D25J26RVcbcs/index.php",       # Dec 25/Jan 26 Revaluation
+    "https://results.vtu.ac.in/MJ26cbcs/index.php",           # May/June 2026 Regular (Sem 2)
+    "https://results.vtu.ac.in/D25J26Ecbcs/index.php",        # Dec 25/Jan 26 Regular (Sem 1)
     "https://results.vtu.ac.in/MJ26rvcbcs/index.php",         # May/June 2026 Revaluation
-    "https://results.vtu.ac.in/MJ26cbcs/index.php",           # May/June 2026 Regular
-    "https://results.vtu.ac.in/D25J26Ecbcs/index.php",        # Dec 25/Jan 26 Regular
+    "https://results.vtu.ac.in/D25J26RVcbcs/index.php",       # Dec 25/Jan 26 Revaluation
     "https://results.vtu.ac.in/JJEcbcs25/index.php",          # Jun/Jul 25 Regular
     "https://results.vtu.ac.in/JJRVcbcs25/index.php",         # Jun/Jul 25 Reval
-    "https://results.vtu.ac.in/MakeUpEcbcs25/index.php",      # Jun/Jul 25 MakeUp Exam
-    "https://results.vtu.ac.in/SEcbcs25/index.php",           # Jun/Jul 25 Summer Exam
-    "https://results.vtu.ac.in/SERVcbcs25/index.php",         # Jun/Jul 25 Summer Reval
-    "https://results.vtu.ac.in/indexD5J6.php",                # Dec 25/Jan 26 Regular (NEP)
-    "https://results.vtu.ac.in/indexJJ25.php",                # Jun/Jul 25 Regular (NEP)
     "https://results.vtu.ac.in/DJcbcs25/index.php",           # Dec 24/Jan 25 Regular
     "https://results.vtu.ac.in/DJRVcbcs25/index.php",         # Dec 24/Jan 25 Reval
-    "https://results.vtu.ac.in/SplJulcbcs25/index.php",       # Jul 25 Special/Makeup Exam
-    "https://results.vtu.ac.in/RVSplJulcbcs25/index.php",     # Jul 25 Special/Makeup Reval
 ]
 
 FALLBACK_URLS = FALLBACK_2022_URLS

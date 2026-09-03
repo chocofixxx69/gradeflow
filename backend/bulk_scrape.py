@@ -18,16 +18,24 @@ import json
 import time
 import concurrent.futures
 
+# Configure stdout and stderr for UTF-8 on Windows terminals
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Ensure Python can find the 'scraper' package
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scraper.engine import scrape_all_semesters  # type: ignore
 
 
-def _scrape_worker(usn: str, scheme: str = None, tabs: int = None, delay: float = 0.0) -> dict:
+def _scrape_worker(usn: str, scheme: str = None, tabs: int = None, delay: float = 0.0, default_name: str = None) -> dict:
     if delay > 0:
         time.sleep(delay)
     try:
-        found = scrape_all_semesters(usn, scheme=scheme, burst=True, concurrency=tabs)
+        found = scrape_all_semesters(usn, scheme=scheme, burst=True, concurrency=tabs, default_name=default_name)
         return {
             "usn": usn,
             "status": "SUCCESS" if found else "NO DATA",
@@ -64,12 +72,12 @@ def main() -> None:
         help="Path to a text or CSV file containing USNs."
     )
     parser.add_argument(
-        "--students", "-w", "--workers", dest="students", type=int, default=2,
-        help="Number of students to scrape simultaneously in burst mode (e.g. 2, 3, or 4). Default: 2."
+        "--students", "-w", "--workers", dest="students", type=int, default=3,
+        help="Number of students to scrape simultaneously in burst mode (default: 3 for peak throughput without server throttling)."
     )
     parser.add_argument(
-        "--tabs", "-t", dest="tabs", type=int, default=None,
-        help="Number of concurrent portal tabs per student (default: all portals in burst mode)."
+        "--tabs", "-t", dest="tabs", type=int, default=1,
+        help="Number of concurrent portal tabs per student (default: 1 in bulk mode to ensure ultra-stable multi-student concurrency)."
     )
     parser.add_argument(
         "-b", "--branch", dest="branch", type=str, default=None,
@@ -91,6 +99,7 @@ def main() -> None:
     args = parser.parse_args()
 
     usn_list = []
+    name_map = {}
 
     if args.usns:
         usn_list.extend([u.strip().upper() for u in args.usns if u.strip()])
@@ -98,20 +107,36 @@ def main() -> None:
     if args.filename:
         try:
             import re
+            import csv
             with open(args.filename, "r", encoding="utf-8-sig", errors="ignore") as f:
                 content = f.read()
-                # Automatically extract any valid VTU USN patterns (e.g. 2AB25CS021, 1RV22EC045)
+
+            # Attempt structured CSV parsing to associate USNs with student names
+            try:
+                reader = csv.DictReader(content.splitlines())
+                for row in reader:
+                    u = (row.get("USN") or row.get("usn") or "").strip().upper()
+                    n = (row.get("Student Name") or row.get("student_name") or row.get("Name") or row.get("name") or "").strip()
+                    if u and re.match(r'^[1-9][A-Za-z]{2}\d{2}[A-Za-z]{2}\d{3}$', u):
+                        usn_list.append(u)
+                        if n:
+                            name_map[u] = n
+            except Exception:
+                pass
+
+            # Fallback regex extraction if CSV format differed
+            if not usn_list:
                 usn_matches = re.findall(r'\b([1-9][A-Za-z]{2}\d{2}[A-Za-z]{2}\d{3})\b', content)
                 if usn_matches:
                     usn_list.extend([u.upper() for u in usn_matches])
                 else:
-                    # Fallback line-by-line / comma-separated splitting
                     for line in content.splitlines():
                         cleaned = line.strip().replace(",", " ").replace('"', "").replace("'", "")
                         for token in cleaned.split():
                             if len(token) >= 7:
                                 usn_list.append(token.upper())
-            print(f"[INFO] Loaded {len(usn_list)} USNs from {args.filename}.", file=sys.stderr)
+
+            print(f"[INFO] Loaded {len(usn_list)} USNs ({len(name_map)} with student names) from {args.filename}.", file=sys.stderr)
         except FileNotFoundError:
             print(f"[ERROR] File not found: {args.filename}", file=sys.stderr)
             sys.exit(1)
@@ -135,23 +160,34 @@ def main() -> None:
         print("[ERROR] No valid USNs found to scrape.", file=sys.stderr)
         sys.exit(1)
 
-    existing_usns = set()
+    complete_usns = set()
     if not args.force:
         try:
             from scraper.config import supabase
-            resp = supabase.table("students").select("usn").execute()
-            if resp.data:
-                existing_usns = {r["usn"].upper() for r in resp.data if r.get("usn")}
-            print(f"[INFO] Found {len(existing_usns)} existing student records in Supabase.", file=sys.stderr)
+            from collections import defaultdict
+            # Only consider a student complete if they have BOTH Sem 1 and Sem 2 in the results table!
+            resp = supabase.table("results").select("usn, semester").execute()
+            sems_by_usn = defaultdict(set)
+            for r in (resp.data or []):
+                u = r.get("usn")
+                sem = r.get("semester")
+                if u and sem is not None:
+                    sems_by_usn[u.upper()].add(int(sem))
+
+            complete_usns = {u for u, sems in sems_by_usn.items() if (1 in sems and 2 in sems)}
+            print(f"[INFO] Found {len(complete_usns)} students with BOTH Sem 1 & Sem 2 complete in Supabase.", file=sys.stderr)
+            partial = len([u for u, sems in sems_by_usn.items() if not (1 in sems and 2 in sems)])
+            if partial > 0:
+                print(f"[INFO] {partial} student(s) have incomplete semesters and will be automatically re-scraped to fetch missing data.", file=sys.stderr)
         except Exception as err:
-            print(f"[WARNING] Could not fetch existing student USNs from Supabase: {err}", file=sys.stderr)
+            print(f"[WARNING] Could not fetch existing student results from Supabase: {err}", file=sys.stderr)
 
     results_summary = []
     to_scrape = []
     
     for i, usn in enumerate(usn_list):
-        if not args.force and usn in existing_usns:
-            print(f"[{i+1}/{len(usn_list)}] Skipping {usn} (Already exists in Supabase)", file=sys.stderr)
+        if not args.force and usn in complete_usns:
+            print(f"[{i+1}/{len(usn_list)}] Skipping {usn} (Both Sem 1 & 2 already complete in Supabase)", file=sys.stderr)
             results_summary.append({
                 "usn": usn,
                 "status": "SKIPPED",
@@ -168,7 +204,7 @@ def main() -> None:
         if workers == 1:
             for i, usn in enumerate(to_scrape):
                 print(f"[{i+1}/{len(to_scrape)}] Processing {usn}...", file=sys.stderr)
-                res = _scrape_worker(usn, scheme=args.scheme, tabs=args.tabs)
+                res = _scrape_worker(usn, scheme=args.scheme, tabs=args.tabs, default_name=name_map.get(usn))
                 results_summary.append(res)
                 elapsed = time.perf_counter() - start_time
                 m, s = divmod(int(elapsed), 60)
@@ -181,7 +217,7 @@ def main() -> None:
                 for idx, usn in enumerate(to_scrape):
                     # Stagger start slightly (0.35s) for the initial batch to prevent socket collision
                     stagger = (idx % workers) * 0.35
-                    f = executor.submit(_scrape_worker, usn, args.scheme, args.tabs, stagger)
+                    f = executor.submit(_scrape_worker, usn, args.scheme, args.tabs, stagger, name_map.get(usn))
                     futures[f] = usn
 
                 completed = 0
@@ -209,14 +245,13 @@ def main() -> None:
     print("|" + "-"*14 + "|" + "-"*14 + "|" + "-"*15 + "|")
     for res in results_summary:
         print(f"| {res['usn']:<12} | {res['status']:<12} | {res['time']:<12} |")
-    print("="*58)
-    print(f"\n📊 Total Students in List: {len(results_summary)}")
-    print(f"✅ Successfully Scraped:   {sum(1 for r in results_summary if r['status'] == 'SUCCESS')}")
-    print(f"⏩ Skipped (Already in DB):{sum(1 for r in results_summary if r['status'] == 'SKIPPED')}")
-    print(f"⚠️  No Data / Errors:      {sum(1 for r in results_summary if r['status'] in ('NO DATA', 'ERROR'))}")
-    print(f"\n⏱️  TOTAL TIME TAKEN:     {tot_m} min {tot_s:02d} sec ({round(total_time, 1)} seconds)")
+    print(f"\n[SUMMARY] Total Students in List: {len(results_summary)}")
+    print(f"[SUCCESS] Successfully Scraped:   {sum(1 for r in results_summary if r['status'] == 'SUCCESS')}")
+    print(f"[SKIPPED] Skipped (Already in DB):{sum(1 for r in results_summary if r['status'] == 'SKIPPED')}")
+    print(f"[ALERT]   No Data / Errors:       {sum(1 for r in results_summary if r['status'] in ('NO DATA', 'ERROR'))}")
+    print(f"\n[TIMER]   TOTAL TIME TAKEN:       {tot_m} min {tot_s:02d} sec ({round(total_time, 1)} seconds)")
     if to_scrape:
-        print(f"⚡ AVERAGE SPEED:         {avg_speed}s per student ({workers} students concurrent)")
+        print(f"[SPEED]   AVERAGE SPEED:          {avg_speed}s per student ({workers} students concurrent)")
     print("="*58 + "\n")
 
 

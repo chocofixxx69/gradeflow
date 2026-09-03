@@ -179,8 +179,9 @@ def _parse_row(texts):
         "announced_date": announced_date
     }
 
-def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 8) -> dict | None:
-    url_short = url.split("/")[-1] if url.endswith(".php") else (url.split("/")[-2] if "/" in url else url)
+def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 6) -> dict | None:
+    parts = [p for p in url.split("/") if p]
+    url_short = parts[-2] if (parts and parts[-1].endswith(".php") and len(parts) >= 2 and parts[-2] != "results.vtu.ac.in") else (parts[-1] if parts else url)
     print(f"    [>] Checking {url_short}...", file=sys.stderr, flush=True)
     
     # Robust initial navigation with retry on network blips
@@ -483,7 +484,7 @@ def deduce_scheme_from_usn(usn: str) -> str:
             pass
     return "2022"
 
-def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None):
+def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None, default_name: str = None):
     usn = usn.strip().upper()
     target_scheme = str(scheme).strip() if scheme else deduce_scheme_from_usn(usn)
     urls = get_vtu_urls(faculty_id, scheme=target_scheme)
@@ -514,6 +515,9 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
 
     def _worker_scan_urls(worker_id: int, worker_urls: list):
         nonlocal found_count
+        browser = None
+        context = None
+        page = None
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(
@@ -528,20 +532,6 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
                     ]
                 )
                 context = browser.new_context(user_agent="Mozilla/5.0")
-
-                # Drop dead-weight resources to maximize network throughput
-                def _block_dead_weight(route, request):
-                    if request.resource_type in ("stylesheet", "font", "media"):
-                        try: route.abort()
-                        except: pass
-                    else:
-                        try: route.continue_()
-                        except: pass
-                try:
-                    context.route("**/*", _block_dead_weight)
-                except Exception:
-                    pass
-
                 page = context.new_page()
 
                 dialog_log = []
@@ -557,18 +547,35 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
                         with lock:
                             results_dict[u] = res
                             found_count += 1
+                            # Fallback to default_name (e.g. from CSV) if portal name layout was unrecognized
+                            resolved_name = res.get("name")
+                            if not resolved_name or resolved_name.strip().upper() in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
+                                resolved_name = default_name or usn
+
                             # LIVE DATABASE STREAMING: Save immediately to Supabase
                             groups = {}
                             for s in res["subjects"]:
                                 s_sem = _extract_sem(s["subject_code"]) or res["semester"] or 1
                                 groups.setdefault(s_sem, []).append(s)
                             for sem, subs in groups.items():
-                                _save_db(usn, res["name"] or usn, sem, u, subs)
+                                _save_db(usn, resolved_name, sem, u, subs)
                                 saved_semesters.add(sem)
 
-                browser.close()
+                            if target_scheme == "2025" and 1 in saved_semesters and 2 in saved_semesters:
+                                print(f"    [+] Both Semester 1 & 2 captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
+                                break
+
+                try: page.close()
+                except Exception: pass
+                try: context.close()
+                except Exception: pass
+                try: browser.close()
+                except Exception: pass
         except Exception as e:
             print(f"[ENGINE] Worker {worker_id} error: {e}", file=sys.stderr)
+            if browser:
+                try: browser.close()
+                except Exception: pass
 
     if max_workers <= 1 or len(urls) <= 1:
         print(f"[ENGINE] Scanning portals sequentially (single worker)...", file=sys.stderr, flush=True)
@@ -745,7 +752,8 @@ def _save_db(usn, name, sem, url, subs):
         existing_res = supabase.table("subject_marks").select("subject_code, total, passed, grade").eq("usn", usn).eq("semester", sem).execute()
         existing_by_code = {r["subject_code"]: r for r in existing_res.data} if existing_res.data else {}
 
-        res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 0) for s in subs)}, on_conflict="usn,exam_url").execute()
+        scoped_url = f"{url.split('#')[0]}#sem-{sem}"
+        res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": scoped_url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 0) for s in subs)}, on_conflict="usn,exam_url").execute()
         if res.data:
             r_id = res.data[0]["id"]
 
