@@ -148,11 +148,7 @@ export function ClassesContent({ embedded = false }) {
     const loadSemesterExportData = async (targetSem) => {
         if (!selectedClass) return;
 
-        try {
-            const saved = localStorage.getItem(`gf_faculty_map_${selectedClass.id}_sem_${targetSem}`);
-            if (saved) setFacultyMap(JSON.parse(saved));
-            else setFacultyMap({});
-        } catch (e) {}
+        setFacultyMap({});
 
         try {
             const res = await fetch(`/api/class-students?class_id=${selectedClass.id}&export_sem=${targetSem}`);
@@ -175,6 +171,26 @@ export function ClassesContent({ embedded = false }) {
         } catch (e) {
             console.error('Failed to load export data:', e);
         }
+
+        // Faculty Name used to be free-text typed per subject and saved to
+        // localStorage — that's how garbage like "c"/"csa"/"sa" ended up on real
+        // reports. Pre-fill it from the actual admin-managed faculty_subject_assignments
+        // (same resolver /api/admin/analytics/subjects already uses) instead, scoped to
+        // this class's branch/semester. A subject with no real assignment stays blank —
+        // faculty can still type a name for one export, but it's never assumed.
+        try {
+            const subjRes = await fetch(`/api/admin/analytics/subjects?branch=${encodeURIComponent(selectedClass.branch || '')}&semester=${targetSem}&classId=${selectedClass.id}`, { credentials: 'include' });
+            const subjJson = await subjRes.json();
+            if (subjJson.success) {
+                const nameByCode = {};
+                (subjJson.data?.subjects || []).forEach(s => {
+                    if (s.faculty && s.faculty !== 'Unassigned') nameByCode[s.subject_code] = s.faculty;
+                });
+                setFacultyMap(nameByCode);
+            }
+        } catch (e) {
+            console.error('Failed to load real faculty assignments for export:', e);
+        }
     };
 
     const openPdfExportModal = async () => {
@@ -193,10 +209,6 @@ export function ClassesContent({ embedded = false }) {
     };
 
     const handleGeneratePdf = () => {
-        try {
-            localStorage.setItem(`gf_faculty_map_${selectedClass.id}_sem_${exportSemester}`, JSON.stringify(facultyMap));
-        } catch (e) {}
-
         if (exportType === 'consolidated') {
             exportConsolidatedReportPDF({
                 selectedClass,
@@ -220,10 +232,6 @@ export function ClassesContent({ embedded = false }) {
     };
 
     const handleGenerateCsv = () => {
-        try {
-            localStorage.setItem(`gf_faculty_map_${selectedClass.id}_sem_${exportSemester}`, JSON.stringify(facultyMap));
-        } catch (e) {}
-
         if (exportType === 'consolidated') {
             exportConsolidatedReportCSV({
                 selectedClass,
@@ -1716,7 +1724,10 @@ export function ClassesContent({ embedded = false }) {
                         {exportType === 'consolidated' && (
                             <div>
                                 <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    Assign Faculty Names for Subjects (Sem {exportSemester})
+                                    Faculty for Subjects (Sem {exportSemester})
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginBottom: '8px' }}>
+                                    Auto-filled from real assignments (Admin &rarr; Faculty Assignments). A blank field means no faculty is assigned to that subject yet — type a name only to override for this export.
                                 </div>
                                 <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px' }}>
                                     {classSubjects.length > 0 ? (
@@ -1730,7 +1741,7 @@ export function ClassesContent({ embedded = false }) {
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    placeholder="Faculty Name (e.g. Mrs. Madhura)"
+                                                    placeholder="Unassigned"
                                                     value={facultyMap[sub.code] || ''}
                                                     onChange={(e) => setFacultyMap({ ...facultyMap, [sub.code]: e.target.value })}
                                                     style={{ ...S.input, width: '220px', padding: '6px 10px', fontSize: '12px' }}

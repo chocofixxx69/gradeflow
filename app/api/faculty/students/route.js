@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getAdminClient, computeBacklogs, weightedCGPA, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
+import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 
 export const dynamic = 'force-dynamic';
@@ -45,20 +45,17 @@ export async function GET(req) {
         while (true) {
             let q = supabaseAdmin
                 .from('students')
-                .select('id, usn, name, branch, semester, year, email, phone, is_inactive, lateral_entry, created_at');
-
-            if (branch && branch !== 'ALL') {
-                q = q.ilike('branch', `%${branch}%`);
-            }
+                .select('id, usn, name, branch, semester, year, email, phone, is_suspended, lateral_entry, created_at')
+                .order('usn', { ascending: true });
 
             if (semester) {
                 q = q.eq('semester', semester);
             }
 
             if (status === 'active') {
-                q = q.or('is_inactive.is.null,is_inactive.eq.false');
+                q = q.or('is_suspended.is.null,is_suspended.eq.false');
             } else if (status === 'inactive') {
-                q = q.eq('is_inactive', true);
+                q = q.eq('is_suspended', true);
             }
 
             q = q.range(from, from + pageSize - 1);
@@ -71,7 +68,11 @@ export async function GET(req) {
 
         let students = allStudents;
 
-        // 2. Client-side filter for batch & text search (covering USN, Name, Email)
+        // 2. Client-side filter for branch, batch & text search
+        if (branch && branch !== 'ALL') {
+            students = students.filter(s => matchesBranch(s, branch));
+        }
+
         if (batch && batch !== 'all') {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
@@ -84,120 +85,108 @@ export async function GET(req) {
             );
         }
 
-        const totalStudents = students.length;
+        // Helper function to enrich student records with live CGPA and backlogs
+        const enrichList = async (targetStudents) => {
+            const usns = targetStudents.map(s => s.usn);
+            if (usns.length === 0) return [];
 
-        // 3. Paginate the students array
-        const startIndex = (page - 1) * limit;
-        const pageStudents = students.slice(startIndex, startIndex + limit);
-        const pageUsns = pageStudents.map(s => s.usn);
+            const [marksData, { data: remarksData }] = await Promise.all([
+                fetchDynamicMarks(supabaseAdmin, { usns }),
+                supabaseAdmin
+                    .from('academic_remarks')
+                    .select('student_usn, semester, sgpa')
+                    .in('student_usn', usns)
+            ]);
 
-        if (pageUsns.length === 0) {
-            return ok({
-                students: [],
-                pagination: {
-                    total: totalStudents,
-                    page,
-                    limit,
-                    totalPages: Math.ceil(totalStudents / limit) || 1
-                }
+            const marksByUsn = new Map();
+            (marksData || []).forEach(m => {
+                const list = marksByUsn.get(m.usn) || [];
+                list.push(m);
+                marksByUsn.set(m.usn, list);
             });
-        }
 
-        // 4. Fetch subject marks and remarks for the paginated slice
-        const [
-            { data: marksData },
-            { data: remarksData }
-        ] = await Promise.all([
-            supabaseAdmin
-                .from('subject_marks')
-                .select('usn, semester, subject_code, subject_name, internal, external, total, grade, credits, passed')
-                .in('usn', pageUsns),
-            supabaseAdmin
-                .from('academic_remarks')
-                .select('student_usn, semester, sgpa')
-                .in('student_usn', pageUsns)
-        ]);
+            const remarksByUsn = new Map();
+            (remarksData || []).forEach(r => {
+                const list = remarksByUsn.get(r.student_usn) || [];
+                list.push(r);
+                remarksByUsn.set(r.student_usn, list);
+            });
 
-        const marksByUsn = new Map();
-        (marksData || []).forEach(m => {
-            const list = marksByUsn.get(m.usn) || [];
-            list.push(m);
-            marksByUsn.set(m.usn, list);
-        });
+            return targetStudents.map(s => {
+                const uMarks = marksByUsn.get(s.usn) || [];
+                const uRemarks = remarksByUsn.get(s.usn) || [];
 
-        const remarksByUsn = new Map();
-        (remarksData || []).forEach(r => {
-            const list = remarksByUsn.get(r.student_usn) || [];
-            list.push(r);
-            remarksByUsn.set(r.student_usn, list);
-        });
+                const backlogInfo = computeBacklogs(uMarks);
+                const backlogCredits = backlogInfo.failedSubjects.reduce((sum, sub) => sum + (sub.credits || 3), 0);
 
-        // 5. Compute CGPA and Backlogs per student
-        const enrichedStudents = pageStudents.map(s => {
-            const uMarks = marksByUsn.get(s.usn) || [];
-            const uRemarks = remarksByUsn.get(s.usn) || [];
-
-            // Compute Backlogs
-            const backlogInfo = computeBacklogs(uMarks);
-            const backlogCredits = backlogInfo.failedSubjects.reduce((sum, sub) => sum + (sub.credits || 3), 0);
-
-            // Compute CGPA
-            let cgpa = null;
-            if (uRemarks.length > 0) {
-                const creditsMap = {};
-                uRemarks.forEach(r => creditsMap[r.semester] = 20);
-                cgpa = weightedCGPA(uRemarks, creditsMap);
-            } else if (uMarks.length > 0) {
-                // Group by semester
-                const semGroups = {};
-                uMarks.forEach(m => {
-                    const sem = m.semester || 1;
-                    (semGroups[sem] ||= []).push(m);
-                });
-                let totalCr = 0;
-                let totalPoints = 0;
-                Object.entries(semGroups).forEach(([_, sMarks]) => {
-                    sMarks.forEach(m => {
-                        const cr = resolveSubjectCredits(m);
-                        const score = Number(m.total) || 0;
-                        const gp = score >= 90 ? 10 : score >= 80 ? 9 : score >= 70 ? 8 : score >= 60 ? 7 : score >= 50 ? 6 : score >= 40 ? 4 : 0;
-                        if (!backlogInfo.failedSubjects.some(fb => fb.subject_code === m.subject_code)) {
-                            totalCr += cr;
-                            totalPoints += (cr * gp);
-                        }
+                let cgpa = null;
+                if (uRemarks.length > 0) {
+                    const creditsMap = {};
+                    uRemarks.forEach(r => creditsMap[r.semester] = 20);
+                    cgpa = weightedCGPA(uRemarks, creditsMap);
+                } else if (uMarks.length > 0) {
+                    const semGroups = {};
+                    uMarks.forEach(m => {
+                        const sem = m.semester || 1;
+                        (semGroups[sem] ||= []).push(m);
                     });
-                });
-                if (totalCr > 0) cgpa = Number((totalPoints / totalCr).toFixed(2));
-            }
+                    let totalCr = 0;
+                    let totalPoints = 0;
+                    Object.entries(semGroups).forEach(([_, sMarks]) => {
+                        sMarks.forEach(m => {
+                            const cr = resolveSubjectCredits(m);
+                            const score = Number(m.total) || 0;
+                            const gp = score >= 90 ? 10 : score >= 80 ? 9 : score >= 70 ? 8 : score >= 60 ? 7 : score >= 50 ? 6 : score >= 40 ? 4 : 0;
+                            if (!backlogInfo.failedSubjects.some(fb => fb.subject_code === m.subject_code)) {
+                                totalCr += cr;
+                                totalPoints += (cr * gp);
+                            }
+                        });
+                    });
+                    if (totalCr > 0) cgpa = Number((totalPoints / totalCr).toFixed(2));
+                }
 
-            return {
-                id: s.id,
-                usn: s.usn,
-                name: s.name || s.usn,
-                branch: s.branch || '—',
-                semester: s.semester || 1,
-                year: s.year,
-                email: s.email || '—',
-                phone: s.phone || '—',
-                is_inactive: Boolean(s.is_inactive),
-                lateral_entry: Boolean(s.lateral_entry),
-                cgpa,
-                total_backlogs: backlogInfo.totalBacklogs,
-                backlog_credits: backlogCredits,
-                failedSubjects: backlogInfo.failedSubjects.map(f => f.subject_code)
-            };
-        });
+                return {
+                    id: s.id,
+                    usn: s.usn,
+                    name: s.name || s.usn,
+                    branch: s.branch || '—',
+                    semester: s.semester || 1,
+                    year: s.year,
+                    email: s.email || '—',
+                    phone: s.phone || '—',
+                    is_inactive: Boolean(s.is_suspended),
+                    is_suspended: Boolean(s.is_suspended),
+                    lateral_entry: isLateralEntry(s.usn, s.lateral_entry),
+                    cgpa,
+                    total_backlogs: backlogInfo.totalBacklogs,
+                    backlog_credits: backlogCredits,
+                    failedSubjects: backlogInfo.failedSubjects.map(f => f.subject_code)
+                };
+            });
+        };
 
-        // Filter by backlogs if requested
-        let finalStudents = enrichedStudents;
-        if (backlogsFilter === 'clear') {
-            finalStudents = finalStudents.filter(s => s.total_backlogs === 0);
-        } else if (backlogsFilter === 'backlogs') {
-            finalStudents = finalStudents.filter(s => s.total_backlogs > 0);
+        let totalStudents = students.length;
+        let pagedEnriched = [];
+
+        if (backlogsFilter === 'all') {
+            // Fast path: paginate candidate students first, then enrich current page
+            const startIndex = (page - 1) * limit;
+            const pageStudents = students.slice(startIndex, startIndex + limit);
+            pagedEnriched = await enrichList(pageStudents);
+        } else {
+            // Filter by backlogs: enrich all candidates and filter
+            const allEnriched = await enrichList(students);
+            const filtered = allEnriched.filter(s => 
+                backlogsFilter === 'clear' ? s.total_backlogs === 0 : s.total_backlogs > 0
+            );
+            totalStudents = filtered.length;
+            const startIndex = (page - 1) * limit;
+            pagedEnriched = filtered.slice(startIndex, startIndex + limit);
         }
 
         const payload = {
-            students: finalStudents,
+            students: pagedEnriched,
             pagination: {
                 total: totalStudents,
                 page,

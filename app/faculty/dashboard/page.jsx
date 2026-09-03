@@ -37,6 +37,8 @@ function FacultyDashboardView({
     student,
     totalSubjects = 0,
     usn = '',
+    assignedSubjects = [],
+    assignedLoading = false,
 }) {
     const percentage = Math.max(0, (cgpa - 0.75) * 10);
     const messageTone = (() => {
@@ -152,6 +154,37 @@ function FacultyDashboardView({
                 {message && (
                     <div className={`${styles.notice} ${styles[`notice${messageTone.charAt(0).toUpperCase()}${messageTone.slice(1)}`]}`}>
                         {message}
+                    </div>
+                )}
+            </section>
+
+            <section className={styles.section} aria-labelledby="faculty-assigned-title">
+                <div className={styles.sectionHeader}>
+                    <div>
+                        <div className={styles.eyebrow}>Teaching Load</div>
+                        <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects</h2>
+                        <p className={styles.meta}>Set by an administrator at Admin &rarr; Faculty Assignments.</p>
+                    </div>
+                </div>
+                {assignedLoading ? (
+                    <LoadingState density="compact" label="Loading your assignments" />
+                ) : assignedSubjects.length === 0 ? (
+                    <EmptyState
+                        icon="assignment_ind"
+                        title="No Subjects Assigned Yet"
+                        description="An administrator hasn't linked you to any subjects yet. Once they do, they'll appear here automatically."
+                    />
+                ) : (
+                    <div className={styles.assignedGrid}>
+                        {assignedSubjects.map((a) => (
+                            <div key={a.id} className={styles.assignedCard}>
+                                <div className={styles.assignedCode}>{a.subject_code}</div>
+                                <div className={styles.assignedName}>{a.subject_catalog?.subject_name || 'Subject name unavailable'}</div>
+                                <div className={styles.assignedMeta}>
+                                    {a.branch || '—'} · Sem {a.semester ?? '—'} · Scheme {a.scheme || '—'}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
             </section>
@@ -522,6 +555,8 @@ function FacultyDashboardContent() {
     const [scrapeProgress, setScrapeProgress] = useState('');
     const [showBacklogModal, setShowBacklogModal] = useState(false);
     const [confirmingDeleteStudent, setConfirmingDeleteStudent] = useState(false);
+    const [assignedSubjects, setAssignedSubjects] = useState([]);
+    const [assignedLoading, setAssignedLoading] = useState(true);
     const pollRef = useRef(null);
     const backlogDialogRef = useRef(null);
     const backlogTriggerRef = useRef(null);
@@ -546,6 +581,26 @@ function FacultyDashboardContent() {
         if (session) {
             setFaculty(JSON.parse(session));
         }
+    }, []);
+    // What this faculty member is actually assigned to teach (set by an admin at
+    // Admin -> Faculty Assignments) — sourced from the real faculty_subject_assignments
+    // table via the server session, never guessed from which classes/students they
+    // happen to have browsed.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            setAssignedLoading(true);
+            try {
+                const data = await apiRequest('/api/faculty/dashboard');
+                if (!cancelled) setAssignedSubjects(data?.assignedSubjects || []);
+            } catch (err) {
+                console.error('Failed to load assigned subjects:', err);
+                if (!cancelled) setAssignedSubjects([]);
+            } finally {
+                if (!cancelled) setAssignedLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
     }, []);
     useEffect(() => {
         if (!showBacklogModal) return;
@@ -857,6 +912,8 @@ function FacultyDashboardContent() {
             student={student}
             totalSubjects={totalSubjects}
             usn={usn}
+            assignedSubjects={assignedSubjects}
+            assignedLoading={assignedLoading}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}

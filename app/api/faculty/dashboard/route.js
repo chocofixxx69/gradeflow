@@ -49,15 +49,43 @@ export async function GET(req) {
 
         const [
             { data: assignedClasses },
-            { data: assignedSubjects },
+            { data: rawAssignments, error: assignedSubjectsError },
             { data: recentActivity },
             { count: studentCount }
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('*').eq('faculty_id', facultyId),
-            supabaseAdmin.from('faculty_assignments').select('*, subject_catalog(*)').eq('faculty_id', facultyId),
+            // The real, admin-managed link (app/admin/faculty-assignments) is
+            // faculty_subject_assignments — a since-removed table named just
+            // `faculty_assignments` used to be queried here instead, so this KPI
+            // (and the dashboard's subject list) silently showed zero for every
+            // faculty member regardless of what admins actually assigned.
+            supabaseAdmin.from('faculty_subject_assignments').select('*').eq('faculty_id', facultyId),
             supabaseAdmin.from('faculty_activity').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false }).limit(20),
             supabaseAdmin.from('students').select('id', { count: 'exact', head: true })
         ]);
+
+        if (assignedSubjectsError) console.error('[GET /api/faculty/dashboard] assigned subjects error:', assignedSubjectsError);
+
+        // subject_catalog has no foreign key to faculty_subject_assignments (they
+        // only share subject_code/branch/semester/scheme as plain columns) — so
+        // Supabase's embedded-resource join isn't available. Resolve the display
+        // name/credits manually against the catalog rows for the matching codes.
+        const rawAssignments2 = rawAssignments || [];
+        const assignedCodes = Array.from(new Set(rawAssignments2.map(a => a.subject_code).filter(Boolean)));
+        const { data: catalogRows } = assignedCodes.length
+            ? await supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, credits, branch, semester, scheme').in('subject_code', assignedCodes)
+            : { data: [] };
+
+        const catalogByKey = new Map();
+        (catalogRows || []).forEach(c => catalogByKey.set(`${c.subject_code}|${c.branch}|${c.semester}|${c.scheme}`, c));
+        const catalogByCode = new Map();
+        (catalogRows || []).forEach(c => { if (!catalogByCode.has(c.subject_code)) catalogByCode.set(c.subject_code, c); });
+
+        const assignedSubjects = rawAssignments2.map(a => {
+            const exact = catalogByKey.get(`${a.subject_code}|${a.branch}|${a.semester}|${a.scheme}`);
+            const cat = exact || catalogByCode.get(a.subject_code) || null;
+            return { ...a, subject_catalog: cat ? { subject_name: cat.subject_name, credits: cat.credits } : null };
+        });
 
         return ok({
             kpis: {

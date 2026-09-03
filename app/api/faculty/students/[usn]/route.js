@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
+import { isLateralEntry } from '@/lib/semester-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,8 +193,9 @@ export async function GET(req, { params }) {
                 scheme: student?.scheme || '2022',
                 email: student?.email || '—',
                 phone: student?.phone || '—',
-                is_inactive: Boolean(student?.is_inactive),
-                lateral_entry: Boolean(student?.lateral_entry)
+                is_inactive: Boolean(student?.is_suspended),
+                is_suspended: Boolean(student?.is_suspended),
+                lateral_entry: isLateralEntry(cleanUsn, student?.lateral_entry)
             },
             guardian: {
                 parent_name: student?.parent_name || '',
@@ -240,7 +242,8 @@ export async function PUT(req, { params }) {
         if (body.parent_phone !== undefined) updates.parent_phone = body.parent_phone?.trim() || null;
         if (body.parent_email !== undefined) updates.parent_email = body.parent_email?.trim() || null;
         if (body.guardian_relation !== undefined) updates.guardian_relation = body.guardian_relation?.trim() || null;
-        if (body.is_inactive !== undefined) updates.is_inactive = Boolean(body.is_inactive);
+        if (body.is_inactive !== undefined) updates.is_suspended = Boolean(body.is_inactive);
+        if (body.is_suspended !== undefined) updates.is_suspended = Boolean(body.is_suspended);
 
         if (Object.keys(updates).length === 0) {
             return fail('No update fields provided.', 'NO_UPDATES', 400);
