@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
-import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,18 +52,14 @@ export async function GET(req) {
 
         const usns = students.map(s => s.usn);
 
-        // 2. Fetch marks and remarks dynamically
+        // 2. Fetch marks dynamically. When `semester` is set, this already scopes
+        // marks to just that semester, so the canonical engine below naturally
+        // produces that semester's SGPA/backlogs from them.
         const marks = await fetchDynamicMarks(supabaseAdmin, {
             usns,
             semester,
-            select: 'usn, semester, subject_code, internal, external, total, grade, passed'
+            select: 'usn, semester, subject_code, subject_name, internal, external, total, grade, passed, credits'
         });
-
-        const { data: rawRemarks } = await supabaseAdmin
-            .from('academic_remarks')
-            .select('student_usn, semester, sgpa')
-            .in('student_usn', usns.slice(0, 300));
-        const remarks = rawRemarks || [];
 
         const marksByUsn = new Map();
         marks.forEach(m => {
@@ -72,54 +68,47 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
-        // 3. Compute score & rank criteria per student
-        const candidateList = [];
+        // 3. GPA/credits/backlogs come exclusively from the canonical
+        // calculateAcademicRecord engine (lib/vtuAcademicEngine.js) — the same
+        // one the Leaderboard, student dashboard, and every admin analytics page
+        // use. This used to reimplement SGPA/CGPA from scratch here (its own
+        // totalPoints/totalCredits loop), which is exactly the kind of second
+        // calculation path that can silently drift from the canonical one and
+        // show a different GPA for the same student on two different pages.
+        // totalMarks (a simple raw sum, not a GPA) is still computed locally —
+        // that's not a competing calculation, just an honest arithmetic total
+        // used as the merit list's tiebreak criterion.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
 
-        students.forEach(s => {
+        const candidateList = (await Promise.all(students.map(async s => {
             const uMarks = marksByUsn.get(s.usn) || [];
-            if (uMarks.length === 0) return;
+            if (uMarks.length === 0) return null;
 
-            const backlogInfo = computeBacklogs(uMarks);
-            const hasBacklogs = backlogInfo.totalBacklogs > 0;
+            const record = await calculateAcademicRecord(uMarks, { usn: s.usn, branch: s.branch, scheme: s.scheme }, { catalogIndex });
 
-            let totalMarks = 0;
-            let totalCredits = 0;
-            let totalPoints = 0;
+            const totalMarks = uMarks.reduce((acc, m) => acc + (Number(m.total) || 0), 0);
+            const finalGpa = semester
+                ? (record.semStats?.[semester]?.sgpa ?? 0)
+                : record.cgpa;
+            const creditsEarned = semester
+                ? (record.semStats?.[semester]?.totalCredits ?? 0)
+                : record.totalEarnedCredits;
+            const backlogCount = semester
+                ? (record.semStats?.[semester]?.backlogs ?? 0)
+                : record.totalActiveBacklogs;
 
-            uMarks.forEach(m => {
-                const score = Number(m.total) || 0;
-                const cr = resolveSubjectCredits(m);
-                const gp = scoreToGradePoint(m.total, m.grade);
-                const isFail = isFailedSubject(m);
-
-                totalMarks += score;
-                totalCredits += cr;
-                if (!isFail) {
-                    totalPoints += (cr * gp);
-                }
-            });
-
-            // If a specific semester is requested, use semester SGPA; otherwise cumulative CGPA
-            let finalGpa = 0;
-            if (semester) {
-                const remark = remarks.find(r => r.student_usn === s.usn && Number(r.semester) === semester);
-                finalGpa = totalCredits > 0 ? Number((totalPoints / totalCredits).toFixed(2)) : (remark?.sgpa ? Number(remark.sgpa) : 0);
-            } else {
-                finalGpa = totalCredits > 0 ? Number((totalPoints / totalCredits).toFixed(2)) : 0;
-            }
-
-            candidateList.push({
+            return {
                 usn: s.usn,
                 name: s.name || s.usn,
                 branch: s.branch,
                 isLE: Boolean(s.lateral_entry),
                 gpa: finalGpa,
                 totalMarks,
-                creditsEarned: totalCredits,
-                hasBacklogs,
-                backlogCount: backlogInfo.totalBacklogs
-            });
-        });
+                creditsEarned,
+                hasBacklogs: backlogCount > 0,
+                backlogCount,
+            };
+        }))).filter(Boolean);
 
         // 4. Sort with tie-breaking rules:
         // Priority 1: Clear students before backlog carriers

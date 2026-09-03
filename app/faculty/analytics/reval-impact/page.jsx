@@ -490,25 +490,33 @@ function RevalImpactContent() {
                                                             {d.postGrade}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 900 }}>
+                                                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                                                         {d.delta > 0 ? (
-                                                            <span style={{ color: '#10B981' }}>+{d.delta}</span>
+                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 900, background: 'rgba(16, 185, 129, 0.14)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                                                +{d.delta}
+                                                            </span>
                                                         ) : d.delta < 0 ? (
-                                                            <span style={{ color: '#EF4444' }}>{d.delta}</span>
+                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 900, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                                                                {d.delta}
+                                                            </span>
                                                         ) : (
-                                                            <span style={{ color: 'var(--tx-dim)' }}>0</span>
+                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, background: 'var(--surface-low)', color: 'var(--tx-muted)', border: '1px solid var(--border-low)' }}>
+                                                                0
+                                                            </span>
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                                                         <span style={{
-                                                            display: 'inline-block',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
                                                             padding: '4px 10px', borderRadius: '6px',
                                                             fontSize: '11px', fontWeight: 800,
                                                             background: isCleared ? 'rgba(16, 185, 129, 0.15)' : isUpgraded ? 'rgba(59, 130, 246, 0.15)' : isDecreased ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-low)',
                                                             color: isCleared ? '#10B981' : isUpgraded ? '#3B82F6' : isDecreased ? '#EF4444' : 'var(--tx-muted)',
                                                             border: `1px solid ${isCleared ? 'rgba(16, 185, 129, 0.3)' : isUpgraded ? 'rgba(59, 130, 246, 0.3)' : isDecreased ? 'rgba(239, 68, 68, 0.25)' : 'var(--border)'}`
                                                         }}>
-                                                            {d.outcome}
+                                                            {isCleared ? '🟢 Cleared' : isUpgraded ? '🔵 Upgraded' : isDecreased ? '🔴 Decreased' : '⚪ Confirmed'}
                                                         </span>
                                                     </td>
                                                 </tr>

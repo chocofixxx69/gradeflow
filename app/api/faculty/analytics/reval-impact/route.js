@@ -5,7 +5,11 @@ import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -36,6 +40,7 @@ function formatExamSession(code) {
 }
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
