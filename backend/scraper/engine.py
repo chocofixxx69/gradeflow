@@ -16,6 +16,7 @@ import time
 import json
 import re
 import ssl
+import threading
 
 # Import Syllabus Engine from Parent
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,7 +36,7 @@ from .credit_resolver import fetch_catalog_index, resolve_credits
 ssl._create_default_https_context = ssl._create_unverified_context
 
 from playwright.sync_api import sync_playwright # type: ignore
-from .captcha_solver import solve_captcha
+from .captcha_solver import solve_captcha, get_easyocr
 from .config import supabase, get_vtu_urls # type: ignore
 
 # ── Configuration ──
@@ -428,46 +429,92 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None):
         return False
 
     print(f"\n[ENGINE] Scraping {usn} under {target_scheme} Scheme ({len(urls)} portals)...", file=sys.stderr, flush=True)
-    
+
+    # Preload EasyOCR model in background thread
+    threading.Thread(target=get_easyocr, daemon=True).start()
+
+    # Determine optimal CPU browser concurrency (default: 3 workers)
+    concurrency_env = os.getenv("SCRAPER_CONCURRENCY", "3")
+    try:
+        max_workers = max(1, min(int(concurrency_env), len(urls)))
+    except ValueError:
+        max_workers = min(3, len(urls))
+
+    results_dict = {}
+    lock = threading.Lock()
+
+    def _worker_scan_urls(worker_id: int, worker_urls: list):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--ignore-certificate-errors",
+                        "--allow-running-insecure-content",
+                        "--disable-dev-shm-usage",
+                        "--no-sandbox",
+                        "--disable-gpu"
+                    ]
+                )
+                context = browser.new_context(user_agent="Mozilla/5.0")
+                page = context.new_page()
+
+                dialog_log = []
+                def on_dialog(d):
+                    dialog_log.append(d.message)
+                    try: d.accept()
+                    except: pass
+                page.on("dialog", on_dialog)
+
+                for u in worker_urls:
+                    res = _check_url(page, u, usn, dialog_log)
+                    if res:
+                        with lock:
+                            results_dict[u] = res
+
+                browser.close()
+        except Exception as e:
+            print(f"[ENGINE] Worker {worker_id} error: {e}", file=sys.stderr)
+
+    if max_workers <= 1 or len(urls) <= 1:
+        print(f"[ENGINE] Scanning portals sequentially (single worker)...", file=sys.stderr, flush=True)
+        _worker_scan_urls(0, urls)
+    else:
+        # Partition URLs evenly across workers
+        partitions = [[] for _ in range(max_workers)]
+        for idx, u in enumerate(urls):
+            partitions[idx % max_workers].append(u)
+
+        print(f"[ENGINE] Launching {max_workers} parallel CPU browser workers with shared CUDA GPU solver...", file=sys.stderr, flush=True)
+        threads = []
+        for i, part in enumerate(partitions):
+            if not part:
+                continue
+            t = threading.Thread(
+                target=_worker_scan_urls,
+                args=(i, part),
+                daemon=True
+            )
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+    # Process and save results in original URL order
     found_count = 0
-    with sync_playwright() as p:
-        print(f"[ENGINE] Launching Playwright browser instance...", file=sys.stderr, flush=True)
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--ignore-certificate-errors",
-                "--allow-running-insecure-content",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-gpu"
-            ]
-        )
-        context = browser.new_context(user_agent="Mozilla/5.0")
-        page = context.new_page()
-        
-        dialog_log = []
-        def on_dialog(d):
-            dialog_log.append(d.message)
-            try:
-                d.accept()
-            except:
-                pass
-        page.on("dialog", on_dialog)
-        
-        for u in urls:
-            res = _check_url(page, u, usn, dialog_log)
-            if res:
-                found_count += 1
-                groups = {}
-                for s in res["subjects"]:
-                    s_sem = _extract_sem(s["subject_code"]) or res["semester"] or 1
-                    groups.setdefault(s_sem, []).append(s) # type: ignore
-                
-                for sem, subs in groups.items():
-                    _save_db(usn, res["name"] or usn, sem, u, subs)
-        
-        browser.close()
+    for u in urls:
+        if u in results_dict:
+            res = results_dict[u]
+            found_count += 1
+            groups = {}
+            for s in res["subjects"]:
+                s_sem = _extract_sem(s["subject_code"]) or res["semester"] or 1
+                groups.setdefault(s_sem, []).append(s)
+
+            for sem, subs in groups.items():
+                _save_db(usn, res["name"] or usn, sem, u, subs)
         
     if found_count > 0:
         _recalculate_remarks(usn)

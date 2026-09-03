@@ -24,11 +24,57 @@ from scraper.config import supabase
 from scraper.engine import scrape_all_semesters
 
 
-def process_queued_jobs(limit: int = 10, quiet: bool = False):
+def _process_single_job(job) -> bool:
+    usn = job["usn"]
+    job_id = job["id"]
+    faculty_id = job.get("faculty_id")
+    job_scheme = job.get("scheme")
+
+    print(f"\n{'─' * 50}\n  Processing: {usn} (Job {job_id[:8]}...)\n{'─' * 50}")
+
+    # Mark as running
+    supabase.table("scraper_jobs").update({
+        "status": "running",
+        "started_at": "now()"
+    }).eq("id", job_id).execute()
+
+    try:
+        success = scrape_all_semesters(usn, faculty_id=faculty_id, scheme=job_scheme)
+        final_status = "finished" if success else "no_result"
+        supabase.table("scraper_jobs").update({
+            "status": final_status,
+            "finished_at": "now()"
+        }).eq("id", job_id).execute()
+
+        icon = "✅" if success else "⚠"
+        print(f"\n  {icon} Job {job_id[:8]}... → {final_status}")
+        return True
+
+    except ConnectionError as e:
+        supabase.table("scraper_jobs").update({
+            "status": "error",
+            "error": f"VTU servers unreachable: {str(e)}",
+            "finished_at": "now()"
+        }).eq("id", job_id).execute()
+        print(f"\n  ❌ Connection error: {e}")
+        return False
+
+    except Exception as e:
+        supabase.table("scraper_jobs").update({
+            "status": "error",
+            "error": str(e)[:500],
+            "finished_at": "now()"
+        }).eq("id", job_id).execute()
+        print(f"\n  ❌ Error: {e}")
+        return False
+
+def process_queued_jobs(limit: int = 10, workers: int = None, quiet: bool = False):
     """
-    Single-pass processor: fetch all queued jobs, run each one, update status.
+    Processor: fetch queued jobs, run them with optional CPU concurrency, and update status.
     Returns the number of jobs processed.
     """
+    import concurrent.futures
+
     # Fetch queued jobs, oldest first
     try:
         resp = supabase.table("scraper_jobs") \
@@ -55,59 +101,23 @@ def process_queued_jobs(limit: int = 10, quiet: bool = False):
     print("  GradeFlow Queue Processor — Starting")
     print("=" * 60)
     print(f"  Found {len(jobs)} queued job(s).\n")
+
+    max_w = workers or int(os.getenv("QUEUE_WORKERS", "1"))
     processed = 0
 
-    for job in jobs:
-        usn = job["usn"]
-        job_id = job["id"]
-        faculty_id = job.get("faculty_id")
-        
-        print(f"\n{'─' * 50}")
-        print(f"  Processing: {usn} (Job {job_id[:8]}...)")
-        print(f"{'─' * 50}")
-
-        # Mark as running
-        supabase.table("scraper_jobs").update({
-            "status": "running",
-            "started_at": "now()"
-        }).eq("id", job_id).execute()
-
-        job_scheme = job.get("scheme")
-
-        try:
-            success = scrape_all_semesters(usn, faculty_id=faculty_id, scheme=job_scheme)
-
-            final_status = "finished" if success else "no_result"
-            supabase.table("scraper_jobs").update({
-                "status": final_status,
-                "finished_at": "now()"
-            }).eq("id", job_id).execute()
-
-            icon = "✅" if success else "⚠"
-            print(f"\n  {icon} Job {job_id[:8]}... → {final_status}")
-            processed += 1
-
-        except ConnectionError as e:
-            supabase.table("scraper_jobs").update({
-                "status": "error",
-                "error": f"VTU servers unreachable: {str(e)}",
-                "finished_at": "now()"
-            }).eq("id", job_id).execute()
-            print(f"\n  ❌ Connection error: {e}")
-            processed += 1
-
-        except Exception as e:
-            supabase.table("scraper_jobs").update({
-                "status": "error",
-                "error": str(e)[:500],
-                "finished_at": "now()"
-            }).eq("id", job_id).execute()
-            print(f"\n  ❌ Error: {e}")
-            processed += 1
-
-        # Small delay between jobs
-        if processed < len(jobs):
-            time.sleep(2)
+    if max_w <= 1 or len(jobs) <= 1:
+        for job in jobs:
+            if _process_single_job(job):
+                processed += 1
+            if processed < len(jobs):
+                time.sleep(1)
+    else:
+        print(f"  [QUEUE] Processing across {min(max_w, len(jobs))} parallel workers...\n")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
+            futures = [executor.submit(_process_single_job, j) for j in jobs]
+            for f in concurrent.futures.as_completed(futures):
+                if f.result():
+                    processed += 1
 
     print(f"\n{'=' * 60}")
     print(f"  ✓ Processed {processed}/{len(jobs)} jobs.")
