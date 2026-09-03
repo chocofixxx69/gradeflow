@@ -4,6 +4,7 @@ import { getAdminClient } from '../../../../lib/analytics-data';
 import { fetchAllPaginated, fetchByChunks } from '../../../../lib/supabase-utils';
 import { calculateAcademicRecord, normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../../lib/subjectCreditResolver';
+import { getStudentAcademicBatch, matchesBatch, extractBranchFromUsn } from '../../../../lib/semester-utils';
 
 const supabaseAdmin = getAdminClient();
 
@@ -45,64 +46,59 @@ function resolveSubjectCredits(sm) {
     return 3;
 }
 
-// Cohort resolver mapping branch codes and batches including lateral entries
-function resolveCohortConfig(batchOrBranch, currentUsn) {
-    let key = (batchOrBranch || '').toUpperCase().trim();
+const BRANCH_NAMES = {
+    CS: 'Computer Science & Engineering',
+    CD: 'Computer Science (Data Science)',
+    CI: 'Computer Science (AI & Design)',
+    CV: 'Civil Engineering',
+};
 
-    if (!key && currentUsn) {
-        if (currentUsn.includes('CS')) key = 'CS';
-        else if (currentUsn.includes('CD') || currentUsn.includes('DS')) key = 'CD';
-        else if (currentUsn.includes('CI')) key = 'CI';
-        else if (currentUsn.includes('CV')) key = 'CV';
-        else {
-            const match = currentUsn.match(/^([0-9][A-Z]{2}[0-9]{2}[A-Z]{2,3})/);
-            key = match ? match[1] : currentUsn.slice(0, 7);
+// Resolves which branch + which single academic-year cohort a student's
+// leaderboard should scope to. Previously this hardcoded BOTH the 2023 and
+// 2024 admission-year prefixes into one combined pattern for every branch,
+// so any student landing on the "CS"/etc. shortcut saw an entirely
+// different, younger batch mixed into their own class ranking — two
+// admission years are two different classes (often two different curriculum
+// schemes entirely), never one cohort.
+//
+// The one legitimate reason two years' USNs belong together is lateral
+// entry: a lateral student's USN carries the year they joined (one year
+// after the regulars in their actual class), not the class's own admission
+// year. getStudentAcademicBatch already encodes that offset — reuse it
+// rather than re-deriving it here.
+function resolveCohortConfig(batchOrBranch, currentUsn, currentIsLateral = null) {
+    const usn = (currentUsn || '').toUpperCase().trim();
+
+    let branchKey = (batchOrBranch || '').toUpperCase().trim();
+    // Tolerate a legacy full prefix like '2AB23CS' being passed in — reduce
+    // it to just the branch code.
+    const fullPrefixMatch = branchKey.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,3})$/);
+    if (fullPrefixMatch) branchKey = fullPrefixMatch[1];
+
+    if (!branchKey) {
+        branchKey = extractBranchFromUsn(usn) || '';
+        if (!branchKey) {
+            if (usn.includes('CS')) branchKey = 'CS';
+            else if (usn.includes('CD') || usn.includes('DS')) branchKey = 'CD';
+            else if (usn.includes('CI')) branchKey = 'CI';
+            else if (usn.includes('CV')) branchKey = 'CV';
         }
     }
 
-    if (key === 'CS' || key === '2AB23CS' || key === '2AB24CS') {
-        return {
-            branch: 'CS',
-            code: 'CS',
-            name: 'Computer Science & Engineering',
-            patterns: ['2AB23CS%', '2AB24CS%']
-        };
-    }
-    if (key === 'CD' || key === 'DS' || key === '2AB23CD' || key === '2AB24CD') {
-        return {
-            branch: 'CD',
-            code: 'CD',
-            name: 'Computer Science (Data Science)',
-            patterns: ['2AB23CD%', '2AB24CD%']
-        };
-    }
-    if (key === 'CI' || key === '2AB23CI' || key === '2AB24CI') {
-        return {
-            branch: 'CI',
-            code: 'CI',
-            name: 'Computer Science (AI & Design)',
-            patterns: ['2AB23CI%', '2AB24CI%']
-        };
-    }
-    if (key === 'CV' || key === '2AB23CV') {
-        return {
-            branch: 'CV',
-            code: 'CV',
-            name: 'Civil Engineering',
-            patterns: ['2AB23CV%']
-        };
-    }
+    // The caller's own TRUE academic cohort year — lateral-aware.
+    const ownCohort = getStudentAcademicBatch(usn, currentIsLateral);
 
     return {
-        branch: key,
-        code: key,
-        name: `Cohort ${key}`,
-        patterns: [`${key}%`]
+        branch: branchKey,
+        code: branchKey,
+        name: BRANCH_NAMES[branchKey] || `Cohort ${branchKey}`,
+        cohortYear: ownCohort?.twoDigit || null,
+        cohortId: ownCohort ? `${ownCohort.twoDigit}${branchKey}` : branchKey,
     };
 }
 
 async function getOrComputeCohortData(cohortConfig) {
-    const cacheKey = cohortConfig.code;
+    const cacheKey = cohortConfig.cohortId;
     const now = Date.now();
     const cached = cohortCache.get(cacheKey);
 
@@ -118,12 +114,16 @@ async function getOrComputeCohortData(cohortConfig) {
 
     if (stuErr) throw stuErr;
 
-    const students = (allStudents || []).filter(s => {
-        return cohortConfig.patterns.some(p => {
-            const prefix = p.replace('%', '');
-            return s.usn.startsWith(prefix);
-        });
-    });
+    // Same branch AND the same real academic cohort year — matchesBatch
+    // already resolves a lateral student's USN year back to the class they
+    // actually sit with, so this naturally includes lateral joiners without
+    // pulling in the next year's own regular admits (see resolveCohortConfig).
+    const students = cohortConfig.cohortYear
+        ? (allStudents || []).filter(s => {
+            if (extractBranchFromUsn(s.usn) !== cohortConfig.branch) return false;
+            return matchesBatch(s.usn, cohortConfig.cohortYear, s.semester, s.lateral_entry);
+        })
+        : [];
 
     const studentUsns = students.map(s => s.usn);
     const studentMap = Object.fromEntries(students.map(s => [s.usn, s]));
