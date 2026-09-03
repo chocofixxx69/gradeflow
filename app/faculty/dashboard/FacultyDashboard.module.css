@@ -1,40 +1,34 @@
+/* ─── Page ──────────────────────────────────────────────── */
 .page {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
-    --layout-page-max: var(--layout-content-default);
+    gap: var(--space-5);
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
     min-width: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* ─── Sections ──────────────────────────────────────────── */
 .section,
 .dangerZone {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-5);
-    padding: var(--space-6);
+    padding: var(--space-5) var(--space-5);
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
     min-width: 0;
 }
 
-.sectionHeader,
-.profileHeader,
-.semesterHeader {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-}
-
+/* ─── Typography ────────────────────────────────────────── */
 .eyebrow {
     color: var(--tx-dim);
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
     margin-bottom: var(--space-2);
     text-transform: uppercase;
 }
@@ -48,17 +42,9 @@
     margin: 0;
 }
 
-.title {
-    font-size: clamp(22px, 5vw, 28px);
-}
-
-.sectionTitle {
-    font-size: 17px;
-}
-
-.semesterTitle {
-    font-size: 14px;
-}
+.title        { font-size: clamp(20px, 5vw, 26px); }
+.sectionTitle { font-size: clamp(15px, 3.5vw, 17px); }
+.semesterTitle { font-size: 14px; }
 
 .subtitle,
 .meta {
@@ -66,153 +52,117 @@
     font-size: 13px;
     font-weight: 500;
     margin: var(--space-2) 0 0;
+    line-height: 1.5;
 }
 
-
-.assignedGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+/* ─── Section header ────────────────────────────────────── */
+.sectionHeader,
+.profileHeader,
+.semesterHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
     gap: var(--space-3);
-    margin-top: var(--space-5);
+    flex-wrap: wrap;
 }
 
-.assignedCard {
-    background: var(--surface-low);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-4);
-    padding: var(--space-4);
-}
-
-.assignedCode {
-    font-family: monospace;
-    font-weight: 800;
-    font-size: 13px;
-    color: var(--primary);
-}
-
-.assignedName {
-    color: var(--tx-main);
-    font-weight: 600;
-    font-size: 13px;
-    margin-top: var(--space-1);
-}
-
-.assignedMeta {
-    color: var(--tx-dim);
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-top: var(--space-2);
-}
-
+/* ─── Lookup row ────────────────────────────────────────── */
 .lookupRow {
     align-items: flex-end;
     gap: var(--space-3);
-    margin-top: var(--space-5);
+    margin-top: var(--space-4);
 }
 
+/* ─── Status notices ────────────────────────────────────── */
 .notice {
     color: var(--tx-muted);
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     margin-top: var(--space-4);
     padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-4);
+    border: 1px solid var(--border);
 }
 
-.noticeSuccess {
-    background: var(--green-bg);
-    border-color: var(--green);
-    color: var(--green);
-}
+.noticeSuccess { background: var(--green-bg);  border-color: var(--green);  color: var(--green); }
+.noticeInfo    { background: var(--surface-low); border-color: var(--border); color: var(--tx-muted); }
+.noticeWarning { background: var(--amber-bg);  border-color: var(--amber);  color: var(--amber); }
+.noticeError   { background: var(--red-bg);    border-color: var(--red);    color: var(--red); }
 
-.noticeInfo {
-    background: var(--surface-low);
-    border-color: var(--border);
-    color: var(--tx-muted);
-}
-
-.noticeWarning {
-    background: var(--amber-bg);
-    border-color: var(--amber);
-    color: var(--amber);
-}
-
-.noticeError {
-    background: var(--red-bg);
-    border-color: var(--red);
-    color: var(--red);
-}
-
+/* ─── Avatar ────────────────────────────────────────────── */
 .avatar {
     align-items: center;
-    background: var(--surface-low);
-    border: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark, var(--primary)) 100%);
     border-radius: var(--radius-5);
-    color: var(--tx-main);
+    color: #fff;
     display: inline-flex;
     flex: 0 0 auto;
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 20px;
+    font-weight: 800;
     height: 52px;
     justify-content: center;
     width: 52px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
+/* ─── Profile actions ───────────────────────────────────── */
 .profileActions {
     display: flex;
     gap: var(--space-2);
     margin-left: auto;
+    flex-wrap: wrap;
 }
 
+/* ─── Stats grid ─────────────────────────────────────────── */
 .statsGrid {
-    gap: var(--space-4);
-    margin-top: var(--space-5);
+    gap: var(--space-3);
+    margin-top: var(--space-4);
 }
 
 .statCard {
-    padding: var(--space-5);
+    padding: var(--space-4) var(--space-5);
 }
 
 .statLabel {
     color: var(--tx-dim);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
 }
 
 .statValue {
     color: var(--tx-main);
-    font-size: 26px;
-    font-weight: 700;
+    font-size: clamp(22px, 5vw, 28px);
+    font-weight: 800;
     line-height: 1;
-    margin-top: var(--space-3);
+    margin-top: var(--space-2);
 }
 
 .statCardButton {
     cursor: pointer;
     font-family: inherit;
-    padding: var(--space-5);
+    padding: var(--space-4) var(--space-5);
     text-align: left;
-    transition: transform 0.2s;
+    transition: transform 0.15s, box-shadow 0.15s;
+    min-height: 44px;
 }
 
 .statCardButton:not(:disabled):hover {
-    transform: translateY(-4px);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+}
+
+.statCardButton:not(:disabled):active {
+    transform: translateY(0);
 }
 
 .statCardButton:disabled {
     cursor: default;
 }
 
-.successText {
-    color: var(--green);
-}
-
-.dangerText {
-    color: var(--red);
-}
+.successText { color: var(--green); }
+.dangerText  { color: var(--red); }
 
 .dangerText,
 .statCardButton .statValue {
@@ -221,58 +171,30 @@
     gap: var(--space-2);
 }
 
-.resultBar {
-    align-items: center;
-    display: flex;
-    justify-content: space-between;
-    margin-top: var(--space-5);
-    padding: var(--space-5);
-}
-
-.resultLabel {
-    color: var(--tx-dim);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.resultValue {
-    color: var(--tx-main);
-    font-size: clamp(26px, 6vw, 36px);
-    font-weight: 700;
-    line-height: 1;
-    margin-top: var(--space-1);
-}
-
-.resultMeta {
-    color: var(--tx-muted);
-    font-size: 12px;
-    font-weight: 500;
-    margin-top: var(--space-2);
-}
-
+/* ─── Chip row ──────────────────────────────────────────── */
 .chipRow {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
     justify-content: flex-end;
+    align-items: center;
 }
 
+/* ─── Records list ──────────────────────────────────────── */
 .records {
     display: grid;
-    gap: var(--space-4);
-    margin-top: var(--space-5);
+    gap: var(--space-3);
+    margin-top: var(--space-4);
 }
 
 .semesterCard {
-    padding: var(--space-5);
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-4);
 }
 
 .notice,
 .statCard,
 .statCardButton,
-.resultBar,
 .semesterCard {
     background: var(--surface-low);
     border: 1px solid var(--border);
@@ -283,8 +205,8 @@
     color: var(--tx-main);
     font-size: 13px;
     font-weight: 600;
+    line-height: 1.4;
 }
-
 
 .semesterActions {
     align-items: center;
@@ -294,13 +216,15 @@
     justify-content: flex-end;
 }
 
+/* ─── Tables (desktop only — hidden on mobile) ───────────── */
 .tableWrap {
-    margin-top: var(--space-5);
+    margin-top: var(--space-4);
     overflow-x: auto;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-3);
 }
 
 .table {
@@ -316,7 +240,7 @@
     color: var(--tx-main);
     font-size: 12px;
     font-weight: 500;
-    padding: var(--space-3);
+    padding: 10px var(--space-3);
     text-align: left;
     vertical-align: middle;
     background: transparent;
@@ -327,9 +251,10 @@
 .table thead th {
     color: var(--tx-dim);
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    background: var(--surface-low);
 }
 
 .table tr:last-child td,
@@ -337,18 +262,15 @@
     border-bottom: 0;
 }
 
-.subjectTable {
-    min-width: 600px;
-}
-
-.center {
-    text-align: center !important;
-}
+.subjectTable { min-width: 620px; }
+.center       { text-align: center !important; }
 
 .code {
-    color: var(--tx-main);
+    color: var(--primary);
     font-family: monospace;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .nowrap {
@@ -358,21 +280,27 @@
     white-space: nowrap;
 }
 
+/* ─── Danger zone ───────────────────────────────────────── */
 .dangerZone {
     align-items: center;
     border-color: var(--red);
     display: flex;
     justify-content: space-between;
+    gap: var(--space-4);
 }
 
+/* ─── Modal overlay ─────────────────────────────────────── */
 .modalOverlay {
     align-items: center;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(10px);
     display: flex;
     inset: 0;
     justify-content: center;
-    padding: max(var(--space-5), env(safe-area-inset-top)) max(var(--space-5), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
+    padding: max(var(--space-5), env(safe-area-inset-top))
+             max(var(--space-5), env(safe-area-inset-right))
+             max(var(--space-5), env(safe-area-inset-bottom))
+             max(var(--space-5), env(safe-area-inset-left));
     position: fixed;
     z-index: var(--z-modal);
 }
@@ -384,9 +312,10 @@
     display: flex;
     flex-direction: column;
     max-height: 80dvh;
-    max-width: 600px;
+    max-width: 560px;
     overflow: hidden;
     width: 100%;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.25);
 }
 
 .modalHeader {
@@ -394,12 +323,12 @@
     border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
-    padding: var(--space-6);
+    padding: var(--space-5) var(--space-6);
 }
 
 .modalTitle {
     color: var(--tx-main);
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 700;
     letter-spacing: 0;
     margin: 0;
@@ -409,14 +338,13 @@
     color: var(--tx-muted);
     font-size: 13px;
     font-weight: 500;
-    margin: var(--space-2) 0 0;
+    margin: var(--space-1) 0 0;
 }
-
 
 .modalBody {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-6);
+    padding: var(--space-5) var(--space-6);
 }
 
 .modalList {
@@ -429,94 +357,20 @@
     align-items: center;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-6);
+    border-radius: var(--radius-5);
     display: flex;
     justify-content: space-between;
-    padding: var(--space-4);
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    min-height: 52px;
 }
 
-@media (max-width: 768px) {
-    .sectionHeader,
-    .profileHeader,
-    .semesterHeader,
-    .dangerZone,
-    .resultBar {
-        flex-direction: column;
-    }
-
-    .profileActions,
-    .chipRow,
-    .semesterActions {
-        justify-content: flex-start;
-        width: 100%;
-    }
-
-    .profileActions > *,
-    .semesterActions > * {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .modalOverlay {
-        align-items: flex-end;
-        padding: max(var(--space-3), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) max(var(--space-3), env(safe-area-inset-bottom)) max(var(--space-3), env(safe-area-inset-left));
-    }
-
-    .modal {
-        max-height: 88dvh;
-        border-radius: var(--radius-6);
-    }
-
-    .modalHeader,
-    .modalBody {
-        padding: var(--space-5);
-    }
-
-    .modalItem {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .tableWrap {
-        width: 100%;
-        max-width: 100%;
-        overflow-x: auto;
-        box-sizing: border-box;
-    }
-
-    .table,
-    .subjectTable {
-        min-width: 480px;
-        width: 100%;
-    }
-
-    .table th,
-    .table td {
-        padding: 8px 6px;
-        font-size: 11px;
-        white-space: normal;
-        word-break: break-word;
-    }
-
-    .subjectName {
-        white-space: normal;
-        word-break: break-word;
-    }
-
-    .tableWrap {
-        display: none !important;
-    }
-
-    .mobileSubjectList {
-        display: flex !important;
-    }
-}
-
+/* ─── Mobile subject cards (shown instead of table on mobile) */
 .mobileSubjectList {
     display: none;
     flex-direction: column;
     gap: var(--space-3);
-    padding: var(--space-4);
+    margin-top: var(--space-4);
 }
 
 .mobileSubjectCard {
@@ -527,6 +381,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    transition: border-color 0.15s;
+}
+
+.mobileSubjectCard:hover {
+    border-color: var(--primary);
 }
 
 .mobileSubjectHeader {
@@ -539,38 +398,45 @@
 .mobileSubjectTitleGroup {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     min-width: 0;
+    flex: 1;
 }
 
 .mobileSubjectStats {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--surface-low);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
     border: 1px solid var(--border);
     border-radius: var(--radius-3);
-    padding: var(--space-2) var(--space-3);
+    overflow: hidden;
     font-size: 12px;
 }
 
 .mobileStatItem {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: var(--space-1);
+    gap: 2px;
+    padding: var(--space-2) var(--space-1);
+    background: var(--surface-low);
+    text-align: center;
 }
 
 .statMiniLabel {
     color: var(--tx-dim);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
+/* ─── Assigned subjects grid ─────────────────────────────── */
 .assignedGrid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+    gap: var(--space-3);
     margin-top: var(--space-4);
 }
 
@@ -578,41 +444,223 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-5);
-    padding: var(--space-4) var(--space-5);
+    padding: var(--space-4) var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    transition: all 0.2s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 
 .assignedCard:hover {
     border-color: var(--primary);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
 }
 
 .assignedCode {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 800;
     color: var(--primary);
     letter-spacing: 0.02em;
+    font-family: monospace;
 }
 
 .assignedName {
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--tx-main);
     line-height: 1.35;
 }
 
 .assignedMeta {
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--tx-muted);
     background: var(--surface-low);
-    padding: 4px 8px;
+    padding: 3px 8px;
     border-radius: var(--radius-3);
     width: fit-content;
     margin-top: auto;
+    letter-spacing: 0.03em;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS — Mobile-first approach
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Tablet ── */
+@media (max-width: 900px) {
+    .statsGrid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+    /* Reduce section padding on mobile */
+    .section,
+    .dangerZone {
+        padding: var(--space-4);
+        border-radius: var(--radius-4);
+    }
+
+    /* Page gap */
+    .page {
+        gap: var(--space-4);
+    }
+
+    /* Section headers stack vertically */
+    .sectionHeader,
+    .profileHeader {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-3);
+    }
+
+    .semesterHeader {
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    /* Profile actions stretch full width */
+    .profileActions {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .profileActions > * {
+        flex: 1;
+        min-width: 0;
+        justify-content: center;
+    }
+
+    /* Chip row becomes scrollable row */
+    .chipRow {
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+
+    .chipRow::-webkit-scrollbar { display: none; }
+
+    /* Semester actions: full-width buttons */
+    .semesterActions {
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .semesterActions > * {
+        flex: 1;
+        justify-content: center;
+    }
+
+    /* Stats grid → 2 columns on mobile */
+    .statsGrid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: var(--space-3) !important;
+    }
+
+    .statCard,
+    .statCardButton {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .statValue {
+        font-size: 22px;
+    }
+
+    /* Assigned subjects: 1 column on mobile */
+    .assignedGrid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Danger zone: stack */
+    .dangerZone {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-3);
+    }
+
+    .dangerZone > * {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Tables: hide on mobile, show card stacks */
+    .tableWrap {
+        display: none !important;
+    }
+
+    .mobileSubjectList {
+        display: flex !important;
+    }
+
+    /* Mobile subject stats: 5 equally-spaced columns */
+    .mobileSubjectStats {
+        grid-template-columns: repeat(5, 1fr);
+    }
+
+    /* Modal: slide up from bottom */
+    .modalOverlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .modal {
+        max-height: 90dvh;
+        border-radius: var(--radius-6) var(--radius-6) 0 0;
+        max-width: 100%;
+        /* Drag handle hint */
+        padding-top: 0;
+    }
+
+    .modal::before {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        margin: 12px auto 0;
+        flex-shrink: 0;
+    }
+
+    .modalHeader {
+        padding: var(--space-4) var(--space-5);
+    }
+
+    .modalBody {
+        padding: var(--space-4) var(--space-5);
+        padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+    }
+
+    .modalItem {
+        min-height: 56px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-2);
+    }
+}
+
+/* ── Very small screens ── */
+@media (max-width: 380px) {
+    .section,
+    .dangerZone {
+        padding: var(--space-3);
+    }
+
+    .statsGrid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: var(--space-2) !important;
+    }
+
+    .statValue { font-size: 20px; }
+
+    .mobileSubjectStats {
+        grid-template-columns: repeat(3, 1fr);
+    }
 }
