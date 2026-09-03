@@ -179,15 +179,12 @@ def _parse_row(texts):
         "announced_date": announced_date
     }
 
-def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 4) -> dict | None:
+def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 8) -> dict | None:
     url_short = url.split("/")[-1] if url.endswith(".php") else (url.split("/")[-2] if "/" in url else url)
     print(f"    [>] Checking {url_short}...", file=sys.stderr, flush=True)
     
     try:
-        # domcontentloaded, not load: "load" blocks until every stylesheet,
-        # font and image has finished, but the only element this flow needs is
-        # the captcha, and the is_visible() wait below already guarantees it.
-        page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
     except Exception as e:
         print(f"    [!] Failed to load {url_short}: Time out or error.", file=sys.stderr, flush=True)
         return None
@@ -195,17 +192,20 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 4)
     for attempt in range(max_retries):
         dialog_log.clear()
         
-        # 1. Find Captcha
+        # 1. Find Captcha with robust wait_for
         captcha_img = page.locator("img[alt='CAPTCHA code'], img[src*='captcha']").first
         try:
-            if not captcha_img.is_visible(timeout=5000):
+            captcha_img.wait_for(state="visible", timeout=12000)
+            captcha_bytes = captcha_img.screenshot()
+        except Exception:
+            if attempt == 0:
                 print(f"    [-] {url_short}: Portal inactive.", file=sys.stderr)
                 return None
-            
-            captcha_bytes = captcha_img.screenshot()
-        except:
-            print(f"    [!] {url_short}: Screen capture failed.", file=sys.stderr)
-            return None
+            else:
+                print(f"    [!] {url_short}: Captcha load timeout on attempt {attempt+1}. Retrying...", file=sys.stderr)
+                try: page.reload(wait_until="domcontentloaded")
+                except: pass
+                continue
 
         captcha_text = solve_captcha(captcha_bytes)
         if not captcha_text:
