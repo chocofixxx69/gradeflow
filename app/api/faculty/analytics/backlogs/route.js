@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
+import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
+        const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
         const threshold = parseInt(searchParams.get('threshold') || '1', 10); // min backlogs to show
         const search = (searchParams.get('search') || '').trim().toLowerCase();
@@ -36,6 +36,9 @@ export async function GET(req) {
         const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
 
         let students = rawStudents || [];
+        if (branch && branch !== 'ALL') {
+            students = students.filter(s => matchesBranch(s, branch));
+        }
         if (batch) {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
@@ -106,7 +109,7 @@ export async function GET(req) {
                     name: s.name || s.usn,
                     branch: s.branch,
                     semester: s.semester || 1,
-                    isLE: Boolean(s.lateral_entry),
+                    isLE: isLateralEntry(s.usn, s.lateral_entry),
                     totalBacklogs: count,
                     backlogCredits: totalCredits,
                     isCritical: count > 4,
