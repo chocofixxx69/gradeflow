@@ -151,7 +151,7 @@ function CalculatorContent() {
             fontFamily: 'inherit', transition: 'border-color 0.2s',
         },
 
-        semGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' },
+        semGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 'var(--space-2)' },
         semBtn: (active) => ({
             minHeight: '44px', borderRadius: 'var(--radius-3)', fontWeight: 800, fontSize: '13px',
             border: 'none', cursor: 'pointer',
@@ -342,7 +342,7 @@ function CalculatorContent() {
                             </Inline>
                         </>
                     ) : (
-                        <Card style={{ textAlign: 'center', padding: '64px' }}>
+                        <Card style={{ textAlign: 'center', padding: 'clamp(24px, 8vw, 64px)' }}>
                             <span className="material-icons-round" style={{ fontSize: '56px', color: 'var(--surface-low)', marginBottom: '24px' }}>insights</span>
                             <h2 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '12px', letterSpacing: '-0.03em' }}>CGPA Calculator</h2>
                             <p style={{ color: 'var(--tx-muted)', marginBottom: '48px', maxWidth: '400px', margin: '0 auto 48px' }}>Enter your SGPA for each completed semester to calculate your cumulative CGPA.</p>

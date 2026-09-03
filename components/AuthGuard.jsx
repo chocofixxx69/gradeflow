@@ -59,117 +59,34 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
     const router = useRouter();
     const pathname = usePathname();
 
-    // On initial page refresh/SSR, match SSR with 'loading' to prevent hydration mismatch.
-    // On all subsequent client-side button/link clicks, initialize instantly from cached session!
-    const [authState, setAuthState] = useState(() => {
-        if (!appHasMountedOnce) return 'loading';
-        return checkSessionSync(role, facultyAllowed).state;
-    });
-    const [userType, setUserType] = useState(() => {
-        if (!appHasMountedOnce) return null;
-        return checkSessionSync(role, facultyAllowed).userType;
-    });
+    // Always resolve synchronously from localStorage — no loading state.
+    // localStorage is synchronous so this is instant on client. On SSR
+    // (typeof window === 'undefined') checkSessionSync returns 'loading'
+    // but Next.js won't render this on server since it's client-only.
+    const [authResult, setAuthResult] = useState(() => checkSessionSync(role, facultyAllowed));
 
     useEffect(() => {
         appHasMountedOnce = true;
-        const verifySession = async () => {
+        // Re-check on every pathname change (e.g. after login/logout)
+        const result = checkSessionSync(role, facultyAllowed);
+        setAuthResult(result);
+
+        // Handle redirects for denied access
+        if (result.state === 'denied') {
             const stuStr = localStorage.getItem('student_session');
             const facStr = localStorage.getItem('faculty_session');
-            const admStr = localStorage.getItem('admin_session');
-
-            let stuSession = null;
-            let facSession = null;
-            let admSession = null;
-
-            if (stuStr) {
-                try {
-                    const parsed = JSON.parse(stuStr);
-                    if (parsed && (parsed.usn || parsed.id)) {
-                        stuSession = parsed;
-                    }
-                } catch (e) {
-                    console.error('Invalid student_session in localStorage:', e);
-                }
-            }
-
-            if (facStr) {
-                try {
-                    const parsed = JSON.parse(facStr);
-                    if (parsed && (parsed.email || parsed.id)) {
-                        facSession = parsed;
-                    }
-                } catch (e) {
-                    console.error('Invalid faculty_session in localStorage:', e);
-                }
-            }
-
-            const gatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
-            if (admStr) {
-                try {
-                    const parsed = JSON.parse(admStr);
-                    if (parsed && (parsed.role === 'admin' || parsed.role === 'superadmin' || parsed.token === gatekeeper || parsed.token === 'GF-ADMIN-PROD')) {
-                        admSession = parsed;
-                    }
-                } catch (e) {
-                    console.error('Invalid admin_session in localStorage:', e);
-                }
-            }
-
-            if (role === 'admin') {
-                if (admSession) {
-                    setUserType('admin');
-                    setAuthState('authenticated');
+            if (!stuStr && !facStr) {
+                // No session at all — redirect to login
+                if (role === 'admin') {
+                    router.push('/admin/gateway');
+                } else if (role === 'faculty') {
+                    router.push('/faculty/login');
                 } else {
-                    setAuthState('denied');
-                    if (!stuSession && !facSession) {
-                        router.push('/auth');
-                    }
-                }
-            } else if (role === 'student') {
-                if (stuSession) {
-                    setUserType('student');
-                    setAuthState('authenticated');
-                } else if (facSession && facultyAllowed) {
-                    setUserType('faculty');
-                    setAuthState('authenticated');
-                } else {
-                    setAuthState('denied');
-                    if (facSession) setUserType('faculty');
-                    if (!stuSession && !facSession) {
-                        router.push('/auth');
-                    }
-                }
-            } else if (role === 'faculty') {
-                if (facSession) {
-                    setUserType('faculty');
-                    setAuthState('authenticated');
-                } else {
-                    setAuthState('denied');
-                    if (stuSession) setUserType('student');
-                    if (!stuSession && !facSession) {
-                        router.push('/auth');
-                    }
-                }
-            } else {
-                // role === 'any'
-                if (stuSession) {
-                    setUserType('student');
-                    setAuthState('authenticated');
-                } else if (facSession) {
-                    setUserType('faculty');
-                    setAuthState('authenticated');
-                } else if (admSession) {
-                    setUserType('admin');
-                    setAuthState('authenticated');
-                } else {
-                    setAuthState('denied');
                     router.push('/auth');
                 }
             }
-        };
-
-        verifySession();
-    }, [pathname, role, facultyAllowed]);
+        }
+    }, [pathname, role, facultyAllowed, router]);
 
     if (authState === 'loading') {
         return (

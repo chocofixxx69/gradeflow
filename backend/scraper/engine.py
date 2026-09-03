@@ -781,7 +781,7 @@ def _save_db(usn, name, sem, url, subs):
                             "subject_code": s.get("subject_code"), "subject_name": s.get("subject_name"),
                             "internal": s.get("internal"), "external": s.get("external"), "total": s.get("total"),
                             "grade": s.get("grade"), "credits": s.get("credits"), "passed": s.get("passed"),
-                            "exam_name": exam_alias,
+                            "exam_name": exam_alias, "announced_date": s.get("announced_date") or None,
                         } for s in subs]
                         if attempt_rows:
                             supabase.table("subject_mark_attempts").insert(attempt_rows).execute()

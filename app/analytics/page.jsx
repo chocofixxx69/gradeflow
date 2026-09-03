@@ -491,6 +491,30 @@ function AnalyticsContent() {
                                     </tbody>
                                 </table>
                             </div>
+                            <div className={styles.mobileSubjectList}>
+                                {facultyActivity.map((log, i) => (
+                                    <div key={i} className={styles.mobileSubjectCard}>
+                                        <div className={styles.mobileSubjectHeader}>
+                                            <span>{log.faculty_name}</span>
+                                            <span style={{
+                                                fontSize: '9px', fontWeight: 900, padding: '2px 8px', borderRadius: '4px',
+                                                background: log.sync_status === 'SUCCESS' ? 'var(--green-bg)' : 'var(--red-bg)',
+                                                color: log.sync_status === 'SUCCESS' ? 'var(--green)' : 'var(--red)'
+                                            }}>{log.sync_status}</span>
+                                        </div>
+                                        <div className={styles.mobileSubjectStats}>
+                                            <div className={styles.mobileStatItem}>
+                                                <span className={styles.statMiniLabel}>Target USN:</span>
+                                                <span className={styles.code}>{log.target_usn}</span>
+                                            </div>
+                                            <div className={styles.mobileStatItem}>
+                                                <span className={styles.statMiniLabel}>When:</span>
+                                                <span>{new Date(log.created_at).toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
 
                         <div className={styles.section}>

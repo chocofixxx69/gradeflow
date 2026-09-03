@@ -36,7 +36,7 @@ function RevalImpactContent() {
 
     // Data
     const [report, setReport] = useState({
-        summary: { totalApplications: 0, totalStudents: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, decreasedCount: 0, netPassRateGain: 0 },
+        summary: { totalApplications: 0, totalStudents: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, decreasedCount: 0, awaitingOriginalCount: 0, netPassRateGain: 0 },
         deltaRoster: [],
         studentRoster: [],
         branch: 'ALL',
@@ -133,6 +133,7 @@ function RevalImpactContent() {
             ['Backlogs Cleared via Reval', report.summary.clearedCount],
             ['Confirmed / Unchanged', report.summary.unchangedCount || 0],
             ['Marks Decreased', report.summary.decreasedCount || 0],
+            ['Awaiting Original Mark (no regular attempt on file)', report.summary.awaitingOriginalCount || 0],
             ['Net Pass Rate Gain', `${report.summary.netPassRateGain}%`],
         ];
         const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
@@ -150,11 +151,11 @@ function RevalImpactContent() {
             d.subject_name,
             d.revalExamLabel || d.revalExam,
             d.appliedDate,
-            d.preMarks,
-            d.preGrade,
+            d.preMarks === null ? 'Not on file' : d.preMarks,
+            d.preGrade === null ? '—' : d.preGrade,
             d.postMarks,
             d.postGrade,
-            d.delta > 0 ? `+${d.delta}` : d.delta,
+            d.delta === null ? '—' : d.delta > 0 ? `+${d.delta}` : d.delta,
             d.outcome
         ]);
 
@@ -185,9 +186,9 @@ function RevalImpactContent() {
             `${d.subject_code}\n${d.subject_name}`,
             d.revalExamLabel || d.revalExam,
             d.appliedDate,
-            `${d.preMarks} (${d.preGrade})`,
+            d.preMarks === null ? 'Not on file' : `${d.preMarks} (${d.preGrade})`,
             `${d.postMarks} (${d.postGrade})`,
-            d.delta > 0 ? `+${d.delta}` : `${d.delta}`,
+            d.delta === null ? '—' : d.delta > 0 ? `+${d.delta}` : `${d.delta}`,
             d.outcome
         ]);
 
@@ -310,6 +311,7 @@ function RevalImpactContent() {
                     { label: 'Backlogs Cleared', value: report.summary.clearedCount, color: '#10B981', icon: 'verified' },
                     { label: 'Confirmed / Same', value: report.summary.unchangedCount ?? 0, color: 'var(--tx-muted)', icon: 'remove_done' },
                     { label: 'Marks Decreased', value: report.summary.decreasedCount ?? 0, color: '#EF4444', icon: 'trending_down' },
+                    { label: 'Awaiting Original Mark', value: report.summary.awaitingOriginalCount ?? 0, color: '#F59E0B', icon: 'hourglass_empty' },
                     { label: 'Net Pass Rate Gain', value: `+${report.summary.netPassRateGain}%`, color: '#6366F1', icon: 'speed' },
                 ].map(item => (
                     <div key={item.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -363,6 +365,7 @@ function RevalImpactContent() {
                         <option value="Grade Upgraded">🔵 Grade Upgraded</option>
                         <option value="Confirmed">⚪ Confirmed / Unchanged</option>
                         <option value="Marks Decreased">🔴 Marks Decreased</option>
+                        <option value="Awaiting Original Mark">🟠 Awaiting Original Mark</option>
                     </select>
                 </div>
 
@@ -454,6 +457,7 @@ function RevalImpactContent() {
                                             const isCleared = d.isCleared;
                                             const isUpgraded = d.delta > 0;
                                             const isDecreased = d.delta < 0;
+                                            const isAwaiting = d.outcome === 'Awaiting Original Mark';
                                             const studentObj = report.studentRoster?.find(s => s.usn === d.usn);
 
                                             return (
@@ -514,10 +518,18 @@ function RevalImpactContent() {
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                                                        <div style={{ fontWeight: 700, color: 'var(--tx-muted)', fontSize: '13px' }}>{d.preMarks}</div>
-                                                        <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, background: d.preGrade === 'F' ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface-low)', color: d.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>
-                                                            {d.preGrade}
-                                                        </span>
+                                                        {isAwaiting ? (
+                                                            <div style={{ fontWeight: 700, color: 'var(--tx-dim)', fontSize: '12px', fontStyle: 'italic' }} title="No regular-exam attempt for this subject was ever captured — a real before/after comparison isn't possible until it is.">
+                                                                Not on file
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <div style={{ fontWeight: 700, color: 'var(--tx-muted)', fontSize: '13px' }}>{d.preMarks}</div>
+                                                                <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, background: d.preGrade === 'F' ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface-low)', color: d.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>
+                                                                    {d.preGrade}
+                                                                </span>
+                                                            </>
+                                                        )}
                                                     </td>
                                                     <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                                                         <div style={{ fontWeight: 800, color: isCleared ? '#10B981' : isUpgraded ? 'var(--primary)' : isDecreased ? '#EF4444' : 'inherit', fontSize: '13px' }}>{d.postMarks}</div>
@@ -526,7 +538,9 @@ function RevalImpactContent() {
                                                         </span>
                                                     </td>
                                                     <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                                                        {d.delta > 0 ? (
+                                                        {isAwaiting ? (
+                                                            <span style={{ color: 'var(--tx-dim)', fontSize: '13px' }}>—</span>
+                                                        ) : d.delta > 0 ? (
                                                             <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: '5px', fontSize: '11.5px', fontWeight: 900, background: 'rgba(16, 185, 129, 0.14)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                                                                 +{d.delta}
                                                             </span>
@@ -548,11 +562,11 @@ function RevalImpactContent() {
                                                             padding: '3px 8px', borderRadius: '5px',
                                                             fontSize: '10.5px', fontWeight: 800,
                                                             whiteSpace: 'nowrap',
-                                                            background: isCleared ? 'rgba(16, 185, 129, 0.15)' : isUpgraded ? 'rgba(59, 130, 246, 0.15)' : isDecreased ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-low)',
-                                                            color: isCleared ? '#10B981' : isUpgraded ? '#3B82F6' : isDecreased ? '#EF4444' : 'var(--tx-muted)',
-                                                            border: `1px solid ${isCleared ? 'rgba(16, 185, 129, 0.3)' : isUpgraded ? 'rgba(59, 130, 246, 0.3)' : isDecreased ? 'rgba(239, 68, 68, 0.25)' : 'var(--border)'}`
+                                                            background: isAwaiting ? 'rgba(245, 158, 11, 0.12)' : isCleared ? 'rgba(16, 185, 129, 0.15)' : isUpgraded ? 'rgba(59, 130, 246, 0.15)' : isDecreased ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-low)',
+                                                            color: isAwaiting ? '#F59E0B' : isCleared ? '#10B981' : isUpgraded ? '#3B82F6' : isDecreased ? '#EF4444' : 'var(--tx-muted)',
+                                                            border: `1px solid ${isAwaiting ? 'rgba(245, 158, 11, 0.3)' : isCleared ? 'rgba(16, 185, 129, 0.3)' : isUpgraded ? 'rgba(59, 130, 246, 0.3)' : isDecreased ? 'rgba(239, 68, 68, 0.25)' : 'var(--border)'}`
                                                         }}>
-                                                            {isCleared ? '🟢 Cleared' : isUpgraded ? '🔵 Upgraded' : isDecreased ? '🔴 Decreased' : '⚪ Confirmed'}
+                                                            {isAwaiting ? '🟠 Awaiting Original' : isCleared ? '🟢 Cleared' : isUpgraded ? '🔵 Upgraded' : isDecreased ? '🔴 Decreased' : '⚪ Confirmed'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -668,7 +682,13 @@ function RevalImpactContent() {
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-low)', fontSize: '12.5px' }}>
                                                     <div>
                                                         <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block', fontWeight: 700 }}>Regular Exam</span>
-                                                        <span style={{ fontWeight: 800, color: 'var(--tx-main)', fontSize: '14px' }}>{app.preMarks}</span> <span style={{ fontSize: '11.5px', fontWeight: 800, color: app.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>({app.preGrade})</span>
+                                                        {app.outcome === 'Awaiting Original Mark' ? (
+                                                            <span style={{ fontWeight: 700, color: 'var(--tx-dim)', fontSize: '12.5px', fontStyle: 'italic' }}>Not on file</span>
+                                                        ) : (
+                                                            <>
+                                                                <span style={{ fontWeight: 800, color: 'var(--tx-main)', fontSize: '14px' }}>{app.preMarks}</span> <span style={{ fontSize: '11.5px', fontWeight: 800, color: app.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>({app.preGrade})</span>
+                                                            </>
+                                                        )}
                                                     </div>
                                                     <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>arrow_forward</span>
                                                     <div>
@@ -678,7 +698,7 @@ function RevalImpactContent() {
                                                     <div>
                                                         <span style={{ color: 'var(--tx-dim)', fontSize: '10.5px', textTransform: 'uppercase', display: 'block', fontWeight: 700 }}>Score Delta</span>
                                                         <span style={{ fontWeight: 900, fontSize: '14px', color: app.delta > 0 ? '#10B981' : app.delta < 0 ? '#EF4444' : 'var(--tx-dim)' }}>
-                                                            {app.delta > 0 ? `+${app.delta}` : app.delta}
+                                                            {app.delta === null ? '—' : app.delta > 0 ? `+${app.delta}` : app.delta}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -748,7 +768,7 @@ function RevalImpactContent() {
                                         border: '1px solid var(--border)',
                                         borderRadius: '10px',
                                         padding: '14px',
-                                        background: app.isCleared ? 'rgba(16, 185, 129, 0.05)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.04)' : 'var(--surface-low)',
+                                        background: app.outcome === 'Awaiting Original Mark' ? 'rgba(245, 158, 11, 0.05)' : app.isCleared ? 'rgba(16, 185, 129, 0.05)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.04)' : 'var(--surface-low)',
                                         display: 'flex',
                                         flexDirection: 'column',
                                         gap: '8px'
@@ -771,8 +791,8 @@ function RevalImpactContent() {
                                         <span style={{
                                             padding: '3px 8px', borderRadius: '4px',
                                             fontSize: '11px', fontWeight: 800,
-                                            background: app.isCleared ? 'rgba(16, 185, 129, 0.15)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.15)' : 'var(--surface)',
-                                            color: app.isCleared ? '#10B981' : app.delta > 0 ? '#3B82F6' : 'var(--tx-muted)'
+                                            background: app.outcome === 'Awaiting Original Mark' ? 'rgba(245, 158, 11, 0.15)' : app.isCleared ? 'rgba(16, 185, 129, 0.15)' : app.delta > 0 ? 'rgba(59, 130, 246, 0.15)' : 'var(--surface)',
+                                            color: app.outcome === 'Awaiting Original Mark' ? '#F59E0B' : app.isCleared ? '#10B981' : app.delta > 0 ? '#3B82F6' : 'var(--tx-muted)'
                                         }}>
                                             {app.outcome}
                                         </span>
@@ -781,7 +801,11 @@ function RevalImpactContent() {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-low)' }}>
                                         <div>
                                             <span style={{ fontSize: '10.5px', color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block' }}>Regular Exam</span>
-                                            <span style={{ fontWeight: 800, fontSize: '14px' }}>{app.preMarks}</span> ({app.preGrade})
+                                            {app.outcome === 'Awaiting Original Mark' ? (
+                                                <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--tx-dim)', fontStyle: 'italic' }}>Not on file</span>
+                                            ) : (
+                                                <><span style={{ fontWeight: 800, fontSize: '14px' }}>{app.preMarks}</span> ({app.preGrade})</>
+                                            )}
                                         </div>
                                         <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>arrow_forward</span>
                                         <div>
@@ -791,7 +815,7 @@ function RevalImpactContent() {
                                         <div>
                                             <span style={{ fontSize: '10.5px', color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block' }}>Delta</span>
                                             <span style={{ fontWeight: 900, fontSize: '14px', color: app.delta > 0 ? '#10B981' : app.delta < 0 ? '#EF4444' : 'var(--tx-dim)' }}>
-                                                {app.delta > 0 ? `+${app.delta}` : app.delta}
+                                                {app.delta === null ? '—' : app.delta > 0 ? `+${app.delta}` : app.delta}
                                             </span>
                                         </div>
                                     </div>

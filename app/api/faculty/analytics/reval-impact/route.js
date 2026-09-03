@@ -46,6 +46,35 @@ function formatExamSession(code) {
     return c;
 }
 
+// Maps a raw scraped exam_name to the real academic cycle it belongs to, so a
+// revaluation is only ever compared against the regular declaration of the
+// SAME cycle — e.g. "D25J26RVcbcs" pairs only with "D25J26Ecbcs", never a
+// different cycle. This deliberately does NOT use scraped_at ordering: the
+// scraper visits exam URLs in whatever order they're queued, not in real
+// chronological order, so scrape timestamps can (and do, confirmed against
+// live data) show a revaluation scraped seconds BEFORE its own regular exam —
+// an artifact of scrape order, not academic reality. Same-cycle exam-name
+// matching is the only reliable signal for "which regular attempt does this
+// revaluation actually follow."
+function examCycleKey(examName) {
+    const c = String(examName || '').trim();
+    if (/^MJ26rv/i.test(c)) return 'MJ26';
+    if (/^MJ26/i.test(c)) return 'MJ26';
+    if (/^D25J26RV/i.test(c)) return 'D25J26';
+    if (/^D25J26/i.test(c)) return 'D25J26';
+    if (/^JJRVcbcs25/i.test(c)) return 'JJ25';
+    if (/^JJEcbcs25/i.test(c)) return 'JJ25';
+    if (/^SERVcbcs25/i.test(c)) return 'SE25';
+    if (/^SEcbcs25/i.test(c)) return 'SE25';
+    if (/^DJRVcbcs25/i.test(c)) return 'DJ25';
+    if (/^DJcbcs25/i.test(c)) return 'DJ25';
+    if (/^JJRVcbcs24/i.test(c)) return 'JJ24';
+    if (/^JJEcbcs24/i.test(c)) return 'JJ24';
+    if (/^DJRVcbcs24/i.test(c)) return 'DJ24';
+    if (/^DJcbcs24/i.test(c)) return 'DJ24';
+    return c; // unrecognized naming — treat as its own cycle, never cross-matched
+}
+
 export async function GET(req) {
     noStore();
     try {
@@ -75,7 +104,7 @@ export async function GET(req) {
         while (true) {
             let q = supabaseAdmin
                 .from('subject_mark_attempts')
-                .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, scraped_at')
+                .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, announced_date, scraped_at')
                 .order('id')
                 .range(from, from + 999);
             if (semester !== 'ALL' && !isNaN(semester)) {
@@ -107,30 +136,57 @@ export async function GET(req) {
         let clearedCount = 0;
         let unchangedCount = 0;
         let decreasedCount = 0;
+        let awaitingOriginalCount = 0;
 
         bySubject.forEach((subjectAttempts, key) => {
-            // Chronological order — earliest declaration first — so "pre" always
-            // means "the most recent real mark recorded before this reval attempt",
-            // never an invented baseline.
-            const sorted = [...subjectAttempts].sort((a, b) => new Date(a.scraped_at) - new Date(b.scraped_at));
-
-            sorted.forEach((attempt, idx) => {
+            subjectAttempts.forEach((attempt) => {
                 if (!attempt.isReval) return; // only reval attempts produce a delta row
-                // Non-reval regular attempt for this subject
-                let prior = [...sorted.slice(0, idx)].reverse().find(a => !a.isReval);
-                if (!prior) {
-                    prior = sorted.find(a => !a.isReval);
-                }
-
                 const [usn] = key.split('|');
                 const stu = studentByUsn.get(usn);
 
-                const preScore = prior ? (Number(prior.total) || 0) : (Number(attempt.total) || 0);
+                // The regular attempt from the SAME exam cycle — the only real,
+                // reliable "before" value. Every real revaluation still shows up as
+                // its own row (confirmed: hiding these made ~34% of real submissions
+                // across the college invisible) — what changes is whether a delta can
+                // be computed at all. When no same-cycle regular attempt was ever
+                // captured, the row is shown with the pre-score honestly marked "not
+                // on file" rather than either fabricating a number or disappearing.
+                const cycle = examCycleKey(attempt.exam_name);
+                const prior = subjectAttempts.find(a => !a.isReval && examCycleKey(a.exam_name) === cycle);
+
+                if (!prior) {
+                    awaitingOriginalCount++;
+                    const postScore = Number(attempt.total) || 0;
+                    deltaRoster.push({
+                        usn,
+                        name: stu?.name || usn,
+                        semester: attempt.semester,
+                        subject_code: attempt.subject_code,
+                        subject_name: attempt.subject_name || attempt.subject_code,
+                        preMarks: null,
+                        preGrade: null,
+                        postMarks: postScore,
+                        postGrade: attempt.grade || '—',
+                        delta: null,
+                        outcome: 'Awaiting Original Mark',
+                        isCleared: false,
+                        revalExam: attempt.exam_name || 'Reval',
+                        revalExamLabel: formatExamSession(attempt.exam_name),
+                        regularExam: null,
+                        regularExamLabel: null,
+                        appliedDate: attempt.announced_date ? new Date(attempt.announced_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : (attempt.scraped_at ? new Date(attempt.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'),
+                        regularDate: null,
+                        credits: attempt.credits || 3,
+                    });
+                    return;
+                }
+
+                const preScore = Number(prior.total) || 0;
                 const postScore = Number(attempt.total) || 0;
-                const preGrade = prior ? (prior.grade || '—') : (attempt.grade || '—');
+                const preGrade = prior.grade || '—';
                 const postGrade = attempt.grade || '—';
                 const delta = postScore - preScore;
-                const wasFailingBefore = prior ? isFailedSubject(prior) : isFailedSubject(attempt);
+                const wasFailingBefore = isFailedSubject(prior);
                 const isFailingNow = isFailedSubject(attempt);
 
                 let outcome;
@@ -148,8 +204,14 @@ export async function GET(req) {
                     unchangedCount++;
                 }
 
-                const formattedAppliedDate = attempt.scraped_at ? new Date(attempt.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-                const formattedRegularDate = prior?.scraped_at ? new Date(prior.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                // announced_date is the real VTU declaration date; scraped_at is only
+                // when our own scraper happened to visit the page — confirmed on live
+                // data these can differ by months, so announced_date must win whenever
+                // it's actually on file, with scraped_at only as a last-resort fallback
+                // for older rows scraped before this field existed.
+                const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                const formattedAppliedDate = formatDate(attempt.announced_date || attempt.scraped_at);
+                const formattedRegularDate = formatDate(prior.announced_date || prior.scraped_at);
 
                 deltaRoster.push({
                     usn,
@@ -189,11 +251,13 @@ export async function GET(req) {
                 cleared: 0,
                 decreased: 0,
                 confirmed: 0,
+                awaitingOriginal: 0,
             };
             entry.applications.push(d);
             entry.semesters.add(d.semester);
-            entry.totalDelta += d.delta;
-            if (d.outcome === 'Cleared Backlog') entry.cleared++;
+            if (d.delta !== null) entry.totalDelta += d.delta;
+            if (d.outcome === 'Awaiting Original Mark') entry.awaitingOriginal++;
+            else if (d.outcome === 'Cleared Backlog') entry.cleared++;
             else if (d.delta > 0) entry.upgraded++;
             else if (d.delta < 0) entry.decreased++;
             else entry.confirmed++;
@@ -214,7 +278,12 @@ export async function GET(req) {
         });
 
         const totalApplications = deltaRoster.length;
-        const netPassRateGain = totalApplications > 0 ? Number(((clearedCount / totalApplications) * 100).toFixed(1)) : 0;
+        // Net pass rate gain is only meaningful over revals we could actually
+        // compute a real delta for — "awaiting original mark" rows have no
+        // delta to contribute either way, so they're excluded from this ratio's
+        // denominator (they're still fully counted in totalApplications).
+        const computedCount = totalApplications - awaitingOriginalCount;
+        const netPassRateGain = computedCount > 0 ? Number(((clearedCount / computedCount) * 100).toFixed(1)) : 0;
 
         const payload = {
             summary: {
@@ -224,6 +293,7 @@ export async function GET(req) {
                 clearedCount,
                 unchangedCount,
                 decreasedCount,
+                awaitingOriginalCount,
                 netPassRateGain,
             },
             deltaRoster,

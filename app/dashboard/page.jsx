@@ -243,6 +243,40 @@ function StudentDashboardView({
                             </table>
                         </div>
 
+                        <div className={styles.mobileSubjectList}>
+                            {sortedSemesters.map(([sem]) => {
+                                const stat = semStats[sem] || { sgpa: 0, totalCredits: 0, earnedCredits: 0, gradePoints: 0, backlogs: 0 };
+                                return (
+                                    <div key={sem} className={styles.mobileSubjectCard}>
+                                        <div className={styles.mobileSubjectHeader}>
+                                            <strong>Semester {sem}</strong>
+                                            <Badge tone={stat.backlogs > 0 ? 'danger' : 'success'} size="sm">
+                                                {stat.backlogs === 0 ? 'Clear' : `${stat.backlogs} Backlog${stat.backlogs > 1 ? 's' : ''}`}
+                                            </Badge>
+                                        </div>
+                                        <div className={styles.mobileSubjectStats}>
+                                            <div className={styles.mobileStatItem}>
+                                                <span className={styles.statMiniLabel}>SGPA:</span>
+                                                <strong>{stat.sgpa.toFixed(2)}</strong>
+                                            </div>
+                                            <div className={styles.mobileStatItem}>
+                                                <span className={styles.statMiniLabel}>Attempted:</span>
+                                                <span>{stat.totalCredits}</span>
+                                            </div>
+                                            <div className={styles.mobileStatItem}>
+                                                <span className={styles.statMiniLabel}>Earned:</span>
+                                                <span>{stat.earnedCredits}</span>
+                                            </div>
+                                            <div className={styles.mobileStatItem}>
+                                                <span className={styles.statMiniLabel}>GP:</span>
+                                                <span>{stat.gradePoints.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
                         <div className={styles.records}>
                             {sortedSemesters.map(([sem, subjects]) => {
                                 const open = isExpanded(sem);

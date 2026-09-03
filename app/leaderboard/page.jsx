@@ -138,7 +138,7 @@ export default function LeaderboardPage() {
                                 value={selectedBatch || data?.batch || 'CS'}
                                 onChange={(e) => handleBatchChange(e.target.value)}
                                 style={{
-                                    padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
+                                    padding: '8px 14px', minHeight: '40px', borderRadius: '8px', border: '1px solid var(--border)',
                                     background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem'
                                 }}
                             >
@@ -168,7 +168,7 @@ export default function LeaderboardPage() {
                                     });
                                 }}
                                 style={{
-                                    padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
+                                    padding: '8px 14px', minHeight: '40px', borderRadius: '8px', border: '1px solid var(--border)',
                                     background: 'var(--primary)', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem',
                                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                 }}
@@ -195,7 +195,7 @@ export default function LeaderboardPage() {
                                     });
                                 }}
                                 style={{
-                                    padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)',
+                                    padding: '8px 14px', minHeight: '40px', borderRadius: '8px', border: '1px solid var(--border)',
                                     background: 'var(--surface-low)', color: 'var(--tx-main)', fontWeight: 800, fontSize: '0.85rem',
                                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                 }}
@@ -342,7 +342,7 @@ export default function LeaderboardPage() {
                             <button
                                 onClick={() => setEntryFilter('all')}
                                 style={{
-                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                    padding: '5px 10px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
                                     background: entryFilter === 'all' ? 'var(--surface)' : 'transparent',
                                     color: entryFilter === 'all' ? 'var(--tx-main)' : 'var(--tx-muted)',
                                     boxShadow: entryFilter === 'all' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
@@ -353,7 +353,7 @@ export default function LeaderboardPage() {
                             <button
                                 onClick={() => setEntryFilter('regular')}
                                 style={{
-                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                    padding: '5px 10px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
                                     background: entryFilter === 'regular' ? 'var(--surface)' : 'transparent',
                                     color: entryFilter === 'regular' ? 'var(--tx-main)' : 'var(--tx-muted)',
                                     boxShadow: entryFilter === 'regular' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
@@ -364,7 +364,7 @@ export default function LeaderboardPage() {
                             <button
                                 onClick={() => setEntryFilter('lateral')}
                                 style={{
-                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                    padding: '5px 10px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
                                     background: entryFilter === 'lateral' ? 'var(--surface)' : 'transparent',
                                     color: entryFilter === 'lateral' ? '#b45309' : 'var(--tx-muted)',
                                     boxShadow: entryFilter === 'lateral' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
@@ -384,7 +384,7 @@ export default function LeaderboardPage() {
                                     key={sem}
                                     onClick={() => handleSemesterChange(sem)}
                                     style={{
-                                        padding: '6px 12px', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 700,
+                                        padding: '6px 12px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 700,
                                         cursor: 'pointer',
                                         border: selectedSemester === sem ? '2px solid var(--primary)' : '1px solid var(--border)',
                                         background: selectedSemester === sem ? 'var(--primary)' : '#ffffff',
@@ -505,8 +505,8 @@ export default function LeaderboardPage() {
                         </div>
                     </div>
 
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                        <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid var(--border)', background: '#ffffff' }}>
                                     <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', width: '80px' }}>Rank</th>

@@ -263,7 +263,7 @@ function StudentAuthContent() {
                             <p style={{ fontSize: '13px', color: 'var(--tx-main)', fontWeight: 600, lineHeight: 1.5, marginBottom: '20px' }}>
                                 Please take a screenshot or write down this Recovery PIN. You will need it if you ever forget your password.
                             </p>
-                            <div style={{ background: 'var(--bg)', padding: '16px', borderRadius: '12px', fontSize: '36px', fontWeight: 900, letterSpacing: '0.2em', color: 'var(--tx-main)', border: '2px dashed var(--amber)' }}>
+                            <div style={{ background: 'var(--bg)', padding: '16px', borderRadius: '12px', fontSize: 'clamp(22px, 8vw, 36px)', fontWeight: 900, letterSpacing: '0.2em', color: 'var(--tx-main)', border: '2px dashed var(--amber)', overflowWrap: 'anywhere' }}>
                                 {authGeneratedPin}
                             </div>
                         </div>
