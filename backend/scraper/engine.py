@@ -134,6 +134,8 @@ def _parse_row(texts):
     PASS_GRADES  = {"O", "S", "A+", "B+", "B", "C", "D", "P", "PASS"}
     ABSENT_MARKS = {"AB", "ABSENT"}
     
+    non_nums = [v.strip().upper() for v in rem if not re.match(r'^\d+(?:\.\d+)?$', v.strip())]
+    result_str = " ".join(non_nums) if non_nums else grade
     raw_res = (result_str or '').strip().upper()
     is_res_fail = "F" in raw_res or "FAIL" in raw_res
     is_ext_fail = (ext_m > 0 and ext_m < 18)
@@ -513,6 +515,17 @@ def _get_student_scheme(usn):
         pass
     return "2022"
 
+def _attempt_rank(passed, grade):
+    """Ranks a subject attempt for best-of comparison: PASS > FAIL > ABSENT.
+    Mirrors getAttemptRank() in lib/vtuAcademicEngine.js so a revaluation or
+    re-scrape can only replace an existing row with an equal-or-better one."""
+    if passed:
+        return 2
+    g = (grade or "").strip().upper()
+    if g == "A":  # ABSENT marker (see _parse_row)
+        return 0
+    return 1  # F / X / NE
+
 def _save_db(usn, name, sem, url, subs):
     try:
         branch = _parse_branch(usn)
@@ -554,23 +567,30 @@ def _save_db(usn, name, sem, url, subs):
         sgpa = round(tcp / tc, 2) if tc > 0 else 0.0 # type: ignore
 
         exam_alias = url.split('/')[-2] if ('/' in url) else "Scraped Record"
-        
-        # Smart Sync: Fetch existing marks for this USN and Semester
-        existing_res = supabase.table("subject_marks").select("subject_code, passed").eq("usn", usn).execute()
-        already_passed = {r["subject_code"] for r in existing_res.data if r["passed"]} if existing_res.data else set()
+
+        # Smart Sync: Fetch existing marks for this USN, scoped to THIS semester only
+        # (a bare usn-only lookup can false-match a same-numbered subject code in
+        # another semester and wrongly block/allow an update there).
+        existing_res = supabase.table("subject_marks").select("subject_code, total, passed, grade").eq("usn", usn).eq("semester", sem).execute()
+        existing_by_code = {r["subject_code"]: r for r in existing_res.data} if existing_res.data else {}
 
         res = supabase.table("results").upsert({"usn": usn, "semester": sem, "exam_url": url, "exam_name": exam_alias, "sgpa": sgpa, "total_credits": sum((s.get("credits") or 0) for s in subs)}, on_conflict="usn,exam_url").execute()
         if res.data:
             r_id = res.data[0]["id"]
-            
-            # Filters subs: Don't let a FAIL override a PASS for the same semester
+
+            # Filters subs: never let a re-scrape (e.g. a revaluation result) overwrite
+            # a strictly better existing attempt. VTU policy: the higher of the original
+            # and revaluation marks always stands, even if revaluation comes back lower.
             filtered_subs = []
             for s in subs:
                 code = s["subject_code"]
-                # If student already passed this subject-sem in this USN record, and new record is a fail, SKIP
-                if code in already_passed and s["grade"] in ("F", "A", "X", "NE"): # type: ignore
-                    print(f"      - Skipping {code} (Student already has a PASS record for this sem)")
-                    continue
+                prev = existing_by_code.get(code)
+                if prev:
+                    prev_rank = _attempt_rank(prev.get("passed"), prev.get("grade"))
+                    new_rank = _attempt_rank(s["passed"], s["grade"])
+                    if new_rank < prev_rank or (new_rank == prev_rank and (s.get("total") or 0) <= (prev.get("total") or 0)):
+                        print(f"      - Skipping {code} (existing record is an equal-or-better attempt: kept grade={prev.get('grade')} total={prev.get('total')} over new grade={s['grade']} total={s.get('total')})")
+                        continue
                 s_clean = {k: v for k, v in s.items() if k != 'announced_date' or v}
                 filtered_subs.append({**s_clean, "result_id": r_id, "usn": usn, "semester": sem})
 
