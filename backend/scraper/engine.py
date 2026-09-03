@@ -230,7 +230,7 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 4)
             submit_btn.click()
             
             # Wait for either result page or alert
-            time.sleep(1.5)
+            time.sleep(0.5)
             page.wait_for_load_state("load", timeout=10000)
         except Exception as e:
             # print(f"    [debug] Submit err: {e}")
@@ -305,13 +305,20 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 4)
             # (regular vs. reval vs. NEP-format pages) don't all use the same
             # label wording or layout, so try several label variants before
             # falling back to a structural search.
+            # Find the student name with strict label blacklisting
             name = "Unknown"
+            BLACKLIST_NAMES = {
+                "STUDENT NAME", "CANDIDATE NAME", "NAME", "STUDENT", "CANDIDATE",
+                "UNIVERSITY SEAT NUMBER", "USN", "SEMESTER", "SEM", "RESULT", "GRADE",
+                "TOTAL", "MARKS", "SUBJECT", "SUBJECT CODE", "SUBJECT NAME", "UNKNOWN"
+            }
             def _looks_like_name(v):
                 v = (v or "").strip()
-                if not v or v.upper() == usn.upper(): return False
+                if not v or v.upper() == usn.upper() or v.upper() in BLACKLIST_NAMES: return False
                 if not re.search(r"[A-Za-z]{2,}", v): return False
-                if re.search(r"\d{3,}", v): return False  # names don't carry long digit runs
-                return len(v) <= 60
+                if re.search(r"\d{2,}", v): return False  # names don't carry numbers
+                return 2 <= len(v) <= 60
+
             try:
                 content_text = page.evaluate("() => document.body.innerText")
                 for label_pat in (
@@ -319,30 +326,39 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 4)
                     r"Candidate\s*Name",
                     r"Name\s+of\s+(?:the\s+)?(?:Student|Candidate)",
                 ):
-                    m = re.search(label_pat + r"\s*:\s*(.+)", content_text, re.IGNORECASE)
+                    m = re.search(label_pat + r"[\s\n]*:[\s\n]*([A-Za-z\s\.\']{2,60})", content_text, re.IGNORECASE)
                     if m:
                         candidate = m.group(1).split("\n")[0].strip()
                         if _looks_like_name(candidate):
                             name = candidate
                             break
 
-                # Structural fallback: find whichever cell holds this student's
-                # own USN and read the cell right after it — VTU almost always
-                # prints USN and Name as an adjacent label/value or side-by-side
-                # pair, regardless of what the label text itself says.
+                # Structural search in table cells (handles multi-cell layouts where ":" is separate)
                 if name == "Unknown":
-                    # Must cover BOTH layouts: the older portals render real
-                    # tables, while the 2025/NEP pages render div.divTableCell
-                    # (same split the subject parser below has to make). A
-                    # td-only search silently finds nothing on the div pages.
                     cells = page.locator("td, th, div.divTableCell").evaluate_all("els => els.map(e => e.textContent.trim())")
                     for i, c in enumerate(cells):
-                        if usn.upper() in c.upper() and i + 1 < len(cells):
-                            candidate = cells[i + 1].split(":")[-1].strip()
-                            if _looks_like_name(candidate):
-                                name = candidate
+                        if re.search(r"^(?:Student|Candidate)\s*Name\b", c, re.IGNORECASE):
+                            for next_c in cells[i+1:i+5]:
+                                cleaned = next_c.replace(":", "").strip()
+                                if cleaned and _looks_like_name(cleaned):
+                                    name = cleaned
+                                    break
+                            if name != "Unknown":
                                 break
-            except: pass
+
+                    # Fallback: scan after USN cell skipping intervening labels
+                    if name == "Unknown":
+                        for i, c in enumerate(cells):
+                            if usn.upper() in c.upper():
+                                for next_c in cells[i+1:i+6]:
+                                    cleaned = next_c.replace(":", "").strip()
+                                    if cleaned and _looks_like_name(cleaned):
+                                        name = cleaned
+                                        break
+                                if name != "Unknown":
+                                    break
+            except Exception:
+                pass
             
             # Semester
             sem = 0
@@ -479,6 +495,7 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
 
     results_dict = {}
     found_count = 0
+    saved_semesters = set()
     lock = threading.Lock()
 
     def _worker_scan_urls(worker_id: int, worker_urls: list):
@@ -533,6 +550,7 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
                                 groups.setdefault(s_sem, []).append(s)
                             for sem, subs in groups.items():
                                 _save_db(usn, res["name"] or usn, sem, u, subs)
+                                saved_semesters.add(sem)
 
                 browser.close()
         except Exception as e:
@@ -564,12 +582,14 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
         for t in threads:
             t.join()
 
-    if found_count > 0:
+    if found_count > 0 or len(saved_semesters) > 0:
         _recalculate_remarks(usn)
-        print(f"[SUCCESS] {usn}: Success (Saved {found_count} semester/exam records)")
+        sems_list = sorted(list(saved_semesters))
+        sems_text = ", ".join(f"Sem {s}" for s in sems_list) if sems_list else "All"
+        print(f"[SUCCESS] {usn}: Success (Saved {len(saved_semesters)} semester(s): {sems_text} across {found_count} portal(s))")
     else:
         print(f"[WARNING] {usn}: No results")
-    return found_count > 0
+    return (found_count > 0 or len(saved_semesters) > 0)
 
 def _get_true_grade_point(grade, tot_m, ext_m=None):
     """Calculate grade points. Trusts the grade already set by _parse_row."""
@@ -648,7 +668,7 @@ def _save_db(usn, name, sem, url, subs):
         # URL calls _save_db in turn, and a plain unconditional overwrite here
         # meant one page with an unrecognized name layout ("Unknown") could
         # clobber a real name a different page had already saved correctly.
-        if name and name.strip() and name.strip().upper() != "UNKNOWN":
+        if name and name.strip() and name.strip().upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
             updates["name"] = name.strip()
         try:
             supabase.table("students").upsert(updates, on_conflict="usn").execute()
