@@ -179,7 +179,7 @@ def _parse_row(texts):
         "announced_date": announced_date
     }
 
-def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 50) -> dict | None:
+def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 4) -> dict | None:
     url_short = url.split("/")[-1] if url.endswith(".php") else (url.split("/")[-2] if "/" in url else url)
     print(f"    [>] Checking {url_short}...", file=sys.stderr, flush=True)
     
@@ -469,14 +469,13 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
     # Determine CPU browser concurrency (Burst Mode = all portals in parallel)
     if concurrency:
         max_workers = max(1, min(concurrency, len(urls)))
-    elif burst or os.getenv("BURST_MODE", "1") in ("1", "true", "yes"):
-        concurrency_env = os.getenv("SCRAPER_CONCURRENCY", "")
-        max_workers = int(concurrency_env) if concurrency_env.isdigit() else len(urls)
-        max_workers = max(1, min(max_workers, len(urls)))
+    elif burst or os.getenv("BURST_MODE", "0") in ("1", "true", "yes"):
+        # Full Burst: 1 browser worker per portal concurrently
+        max_workers = len(urls)
+    elif os.getenv("SCRAPER_CONCURRENCY", "").isdigit():
+        max_workers = max(1, min(int(os.getenv("SCRAPER_CONCURRENCY")), len(urls)))
     else:
-        concurrency_env = os.getenv("SCRAPER_CONCURRENCY", "4")
-        max_workers = int(concurrency_env) if concurrency_env.isdigit() else 4
-        max_workers = max(1, min(max_workers, len(urls)))
+        max_workers = min(4, len(urls))
 
     results_dict = {}
     found_count = 0
