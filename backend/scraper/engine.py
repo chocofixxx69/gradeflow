@@ -183,10 +183,18 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 8)
     url_short = url.split("/")[-1] if url.endswith(".php") else (url.split("/")[-2] if "/" in url else url)
     print(f"    [>] Checking {url_short}...", file=sys.stderr, flush=True)
     
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-    except Exception as e:
-        print(f"    [!] Failed to load {url_short}: Time out or error.", file=sys.stderr, flush=True)
+    # Robust initial navigation with retry on network blips
+    loaded = False
+    for initial_try in range(2):
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            loaded = True
+            break
+        except Exception:
+            if initial_try == 0:
+                time.sleep(1)
+    if not loaded:
+        print(f"    [!] Failed to load {url_short}: Network timeout.", file=sys.stderr, flush=True)
         return None
 
     for attempt in range(max_retries):
@@ -199,10 +207,16 @@ def _check_url(page, url: str, usn: str, dialog_log: list, max_retries: int = 8)
             captcha_bytes = captcha_img.screenshot()
         except Exception:
             if attempt == 0:
-                print(f"    [-] {url_short}: Portal inactive.", file=sys.stderr)
-                return None
+                # Double-check before ever declaring inactive
+                try:
+                    page.reload(wait_until="domcontentloaded", timeout=15000)
+                    captcha_img.wait_for(state="visible", timeout=8000)
+                    captcha_bytes = captcha_img.screenshot()
+                except Exception:
+                    print(f"    [-] {url_short}: Portal inactive.", file=sys.stderr)
+                    return None
             else:
-                print(f"    [!] {url_short}: Captcha load timeout on attempt {attempt+1}. Retrying...", file=sys.stderr)
+                print(f"    [!] {url_short}: Captcha load retry on attempt {attempt+1}...", file=sys.stderr)
                 try: page.reload(wait_until="domcontentloaded")
                 except: pass
                 continue
@@ -670,6 +684,21 @@ def _save_db(usn, name, sem, url, subs):
         # clobber a real name a different page had already saved correctly.
         if name and name.strip() and name.strip().upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
             updates["name"] = name.strip()
+
+        # Safeguard: preserve highest semester and existing valid student name
+        try:
+            cur_s = supabase.table("students").select("semester, name").eq("usn", usn).limit(1).execute()
+            if cur_s.data and len(cur_s.data) > 0:
+                old_sem = cur_s.data[0].get("semester") or 0
+                if old_sem > sem:
+                    updates["semester"] = old_sem
+                if not updates.get("name") and cur_s.data[0].get("name"):
+                    existing_name = cur_s.data[0]["name"]
+                    if existing_name.upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
+                        updates["name"] = existing_name
+        except Exception:
+            pass
+
         try:
             supabase.table("students").upsert(updates, on_conflict="usn").execute()
         except Exception:

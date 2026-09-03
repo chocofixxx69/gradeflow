@@ -14,7 +14,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SER
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ── VTU Result URLs ──
-FALLBACK_URLS = [
+FALLBACK_2022_URLS = [
     "https://results.vtu.ac.in/D25J26RVcbcs/index.php",       # Dec 25/Jan 26 Revaluation
     "https://results.vtu.ac.in/MJ26rvcbcs/index.php",         # May/June 2026 Revaluation
     "https://results.vtu.ac.in/MJ26cbcs/index.php",           # May/June 2026 Regular
@@ -42,6 +42,26 @@ FALLBACK_URLS = [
     "https://results.vtu.ac.in/indexJJ24.php",                # Jun/Jul 24 Regular (NEP)
     "https://results.vtu.ac.in/indexD3J4.php",                # Dec 23/Jan 24 Regular (NEP)
 ]
+
+FALLBACK_2025_URLS = [
+    "https://results.vtu.ac.in/D25J26RVcbcs/index.php",       # Dec 25/Jan 26 Revaluation
+    "https://results.vtu.ac.in/MJ26rvcbcs/index.php",         # May/June 2026 Revaluation
+    "https://results.vtu.ac.in/MJ26cbcs/index.php",           # May/June 2026 Regular
+    "https://results.vtu.ac.in/D25J26Ecbcs/index.php",        # Dec 25/Jan 26 Regular
+    "https://results.vtu.ac.in/JJEcbcs25/index.php",          # Jun/Jul 25 Regular
+    "https://results.vtu.ac.in/JJRVcbcs25/index.php",         # Jun/Jul 25 Reval
+    "https://results.vtu.ac.in/MakeUpEcbcs25/index.php",      # Jun/Jul 25 MakeUp Exam
+    "https://results.vtu.ac.in/SEcbcs25/index.php",           # Jun/Jul 25 Summer Exam
+    "https://results.vtu.ac.in/SERVcbcs25/index.php",         # Jun/Jul 25 Summer Reval
+    "https://results.vtu.ac.in/indexD5J6.php",                # Dec 25/Jan 26 Regular (NEP)
+    "https://results.vtu.ac.in/indexJJ25.php",                # Jun/Jul 25 Regular (NEP)
+    "https://results.vtu.ac.in/DJcbcs25/index.php",           # Dec 24/Jan 25 Regular
+    "https://results.vtu.ac.in/DJRVcbcs25/index.php",         # Dec 24/Jan 25 Reval
+    "https://results.vtu.ac.in/SplJulcbcs25/index.php",       # Jul 25 Special/Makeup Exam
+    "https://results.vtu.ac.in/RVSplJulcbcs25/index.php",     # Jul 25 Special/Makeup Reval
+]
+
+FALLBACK_URLS = FALLBACK_2022_URLS
 
 def get_vtu_urls(faculty_id=None, scheme=None):
     """Return portal URLs in ascending chronological order (oldest exam first).
@@ -100,5 +120,5 @@ def get_vtu_urls(faculty_id=None, scheme=None):
 
     # Last resort fallback:
     if scheme_str == "2025":
-        return [u for u in FALLBACK_URLS if any(y in u for y in ("25", "26", "D5J6", "JJ25"))]
-    return FALLBACK_URLS
+        return FALLBACK_2025_URLS
+    return FALLBACK_2022_URLS
