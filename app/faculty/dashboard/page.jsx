@@ -115,7 +115,7 @@ function FacultyDashboardView({
     return (
         <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
             {/* 1. Teaching Load & Assigned Subjects */}
-            <section className={styles.section} aria-labelledby="faculty-assigned-title">
+            <section className={`${styles.section} ${styles.sectionTeaching}`} aria-labelledby="faculty-assigned-title">
                 <div className={styles.sectionHeader}>
                     <div>
                         <div className={styles.eyebrow}>Teaching Load</div>
@@ -164,11 +164,10 @@ function FacultyDashboardView({
                 )}
             </section>
 
-            {/* 2. Faculty Command Center: Student Lookup – sticky on mobile so USN search stays accessible while scrolling */}
+            {/* 2. Faculty Command Center: Student Lookup – first on mobile */}
             <section
-                className={styles.section}
+                className={`${styles.section} ${styles.sectionLookup}`}
                 aria-labelledby="faculty-lookup-title"
-                style={{ position: 'sticky', top: '0', zIndex: 10, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
             >
                 <div className={styles.sectionHeader}>
                     <div>
