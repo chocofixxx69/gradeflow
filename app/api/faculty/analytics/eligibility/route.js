@@ -158,6 +158,8 @@ export async function GET(req) {
         const detainedCount = detainedStudents.length;
         const eligibilityRate = totalEvaluated > 0 ? Number(((eligibleCount / totalEvaluated) * 100).toFixed(1)) : 0;
 
+        const allEvaluatedStudents = [...detainedStudents, ...eligibleStudents].sort((a, b) => a.usn.localeCompare(b.usn));
+
         const payload = {
             summary: {
                 totalEvaluated,
@@ -165,6 +167,7 @@ export async function GET(req) {
                 detainedCount,
                 eligibilityRate
             },
+            allStudents: allEvaluatedStudents,
             eligibleStudents,
             detainedStudents,
             targetSemester,
