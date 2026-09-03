@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import AuthGuard from '@/components/AuthGuard';
-import { apiRequest } from '@/lib/api/client';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select } from '@/components/ui/Foundation';
+
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
+import { getCachedApiData, apiRequest } from '@/lib/api/client';
 
 export default function EligibilityRegisterPage() {
     return (
@@ -20,22 +22,40 @@ export default function EligibilityRegisterPage() {
 }
 
 function EligibilityRegisterContent() {
-    const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [] });
+    const initialSaved = getSavedFilters();
+    const initialMeta = getCachedApiData('/api/faculty/analytics/meta');
 
-    // Filters
-    const [branch, setBranch] = useState('CS');
-    const [batch, setBatch] = useState('');
-    const [targetSemester, setTargetSemester] = useState(5); // 3, 5, or 7
+    const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [] });
+
+    // Filters initialized instantly from active context
+    const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
+    const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
+    const [targetSemester, setTargetSemester] = useState(() => {
+        const s = Number(initialSaved.semester);
+        if (s === 3 || s === 5 || s === 7) return s;
+        return 5;
+    });
     const [activeTab, setActiveTab] = useState('detained'); // 'detained' | 'eligible'
 
+    const initialData = getCachedApiData('/api/faculty/analytics/eligibility', {
+        branch: initialSaved.branch || 'CS',
+        ...(initialSaved.batch ? { batch: initialSaved.batch } : {}),
+        targetSemester: 5
+    });
+
     // Data
-    const [report, setReport] = useState({
+    const [report, setReport] = useState(() => initialData || {
         summary: { totalEvaluated: 0, eligibleCount: 0, detainedCount: 0, eligibilityRate: 0 },
         eligibleStudents: [],
         detainedStudents: [],
         targetSemester: 5
     });
+    const [loading, setLoading] = useState(() => !initialData);
+
+    // Save active filters
+    useEffect(() => {
+        saveFilters({ branch, batch, semester: targetSemester });
+    }, [branch, batch, targetSemester]);
 
     // 1. Fetch metadata
     useEffect(() => {
@@ -44,8 +64,6 @@ function EligibilityRegisterContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -57,11 +75,18 @@ function EligibilityRegisterContent() {
     // 2. Fetch eligibility report
     const loadEligibility = useCallback(async () => {
         if (!branch) return;
-        setLoading(true);
-        try {
-            const query = { branch, targetSemester };
-            if (batch) query.batch = batch;
+        const query = { branch, targetSemester };
+        if (batch) query.batch = batch;
 
+        const cached = getCachedApiData('/api/faculty/analytics/eligibility', query);
+        if (cached) {
+            setReport(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        try {
             const res = await apiRequest('/api/faculty/analytics/eligibility', { query });
             if (res) {
                 setReport(res);
@@ -223,9 +248,9 @@ function EligibilityRegisterContent() {
                         VTU Vertical Progression Regulation in effect for Semester {targetSemester}:
                     </div>
                     <div style={{ color: 'var(--tx-muted)', lineHeight: '1.4' }}>
-                        {targetSemester === 3 && 'Students must not carry more than 4 backlogs from 1st and 2nd semesters combined.'}
-                        {targetSemester === 5 && 'Students must not carry more than 4 backlogs from Semesters 1, 2, 3, and 4 combined to be admitted to 3rd year.'}
-                        {targetSemester === 7 && 'All 1st-year subjects (Sem 1 & 2) must be 100% cleared, and student must not carry more than 4 backlogs from Semesters 3 to 6.'}
+                        {targetSemester === 3 && 'VTU Minimum 20 Credits Rule: Students must earn at least 20 credits in 1st Year (Semesters 1 & 2) and must not carry more than 4 backlogs to move to 2nd Year (Semester 3).'}
+                        {targetSemester === 5 && 'VTU 3rd Year Progression: Students must not carry more than 4 backlogs from Semesters 1, 2, 3, and 4 combined to be admitted to 3rd Year (Semester 5).'}
+                        {targetSemester === 7 && 'VTU ZERO 1ST-YEAR BACKLOGS RULE: Any student carrying uncleared backlogs from 1st Year (Semesters 1 & 2) CANNOT enter 7th Semester (all 1st-year subjects must be 100% cleared). In addition, students must not carry more than 4 backlogs from Semesters 3 to 6 combined.'}
                     </div>
                 </div>
             </div>
@@ -276,7 +301,8 @@ function EligibilityRegisterContent() {
                                     <th style={{ padding: '12px 16px', textAlign: 'left', width: '140px' }}>USN</th>
                                     <th style={{ padding: '12px 16px', textAlign: 'left' }}>Student Name</th>
                                     <th style={{ padding: '12px 12px', textAlign: 'center', width: '90px' }}>Backlogs</th>
-                                    <th style={{ padding: '12px 12px', textAlign: 'center', width: '90px' }}>Earned Cr</th>
+                                    <th style={{ padding: '12px 12px', textAlign: 'center', width: '90px' }}>Year 1 Cr</th>
+                                    <th style={{ padding: '12px 12px', textAlign: 'center', width: '90px' }}>Total Cr</th>
                                     <th style={{ padding: '12px 16px', textAlign: 'left' }}>Detention Violation Reason</th>
                                     <th style={{ padding: '12px 16px', textAlign: 'left', width: '220px' }}>Uncleared Subjects</th>
                                 </tr>
@@ -284,7 +310,7 @@ function EligibilityRegisterContent() {
                             <tbody>
                                 {report.detainedStudents.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} style={{ padding: '48px', textAlign: 'center', color: '#10B981', fontWeight: 700 }}>
+                                        <td colSpan={8} style={{ padding: '48px', textAlign: 'center', color: '#10B981', fontWeight: 700 }}>
                                             {loading ? 'Evaluating progression rules...' : 'All students in this cohort are eligible for vertical progression! Zero detentions.'}
                                         </td>
                                     </tr>
@@ -307,6 +333,9 @@ function EligibilityRegisterContent() {
                                                 <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444', fontWeight: 800, fontSize: '12px' }}>
                                                     {s.activeBacklogsCount}
                                                 </span>
+                                            </td>
+                                            <td style={{ padding: '12px 12px', textAlign: 'center', fontWeight: 800, color: s.year1EarnedCredits < 20 && !s.isLE ? '#EF4444' : 'inherit' }}>
+                                                {s.isLE ? 'N/A (LE)' : `${s.year1EarnedCredits ?? 0}/20`}
                                             </td>
                                             <td style={{ padding: '12px 12px', textAlign: 'center', fontWeight: 700 }}>
                                                 {s.totalEarnedCredits}

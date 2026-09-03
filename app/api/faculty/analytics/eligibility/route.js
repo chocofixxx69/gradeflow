@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
+import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -74,49 +74,58 @@ export async function GET(req) {
             const backlogInfo = computeBacklogs(uMarks);
             const activeBacklogs = backlogInfo.failedSubjects;
             const totalBacklogs = activeBacklogs.length;
-
+            const isLE = isLateralEntry(student.usn, student.lateral_entry);
             const totalEarnedCredits = uMarks.filter(m => !isFailedSubject(m)).reduce((acc, m) => acc + resolveSubjectCredits(m), 0);
+            const year1EarnedCredits = uMarks
+                .filter(m => (Number(m.semester) === 1 || Number(m.semester) === 2) && !isFailedSubject(m))
+                .reduce((acc, m) => acc + resolveSubjectCredits(m), 0);
 
             let isEligible = true;
             const reasons = [];
 
             // Rule 1: Admission to 3rd Semester (Year 2 entry)
+            // VTU Regulation: Student must earn a minimum of 20 credits in 1st Year and not carry > 4 backlogs
             if (targetSemester === 3) {
-                const year1Backlogs = activeBacklogs.filter(b => b.semester <= 2);
-                if (year1Backlogs.length > 4) {
+                if (year1EarnedCredits < 20 && !isLE) {
                     isEligible = false;
-                    reasons.push(`Carrying ${year1Backlogs.length} backlogs from Year 1 (Maximum allowed: 4)`);
+                    reasons.push(`Earned only ${year1EarnedCredits} credits in 1st Year (VTU Minimum Required to move to 2nd Year: 20 credits).`);
+                }
+
+                const year1Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
+                if (year1Backlogs.length > 4 && !isLE) {
+                    isEligible = false;
+                    reasons.push(`Carrying ${year1Backlogs.length} backlogs from 1st Year (Maximum allowed: 4).`);
                 }
             }
             // Rule 2: Admission to 5th Semester (Year 3 entry)
+            // VTU Regulation: Not more than 4 backlogs from 1st and 2nd year combined
             else if (targetSemester === 5) {
-                // Not more than 4 backlogs from 1st and 2nd year combined
-                const year1And2Backlogs = activeBacklogs.filter(b => b.semester <= 4);
+                const year1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 4);
                 if (year1And2Backlogs.length > 4) {
                     isEligible = false;
-                    reasons.push(`Carrying ${year1And2Backlogs.length} backlogs from Semesters 1 to 4 (Maximum allowed: 4)`);
+                    reasons.push(`Carrying ${year1And2Backlogs.length} backlogs from Semesters 1 to 4 (Maximum allowed: 4).`);
                 }
             }
             // Rule 3: Admission to 7th Semester (Year 4 entry)
+            // VTU Regulation: ANY student carrying backlogs from 1st year CANNOT enter 7th Semester!
             else if (targetSemester === 7) {
-                // Must have completely cleared all 1st year subjects (Sem 1 and 2)
-                const sem1And2Backlogs = activeBacklogs.filter(b => b.semester <= 2);
-                if (sem1And2Backlogs.length > 0 && !student.lateral_entry) {
+                const sem1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
+                if (sem1And2Backlogs.length > 0 && !isLE) {
                     isEligible = false;
-                    reasons.push(`Uncleared 1st-year arrears (${sem1And2Backlogs.map(s => s.subject_code).join(', ')}). All 1st-year subjects must be cleared for 7th semester admission.`);
+                    reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
                 }
-                // Not more than 4 backlogs from 2nd and 3rd year
-                const year2And3Backlogs = activeBacklogs.filter(b => b.semester > 2 && b.semester <= 6);
+
+                const year2And3Backlogs = activeBacklogs.filter(b => Number(b.semester) > 2 && Number(b.semester) <= 6);
                 if (year2And3Backlogs.length > 4) {
                     isEligible = false;
-                    reasons.push(`Carrying ${year2And3Backlogs.length} backlogs from Semesters 3 to 6 (Maximum allowed: 4)`);
+                    reasons.push(`Carrying ${year2And3Backlogs.length} backlogs from Semesters 3 to 6 (Maximum allowed: 4).`);
                 }
             }
             // Generic fallback for any other semester
             else {
                 if (totalBacklogs > 4) {
                     isEligible = false;
-                    reasons.push(`Carrying ${totalBacklogs} active backlogs (Standard threshold: 4)`);
+                    reasons.push(`Carrying ${totalBacklogs} active backlogs (Standard threshold: 4).`);
                 }
             }
 
@@ -124,8 +133,9 @@ export async function GET(req) {
                 usn: student.usn,
                 name: student.name || student.usn,
                 branch: student.branch,
-                isLE: Boolean(student.lateral_entry),
+                isLE,
                 totalEarnedCredits,
+                year1EarnedCredits,
                 activeBacklogsCount: totalBacklogs,
                 unclearedSubjects: activeBacklogs.map(b => ({
                     code: b.subject_code,
