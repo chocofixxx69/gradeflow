@@ -757,6 +757,26 @@ def _save_db(usn, name, sem, url, subs):
         if res.data:
             r_id = res.data[0]["id"]
 
+            # Append-only attempt history (subject_mark_attempts) — every raw
+            # scraped attempt, one row each, never overwritten. subject_marks
+            # below intentionally keeps only the single best attempt per
+            # subject per VTU policy, which is correct for SGPA/CGPA/backlogs
+            # but destroys the "before" value a revaluation delta report needs.
+            # This insert is purely additive and does not affect subject_marks,
+            # SGPA, or any existing calculation.
+            try:
+                attempt_rows = [{
+                    "result_id": r_id, "usn": usn, "semester": sem,
+                    "subject_code": s.get("subject_code"), "subject_name": s.get("subject_name"),
+                    "internal": s.get("internal"), "external": s.get("external"), "total": s.get("total"),
+                    "grade": s.get("grade"), "credits": s.get("credits"), "passed": s.get("passed"),
+                    "exam_name": exam_alias,
+                } for s in subs]
+                if attempt_rows:
+                    supabase.table("subject_mark_attempts").insert(attempt_rows).execute()
+            except Exception as e:
+                print(f"      [WARN] Could not record attempt history: {e}")
+
             # Filters subs: never let a re-scrape (e.g. a revaluation result) overwrite
             # a strictly better existing attempt. VTU policy: the higher of the original
             # and revaluation marks always stands, even if revaluation comes back lower.

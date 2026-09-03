@@ -24,7 +24,7 @@ function RevalImpactContent() {
     const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8] });
 
     // Filters
-    const [branch, setBranch] = useState('CS');
+    const [branch, setBranch] = useState('ALL');
     const [semester, setSemester] = useState(3);
     const [batch, setBatch] = useState('');
 
@@ -32,7 +32,7 @@ function RevalImpactContent() {
     const [report, setReport] = useState({
         summary: { totalApplications: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, decreasedCount: 0, netPassRateGain: 0 },
         deltaRoster: [],
-        branch: 'CS',
+        branch: 'ALL',
         semester: 3
     });
 
@@ -43,8 +43,6 @@ function RevalImpactContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -189,7 +187,7 @@ function RevalImpactContent() {
                                 label="Department / Branch"
                                 value={branch}
                                 onChange={e => setBranch(e.target.value)}
-                                options={meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                                options={[{ value: 'ALL', label: 'ALL - All Branches / Departments' }, ...meta.branches.filter(b => b.code !== 'ALL').map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
                             />
                         </div>
                         <div>
