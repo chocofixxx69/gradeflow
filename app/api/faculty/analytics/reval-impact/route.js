@@ -86,9 +86,12 @@ export async function GET(req) {
 
             sorted.forEach((attempt, idx) => {
                 if (!attempt.isReval) return; // only reval attempts produce a delta row
-                // Most recent non-reval attempt strictly before this one.
-                const prior = [...sorted.slice(0, idx)].reverse().find(a => !a.isReval);
-                if (!prior) return; // no real prior mark on file — nothing honest to compare against, so skip
+                // Non-reval regular attempt for this subject
+                let prior = [...sorted.slice(0, idx)].reverse().find(a => !a.isReval);
+                if (!prior) {
+                    prior = sorted.find(a => !a.isReval);
+                }
+                if (!prior) return; // no real prior mark on file — skip
 
                 const [usn] = key.split('|');
                 const stu = studentByUsn.get(usn);
