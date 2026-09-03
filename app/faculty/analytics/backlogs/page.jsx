@@ -11,6 +11,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
+import { getCachedApiData, apiRequest } from '@/lib/api/client';
+
 export default function BacklogsRegisterPage() {
     return (
         <AuthGuard role="faculty">
@@ -20,22 +23,36 @@ export default function BacklogsRegisterPage() {
 }
 
 function BacklogsRegisterContent() {
-    const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [] });
+    const initialSaved = getSavedFilters();
+    const initialMeta = getCachedApiData('/api/faculty/analytics/meta');
 
-    // Filters
-    const [branch, setBranch] = useState('CS');
-    const [batch, setBatch] = useState('');
+    const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [] });
+
+    // Filters initialized instantly
+    const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
+    const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
     const [threshold, setThreshold] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('ledger'); // 'ledger' | 'heatmap'
 
+    const initialData = getCachedApiData('/api/faculty/analytics/backlogs', {
+        branch: initialSaved.branch || 'CS',
+        batch: initialSaved.batch || '2023',
+        threshold: 1
+    });
+
     // Data
-    const [report, setReport] = useState({
+    const [report, setReport] = useState(() => initialData || {
         summary: { totalCarriers: 0, totalArrearsSubjects: 0, totalArrearsCredits: 0, criticalCarriers: 0 },
         ledger: [],
         subjectConcentration: []
     });
+    const [loading, setLoading] = useState(() => !initialData);
+
+    // Save active filters
+    useEffect(() => {
+        saveFilters({ branch, batch });
+    }, [branch, batch]);
 
     // 1. Fetch metadata
     useEffect(() => {
@@ -44,8 +61,6 @@ function BacklogsRegisterContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -57,12 +72,19 @@ function BacklogsRegisterContent() {
     // 2. Fetch backlog ledger
     const loadBacklogs = useCallback(async () => {
         if (!branch) return;
-        setLoading(true);
-        try {
-            const query = { branch, threshold };
-            if (batch) query.batch = batch;
-            if (searchQuery) query.search = searchQuery;
+        const query = { branch, threshold };
+        if (batch) query.batch = batch;
+        if (searchQuery) query.search = searchQuery;
 
+        const cached = getCachedApiData('/api/faculty/analytics/backlogs', query);
+        if (cached) {
+            setReport(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        try {
             const res = await apiRequest('/api/faculty/analytics/backlogs', { query });
             if (res) {
                 setReport(res);

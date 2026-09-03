@@ -53,13 +53,25 @@ function checkSessionSync(role, facultyAllowed) {
     return { state: 'denied', userType: null };
 }
 
+let appHasMountedOnce = false;
+
 export default function AuthGuard({ children, role = 'any', facultyAllowed = false }) {
     const router = useRouter();
     const pathname = usePathname();
-    const [authState, setAuthState] = useState('loading');
-    const [userType, setUserType] = useState(null);
+
+    // On initial page refresh/SSR, match SSR with 'loading' to prevent hydration mismatch.
+    // On all subsequent client-side button/link clicks, initialize instantly from cached session!
+    const [authState, setAuthState] = useState(() => {
+        if (!appHasMountedOnce) return 'loading';
+        return checkSessionSync(role, facultyAllowed).state;
+    });
+    const [userType, setUserType] = useState(() => {
+        if (!appHasMountedOnce) return null;
+        return checkSessionSync(role, facultyAllowed).userType;
+    });
 
     useEffect(() => {
+        appHasMountedOnce = true;
         const verifySession = async () => {
             const stuStr = localStorage.getItem('student_session');
             const facStr = localStorage.getItem('faculty_session');

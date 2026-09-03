@@ -12,6 +12,7 @@ import {
     shouldHideNavigation,
 } from './navigationConfig';
 import RaiseIssueModal from './RaiseIssueModal';
+import { prewarmAnalyticsPage } from '@/lib/faculty-filter-store';
 
 function parseSession(value) {
     if (!value) return null;
@@ -249,6 +250,8 @@ export default function Navbar() {
                                         <Link
                                             key={link.key}
                                             href={link.href}
+                                            prefetch={true}
+                                            onMouseEnter={() => prewarmAnalyticsPage(link.href)}
                                             className={`gf-nav-link${active ? ' active' : ''}`}
                                             aria-current={active ? 'page' : undefined}
                                             title={collapsed ? link.label : undefined}
@@ -357,7 +360,7 @@ export default function Navbar() {
                                     {crumb.current ? (
                                         <span aria-current="page" className="gf-breadcrumb-current">{crumb.label}</span>
                                     ) : (
-                                        <Link href={crumb.href} className="gf-breadcrumb-link">{crumb.label}</Link>
+                                        <Link href={crumb.href} prefetch={true} className="gf-breadcrumb-link">{crumb.label}</Link>
                                     )}
                                 </span>
                             ))}

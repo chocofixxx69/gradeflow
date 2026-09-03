@@ -10,6 +10,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
+import { getCachedApiData, apiRequest } from '@/lib/api/client';
+
 export default function BatchReportPage() {
     return (
         <AuthGuard role="faculty">
@@ -19,21 +22,35 @@ export default function BatchReportPage() {
 }
 
 function BatchReportContent() {
-    const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8] });
+    const initialSaved = getSavedFilters();
+    const initialMeta = getCachedApiData('/api/faculty/analytics/meta');
 
-    // Filters
-    const [branch, setBranch] = useState('CS');
-    const [batch, setBatch] = useState('');
-    const [upToSemester, setUpToSemester] = useState(6);
+    const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8] });
+
+    // Filters initialized instantly from active context
+    const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
+    const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
+    const [upToSemester, setUpToSemester] = useState(() => Number(initialSaved.semester) || 6);
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Data
-    const [reportData, setReportData] = useState({
+    const initialData = getCachedApiData('/api/faculty/analytics/batch-report', {
+        branch: initialSaved.branch || 'CS',
+        batch: initialSaved.batch || '2023',
+        upToSemester: Number(initialSaved.semester) || 6
+    });
+
+    // Data - renders immediately without loading spinner if cached
+    const [reportData, setReportData] = useState(() => initialData || {
         students: [],
         upToSemester: 6,
         summary: { totalStudents: 0, avgCGPA: 0, withBacklogs: 0, distinctionCount: 0, lateralCount: 0 }
     });
+    const [loading, setLoading] = useState(() => !initialData);
+
+    // Save active filters
+    useEffect(() => {
+        saveFilters({ branch, batch, semester: upToSemester });
+    }, [branch, batch, upToSemester]);
 
     // 1. Fetch metadata
     useEffect(() => {
@@ -42,8 +59,6 @@ function BatchReportContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Meta loading failed:', err);
@@ -54,7 +69,14 @@ function BatchReportContent() {
 
     // 2. Fetch batch report
     const loadReport = useCallback(async () => {
-        setLoading(true);
+        const cached = getCachedApiData('/api/faculty/analytics/batch-report', { branch, upToSemester, ...(batch ? { batch } : {}) });
+        if (cached) {
+            setReportData(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
         try {
             const query = { branch, upToSemester };
             if (batch) query.batch = batch;

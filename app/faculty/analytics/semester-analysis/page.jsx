@@ -10,6 +10,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
+import { getCachedApiData, apiRequest } from '@/lib/api/client';
+
 export default function SemesterAnalysisPage() {
     return (
         <AuthGuard role="faculty">
@@ -19,25 +22,39 @@ export default function SemesterAnalysisPage() {
 }
 
 function SemesterAnalysisContent() {
-    const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], classes: [] });
+    const initialSaved = getSavedFilters();
+    const initialMeta = getCachedApiData('/api/faculty/analytics/meta');
+
+    const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], classes: [] });
     
-    // Filter states
-    const [branch, setBranch] = useState('CS');
-    const [semester, setSemester] = useState(3);
-    const [batch, setBatch] = useState('');
+    // Filter states initialized instantly from cached context
+    const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
+    const [semester, setSemester] = useState(() => Number(initialSaved.semester) || 3);
+    const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
     const [classId, setClassId] = useState('');
     const [viewMode, setViewMode] = useState('credits'); // 'credits' | 'marks'
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Data states
-    const [data, setData] = useState({
+    const initialData = getCachedApiData('/api/faculty/analytics/semester-analysis', {
+        branch: initialSaved.branch || 'CS',
+        semester: Number(initialSaved.semester) || 3,
+        batch: initialSaved.batch || '2023'
+    });
+
+    // Data states - if pre-warmed, renders immediately with 0ms delay!
+    const [data, setData] = useState(() => initialData || {
         students: [],
         subjects: [],
         summary: { totalAppeared: 0, totalPassed: 0, totalFailed: 0, passPercentage: 0, classCounts: { FCD: 0, FC: 0, SC: 0, P: 0, F: 0 } },
         subjectTallies: [],
         backlogRoster: []
     });
+    const [loading, setLoading] = useState(() => !initialData);
+
+    // Synchronize filters
+    useEffect(() => {
+        saveFilters({ branch, semester, batch });
+    }, [branch, semester, batch]);
 
     // 1. Fetch metadata on mount
     useEffect(() => {
@@ -46,8 +63,6 @@ function SemesterAnalysisContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Meta loading failed:', err);
@@ -58,7 +73,14 @@ function SemesterAnalysisContent() {
 
     // 2. Fetch analysis data when filters change
     const loadAnalysis = useCallback(async () => {
-        setLoading(true);
+        const cached = getCachedApiData('/api/faculty/analytics/semester-analysis', { branch, semester, batch, ...(classId ? { classId } : {}) });
+        if (cached) {
+            setData(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
         try {
             const query = { branch, semester, batch };
             if (classId) query.classId = classId;

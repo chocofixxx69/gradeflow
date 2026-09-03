@@ -11,6 +11,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
+import { getCachedApiData, apiRequest } from '@/lib/api/client';
+
 export default function MeritListPage() {
     return (
         <AuthGuard role="faculty">
@@ -26,21 +29,35 @@ const MEDAL_COLORS = {
 };
 
 function MeritListContent() {
-    const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8] });
+    const initialSaved = getSavedFilters();
+    const initialMeta = getCachedApiData('/api/faculty/analytics/meta');
 
-    // Filters
-    const [branch, setBranch] = useState('CS');
-    const [batch, setBatch] = useState('');
-    const [semester, setSemester] = useState('all');
+    const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8] });
+
+    // Filters initialized instantly
+    const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
+    const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
+    const [semester, setSemester] = useState(() => initialSaved.semester ? String(initialSaved.semester) : 'all');
     const [searchQuery, setSearchQuery] = useState('');
 
+    const initialData = getCachedApiData('/api/faculty/analytics/merit-list', {
+        branch: initialSaved.branch || 'CS',
+        batch: initialSaved.batch || '2023',
+        ...(initialSaved.semester && initialSaved.semester !== 'all' ? { semester: initialSaved.semester } : {})
+    });
+
     // Data
-    const [report, setReport] = useState({
+    const [report, setReport] = useState(() => initialData || {
         summary: { totalRanked: 0, highestScore: 0, avgScore: 0, department: 'CS', batch: 'All Batches', semester: 'Overall Cumulative' },
         podium: [],
         rankedStudents: []
     });
+    const [loading, setLoading] = useState(() => !initialData);
+
+    // Save active filters
+    useEffect(() => {
+        saveFilters({ branch, batch, semester: semester !== 'all' ? semester : undefined });
+    }, [branch, batch, semester]);
 
     // 1. Fetch metadata
     useEffect(() => {
@@ -49,8 +66,6 @@ function MeritListContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -62,12 +77,19 @@ function MeritListContent() {
     // 2. Fetch merit list
     const loadMeritList = useCallback(async () => {
         if (!branch) return;
-        setLoading(true);
-        try {
-            const query = { branch };
-            if (batch) query.batch = batch;
-            if (semester && semester !== 'all') query.semester = semester;
+        const query = { branch };
+        if (batch) query.batch = batch;
+        if (semester && semester !== 'all') query.semester = semester;
 
+        const cached = getCachedApiData('/api/faculty/analytics/merit-list', query);
+        if (cached) {
+            setReport(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        try {
             const res = await apiRequest('/api/faculty/analytics/merit-list', { query });
             if (res) {
                 setReport(res);

@@ -11,6 +11,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select } from '@/components/ui/Foundation';
 
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
+import { getCachedApiData, apiRequest } from '@/lib/api/client';
+
 export default function DepartmentOverviewPage() {
     return (
         <AuthGuard role="faculty">
@@ -20,20 +23,33 @@ export default function DepartmentOverviewPage() {
 }
 
 function DepartmentOverviewContent() {
-    const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [] });
+    const initialSaved = getSavedFilters();
+    const initialMeta = getCachedApiData('/api/faculty/analytics/meta');
 
-    // Filters
-    const [branch, setBranch] = useState('CS');
-    const [batch, setBatch] = useState('');
+    const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [] });
+
+    // Filters initialized instantly
+    const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
+    const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
+
+    const initialData = getCachedApiData('/api/faculty/analytics/department', {
+        branch: initialSaved.branch || 'CS',
+        batch: initialSaved.batch || '2023'
+    });
 
     // Data
-    const [report, setReport] = useState({
+    const [report, setReport] = useState(() => initialData || {
         department: 'CS',
         batch: 'All Batches',
         summary: { totalStudents: 0, overallPassRate: 0, avgCGPA: 0, totalBacklogs: 0 },
         semesters: []
     });
+    const [loading, setLoading] = useState(() => !initialData);
+
+    // Save active filters
+    useEffect(() => {
+        saveFilters({ branch, batch });
+    }, [branch, batch]);
 
     // 1. Fetch metadata
     useEffect(() => {
@@ -42,8 +58,6 @@ function DepartmentOverviewContent() {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
                     setMeta(res);
-                    if (res.branches?.length > 0) setBranch(res.branches[0].code);
-                    if (res.batches?.length > 0) setBatch(res.batches[0]);
                 }
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -55,11 +69,18 @@ function DepartmentOverviewContent() {
     // 2. Fetch department analytics
     const loadDeptData = useCallback(async () => {
         if (!branch) return;
-        setLoading(true);
-        try {
-            const query = { branch };
-            if (batch) query.batch = batch;
+        const query = { branch };
+        if (batch) query.batch = batch;
 
+        const cached = getCachedApiData('/api/faculty/analytics/department', query);
+        if (cached) {
+            setReport(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        try {
             const res = await apiRequest('/api/faculty/analytics/department', { query });
             if (res) {
                 setReport(res);
