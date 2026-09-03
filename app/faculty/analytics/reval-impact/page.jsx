@@ -56,7 +56,7 @@ function RevalImpactContent() {
         if (!branch) return;
         setLoading(true);
         try {
-            const query = { branch, semester };
+            const query = { branch, semester, t: Date.now() };
             if (batch) query.batch = batch;
 
             const res = await apiRequest('/api/faculty/analytics/reval-impact', { query });

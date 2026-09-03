@@ -25,10 +25,6 @@ export async function GET(req) {
         const semester = parseInt(searchParams.get('semester') || '3', 10);
         const batch = searchParams.get('batch') || '';
 
-        const cacheKey = `reval_impact:${branch}:${semester}:${batch}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
-
         const supabaseAdmin = getAdminClient();
 
         const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' });
@@ -38,32 +34,21 @@ export async function GET(req) {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
-        const usns = students.map(s => s.usn);
         const studentByUsn = new Map(students.map(s => [s.usn, s]));
 
-        if (usns.length === 0) {
-            const empty = { summary: { totalApplications: 0, upgradedCount: 0, clearedCount: 0, unchangedCount: 0, decreasedCount: 0, netPassRateGain: 0 }, deltaRoster: [], branch, semester };
-            return ok(empty);
-        }
-
-        // subject_mark_attempts is an append-only log of EVERY raw scraped attempt
-        // per subject (see supabase/migrations/20260903000000_subject_mark_attempts_history.sql)
-        // — unlike subject_marks (which intentionally keeps only the single best
-        // attempt per subject, per VTU policy, and therefore can never show a real
-        // "before" value once a revaluation supersedes it), this table never
-        // overwrites anything, so a genuine before/after comparison is possible.
-        // `exam_name` is the only signal for which attempts are revaluations — VTU
-        // scrape job names carry "RV" for reval cycles (confirmed against live
-        // data: DJRVcbcs25, JJRVcbcs24, MJ26rvcbcs, etc).
+        // Fetch attempts for this semester directly without query param length overflow
         const { data: rawAttempts, error: attemptsErr } = await supabaseAdmin
             .from('subject_mark_attempts')
             .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, scraped_at')
-            .in('usn', usns)
             .eq('semester', semester);
 
         if (attemptsErr) throw attemptsErr;
 
-        const attempts = rawAttempts || [];
+        // Filter by branch and batch
+        const attempts = (rawAttempts || []).filter(a => {
+            if (branch === 'ALL' && !batch) return true;
+            return studentByUsn.has(a.usn);
+        });
         const bySubject = new Map(); // `${usn}|${subject_code}` -> attempt rows, each tagged with isReval
         attempts.forEach(a => {
             const key = `${a.usn}|${(a.subject_code || '').toUpperCase()}`;
@@ -151,8 +136,6 @@ export async function GET(req) {
             branch,
             semester,
         };
-
-        setCached(cacheKey, payload, 30_000);
 
         return ok(payload);
     } catch (err) {
