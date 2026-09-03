@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBranch } from '@/lib/semester-utils';
+import { matchesBranch, matchesBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -24,19 +24,24 @@ export async function GET(req) {
 
         const { searchParams } = new URL(req.url);
         const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
+        const batch = (searchParams.get('batch') || 'ALL').toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
+        const sectionMode = (searchParams.get('sectionMode') || 'auto').toLowerCase().trim();
 
-        const cacheKey = `sections_compare:${branch}:${semester}`;
+        const cacheKey = `sections_compare:${branch}:${batch}:${semester}:${sectionMode}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students for the requested branch/institution
+        // 1. Fetch students for the requested branch & batch
         const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
         let students = rawStudents || [];
         if (branch && branch !== 'ALL') {
             students = students.filter(s => matchesBranch(s, branch));
+        }
+        if (batch && batch !== 'ALL') {
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
         const studentByUsn = new Map();
@@ -57,7 +62,7 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
-        const activeUsns = Array.from(marksByUsn.keys());
+        const activeUsns = Array.from(marksByUsn.keys()).sort();
 
         // 3. Fetch classes, class_students mappings, and faculty list
         const [
@@ -81,44 +86,68 @@ export async function GET(req) {
             }
         });
 
-        // Dynamically detect all sections present in the classes database
-        const sectionsSet = new Set();
-        (rawClasses || []).forEach(c => {
-            if (c.section) sectionsSet.add(c.section.toUpperCase());
-        });
-        if (sectionsSet.size === 0) {
-            sectionsSet.add('A');
-            sectionsSet.add('B');
+        // 4. Determine sections list based on sectionMode
+        let sectionsList;
+        if (sectionMode === '2') {
+            sectionsList = ['A', 'B'];
+        } else if (sectionMode === '3') {
+            sectionsList = ['A', 'B', 'C'];
+        } else if (sectionMode === '4') {
+            sectionsList = ['A', 'B', 'C', 'D'];
+        } else {
+            // Auto mode: check database classes matching this branch & semester
+            const matchingClasses = (rawClasses || []).filter(c => 
+                (c.semester ? Number(c.semester) === semester : true) &&
+                (branch === 'ALL' || matchesBranch(c.branch, branch))
+            );
+            const detectedSections = new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean));
+            if (detectedSections.size >= 2) {
+                sectionsList = Array.from(detectedSections).sort();
+            } else if (activeUsns.length >= 150) {
+                sectionsList = ['A', 'B', 'C'];
+            } else {
+                sectionsList = ['A', 'B'];
+            }
         }
-        const sectionsList = Array.from(sectionsSet).sort();
 
-        // 4. Partition active students into dynamic sections
+        // 5. Partition active students into dynamic sections
         const studentsBySection = new Map();
         sectionsList.forEach(sec => studentsBySection.set(sec, []));
 
+        // First, assign students who have explicit class assignments matching active sections
+        const unassignedUsns = [];
         activeUsns.forEach(u => {
-            const s = studentByUsn.get(u) || { usn: u, name: u };
-            let assignedSec = usnToSectionMap.get(u);
-            if (!assignedSec || !studentsBySection.has(assignedSec)) {
-                // Determine section by standard USN sequence split if not in class_students
-                const match = u.match(/\d+$/);
-                const num = match ? parseInt(match[0], 10) : 1;
-                assignedSec = (num <= 60 && num < 400) ? 'A' : 'B';
-                if (!studentsBySection.has(assignedSec)) assignedSec = sectionsList[0];
+            const explicitSec = usnToSectionMap.get(u);
+            if (explicitSec && studentsBySection.has(explicitSec)) {
+                studentsBySection.get(explicitSec).push(studentByUsn.get(u) || { usn: u, name: u });
+            } else {
+                unassignedUsns.push(u);
             }
-            studentsBySection.get(assignedSec).push(s);
         });
 
-        // 5. Compute metrics per section
+        // Distribute unassigned students evenly across sections
+        if (unassignedUsns.length > 0) {
+            const chunkSize = Math.ceil(unassignedUsns.length / sectionsList.length);
+            unassignedUsns.forEach((u, idx) => {
+                const secIdx = Math.min(Math.floor(idx / chunkSize), sectionsList.length - 1);
+                const sec = sectionsList[secIdx];
+                studentsBySection.get(sec).push(studentByUsn.get(u) || { usn: u, name: u });
+            });
+        }
+
+        // 6. Compute metrics per section
         const sectionComparisons = [];
         const subjectSectionMap = new Map(); // subject_code -> Map(sec -> { appeared, passed })
 
         const classes = rawClasses || [];
-        const facultyList = rawFaculty || [];
 
         sectionsList.forEach(sec => {
             const secStudents = studentsBySection.get(sec) || [];
-            const secClass = classes.find(c => (c.section || '').toUpperCase() === sec && (Number(c.semester) === semester || !c.semester));
+            const secClass = classes.find(c => 
+                (c.section || '').toUpperCase() === sec && 
+                (Number(c.semester) === semester || !c.semester) &&
+                (branch === 'ALL' || matchesBranch(c.branch, branch))
+            );
             const teacher = secClass ? facultyById.get(secClass.faculty_id) : null;
 
             let appeared = 0;
@@ -128,6 +157,9 @@ export async function GET(req) {
             let marksCount = 0;
             let highestTotal = 0;
             let topperName = '—';
+
+            // Grade distribution counters
+            const grades = { O: 0, APlus: 0, A: 0, BPlus: 0, B: 0, C: 0, P: 0, F: 0 };
 
             secStudents.forEach(s => {
                 const uMarks = marksByUsn.get(s.usn) || [];
@@ -147,6 +179,17 @@ export async function GET(req) {
                     stuTotal += score;
                     totalMarksSum += score;
                     marksCount++;
+
+                    // Tally grade
+                    const gr = String(m.grade || '').toUpperCase().trim();
+                    if (gr === 'O') grades.O++;
+                    else if (gr === 'A+' || gr === 'A_PLUS') grades.APlus++;
+                    else if (gr === 'A') grades.A++;
+                    else if (gr === 'B+' || gr === 'B_PLUS') grades.BPlus++;
+                    else if (gr === 'B') grades.B++;
+                    else if (gr === 'C') grades.C++;
+                    else if (gr === 'P') grades.P++;
+                    else if (isFailedSubject(m)) grades.F++;
 
                     const code = (m.subject_code || '').toUpperCase();
                     if (!subjectSectionMap.has(code)) {
@@ -183,30 +226,73 @@ export async function GET(req) {
                 passRate,
                 avgScore,
                 highestScore: highestTotal,
-                topper: topperName
+                topper: topperName,
+                grades,
+                standing: {
+                    allClear: passed,
+                    withBacklogs: failed
+                }
             });
         });
 
-        // 5. Build subject matrix across sections
+        // 7. Build subject matrix across sections
         const subjectMatrix = Array.from(subjectSectionMap.values()).map(sub => {
             const passRates = {};
+            let highestRate = -1;
+            let lowestRate = 101;
+            let bestSec = null;
+
             sectionsList.forEach(sec => {
                 const stat = sub.sections.get(sec);
-                passRates[sec] = stat && stat.appeared > 0 ? pct(stat.passed, stat.appeared) : null;
+                if (stat && stat.appeared > 0) {
+                    const rate = pct(stat.passed, stat.appeared);
+                    passRates[sec] = rate;
+                    if (rate > highestRate) {
+                        highestRate = rate;
+                        bestSec = sec;
+                    }
+                    if (rate < lowestRate) {
+                        lowestRate = rate;
+                    }
+                } else {
+                    passRates[sec] = null;
+                }
             });
+
+            const delta = (highestRate >= 0 && lowestRate <= 100) ? Number((highestRate - lowestRate).toFixed(1)) : 0;
+
             return {
                 code: sub.code,
                 name: sub.name,
-                rates: passRates
+                rates: passRates,
+                bestSection: bestSec,
+                gap: delta
             };
         }).sort((a, b) => a.code.localeCompare(b.code));
 
+        // 8. Overall Benchmarks
+        const bestSectionObj = [...sectionComparisons].sort((a, b) => b.passRate - a.passRate)[0];
+        const passRates = sectionComparisons.filter(s => s.appeared > 0).map(s => s.passRate);
+        const sectionSpread = passRates.length > 1 ? Number((Math.max(...passRates) - Math.min(...passRates)).toFixed(1)) : 0;
+        const totalMarksAcrossAll = sectionComparisons.reduce((acc, s) => acc + (s.avgScore * s.appeared), 0);
+        const totalAppeared = sectionComparisons.reduce((acc, s) => acc + s.appeared, 0);
+        const benchmarkAvg = totalAppeared > 0 ? Number((totalMarksAcrossAll / totalAppeared).toFixed(1)) : 0;
+
         const payload = {
             branch,
+            batch,
             semester,
+            sectionMode,
             sections: sectionsList,
             sectionComparisons,
-            subjectMatrix
+            subjectMatrix,
+            benchmarks: {
+                bestSection: bestSectionObj ? `${bestSectionObj.section} (${bestSectionObj.passRate}%)` : '—',
+                totalEvaluated: totalAppeared,
+                benchmarkAvg,
+                sectionSpread,
+                subjectCount: subjectMatrix.length
+            }
         };
 
         setCached(cacheKey, payload, 30_000);
