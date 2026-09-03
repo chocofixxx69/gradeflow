@@ -566,3 +566,53 @@
     font-weight: 800;
     text-transform: uppercase;
 }
+
+.assignedGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+}
+
+.assignedCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-5);
+    padding: var(--space-4) var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.assignedCard:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.assignedCode {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--primary);
+    letter-spacing: 0.02em;
+}
+
+.assignedName {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--tx-main);
+    line-height: 1.35;
+}
+
+.assignedMeta {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--tx-muted);
+    background: var(--surface-low);
+    padding: 4px 8px;
+    border-radius: var(--radius-3);
+    width: fit-content;
+    margin-top: auto;
+}

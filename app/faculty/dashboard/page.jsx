@@ -39,6 +39,7 @@ function FacultyDashboardView({
     usn = '',
     assignedSubjects = [],
     assignedLoading = false,
+    assignedClasses = [],
 }) {
     const percentage = Math.max(0, (cgpa - 0.75) * 10);
     const messageTone = (() => {
@@ -113,11 +114,62 @@ function FacultyDashboardView({
 
     return (
         <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
+            {/* 1. Teaching Load & Assigned Subjects */}
+            <section className={styles.section} aria-labelledby="faculty-assigned-title">
+                <div className={styles.sectionHeader}>
+                    <div>
+                        <div className={styles.eyebrow}>Teaching Load</div>
+                        <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects &amp; Classes</h2>
+                        <p className={styles.meta}>Your current semester academic teaching roster and assignments.</p>
+                    </div>
+                </div>
+                {assignedLoading ? (
+                    <LoadingState density="compact" label="Loading your assignments" />
+                ) : (assignedSubjects.length === 0 && assignedClasses.length === 0) ? (
+                    <EmptyState
+                        icon="assignment_ind"
+                        title="No Subjects Assigned Yet"
+                        description="An administrator hasn't linked you to any subjects yet. Once they do, they'll appear here automatically."
+                    />
+                ) : (
+                    <>
+                        {assignedClasses.length > 0 && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+                                    Assigned Classes
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                    {assignedClasses.map(c => (
+                                        <div key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 700 }}>
+                                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>school</span>
+                                            <span>{c.name}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>({c.branch} · Sem {c.semester} · Sec {c.section})</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div className={styles.assignedGrid}>
+                            {assignedSubjects.map((a) => (
+                                <div key={a.id} className={styles.assignedCard}>
+                                    <div className={styles.assignedCode}>{a.subject_code}</div>
+                                    <div className={styles.assignedName}>{a.subject_catalog?.subject_name || 'Subject name unavailable'}</div>
+                                    <div className={styles.assignedMeta}>
+                                        {a.branch || '—'} · Sem {a.semester ?? '—'} · Scheme {a.scheme || '—'}{a.subject_catalog?.credits ? ` · ${a.subject_catalog.credits} Cr` : ''}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </section>
+
+            {/* 2. Faculty Command Center: Student Lookup */}
             <section className={styles.section} aria-labelledby="faculty-lookup-title">
                 <div className={styles.sectionHeader}>
                     <div>
                         <div className={styles.eyebrow}>Faculty Command Center</div>
-                        <h1 id="faculty-lookup-title" className={styles.title}>Student Lookup</h1>
+                        <h2 id="faculty-lookup-title" className={styles.sectionTitle}>Student Lookup</h2>
                         <p className={styles.subtitle}>Search for any student by USN to view or fetch their official records.</p>
                     </div>
                     {scraping && <LoadingState density="compact" label="Fetching VTU records" />}
@@ -154,37 +206,6 @@ function FacultyDashboardView({
                 {message && (
                     <div className={`${styles.notice} ${styles[`notice${messageTone.charAt(0).toUpperCase()}${messageTone.slice(1)}`]}`}>
                         {message}
-                    </div>
-                )}
-            </section>
-
-            <section className={styles.section} aria-labelledby="faculty-assigned-title">
-                <div className={styles.sectionHeader}>
-                    <div>
-                        <div className={styles.eyebrow}>Teaching Load</div>
-                        <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects</h2>
-                        <p className={styles.meta}>Set by an administrator at Admin &rarr; Faculty Assignments.</p>
-                    </div>
-                </div>
-                {assignedLoading ? (
-                    <LoadingState density="compact" label="Loading your assignments" />
-                ) : assignedSubjects.length === 0 ? (
-                    <EmptyState
-                        icon="assignment_ind"
-                        title="No Subjects Assigned Yet"
-                        description="An administrator hasn't linked you to any subjects yet. Once they do, they'll appear here automatically."
-                    />
-                ) : (
-                    <div className={styles.assignedGrid}>
-                        {assignedSubjects.map((a) => (
-                            <div key={a.id} className={styles.assignedCard}>
-                                <div className={styles.assignedCode}>{a.subject_code}</div>
-                                <div className={styles.assignedName}>{a.subject_catalog?.subject_name || 'Subject name unavailable'}</div>
-                                <div className={styles.assignedMeta}>
-                                    {a.branch || '—'} · Sem {a.semester ?? '—'} · Scheme {a.scheme || '—'}
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 )}
             </section>
@@ -556,6 +577,7 @@ function FacultyDashboardContent() {
     const [showBacklogModal, setShowBacklogModal] = useState(false);
     const [confirmingDeleteStudent, setConfirmingDeleteStudent] = useState(false);
     const [assignedSubjects, setAssignedSubjects] = useState([]);
+    const [assignedClasses, setAssignedClasses] = useState([]);
     const [assignedLoading, setAssignedLoading] = useState(true);
     const pollRef = useRef(null);
     const backlogDialogRef = useRef(null);
@@ -592,10 +614,16 @@ function FacultyDashboardContent() {
             setAssignedLoading(true);
             try {
                 const data = await apiRequest('/api/faculty/dashboard');
-                if (!cancelled) setAssignedSubjects(data?.assignedSubjects || []);
+                if (!cancelled) {
+                    setAssignedSubjects(data?.assignedSubjects || []);
+                    setAssignedClasses(data?.assignedClasses || []);
+                }
             } catch (err) {
                 console.error('Failed to load assigned subjects:', err);
-                if (!cancelled) setAssignedSubjects([]);
+                if (!cancelled) {
+                    setAssignedSubjects([]);
+                    setAssignedClasses([]);
+                }
             } finally {
                 if (!cancelled) setAssignedLoading(false);
             }
@@ -914,6 +942,7 @@ function FacultyDashboardContent() {
             usn={usn}
             assignedSubjects={assignedSubjects}
             assignedLoading={assignedLoading}
+            assignedClasses={assignedClasses}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}
