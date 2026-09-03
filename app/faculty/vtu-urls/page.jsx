@@ -88,7 +88,11 @@ function VtuUrlManagerContent() {
             if (json.success) {
                 setNewUrl('');
                 setNewExamName('');
-                const schemeLabel = targetAddScheme === 'both' ? 'both 2022 & 2025 Schemes' : `${targetAddScheme} Scheme`;
+                const schemeLabel = targetAddScheme === 'both'
+                    ? 'both 2022 & 2025 Schemes'
+                    : targetAddScheme === 'pg'
+                        ? 'PG Scheme (MBA/MCA)'
+                        : `${targetAddScheme} Scheme`;
                 setMessage(`✓ URL registered successfully for ${schemeLabel}!`);
                 fetchVtuUrls(selectedScheme);
             } else {
@@ -420,6 +424,7 @@ function VtuUrlManagerContent() {
                             >
                                 <option value="2022">2022 Scheme</option>
                                 <option value="2025">2025 Scheme</option>
+                                <option value="pg">PG Scheme (MBA/MCA)</option>
                                 <option value="both">Both Schemes (2022 & 2025)</option>
                             </select>
                         </div>
