@@ -160,22 +160,27 @@ def main() -> None:
         else:
             to_scrape.append(usn)
 
+    start_time = time.perf_counter()
     if to_scrape:
         workers = max(1, args.students)
-        print(f"\n[INFO] Scraping {len(to_scrape)} USNs ({workers} concurrent student(s) in Burst Mode)...\n", file=sys.stderr)
+        print(f"\n[INFO] ⏱️  TIMER STARTED! Scraping {len(to_scrape)} USNs ({workers} concurrent student(s) in Burst Mode)...\n", file=sys.stderr, flush=True)
         
         if workers == 1:
             for i, usn in enumerate(to_scrape):
                 print(f"[{i+1}/{len(to_scrape)}] Processing {usn}...", file=sys.stderr)
                 res = _scrape_worker(usn, scheme=args.scheme, tabs=args.tabs)
                 results_summary.append(res)
+                elapsed = time.perf_counter() - start_time
+                m, s = divmod(int(elapsed), 60)
+                print(f">>> [⏱️ {m:02d}m {s:02d}s | {i+1}/{len(to_scrape)}] {res['usn']}: {res['status']}", file=sys.stderr, flush=True)
                 if i < len(to_scrape) - 1:
                     time.sleep(1)
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {}
                 for idx, usn in enumerate(to_scrape):
-                    stagger = (idx % workers) * 0.4
+                    # Stagger start slightly (0.35s) for the initial batch to prevent socket collision
+                    stagger = (idx % workers) * 0.35
                     f = executor.submit(_scrape_worker, usn, args.scheme, args.tabs, stagger)
                     futures[f] = usn
 
@@ -184,21 +189,35 @@ def main() -> None:
                     res = future.result()
                     completed += 1
                     results_summary.append(res)
-                    print(f"\n>>> [OVERALL PROGRESS: {completed}/{len(to_scrape)}] {res['usn']}: {res['status']}\n", file=sys.stderr, flush=True)
+                    elapsed = time.perf_counter() - start_time
+                    rate = completed / elapsed if elapsed > 0 else 0.001
+                    rem_secs = (len(to_scrape) - completed) / rate if rate > 0 else 0
+                    m, s = divmod(int(elapsed), 60)
+                    rm, rs = divmod(int(rem_secs), 60)
+                    pct = (completed * 100) // len(to_scrape)
+                    print(f"\n>>> [⏱️ {m:02d}m {s:02d}s | PROGRESS: {completed}/{len(to_scrape)} ({pct}%)] {res['usn']}: {res['status']} | ETA: {rm:02d}m {rs:02d}s\n", file=sys.stderr, flush=True)
+
+    total_time = time.perf_counter() - start_time
+    tot_m, tot_s = divmod(int(total_time), 60)
+    avg_speed = round(total_time / len(to_scrape), 2) if to_scrape else 0.0
 
     # Final Summary Table
-    print("\n\n" + "="*50)
-    print("         BULK SCRAPE FINAL SUMMARY")
-    print("="*50)
+    print("\n\n" + "="*58)
+    print("             BULK SCRAPE BENCHMARK SUMMARY")
+    print("="*58)
     print(f"| {'USN':<12} | {'Status':<12} | {'Finish Time':<12} |")
     print("|" + "-"*14 + "|" + "-"*14 + "|" + "-"*15 + "|")
     for res in results_summary:
         print(f"| {res['usn']:<12} | {res['status']:<12} | {res['time']:<12} |")
-    print("="*50)
-    print(f"\nTotal Students: {len(results_summary)}")
-    print(f"Successes: {sum(1 for r in results_summary if r['status'] == 'SUCCESS')}")
-    print(f"Skipped:   {sum(1 for r in results_summary if r['status'] == 'SKIPPED')}")
-    print("="*50)
+    print("="*58)
+    print(f"\n📊 Total Students in List: {len(results_summary)}")
+    print(f"✅ Successfully Scraped:   {sum(1 for r in results_summary if r['status'] == 'SUCCESS')}")
+    print(f"⏩ Skipped (Already in DB):{sum(1 for r in results_summary if r['status'] == 'SKIPPED')}")
+    print(f"⚠️  No Data / Errors:      {sum(1 for r in results_summary if r['status'] in ('NO DATA', 'ERROR'))}")
+    print(f"\n⏱️  TOTAL TIME TAKEN:     {tot_m} min {tot_s:02d} sec ({round(total_time, 1)} seconds)")
+    if to_scrape:
+        print(f"⚡ AVERAGE SPEED:         {avg_speed}s per student ({workers} students concurrent)")
+    print("="*58 + "\n")
 
 
 if __name__ == "__main__":
