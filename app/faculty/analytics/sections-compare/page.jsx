@@ -185,7 +185,7 @@ function SectionsCompareContent() {
                                 label="Department / Branch"
                                 value={branch}
                                 onChange={e => setBranch(e.target.value)}
-                                options={meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                                options={[{ value: 'ALL', label: 'ALL - All Branches / Departments' }, ...meta.branches.filter(b => b.code !== 'ALL').map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
                             />
                         </div>
                         <div>

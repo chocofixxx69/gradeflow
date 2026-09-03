@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
+import { matchesBranch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,7 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
+        const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
 
         const cacheKey = `sections_compare:${branch}:${semester}`;
@@ -31,79 +32,23 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch classes in this branch & semester
-        const [
-            { data: rawClasses },
-            { data: rawFaculty },
-            { data: rawStudents }
-        ] = await Promise.all([
-            supabaseAdmin
-                .from('classes')
-                .select('id, name, branch, semester, section, faculty_id')
-                .ilike('branch', `%${branch}%`)
-                .eq('semester', semester),
-            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email'),
-            supabaseAdmin.from('students').select('id, usn, name, branch, semester').ilike('branch', `%${branch}%`).eq('semester', semester)
-        ]);
-
-        const classes = rawClasses || [];
-        const facultyList = rawFaculty || [];
-        const students = rawStudents || [];
-
-        // Identify available sections
-        let sectionsList = Array.from(new Set(classes.map(c => (c.section || 'A').toUpperCase()))).sort();
-        if (sectionsList.length === 0) {
-            sectionsList = ['A', 'B']; // Fallback sections
+        // 1. Fetch students for the requested branch/institution
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
+        let students = rawStudents || [];
+        if (branch && branch !== 'ALL') {
+            students = students.filter(s => matchesBranch(s, branch));
         }
-
-        // 2. Fetch class students mapping with real schema (class_id, usn)
-        const classIds = classes.map(c => c.id);
-        const { data: rawClassStudents } = await supabaseAdmin
-            .from('class_students')
-            .select('class_id, usn')
-            .in('class_id', classIds);
-
-        const classStudents = rawClassStudents || [];
-
-        // Partition students by section
-        const studentsBySection = new Map();
-        sectionsList.forEach(sec => studentsBySection.set(sec, []));
 
         const studentByUsn = new Map();
         students.forEach(s => studentByUsn.set(s.usn, s));
+        const usns = students.map(s => s.usn);
 
-        // Distribute mapped students from real class_students
-        classes.forEach(c => {
-            const sec = (c.section || 'A').toUpperCase();
-            const enrolledUsns = classStudents.filter(cs => cs.class_id === c.id).map(cs => cs.usn);
-            const current = studentsBySection.get(sec) || [];
-            enrolledUsns.forEach(u => {
-                const stu = studentByUsn.get(u) || { usn: u, name: u };
-                if (!current.some(item => item.usn === u)) current.push(stu);
-            });
-            studentsBySection.set(sec, current);
+        // 2. Fetch marks for this semester across all scoped students
+        const marks = await fetchDynamicMarks(supabaseAdmin, {
+            usns,
+            semester,
+            select: 'usn, subject_code, subject_name, internal, external, total, grade, passed, is_backlog'
         });
-
-        // If a section in classes has no class_students rows yet, check general students for that branch
-        if (Array.from(studentsBySection.values()).every(arr => arr.length === 0) && students.length > 0) {
-            const secCount = sectionsList.length || 2;
-            students.forEach((s, i) => {
-                const sec = sectionsList[i % secCount];
-                const list = studentsBySection.get(sec) || [];
-                list.push(s);
-                studentsBySection.set(sec, list);
-            });
-        }
-
-        // 3. Fetch marks for all these students in this semester
-        const allUsns = Array.from(new Set(Array.from(studentsBySection.values()).flatMap(arr => arr.map(s => s.usn))));
-        const { data: rawMarks } = await supabaseAdmin
-            .from('subject_marks')
-            .select('usn, subject_code, subject_name, internal, external, total, grade, passed')
-            .in('usn', allUsns)
-            .eq('semester', semester);
-
-        const marks = rawMarks || [];
 
         const marksByUsn = new Map();
         marks.forEach(m => {
@@ -112,14 +57,69 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
-        // 4. Compute metrics per section
+        const activeUsns = Array.from(marksByUsn.keys());
+
+        // 3. Fetch classes, class_students mappings, and faculty list
+        const [
+            { data: rawClasses },
+            { data: rawClassStudents },
+            { data: rawFaculty }
+        ] = await Promise.all([
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, faculty_id'),
+            supabaseAdmin.from('class_students').select('class_id, usn'),
+            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email')
+        ]);
+
+        const classById = new Map((rawClasses || []).map(c => [c.id, c]));
+        const facultyById = new Map((rawFaculty || []).map(f => [f.id, f]));
+        const usnToSectionMap = new Map();
+
+        (rawClassStudents || []).forEach(cs => {
+            const c = classById.get(cs.class_id);
+            if (c && c.section) {
+                usnToSectionMap.set(cs.usn, c.section.toUpperCase());
+            }
+        });
+
+        // Dynamically detect all sections present in the classes database
+        const sectionsSet = new Set();
+        (rawClasses || []).forEach(c => {
+            if (c.section) sectionsSet.add(c.section.toUpperCase());
+        });
+        if (sectionsSet.size === 0) {
+            sectionsSet.add('A');
+            sectionsSet.add('B');
+        }
+        const sectionsList = Array.from(sectionsSet).sort();
+
+        // 4. Partition active students into dynamic sections
+        const studentsBySection = new Map();
+        sectionsList.forEach(sec => studentsBySection.set(sec, []));
+
+        activeUsns.forEach(u => {
+            const s = studentByUsn.get(u) || { usn: u, name: u };
+            let assignedSec = usnToSectionMap.get(u);
+            if (!assignedSec || !studentsBySection.has(assignedSec)) {
+                // Determine section by standard USN sequence split if not in class_students
+                const match = u.match(/\d+$/);
+                const num = match ? parseInt(match[0], 10) : 1;
+                assignedSec = (num <= 60 && num < 400) ? 'A' : 'B';
+                if (!studentsBySection.has(assignedSec)) assignedSec = sectionsList[0];
+            }
+            studentsBySection.get(assignedSec).push(s);
+        });
+
+        // 5. Compute metrics per section
         const sectionComparisons = [];
         const subjectSectionMap = new Map(); // subject_code -> Map(sec -> { appeared, passed })
 
+        const classes = rawClasses || [];
+        const facultyList = rawFaculty || [];
+
         sectionsList.forEach(sec => {
             const secStudents = studentsBySection.get(sec) || [];
-            const secClass = classes.find(c => (c.section || 'A').toUpperCase() === sec);
-            const teacher = facultyList.find(f => f.id === secClass?.faculty_id);
+            const secClass = classes.find(c => (c.section || '').toUpperCase() === sec && (Number(c.semester) === semester || !c.semester));
+            const teacher = secClass ? facultyById.get(secClass.faculty_id) : null;
 
             let appeared = 0;
             let passed = 0;
