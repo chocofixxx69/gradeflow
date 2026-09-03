@@ -498,6 +498,8 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
     # For students admitted in 2024 (e.g. 2AB24...), filter out portals held prior to their admission (2023 / early 2024):
     if adm_yr == 24:
         urls = [u for u in urls if not re.search(r'(?:23|cbcs24|RVcbcs24)/index\.php', u)]
+    elif adm_yr == 23:
+        urls = [u for u in urls if not re.search(r'(?:JFEcbcs23|JJEcbcs23|MakeUpEcbcs23)/index\.php', u)]
 
     print(f"\n[ENGINE] Scraping {usn} under {target_scheme} Scheme ({len(urls)} portals)...", file=sys.stderr, flush=True)
 
@@ -573,6 +575,9 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
                                 break
                             if adm_yr == 24 and {1, 2, 3, 4}.issubset(saved_semesters):
                                 print(f"    [+] All 4 Semesters (Sem 1-4) captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
+                                break
+                            if adm_yr == 23 and {1, 2, 3, 4, 5, 6}.issubset(saved_semesters):
+                                print(f"    [+] All 6 Semesters (Sem 1-6) captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
                                 break
 
                 try: page.close()

@@ -114,7 +114,56 @@ function FacultyDashboardView({
 
     return (
         <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
-            {/* 1. Teaching Load & Assigned Subjects */}
+            {/* 1. Faculty Command Center: Student Lookup (Top) */}
+            <section
+                className={`${styles.section} ${styles.sectionLookup}`}
+                aria-labelledby="faculty-lookup-title"
+            >
+                <div className={styles.sectionHeader}>
+                    <div>
+                        <div className={styles.eyebrow}>Faculty Command Center</div>
+                        <h2 id="faculty-lookup-title" className={styles.sectionTitle}>Student Lookup</h2>
+                        <p className={styles.subtitle} style={{ display: 'none' }}>Search for any student by USN to view or fetch their official records.</p>
+                    </div>
+                    {scraping && <LoadingState density="compact" label="Fetching VTU records" />}
+                </div>
+
+                <Inline className={styles.lookupRow} stackMobile>
+                    <SearchInput
+                        label="Student USN"
+                        hideLabel
+                        placeholder="Enter Student USN (e.g. 2AB23CS043)"
+                        value={usn}
+                        onChange={(event) => setUsn?.(event.target.value.toUpperCase())}
+                        onKeyDown={(event) => event.key === 'Enter' && lookupStudent?.(usn)}
+                        onClear={() => setUsn?.('')}
+                    />
+                    <Button iconStart="search" onClick={() => lookupStudent?.(usn)} loading={loading}>
+                        {loading ? 'Searching...' : 'Lookup'}
+                    </Button>
+                    <Button
+                        variant="secondary"
+                        iconStart={scraping ? 'cancel' : 'cloud_download'}
+                        onClick={() => scraping ? stopScraping?.() : fetchFromVTU?.()}
+                        disabled={!usn && !scraping}
+                    >
+                        {scraping ? 'Stop' : 'Fetch VTU'}
+                    </Button>
+                </Inline>
+
+                {scrapeProgress && (
+                    <div className={`${styles.notice} ${styles.noticeInfo}`}>
+                        <LoadingState density="compact" label={scrapeProgress} />
+                    </div>
+                )}
+                {message && (
+                    <div className={`${styles.notice} ${styles[`notice${messageTone.charAt(0).toUpperCase()}${messageTone.slice(1)}`]}`}>
+                        {message}
+                    </div>
+                )}
+            </section>
+
+            {/* 2. Teaching Load & Assigned Subjects */}
             <section className={`${styles.section} ${styles.sectionTeaching}`} aria-labelledby="faculty-assigned-title">
                 <div className={styles.sectionHeader}>
                     <div>
@@ -161,55 +210,6 @@ function FacultyDashboardView({
                             ))}
                         </div>
                     </>
-                )}
-            </section>
-
-            {/* 2. Faculty Command Center: Student Lookup – first on mobile */}
-            <section
-                className={`${styles.section} ${styles.sectionLookup}`}
-                aria-labelledby="faculty-lookup-title"
-            >
-                <div className={styles.sectionHeader}>
-                    <div>
-                        <div className={styles.eyebrow}>Faculty Command Center</div>
-                        <h2 id="faculty-lookup-title" className={styles.sectionTitle}>Student Lookup</h2>
-                        <p className={styles.subtitle} style={{ display: 'none' }}>Search for any student by USN to view or fetch their official records.</p>
-                    </div>
-                    {scraping && <LoadingState density="compact" label="Fetching VTU records" />}
-                </div>
-
-                <Inline className={styles.lookupRow} stackMobile>
-                    <SearchInput
-                        label="Student USN"
-                        hideLabel
-                        placeholder="Enter Student USN (e.g. 2AB23CS043)"
-                        value={usn}
-                        onChange={(event) => setUsn?.(event.target.value.toUpperCase())}
-                        onKeyDown={(event) => event.key === 'Enter' && lookupStudent?.(usn)}
-                        onClear={() => setUsn?.('')}
-                    />
-                    <Button iconStart="search" onClick={() => lookupStudent?.(usn)} loading={loading}>
-                        {loading ? 'Searching...' : 'Lookup'}
-                    </Button>
-                    <Button
-                        variant="secondary"
-                        iconStart={scraping ? 'cancel' : 'cloud_download'}
-                        onClick={() => scraping ? stopScraping?.() : fetchFromVTU?.()}
-                        disabled={!usn && !scraping}
-                    >
-                        {scraping ? 'Stop' : 'Fetch VTU'}
-                    </Button>
-                </Inline>
-
-                {scrapeProgress && (
-                    <div className={`${styles.notice} ${styles.noticeInfo}`}>
-                        <LoadingState density="compact" label={scrapeProgress} />
-                    </div>
-                )}
-                {message && (
-                    <div className={`${styles.notice} ${styles[`notice${messageTone.charAt(0).toUpperCase()}${messageTone.slice(1)}`]}`}>
-                        {message}
-                    </div>
                 )}
             </section>
 

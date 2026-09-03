@@ -187,17 +187,23 @@ def main() -> None:
                     sems_by_usn[u.upper()].add(int(sem))
 
             def is_student_complete(u, sems):
-                is_lateral = bool(re.search(r'[A-Z]{2}4\d{2}$', u)) or (u.startswith('2AB25') and '4' in u[7:])
-                if is_lateral:
-                    return {3, 4}.issubset(sems)
-                m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', u)
+                m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}(\d{3})$', u)
                 if m:
                     y = int(m.group(1))
+                    num = int(m.group(2))
+                    is_lateral = num >= 400
+                    if is_lateral:
+                        if y == 24: # Lateral entry for 3rd year (joined in 2024 at Sem 3)
+                            return {3, 4, 5, 6}.issubset(sems)
+                        return {3, 4}.issubset(sems)
                     if y >= 25:
                         return (1 in sems and 2 in sems)
                     elif y == 24:
                         return {1, 2, 3, 4}.issubset(sems)
-                return len(sems) >= 2
+                    elif y == 23:
+                        # 3rd year regular student: Has Semesters 1 through 6
+                        return {1, 2, 3, 4, 5, 6}.issubset(sems)
+                return len(sems) >= 6
 
             complete_usns = {u for u, sems in sems_by_usn.items() if is_student_complete(u, sems)}
             print(f"[INFO] Found {len(complete_usns)} students already complete in Supabase.", file=sys.stderr)
