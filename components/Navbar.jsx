@@ -170,6 +170,38 @@ export default function Navbar() {
     const breadcrumbs = useMemo(() => getBreadcrumbs(pathname), [pathname]);
     const pageTitle = getRouteLabel(pathname);
 
+    // Long nav groups (Result Sheets, Comparative Analysis, etc. — the faculty
+    // analytics section that used to be one flat 13-item list) collapse into an
+    // accordion so the sidebar doesn't force endless scrolling. Small groups
+    // (Faculty Home, Account, ...) stay exactly as they were — always expanded,
+    // no toggle. Whichever group holds the current page always stays open, and
+    // a user's manual expand/collapse choices persist per role.
+    const NAV_GROUP_COLLAPSE_THRESHOLD = 4;
+    const activeGroupLabel = useMemo(() => {
+        for (const group of navGroups) {
+            if (group.items.some(link => isNavItemActive(pathname, link.href))) return group.label;
+        }
+        return null;
+    }, [navGroups, pathname]);
+    const [expandedGroups, setExpandedGroups] = useState({});
+
+    useEffect(() => {
+        let saved = {};
+        try {
+            saved = JSON.parse(localStorage.getItem(`gf_nav_expanded_${activeRole}`) || '{}');
+        } catch {}
+        if (activeGroupLabel) saved = { ...saved, [activeGroupLabel]: true };
+        setExpandedGroups(saved);
+    }, [activeRole, activeGroupLabel]);
+
+    const toggleGroup = useCallback((label) => {
+        setExpandedGroups(prev => {
+            const next = { ...prev, [label]: !prev[label] };
+            try { localStorage.setItem(`gf_nav_expanded_${activeRole}`, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    }, [activeRole]);
+
     const userLabel = useMemo(() => {
         if (!user) return '';
         if (activeRole === 'admin') return user.name || user.email || 'Admin';
@@ -235,13 +267,30 @@ export default function Navbar() {
 
 
                 <nav className="gf-sidebar-nav" aria-label="Primary">
-                    {navGroups.map(group => (
+                    {navGroups.map(group => {
+                        const isCollapsible = !collapsed && group.items.length > NAV_GROUP_COLLAPSE_THRESHOLD;
+                        const isExpanded = !isCollapsible || Boolean(expandedGroups[group.label]);
+
+                        return (
                         <div key={group.label}>
                             {!collapsed && (
-                                <div className="gf-nav-group-title">
-                                    {group.label}
-                                </div>
+                                isCollapsible ? (
+                                    <button
+                                        type="button"
+                                        className="gf-nav-group-title-btn"
+                                        onClick={() => toggleGroup(group.label)}
+                                        aria-expanded={isExpanded}
+                                    >
+                                        <span>{group.label}</span>
+                                        <span className="material-icons-round" aria-hidden="true">expand_more</span>
+                                    </button>
+                                ) : (
+                                    <div className="gf-nav-group-title">
+                                        {group.label}
+                                    </div>
+                                )
                             )}
+                            {isExpanded && (
                             <div className="gf-nav-group-items">
                                 {group.items.map(link => {
                                     const active = isNavItemActive(pathname, link.href);
@@ -262,8 +311,10 @@ export default function Navbar() {
                                     );
                                 })}
                             </div>
+                            )}
                         </div>
-                    ))}
+                        );
+                    })}
                 </nav>
 
                 <div className="gf-sidebar-footer">

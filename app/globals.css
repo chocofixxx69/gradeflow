@@ -465,6 +465,38 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
   padding: 0 var(--space-3) var(--space-2);
 }
 
+.gf-nav-group-title-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--tx-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  border-radius: var(--radius-3);
+}
+
+.gf-nav-group-title-btn:hover,
+.gf-nav-group-title-btn:focus-visible {
+  color: var(--tx-main);
+}
+
+.gf-nav-group-title-btn .material-icons-round {
+  font-size: 16px;
+  transition: transform 0.15s ease;
+}
+
+.gf-nav-group-title-btn[aria-expanded="false"] .material-icons-round {
+  transform: rotate(-90deg);
+}
+
 .gf-nav-group-items {
   display: flex;
   flex-direction: column;

@@ -378,7 +378,7 @@ function RevalImpactContent() {
             {/* VIEW MODE 1: Detailed Subject Ledger */}
             {viewMode === 'roster' && (
                 <Card style={{ overflow: 'hidden' }}>
-                    <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <CardHeader style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
                             <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>published_with_changes</span>
                             Subject Revaluation Delta Roster ({filteredRoster.length} Entries)
@@ -386,25 +386,24 @@ function RevalImpactContent() {
                     </CardHeader>
                     <CardContent style={{ padding: 0 }}>
                         <div style={{ overflowX: 'auto', maxHeight: '650px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                            <table style={{ width: '100%', minWidth: '980px', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>
-                                        <th style={{ padding: '12px 12px', textAlign: 'left', width: '40px' }}>#</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '65px' }}>Sem</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', width: '130px' }}>USN</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '180px' }}>Student Name</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '220px' }}>Subject (Which Subject Put)</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', minWidth: '190px' }}>When Put &amp; Exam Session</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '85px' }}>Pre-Score</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '85px' }}>Post-Score</th>
-                                        <th style={{ padding: '12px 10px', textAlign: 'center', width: '70px' }}>Delta</th>
-                                        <th style={{ padding: '12px 14px', textAlign: 'center', width: '140px' }}>Outcome</th>
+                                        <th style={{ padding: '10px 10px', textAlign: 'center', width: '40px' }}>#</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'center', width: '75px' }}>Sem</th>
+                                        <th style={{ padding: '10px 14px', textAlign: 'left', minWidth: '170px' }}>Student</th>
+                                        <th style={{ padding: '10px 14px', textAlign: 'left', minWidth: '200px' }}>Subject</th>
+                                        <th style={{ padding: '10px 14px', textAlign: 'left', minWidth: '160px' }}>Exam Session</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'center', width: '75px' }}>Pre-Score</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'center', width: '75px' }}>Post-Score</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'center', width: '65px' }}>Delta</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'center', width: '125px' }}>Outcome</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredRoster.length === 0 ? (
                                         <tr>
-                                            <td colSpan={10} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                            <td colSpan={9} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
                                                 {loading ? 'Analyzing revaluation deltas...' : (
                                                     <>
                                                         <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--tx-dim)', marginBottom: '8px' }}>search_off</span>
@@ -429,89 +428,90 @@ function RevalImpactContent() {
                                                         background: isCleared ? 'rgba(16, 185, 129, 0.04)' : isUpgraded ? 'rgba(59, 130, 246, 0.03)' : isDecreased ? 'rgba(239, 68, 68, 0.02)' : 'transparent'
                                                     }}
                                                 >
-                                                    <td style={{ padding: '12px 12px', color: 'var(--tx-dim)', fontSize: '12px' }}>{idx + 1}</td>
-                                                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-main)', border: '1px solid var(--border-low)' }}>
+                                                    <td style={{ padding: '10px', color: 'var(--tx-dim)', fontSize: '12px', textAlign: 'center' }}>{idx + 1}</td>
+                                                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                                                        <span style={{ display: 'inline-block', whiteSpace: 'nowrap', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '5px', background: 'var(--surface-low)', color: 'var(--tx-main)', border: '1px solid var(--border)' }}>
                                                             Sem {d.semester}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
-                                                        <button
-                                                            onClick={() => setSelectedStudent(studentObj || { usn: d.usn, name: d.name, applications: [d], totalSubjectsPut: 1, semesters: [d.semester] })}
-                                                            style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 800, padding: 0, textDecoration: 'underline' }}
-                                                        >
-                                                            {d.usn}
-                                                        </button>
-                                                    </td>
-                                                    <td style={{ padding: '12px 16px' }}>
-                                                        <div style={{ fontWeight: 600, color: 'var(--tx-main)' }}>{d.name}</div>
-                                                        {d.totalStudentApplications > 1 && (
-                                                            <div style={{ marginTop: '2px' }}>
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                        <div style={{ fontWeight: 700, color: 'var(--tx-main)', fontSize: '13px', lineHeight: 1.2 }}>
+                                                            {d.name}
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                                            <button
+                                                                onClick={() => setSelectedStudent(studentObj || { usn: d.usn, name: d.name, applications: [d], totalSubjectsPut: 1, semesters: [d.semester] })}
+                                                                style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 800, fontSize: '12px', padding: 0, textDecoration: 'underline' }}
+                                                            >
+                                                                {d.usn}
+                                                            </button>
+                                                            {d.totalStudentApplications > 1 && (
                                                                 <span
                                                                     onClick={() => setSelectedStudent(studentObj)}
-                                                                    style={{ fontSize: '10.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366F1', cursor: 'pointer', border: '1px solid rgba(99, 102, 241, 0.25)' }}
+                                                                    style={{ fontSize: '10px', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366F1', cursor: 'pointer', border: '1px solid rgba(99, 102, 241, 0.25)', whiteSpace: 'nowrap' }}
                                                                 >
-                                                                    Put {d.totalStudentApplications} subjects total &rarr;
+                                                                    {d.totalStudentApplications} subjects &rarr;
                                                                 </span>
-                                                            </div>
-                                                        )}
+                                                            )}
+                                                        </div>
                                                     </td>
-                                                    <td style={{ padding: '12px 16px' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                            <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--tx-main)', fontSize: '13px' }}>
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--tx-main)', fontSize: '12.5px' }}>
                                                                 {d.subject_code}
                                                             </span>
-                                                            <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-dim)', border: '1px solid var(--border-low)' }}>
+                                                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-dim)', border: '1px solid var(--border-low)' }}>
                                                                 {d.credits} Cr
                                                             </span>
                                                         </div>
-                                                        <div style={{ fontSize: '11.5px', color: 'var(--tx-muted)', marginTop: '2px', lineHeight: 1.3, fontWeight: 500 }}>
+                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px', lineHeight: 1.25, fontWeight: 500 }}>
                                                             {d.subject_name}
                                                         </div>
                                                     </td>
-                                                    <td style={{ padding: '12px 16px' }}>
-                                                        <div style={{ display: 'inline-block', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.08)', color: '#6366F1', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                        <div style={{ display: 'inline-block', fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.08)', color: '#6366F1', border: '1px solid rgba(99, 102, 241, 0.2)', whiteSpace: 'nowrap' }}>
                                                             {d.revalExamLabel || d.revalExam}
                                                         </div>
-                                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                             <span className="material-icons-round" style={{ fontSize: '12px' }}>calendar_today</span>
                                                             {d.appliedDate}
                                                         </div>
                                                     </td>
-                                                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                                        <div style={{ fontWeight: 700, color: 'var(--tx-muted)' }}>{d.preMarks}</div>
-                                                        <span style={{ padding: '1px 5px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 800, background: d.preGrade === 'F' ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface-low)', color: d.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>
+                                                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                                                        <div style={{ fontWeight: 700, color: 'var(--tx-muted)', fontSize: '13px' }}>{d.preMarks}</div>
+                                                        <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, background: d.preGrade === 'F' ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface-low)', color: d.preGrade === 'F' ? '#EF4444' : 'var(--tx-dim)' }}>
                                                             {d.preGrade}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                                        <div style={{ fontWeight: 800, color: isCleared ? '#10B981' : isUpgraded ? 'var(--primary)' : isDecreased ? '#EF4444' : 'inherit' }}>{d.postMarks}</div>
-                                                        <span style={{ padding: '1px 5px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 800, background: isCleared ? 'rgba(16, 185, 129, 0.15)' : 'var(--surface-low)', color: isCleared ? '#10B981' : 'var(--tx-main)' }}>
+                                                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                                                        <div style={{ fontWeight: 800, color: isCleared ? '#10B981' : isUpgraded ? 'var(--primary)' : isDecreased ? '#EF4444' : 'inherit', fontSize: '13px' }}>{d.postMarks}</div>
+                                                        <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, background: isCleared ? 'rgba(16, 185, 129, 0.15)' : 'var(--surface-low)', color: isCleared ? '#10B981' : 'var(--tx-main)' }}>
                                                             {d.postGrade}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                                                         {d.delta > 0 ? (
-                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 900, background: 'rgba(16, 185, 129, 0.14)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                                            <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: '5px', fontSize: '11.5px', fontWeight: 900, background: 'rgba(16, 185, 129, 0.14)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                                                                 +{d.delta}
                                                             </span>
                                                         ) : d.delta < 0 ? (
-                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 900, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                                                            <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: '5px', fontSize: '11.5px', fontWeight: 900, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
                                                                 {d.delta}
                                                             </span>
                                                         ) : (
-                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, background: 'var(--surface-low)', color: 'var(--tx-muted)', border: '1px solid var(--border-low)' }}>
+                                                            <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: '5px', fontSize: '11.5px', fontWeight: 700, background: 'var(--surface-low)', color: 'var(--tx-muted)', border: '1px solid var(--border-low)' }}>
                                                                 0
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                                                         <span style={{
                                                             display: 'inline-flex',
                                                             alignItems: 'center',
                                                             gap: '4px',
-                                                            padding: '4px 10px', borderRadius: '6px',
-                                                            fontSize: '11px', fontWeight: 800,
+                                                            padding: '3px 8px', borderRadius: '5px',
+                                                            fontSize: '10.5px', fontWeight: 800,
+                                                            whiteSpace: 'nowrap',
                                                             background: isCleared ? 'rgba(16, 185, 129, 0.15)' : isUpgraded ? 'rgba(59, 130, 246, 0.15)' : isDecreased ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-low)',
                                                             color: isCleared ? '#10B981' : isUpgraded ? '#3B82F6' : isDecreased ? '#EF4444' : 'var(--tx-muted)',
                                                             border: `1px solid ${isCleared ? 'rgba(16, 185, 129, 0.3)' : isUpgraded ? 'rgba(59, 130, 246, 0.3)' : isDecreased ? 'rgba(239, 68, 68, 0.25)' : 'var(--border)'}`
