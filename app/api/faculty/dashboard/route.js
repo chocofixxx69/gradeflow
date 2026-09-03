@@ -51,7 +51,7 @@ export async function GET(req) {
             { data: assignedClasses },
             { data: assignedSubjects },
             { data: recentActivity },
-            { data: totalStudentsCount }
+            { count: studentCount }
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('*').eq('faculty_id', facultyId),
             supabaseAdmin.from('faculty_assignments').select('*, subject_catalog(*)').eq('faculty_id', facultyId),
@@ -63,7 +63,7 @@ export async function GET(req) {
             kpis: {
                 totalClasses: assignedClasses?.length || 0,
                 totalSubjects: assignedSubjects?.length || 0,
-                totalStudents: totalStudentsCount?.count || 0,
+                totalStudents: studentCount || 0,
                 totalActivities: recentActivity?.length || 0
             },
             assignedClasses: assignedClasses || [],

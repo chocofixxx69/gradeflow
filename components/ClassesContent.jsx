@@ -253,6 +253,8 @@ export function ClassesContent({ embedded = false }) {
         setShowExportModal(false);
     };
 
+    const [classesError, setClassesError] = useState(null);
+
     useEffect(() => {
         const s = localStorage.getItem('faculty_session') || localStorage.getItem('admin_session');
         if (s) {
@@ -263,13 +265,16 @@ export function ClassesContent({ embedded = false }) {
 
     const fetchClasses = async () => {
         setLoadingClasses(true);
+        setClassesError(null);
         try {
-            const r = await fetch('/api/classes', { credentials: 'include' });
-            const j = await r.json();
-            if (j.success) {
-                setClasses(j.classes || []);
-                if (j.faculty) setFacultyList(j.faculty);
+            const res = await apiRequest('/api/classes', { credentials: 'include' });
+            if (res) {
+                setClasses(res.classes || []);
+                if (res.faculty) setFacultyList(res.faculty);
             }
+        } catch (err) {
+            console.error('Failed to fetch classes:', err);
+            setClassesError('Could not load classes. Please check your connection and retry.');
         } finally {
             setLoadingClasses(false);
         }
@@ -278,10 +283,9 @@ export function ClassesContent({ embedded = false }) {
     const fetchClassStudents = useCallback(async (cls) => {
         setLoadingStudents(true); setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
         try {
-            const r = await fetch(`/api/class-students?class_id=${cls.id}`);
-            const j = await r.json();
-            if (!j.success) return;
-            const studs = j.students || [];
+            const res = await apiRequest(`/api/class-students?class_id=${cls.id}`);
+            if (!res?.students) return;
+            const studs = res.students || [];
             setStudents(studs);
             if (studs.length > 0) {
                 const parsedSem = Number(cls.semester) || 1;
@@ -289,6 +293,9 @@ export function ClassesContent({ embedded = false }) {
                 setAvailableSems(sems);
                 setSelectedSem(sems[sems.length - 1]);
             }
+        } catch (err) {
+            console.error('Failed to fetch class students:', err);
+            setMsg('Failed to load students for this class.');
         } finally { setLoadingStudents(false); }
     }, []);
 
@@ -1048,18 +1055,45 @@ export function ClassesContent({ embedded = false }) {
 
                     {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
 
-                    {loadingClasses ? <div style={{ textAlign: 'center', padding: '80px', color: 'var(--tx-dim)' }}>Loading classes…</div>
-                        : displayedClasses.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--tx-dim)' }}>
-                                <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '12px', display: 'block', opacity: 0.25 }}>groups</span>
-                                <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>
-                                    {classes.length === 0 ? 'No classes yet' : 'No classes match your filter'}
+                    {classesError ? (
+                        <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--surface-low)', borderRadius: 'var(--radius-7)', border: '1px solid var(--border)' }}>
+                            <span className="material-icons-round" style={{ fontSize: '40px', color: 'var(--red)', marginBottom: '12px', display: 'block' }}>error_outline</span>
+                            <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '8px' }}>{classesError}</div>
+                            <button onClick={fetchClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px' }}>refresh</span>
+                                Retry
+                            </button>
+                        </div>
+                    ) : loadingClasses ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' }}>
+                            {[1, 2, 3, 4, 5, 6].map(i => (
+                                <div key={i} style={{ ...S.card, minHeight: '180px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: 0.6, animation: 'gfPulse 1.5s ease-in-out infinite' }}>
+                                    <div>
+                                        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                            <div style={{ width: '60px', height: '22px', background: 'var(--surface-low)', borderRadius: '6px' }} />
+                                            <div style={{ width: '60px', height: '22px', background: 'var(--surface-low)', borderRadius: '6px' }} />
+                                        </div>
+                                        <div style={{ width: '70%', height: '24px', background: 'var(--surface-low)', borderRadius: '6px', marginBottom: '10px' }} />
+                                        <div style={{ width: '45%', height: '14px', background: 'var(--surface-low)', borderRadius: '4px' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                                        <div style={{ width: '80px', height: '14px', background: 'var(--surface-low)', borderRadius: '4px' }} />
+                                        <div style={{ width: '70px', height: '14px', background: 'var(--surface-low)', borderRadius: '4px' }} />
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: '13px' }}>
-                                    {classes.length === 0 ? 'Create your first class to get started.' : 'Try adjusting your search or faculty filter.'}
-                                </div>
+                            ))}
+                        </div>
+                    ) : displayedClasses.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--tx-dim)' }}>
+                            <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: '12px', display: 'block', opacity: 0.25 }}>groups</span>
+                            <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>
+                                {classes.length === 0 ? 'No classes yet' : 'No classes match your filter'}
                             </div>
-                        ) : (
+                            <div style={{ fontSize: '13px' }}>
+                                {classes.length === 0 ? 'Create your first class to get started.' : 'Try adjusting your search or faculty filter.'}
+                            </div>
+                        </div>
+                    ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' }}>
                                 {displayedClasses.map(cls => (
                                     <div

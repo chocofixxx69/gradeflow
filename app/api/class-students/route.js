@@ -20,7 +20,24 @@ export async function GET(req) {
         const class_id = searchParams.get('class_id');
         if (!class_id) return NextResponse.json({ error: 'class_id required.' }, { status: 400 });
 
-        const members = await fetchByChunks('class_students', 'id, usn, created_at', 'class_id', [class_id], supabaseAdmin);
+        const [{ data: members, error: mErr }, { data: classData }, catalogIndex] = await Promise.all([
+            supabaseAdmin
+                .from('class_students')
+                .select('id, usn, created_at')
+                .eq('class_id', class_id)
+                .order('usn', { ascending: true }),
+            supabaseAdmin
+                .from('classes')
+                .select('semester, branch, scheme')
+                .eq('id', class_id)
+                .maybeSingle(),
+            fetchCatalogIndex(supabaseAdmin),
+        ]);
+
+        if (mErr) {
+            console.error('[GET /api/class-students] class_students error:', mErr);
+            throw mErr;
+        }
 
         if (!members || members.length === 0) {
             return NextResponse.json({ success: true, students: [] });
@@ -60,20 +77,7 @@ export async function GET(req) {
         const profileMap = {};
         (profiles || []).forEach(p => { profileMap[norm(p.usn)] = p; });
 
-        // Fetch class metadata to fall back to when a student has no own profile
-        const { data: classData } = await supabaseAdmin
-            .from('classes')
-            .select('semester, branch, scheme')
-            .eq('id', class_id)
-            .maybeSingle();
-
         const classSem = Number(classData?.semester) || 1;
-
-        // ── Single canonical calculation path (lib/vtuAcademicEngine.js) — the
-        // exact same function Student Results uses. One catalog_subject fetch for
-        // the whole roster, then one in-memory calculateAcademicRecord() per
-        // student — no N+1 queries, and no independent SGPA/backlog logic here. ──
-        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
 
         const recordByUsn = {};
         await Promise.all(upperUsns.map(async u => {

@@ -1270,3 +1270,14 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
   transform: translateY(-4px);
   box-shadow: var(--shadow-md);
 }
+
+/* ── SKELETON PULSE ANIMATION ── */
+@keyframes gfPulse {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+

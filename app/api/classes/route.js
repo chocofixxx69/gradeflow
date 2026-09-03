@@ -10,18 +10,31 @@ export const dynamic = 'force-dynamic';
 // GET — all classes with student count and faculty info
 export async function GET(req) {
     try {
-        const classes = await fetchAllPaginated('classes', '*, class_students(count)', supabaseAdmin, 'created_at', false);
+        const [{ data: classes, error: cErr }, { data: facultyList, error: fErr }] = await Promise.all([
+            supabaseAdmin
+                .from('classes')
+                .select('*, class_students(count)')
+                .order('created_at', { ascending: false }),
+            supabaseAdmin
+                .from('faculty_onboarding')
+                .select('id, full_name, email, department')
+                .eq('status', 'approved')
+                .order('full_name', { ascending: true })
+        ]);
 
-        // Fetch approved faculty members so all faculty and admins can see who manages each class
-        const { data: facultyList } = await supabaseAdmin
-            .from('faculty_onboarding')
-            .select('id, full_name, email, department')
-            .eq('status', 'approved')
-            .order('full_name', { ascending: true });
+        let classList = classes || [];
+        if (cErr) {
+            console.warn('[GET /api/classes] Relation count warning, falling back to direct select:', cErr.message);
+            const { data: rawClasses } = await supabaseAdmin
+                .from('classes')
+                .select('*')
+                .order('created_at', { ascending: false });
+            classList = rawClasses || [];
+        }
 
         const facultyMap = new Map((facultyList || []).map(f => [f.id, f]));
 
-        const result = (classes || []).map(c => {
+        const result = classList.map(c => {
             const fac = c.faculty_id ? facultyMap.get(c.faculty_id) : null;
             return {
                 ...c,
