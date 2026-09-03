@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
+import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
@@ -94,11 +94,7 @@ export async function GET(req) {
             const uRemarks = remarksByUsn.get(student.usn) || [];
 
             // Detect Lateral Entry (LE)
-            // Diplomas entering in 2nd year (3rd sem): either flagged or USN sequence 400+ or no sem 1/2
-            const isLE = Boolean(
-                student.lateral_entry ||
-                (student.usn && /[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}4[0-9]{2}/i.test(student.usn))
-            );
+            const isLE = isLateralEntry(student.usn, student.lateral_entry);
             if (isLE) lateralCount++;
 
             // Calculate per-semester stats

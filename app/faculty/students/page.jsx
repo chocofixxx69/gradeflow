@@ -178,7 +178,7 @@ function StudentsDirectoryContent() {
                                 label="Department"
                                 value={branch}
                                 onChange={e => handleFilterChange(setBranch, e.target.value)}
-                                options={[{ value: '', label: 'All Departments' }, ...meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
+                                options={[{ value: '', label: 'All Departments' }, ...meta.branches.filter(b => b.code !== 'ALL').map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
                             />
                         </div>
                         <div>

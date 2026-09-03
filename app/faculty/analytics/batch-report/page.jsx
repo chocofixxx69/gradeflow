@@ -253,7 +253,7 @@ function BatchReportContent() {
                                 label="Branch / Department"
                                 value={branch}
                                 onChange={e => setBranch(e.target.value)}
-                                options={meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                                options={[{ value: 'ALL', label: 'All Branches / Departments' }, ...meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
                             />
                         </div>
                         <div>
