@@ -86,35 +86,47 @@ export async function GET(req) {
             }
         });
 
-        // 4. Determine sections list based on sectionMode
-        let sectionsList;
-        if (sectionMode === '2') {
-            sectionsList = ['A', 'B'];
-        } else if (sectionMode === '3') {
-            sectionsList = ['A', 'B', 'C'];
-        } else if (sectionMode === '4') {
-            sectionsList = ['A', 'B', 'C', 'D'];
-        } else {
-            // Auto mode: check database classes matching this branch & semester
-            const matchingClasses = (rawClasses || []).filter(c => 
-                (c.semester ? Number(c.semester) === semester : true) &&
-                (branch === 'ALL' || matchesBranch(c.branch, branch))
-            );
-            const detectedSections = new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean));
-            if (detectedSections.size >= 2) {
-                sectionsList = Array.from(detectedSections).sort();
-            } else if (activeUsns.length >= 150) {
-                sectionsList = ['A', 'B', 'C'];
-            } else {
-                sectionsList = ['A', 'B'];
-            }
+        // 4. Sections list — REAL sections only, ever. A "section" here always
+        // means a class actually created in Classes & Sections (app/faculty/classes)
+        // with students actually rostered into it via class_students. There used
+        // to be a fallback that invented 'A'/'B'/'C' buckets and evenly chunked
+        // every student without a real class assignment into them by array index
+        // — meaning "Section Topper" was just whichever student landed first in an
+        // arbitrary USN-sorted slice, not the actual top student of any real
+        // section. sectionMode ('2'/'3'/'4') now only controls how many of the
+        // real detected sections to show (capped), never invents ones that don't
+        // exist; students with no real class/section assignment are reported
+        // separately as unsectioned rather than silently folded into a fake one.
+        const matchingClasses = (rawClasses || []).filter(c =>
+            (c.semester ? Number(c.semester) === semester : true) &&
+            (branch === 'ALL' || matchesBranch(c.branch, branch))
+        );
+        const detectedSections = Array.from(new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean))).sort();
+
+        let sectionsList = detectedSections;
+        if (sectionMode === '2' || sectionMode === '3' || sectionMode === '4') {
+            sectionsList = detectedSections.slice(0, Number(sectionMode));
         }
 
-        // 5. Partition active students into dynamic sections
+        if (sectionsList.length === 0) {
+            const empty = {
+                branch, batch, semester, sectionMode,
+                sections: [],
+                sectionComparisons: [],
+                subjectMatrix: [],
+                unassignedCount: activeUsns.length,
+                noRealSections: true,
+                benchmarks: { bestSection: '—', totalEvaluated: 0, benchmarkAvg: 0, sectionSpread: 0, subjectCount: 0 },
+            };
+            setCached(cacheKey, empty, 30_000);
+            return ok(empty);
+        }
+
+        // 5. Partition active students into REAL sections only — via their actual
+        // class_students -> classes.section assignment. No redistribution, ever.
         const studentsBySection = new Map();
         sectionsList.forEach(sec => studentsBySection.set(sec, []));
 
-        // First, assign students who have explicit class assignments matching active sections
         const unassignedUsns = [];
         activeUsns.forEach(u => {
             const explicitSec = usnToSectionMap.get(u);
@@ -124,16 +136,6 @@ export async function GET(req) {
                 unassignedUsns.push(u);
             }
         });
-
-        // Distribute unassigned students evenly across sections
-        if (unassignedUsns.length > 0) {
-            const chunkSize = Math.ceil(unassignedUsns.length / sectionsList.length);
-            unassignedUsns.forEach((u, idx) => {
-                const secIdx = Math.min(Math.floor(idx / chunkSize), sectionsList.length - 1);
-                const sec = sectionsList[secIdx];
-                studentsBySection.get(sec).push(studentByUsn.get(u) || { usn: u, name: u });
-            });
-        }
 
         // 6. Compute metrics per section
         const sectionComparisons = [];
@@ -286,6 +288,8 @@ export async function GET(req) {
             sections: sectionsList,
             sectionComparisons,
             subjectMatrix,
+            unassignedCount: unassignedUsns.length,
+            noRealSections: false,
             benchmarks: {
                 bestSection: bestSectionObj ? `${bestSectionObj.section} (${bestSectionObj.passRate}%)` : '—',
                 totalEvaluated: totalAppeared,

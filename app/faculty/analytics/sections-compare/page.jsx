@@ -40,6 +40,8 @@ function SectionsCompareContent() {
         sections: [],
         sectionComparisons: [],
         subjectMatrix: [],
+        unassignedCount: 0,
+        noRealSections: false,
         benchmarks: {
             bestSection: '—',
             totalEvaluated: 0,
@@ -183,7 +185,7 @@ function SectionsCompareContent() {
                     <PageHeaderEyebrow>Class Operations &amp; Benchmarking</PageHeaderEyebrow>
                     <PageHeaderTitle>Multi-Section Direct Comparison</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Side-by-side performance evaluation across parallel class sections (Section A vs B vs C vs D).
+                        Side-by-side performance evaluation across real class sections you've created in Classes &amp; Sections — never invented groupings.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -239,16 +241,36 @@ function SectionsCompareContent() {
                                 value={sectionMode}
                                 onChange={e => setSectionMode(e.target.value)}
                                 options={[
-                                    { value: 'auto', label: 'Auto (By Classes / Cohort)' },
-                                    { value: '2', label: '2 Sections (A vs B)' },
-                                    { value: '3', label: '3 Sections (A vs B vs C)' },
-                                    { value: '4', label: '4 Sections (A vs B vs C vs D)' }
+                                    { value: 'auto', label: 'All Real Sections' },
+                                    { value: '2', label: 'Limit to First 2 Real Sections' },
+                                    { value: '3', label: 'Limit to First 3 Real Sections' },
+                                    { value: '4', label: 'Limit to First 4 Real Sections' }
                                 ]}
                             />
                         </div>
                     </div>
                 </CardContent>
             </Card>
+
+            {report.noRealSections && (
+                <Card style={{ marginBottom: '24px', border: '1px solid rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.06)' }}>
+                    <CardContent style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                        <span className="material-icons-round" style={{ fontSize: '20px', color: '#EF4444', flexShrink: 0 }}>info</span>
+                        <div style={{ fontSize: '13px', color: 'var(--tx-main)' }}>
+                            <strong>No real sections exist for this branch/semester.</strong> {report.unassignedCount > 0 ? `${report.unassignedCount} student(s) matched your filters, but none of them belong to a class with a section assigned in ` : 'Create a class with a section in '}
+                            <a href="/faculty/classes" style={{ color: 'var(--primary)', fontWeight: 700 }}>Classes &amp; Sections</a> and roster students into it to compare here — this report never invents section groupings.
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {!report.noRealSections && report.unassignedCount > 0 && (
+                <Card style={{ marginBottom: '24px', border: '1px solid var(--border)', background: 'var(--surface-low)' }}>
+                    <CardContent style={{ padding: '14px 20px', fontSize: '12.5px', color: 'var(--tx-muted)' }}>
+                        <strong>{report.unassignedCount}</strong> student(s) matching your filters have no real section assignment and are excluded from the comparison below — they are never guessed into a section.
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Institutional Benchmark Strip */}
             {report.sectionComparisons.length > 0 && (
