@@ -34,21 +34,27 @@ export async function GET(req) {
         const supabaseAdmin = getAdminClient();
 
         // 1. Fetch faculty members
+        // "Assigned subjects" comes ONLY from faculty_subject_assignments — the real,
+        // admin-managed faculty-to-subject link (app/admin/faculty-assignments). There
+        // used to be a fallback here that invented assignments from `classes.faculty_id`
+        // (any class a faculty happens to own → first 4 catalog subjects for that class's
+        // semester/branch, regardless of who actually teaches them). Since faculty access
+        // is deliberately flat/broad in this app — any faculty can open any class — that
+        // fallback attributed nearly the entire catalog to whoever had browsed the most
+        // classes. A faculty with no real assignment row must show zero subjects, not a
+        // guess; the UI already renders "No subjects assigned" for that case.
         const [
             { data: rawFaculty },
             { data: rawAssignments },
-            { data: rawClasses },
             { data: rawSubjects }
         ] = await Promise.all([
             supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department, status'),
             supabaseAdmin.from('faculty_subject_assignments').select('*'),
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, faculty_id'),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, credits')
         ]);
 
         const facultyList = rawFaculty || [];
         const assignments = rawAssignments || [];
-        const classes = rawClasses || [];
         const catalogSubjects = rawSubjects || [];
 
         const catalogMap = new Map();
@@ -62,42 +68,8 @@ export async function GET(req) {
             assignmentsByFaculty.set(a.faculty_id, list);
         });
 
-        // Also check classes where faculty_id is assigned
-        classes.forEach(c => {
-            if (c.faculty_id) {
-                const list = assignmentsByFaculty.get(c.faculty_id) || [];
-                if (c.subject_code && !list.some(a => a.subject_code === c.subject_code && a.class_id === c.id)) {
-                    list.push({
-                        faculty_id: c.faculty_id,
-                        subject_code: c.subject_code,
-                        subject_name: c.subject_name || c.name,
-                        branch: c.branch,
-                        semester: c.semester,
-                        class_id: c.id
-                    });
-                    assignmentsByFaculty.set(c.faculty_id, list);
-                } else if (c.semester) {
-                    // Resolve semester subjects from catalog for this class's branch
-                    const semSubs = catalogSubjects.filter(s => Number(s.semester) === Number(c.semester) && (!c.branch || !s.branch || s.branch.toUpperCase().includes(c.branch.toUpperCase()) || c.branch.toUpperCase().includes(s.branch.toUpperCase())));
-                    semSubs.slice(0, 4).forEach(s => {
-                        if (!list.some(a => a.subject_code === s.subject_code)) {
-                            list.push({
-                                faculty_id: c.faculty_id,
-                                subject_code: s.subject_code,
-                                subject_name: s.subject_name,
-                                branch: c.branch,
-                                semester: c.semester,
-                                class_id: c.id
-                            });
-                        }
-                    });
-                    assignmentsByFaculty.set(c.faculty_id, list);
-                }
-            }
-        });
-
         // 2. Fetch subject marks for all assigned subjects
-        const allAssignedCodes = Array.from(new Set(assignments.map(a => a.subject_code.toUpperCase()).concat(classes.filter(c => c.subject_code).map(c => c.subject_code.toUpperCase()))));
+        const allAssignedCodes = Array.from(new Set(assignments.map(a => a.subject_code.toUpperCase())));
 
         let marksQuery = supabaseAdmin
             .from('subject_marks')

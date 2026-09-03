@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
+import { fetchAllPaginated } from '@/lib/supabase-utils';
 import { getCached, setCached } from '@/lib/server-cache';
-import { extractBatchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
+import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn } from '@/lib/semester-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,12 +43,14 @@ export async function GET(req) {
 
         const [
             { data: rawClasses },
-            { data: catalogSubjects },
-            { data: metaBranches }
+            catalogSubjects,
+            { data: metaBranches },
+            marksSubjects
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
-            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').order('semester', { ascending: true }),
-            supabaseAdmin.from('branches').select('code, label')
+            fetchAllPaginated('subject_catalog', 'subject_code, subject_name, semester, branch, scheme, credits', supabaseAdmin),
+            supabaseAdmin.from('branches').select('code, label'),
+            fetchAllPaginated('subject_marks', 'subject_code, subject_name, semester, credits, usn', supabaseAdmin)
         ]);
 
         // Dynamically fetch all students from the database without arbitrary limits
@@ -95,6 +98,7 @@ export async function GET(req) {
         };
 
         const branchMap = new Map();
+        branchMap.set('ALL', { code: 'ALL', label: 'All Branches / Departments', name: 'All Branches / Departments' });
         DEFAULT_BRANCHES.forEach(b => branchMap.set(b.code, { ...b, label: branchLabels[b.code] || b.label }));
         if (metaBranches && Array.isArray(metaBranches)) {
             metaBranches.forEach(b => {
@@ -124,15 +128,53 @@ export async function GET(req) {
 
         const branches = Array.from(branchMap.values());
 
-        // 3. Subjects list
-        const subjects = (catalogSubjects || []).map(s => ({
-            code: s.subject_code,
-            name: s.subject_name,
-            semester: s.semester,
-            branch: s.branch,
-            scheme: s.scheme,
-            credits: s.credits
-        }));
+        // 3. Complete Subjects list merged from both catalog and real student marks in DB
+        const subjectMap = new Map();
+
+        (catalogSubjects || []).forEach(s => {
+            const code = (s.subject_code || '').toUpperCase().trim();
+            if (!code) return;
+            const sem = Number(s.semester) || 1;
+            const b = (s.branch || 'ALL').toUpperCase().trim();
+            const key = `${code}|${sem}`;
+            subjectMap.set(key, {
+                code,
+                name: s.subject_name || code,
+                semester: sem,
+                branch: b,
+                branches: [b],
+                scheme: s.scheme || '2022',
+                credits: Number(s.credits) || 3
+            });
+        });
+
+        (marksSubjects || []).forEach(m => {
+            const code = (m.subject_code || '').toUpperCase().trim();
+            if (!code) return;
+            const sem = Number(m.semester) || 1;
+            const b = extractBranchFromUsn(m.usn) || 'CS';
+            const key = `${code}|${sem}`;
+
+            if (!subjectMap.has(key)) {
+                subjectMap.set(key, {
+                    code,
+                    name: m.subject_name || code,
+                    semester: sem,
+                    branch: b,
+                    branches: [b],
+                    scheme: '2022',
+                    credits: Number(m.credits) || 3
+                });
+            } else {
+                const entry = subjectMap.get(key);
+                if (!entry.branches.includes(b)) entry.branches.push(b);
+                if (m.subject_name && (entry.name === code || entry.name.includes('TD/PSB'))) {
+                    entry.name = m.subject_name;
+                }
+            }
+        });
+
+        const subjects = Array.from(subjectMap.values());
 
         const payload = {
             batches,

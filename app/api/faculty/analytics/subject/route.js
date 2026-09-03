@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
+import { matchesBatch, matchesBranch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -63,23 +63,23 @@ export async function GET(req) {
         let studentMap = new Map();
 
         if (usns.length > 0) {
-            let stuQuery = supabaseAdmin
+            const { data: stData } = await supabaseAdmin
                 .from('students')
                 .select('usn, name, branch, year, lateral_entry')
                 .in('usn', usns);
 
-            if (branch) {
-                stuQuery = stuQuery.ilike('branch', `%${branch}%`);
-            }
-
-            const { data: stData } = await stuQuery;
             (stData || []).forEach(s => studentMap.set(s.usn, s));
         }
 
         // Apply filters
         let filteredMarks = marks.filter(m => {
             const student = studentMap.get(m.usn);
-            if (!student) return !branch; // If branch filter was applied, only keep matched students
+            if (!student) {
+                return matchesBranch(m.usn, branch);
+            }
+            if (!matchesBranch(student, branch)) {
+                return false;
+            }
             if (batch) {
                 return matchesBatch(student.usn, batch, student.year, student.lateral_entry);
             }

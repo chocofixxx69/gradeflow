@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AuthGuard from '../../../../components/AuthGuard';
 import { apiRequest } from '../../../../lib/api/client';
+import { matchesBranch } from '@/lib/semester-utils';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -68,10 +69,18 @@ function SubjectAnalyticsContent() {
 
     // Filter available subjects based on selected branch and semester
     const availableSubjects = useMemo(() => {
-        return (meta.subjects || []).filter(s => 
-            (!branch || (s.branch || '').toUpperCase() === branch.toUpperCase()) &&
-            (!semester || Number(s.semester) === Number(semester))
-        );
+        return (meta.subjects || []).filter(s => {
+            const matchesSem = !semester || Number(s.semester) === Number(semester);
+            if (!matchesSem) return false;
+
+            if (!branch || branch === 'ALL' || branch === 'All Branches') return true;
+
+            // Check if subject belongs to this branch
+            if (s.branches && Array.isArray(s.branches)) {
+                return s.branches.some(b => matchesBranch(b, branch));
+            }
+            return matchesBranch(s.branch || s.code, branch);
+        });
     }, [meta.subjects, branch, semester]);
 
     // Update selected subject when available subjects change
@@ -245,7 +254,7 @@ function SubjectAnalyticsContent() {
                                 label="Branch / Department"
                                 value={branch}
                                 onChange={e => setBranch(e.target.value)}
-                                options={meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                                options={[{ value: 'ALL', label: 'All Branches / Departments' }, ...meta.branches.filter(b => b.code !== 'ALL').map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
                             />
                         </div>
                         <div>
