@@ -15,6 +15,26 @@ function fail(message, code = 'ERROR', status = 400) {
     return NextResponse.json({ success: false, error: { code, message } }, { status });
 }
 
+function formatExamSession(code) {
+    if (!code) return 'University Exam';
+    const c = String(code).trim();
+    if (/^MJ26rv/i.test(c)) return 'May/June 2026 Reval';
+    if (/^MJ26/i.test(c)) return 'May/June 2026 Regular';
+    if (/^D25J26RV/i.test(c)) return 'Dec 25/Jan 26 Reval';
+    if (/^D25J26/i.test(c)) return 'Dec 25/Jan 26 Regular';
+    if (/^JJRVcbcs25/i.test(c)) return 'Jun/Jul 2025 Reval';
+    if (/^JJEcbcs25/i.test(c)) return 'Jun/Jul 2025 Regular';
+    if (/^SERVcbcs25/i.test(c)) return 'Summer 2025 Reval';
+    if (/^DJRVcbcs25/i.test(c)) return 'Dec 24/Jan 25 Reval';
+    if (/^DJcbcs25/i.test(c)) return 'Dec 24/Jan 25 Regular';
+    if (/^JJRVcbcs24/i.test(c)) return 'Jun/Jul 2024 Reval';
+    if (/^JJEcbcs24/i.test(c)) return 'Jun/Jul 2024 Regular';
+    if (/^DJRVcbcs24/i.test(c)) return 'Dec 23/Jan 24 Reval';
+    if (/^DJcbcs24/i.test(c)) return 'Dec 23/Jan 24 Regular';
+    if (/rv/i.test(c)) return `${c} (Reval)`;
+    return c;
+}
+
 export async function GET(req) {
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
@@ -104,6 +124,9 @@ export async function GET(req) {
                     unchangedCount++;
                 }
 
+                const formattedAppliedDate = attempt.scraped_at ? new Date(attempt.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                const formattedRegularDate = prior.scraped_at ? new Date(prior.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
                 deltaRoster.push({
                     usn,
                     name: stu?.name || usn,
@@ -116,9 +139,39 @@ export async function GET(req) {
                     delta,
                     outcome,
                     isCleared: outcome === 'Cleared Backlog',
+                    revalExam: attempt.exam_name || 'Reval',
+                    revalExamLabel: formatExamSession(attempt.exam_name),
+                    regularExam: prior.exam_name || 'Regular',
+                    regularExamLabel: formatExamSession(prior.exam_name),
+                    appliedDate: formattedAppliedDate,
+                    regularDate: formattedRegularDate,
+                    credits: attempt.credits || prior.credits || 3,
                 });
             });
         });
+
+        // Group by student so faculty can see which student put which subjects and when
+        const studentMap = new Map();
+        deltaRoster.forEach(d => {
+            const entry = studentMap.get(d.usn) || {
+                usn: d.usn,
+                name: d.name,
+                applications: [],
+                totalDelta: 0,
+                upgraded: 0,
+                cleared: 0,
+                decreased: 0,
+                confirmed: 0,
+            };
+            entry.applications.push(d);
+            entry.totalDelta += d.delta;
+            if (d.outcome === 'Cleared Backlog') entry.cleared++;
+            else if (d.delta > 0) entry.upgraded++;
+            else if (d.delta < 0) entry.decreased++;
+            else entry.confirmed++;
+            studentMap.set(d.usn, entry);
+        });
+        const studentRoster = Array.from(studentMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
         const totalApplications = deltaRoster.length;
         const netPassRateGain = totalApplications > 0 ? Number(((clearedCount / totalApplications) * 100).toFixed(1)) : 0;
@@ -126,6 +179,7 @@ export async function GET(req) {
         const payload = {
             summary: {
                 totalApplications,
+                totalStudents: studentRoster.length,
                 upgradedCount,
                 clearedCount,
                 unchangedCount,
@@ -133,6 +187,7 @@ export async function GET(req) {
                 netPassRateGain,
             },
             deltaRoster,
+            studentRoster,
             branch,
             semester,
         };
