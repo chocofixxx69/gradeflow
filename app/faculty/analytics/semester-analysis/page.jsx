@@ -360,14 +360,30 @@ function SemesterAnalysisContent() {
 
             {/* View Mode Switcher + KPI Badges */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', gap: '8px', background: 'var(--surface)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: '6px', background: 'var(--surface)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                    <button
+                        onClick={() => setViewMode('compact')}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '12.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: viewMode === 'compact' ? 'var(--primary)' : 'transparent',
+                            color: viewMode === 'compact' ? '#FFFFFF' : 'var(--tx-muted)',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        Compact View (Tot &amp; Grd)
+                    </button>
                     <button
                         onClick={() => setViewMode('credits')}
                         style={{
-                            padding: '6px 16px',
+                            padding: '6px 14px',
                             borderRadius: '8px',
                             border: 'none',
-                            fontSize: '13px',
+                            fontSize: '12.5px',
                             fontWeight: 700,
                             cursor: 'pointer',
                             background: viewMode === 'credits' ? 'var(--primary)' : 'transparent',
@@ -380,10 +396,10 @@ function SemesterAnalysisContent() {
                     <button
                         onClick={() => setViewMode('marks')}
                         style={{
-                            padding: '6px 16px',
+                            padding: '6px 14px',
                             borderRadius: '8px',
                             border: 'none',
-                            fontSize: '13px',
+                            fontSize: '12.5px',
                             fontWeight: 700,
                             cursor: 'pointer',
                             background: viewMode === 'marks' ? 'var(--primary)' : 'transparent',
@@ -454,17 +470,17 @@ function SemesterAnalysisContent() {
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-low)', borderBottom: '2px solid var(--border)' }}>
                             {/* Primary Header */}
                             <tr>
-                                <th rowSpan={2} style={{ padding: '10px 12px', textAlign: 'left', minWidth: '40px', borderRight: '1px solid var(--border)' }}>#</th>
-                                <th rowSpan={2} style={{ padding: '10px 14px', textAlign: 'left', minWidth: '110px', borderRight: '1px solid var(--border)' }}>USN</th>
-                                <th rowSpan={2} style={{ padding: '10px 14px', textAlign: 'left', minWidth: '160px', borderRight: '2px solid var(--border)' }}>Student Name</th>
+                                <th rowSpan={2} style={{ position: 'sticky', left: 0, zIndex: 15, background: 'var(--surface)', padding: '10px 12px', textAlign: 'left', width: '44px', minWidth: '44px', borderRight: '1px solid var(--border)' }}>#</th>
+                                <th rowSpan={2} style={{ position: 'sticky', left: '44px', zIndex: 15, background: 'var(--surface)', padding: '10px 14px', textAlign: 'left', width: '135px', minWidth: '135px', borderRight: '1px solid var(--border)' }}>USN</th>
+                                <th rowSpan={2} style={{ position: 'sticky', left: '179px', zIndex: 15, background: 'var(--surface)', padding: '10px 14px', textAlign: 'left', minWidth: '180px', maxWidth: '220px', borderRight: '2px solid var(--border)', boxShadow: '4px 0 8px -2px rgba(0,0,0,0.08)' }}>Student Name</th>
                                 {data.subjects.map(sub => (
                                     <th
                                         key={sub.code}
-                                        colSpan={viewMode === 'credits' ? 5 : 4}
-                                        style={{ padding: '8px 10px', borderRight: '1px solid var(--border)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}
+                                        colSpan={viewMode === 'compact' ? 1 : viewMode === 'credits' ? 5 : 4}
+                                        style={{ padding: '8px 10px', borderRight: '1px solid var(--border)', background: 'var(--surface)', borderBottom: '1px solid var(--border)', minWidth: viewMode === 'compact' ? '95px' : 'auto' }}
                                     >
                                         <div style={{ fontWeight: 800, color: 'var(--primary)' }}>{sub.code}</div>
-                                        <div style={{ fontSize: '10px', fontWeight: 500, color: 'var(--tx-dim)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '140px', margin: '0 auto' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 500, color: 'var(--tx-dim)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: viewMode === 'compact' ? '90px' : '140px', margin: '0 auto' }}>
                                             {sub.name} ({sub.credits} Cr)
                                         </div>
                                     </th>
@@ -492,7 +508,9 @@ function SemesterAnalysisContent() {
                             {/* Sub-Header Columns */}
                             <tr style={{ fontSize: '10px', color: 'var(--tx-dim)', textTransform: 'uppercase' }}>
                                 {data.subjects.map(sub => (
-                                    viewMode === 'credits' ? (
+                                    viewMode === 'compact' ? (
+                                        <th key={`compact-cols-${sub.code}`} style={{ padding: '6px 4px', borderRight: '1px solid var(--border)' }}>Tot [Grd]</th>
+                                    ) : viewMode === 'credits' ? (
                                         <Fragment key={`cred-cols-${sub.code}`}>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Cr</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Ci</th>
@@ -514,7 +532,7 @@ function SemesterAnalysisContent() {
                         <tbody>
                             {filteredStudents.length === 0 ? (
                                 <tr>
-                                    <td colSpan={data.subjects.length * 5 + 10} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                    <td colSpan={data.subjects.length * (viewMode === 'compact' ? 1 : viewMode === 'credits' ? 5 : 4) + 10} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>
                                         {loading ? 'Calculating semester results from live database...' : 'No students found matching current filters.'}
                                     </td>
                                 </tr>
@@ -526,12 +544,12 @@ function SemesterAnalysisContent() {
                                             key={s.usn}
                                             style={{
                                                 borderBottom: '1px solid var(--border-low)',
-                                                background: rowFail ? 'rgba(239, 68, 68, 0.02)' : idx % 2 === 0 ? 'transparent' : 'var(--surface-low)',
+                                                background: rowFail ? 'rgba(239, 68, 68, 0.03)' : idx % 2 === 0 ? 'transparent' : 'var(--surface-low)',
                                                 transition: 'background 0.15s ease'
                                             }}
                                         >
-                                            <td style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--tx-dim)', borderRight: '1px solid var(--border-low)' }}>{idx + 1}</td>
-                                            <td style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 800, fontFamily: 'monospace', borderRight: '1px solid var(--border-low)' }}>
+                                            <td style={{ position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', padding: '8px 10px', textAlign: 'left', color: 'var(--tx-dim)', borderRight: '1px solid var(--border-low)' }}>{idx + 1}</td>
+                                            <td style={{ position: 'sticky', left: '44px', zIndex: 4, background: 'var(--surface)', padding: '8px 12px', textAlign: 'left', fontWeight: 800, fontFamily: 'monospace', borderRight: '1px solid var(--border-low)', whiteSpace: 'nowrap' }}>
                                                 <Link href={`/faculty/students/${s.usn}`} style={{ color: rowFail ? '#EF4444' : 'var(--primary)', textDecoration: 'none' }}>
                                                     {s.usn}
                                                 </Link>
@@ -541,13 +559,13 @@ function SemesterAnalysisContent() {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-main)', borderRight: '2px solid var(--border)' }}>{s.name}</td>
+                                            <td style={{ position: 'sticky', left: '179px', zIndex: 4, background: 'var(--surface)', padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-main)', borderRight: '2px solid var(--border)', boxShadow: '4px 0 8px -2px rgba(0,0,0,0.08)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</td>
 
                                             {data.subjects.map(sub => {
                                                 const d = s.subjectDetails[sub.code];
                                                 if (!d) {
                                                     return (
-                                                        <td key={sub.code} colSpan={viewMode === 'credits' ? 5 : 4} style={{ padding: '6px', color: 'var(--tx-muted)', borderRight: '1px solid var(--border)' }}>
+                                                        <td key={sub.code} colSpan={viewMode === 'compact' ? 1 : viewMode === 'credits' ? 5 : 4} style={{ padding: '6px', color: 'var(--tx-muted)', borderRight: '1px solid var(--border)' }}>
                                                             —
                                                         </td>
                                                     );
@@ -556,7 +574,31 @@ function SemesterAnalysisContent() {
                                                 const isF = d.isFail;
                                                 const failStyle = isF ? { background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', fontWeight: 800 } : {};
 
-                                                if (viewMode === 'credits') {
+                                                if (viewMode === 'compact') {
+                                                    return (
+                                                        <td key={sub.code} style={{
+                                                            padding: '6px 8px',
+                                                            borderRight: '1px solid var(--border)',
+                                                            background: isF ? 'rgba(239, 68, 68, 0.08)' : 'transparent',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            <span style={{ fontWeight: 800, color: isF ? '#EF4444' : 'var(--tx-main)' }}>
+                                                                {d.total ?? '—'}
+                                                            </span>
+                                                            <span style={{
+                                                                marginLeft: '5px',
+                                                                padding: '1px 5px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '10px',
+                                                                fontWeight: 900,
+                                                                background: isF ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+                                                                color: isF ? '#EF4444' : '#10B981'
+                                                            }}>
+                                                                {d.g}
+                                                            </span>
+                                                        </td>
+                                                    );
+                                                } else if (viewMode === 'credits') {
                                                     return (
                                                         <Fragment key={sub.code}>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>{d.cr}</td>
@@ -725,43 +767,82 @@ function SemesterAnalysisContent() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                                 <thead style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>
-                                        <th style={{ padding: '10px 14px', width: '50px', textAlign: 'left' }}>#</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left' }}>USN</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left' }}>Student Name</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'center', width: '120px' }}>Arrears Count</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left' }}>Failed Subjects List</th>
+                                        <th style={{ padding: '12px 14px', width: '50px', textAlign: 'left' }}>#</th>
+                                        <th style={{ padding: '12px 14px', width: '140px', textAlign: 'left' }}>USN</th>
+                                        <th style={{ padding: '12px 14px', textAlign: 'left', minWidth: '180px' }}>Student Name</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'center', minWidth: '180px', whiteSpace: 'nowrap' }}>Arrears &amp; Backlog Cr</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left' }}>Failed Subjects List</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {data.backlogRoster.map((st, idx) => (
-                                        <tr key={st.usn} style={{ borderBottom: '1px solid var(--border-low)' }}>
+                                        <tr key={st.usn} style={{ borderBottom: '1px solid var(--border-low)', transition: 'background 0.15s ease' }}>
                                             <td style={{ padding: '12px 14px', color: 'var(--tx-dim)' }}>{idx + 1}</td>
-                                            <td style={{ padding: '12px 14px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--tx-main)' }}>{st.usn}</td>
+                                            <td style={{ padding: '12px 14px', fontWeight: 800, fontFamily: 'monospace' }}>
+                                                <Link href={`/faculty/students/${st.usn}`} style={{ color: '#EF4444', textDecoration: 'none' }}>
+                                                    {st.usn}
+                                                </Link>
+                                                {st.isLE && (
+                                                    <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '9px', fontWeight: 800 }}>
+                                                        LE
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td style={{ padding: '12px 14px', fontWeight: 600 }}>{st.name}</td>
-                                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                                                <span style={{ padding: '3px 10px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444', fontWeight: 800 }}>
-                                                    {st.arrearsCount} Subjects ({st.backlogCredits} Cr)
+                                            <td style={{ padding: '12px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                <span style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    padding: '5px 14px',
+                                                    borderRadius: '20px',
+                                                    background: 'rgba(239, 68, 68, 0.12)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                                    color: '#EF4444',
+                                                    fontWeight: 800,
+                                                    fontSize: '12px',
+                                                    whiteSpace: 'nowrap',
+                                                    lineHeight: 1
+                                                }}>
+                                                    {st.arrearsCount} {st.arrearsCount === 1 ? 'Subject' : 'Subjects'} ({st.backlogCredits} Cr)
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '12px 14px' }}>
-                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                                    {st.failedSubjects.map((f, i) => (
-                                                        <span
-                                                            key={i}
-                                                            title={`${f.name} (Int: ${f.internal ?? '—'}, Ext: ${f.external ?? '—'}, Tot: ${f.total ?? '—'})`}
-                                                            style={{
-                                                                padding: '2px 8px',
-                                                                borderRadius: '4px',
-                                                                background: 'var(--surface-low)',
-                                                                border: '1px solid var(--border)',
-                                                                fontSize: '11px',
-                                                                fontWeight: 700,
-                                                                color: '#EF4444'
-                                                            }}
-                                                        >
-                                                            {f.code} <span style={{ opacity: 0.7 }}>[{f.grade}]</span>
-                                                        </span>
-                                                    ))}
+                                            <td style={{ padding: '12px 16px' }}>
+                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                    {st.failedSubjects.map((f, i) => {
+                                                        const isAbsent = f.grade === 'A' || f.grade === 'AB' || f.grade === 'ABSENT';
+                                                        return (
+                                                            <span
+                                                                key={i}
+                                                                title={`${f.name} (Int: ${f.internal ?? '—'}, Ext: ${f.external ?? '—'}, Tot: ${f.total ?? '—'})`}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '6px',
+                                                                    background: isAbsent ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+                                                                    border: `1px solid ${isAbsent ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.25)'}`,
+                                                                    fontSize: '11.5px',
+                                                                    fontWeight: 700,
+                                                                    color: isAbsent ? '#D97706' : '#DC2626',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}
+                                                            >
+                                                                <span style={{ fontFamily: 'monospace' }}>{f.code}</span>
+                                                                <span style={{
+                                                                    padding: '1px 5px',
+                                                                    borderRadius: '3px',
+                                                                    fontSize: '9.5px',
+                                                                    fontWeight: 900,
+                                                                    background: isAbsent ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.18)',
+                                                                    color: isAbsent ? '#B45309' : '#B91C1C'
+                                                                }}>
+                                                                    {isAbsent ? 'ABSENT' : `FAIL (${f.grade || 'F'})`}
+                                                                </span>
+                                                            </span>
+                                                        );
+                                                    })}
                                                 </div>
                                             </td>
                                         </tr>
