@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { extractBatchFromUsn } from '@/lib/semester-utils';
+import { extractBatchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,17 +48,18 @@ export async function GET(req) {
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').order('semester', { ascending: true }),
-            supabaseAdmin.from('students').select('branch, year, usn').limit(2000),
+            supabaseAdmin.from('students').select('branch, year, usn, lateral_entry').limit(2000),
             supabaseAdmin.from('branches').select('code, label')
         ]);
 
-        // 1. Derive distinct batches from students (USN patterns & year) and classes
+        // 1. Derive distinct batches from students (academic cohorts) and classes
         const batchSet = new Set(['2025', '2024', '2023', '2022', '2021']);
         (rawStudents || []).forEach(s => {
-            if (s.year) batchSet.add(String(s.year));
-            const parsed = extractBatchFromUsn(s.usn);
-            if (parsed) {
-                batchSet.add(parsed.fullYear);
+            const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
+            if (cohort) {
+                batchSet.add(cohort.fullYear);
+            } else if (s.year) {
+                batchSet.add(String(s.year));
             }
         });
         (rawClasses || []).forEach(c => {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { extractBatchFromUsn } from '@/lib/semester-utils';
+import { extractBatchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +35,7 @@ export async function GET(req) {
         // 1. Fetch all students in this department
         const { data: rawStudents, error: stuErr } = await supabaseAdmin
             .from('students')
-            .select('id, usn, name, branch, year')
+            .select('id, usn, name, branch, year, lateral_entry')
             .ilike('branch', `%${branch}%`)
             .limit(1000);
 
@@ -46,15 +46,11 @@ export async function GET(req) {
             return ok({ branch, semester, batchComparison: [], subjectTrends: [] });
         }
 
-        // Group students by intake batch
+        // Group students by academic cohort batch (accounting for lateral entry offset)
         const studentsByBatch = new Map();
         students.forEach(s => {
-            let bYear = s.year ? String(s.year) : null;
-            if (!bYear && s.usn) {
-                const parsed = extractBatchFromUsn(s.usn);
-                if (parsed) bYear = parsed.fullYear;
-            }
-            if (!bYear) bYear = 'Unknown';
+            const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
+            let bYear = cohort ? cohort.fullYear : (s.year ? String(s.year) : 'Unknown');
             const list = studentsByBatch.get(bYear) || [];
             list.push(s);
             studentsByBatch.set(bYear, list);

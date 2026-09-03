@@ -64,7 +64,7 @@ export async function GET(req) {
 
         // 2. Client-side filter for batch & text search (covering USN, Name, Email)
         if (batch && batch !== 'all') {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year));
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
         if (search) {

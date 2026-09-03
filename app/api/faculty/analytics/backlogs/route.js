@@ -44,7 +44,7 @@ export async function GET(req) {
 
         let students = rawStudents || [];
         if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year));
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
         if (search) {

@@ -43,7 +43,7 @@ export async function GET(req) {
         let students = stData || [];
 
         if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year));
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
         if (students.length === 0) {

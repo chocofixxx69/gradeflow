@@ -65,7 +65,7 @@ export async function GET(req) {
         if (usns.length > 0) {
             let stuQuery = supabaseAdmin
                 .from('students')
-                .select('usn, name, branch, year')
+                .select('usn, name, branch, year, lateral_entry')
                 .in('usn', usns);
 
             if (branch) {
@@ -81,7 +81,7 @@ export async function GET(req) {
             const student = studentMap.get(m.usn);
             if (!student) return !branch; // If branch filter was applied, only keep matched students
             if (batch) {
-                return matchesBatch(student.usn, batch, student.year);
+                return matchesBatch(student.usn, batch, student.year, student.lateral_entry);
             }
             return true;
         });

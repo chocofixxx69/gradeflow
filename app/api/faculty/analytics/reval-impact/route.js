@@ -34,7 +34,7 @@ export async function GET(req) {
         // 1. Fetch real students matching branch and batch
         let query = supabaseAdmin
             .from('students')
-            .select('id, usn, name, branch, year')
+            .select('id, usn, name, branch, year, lateral_entry')
             .ilike('branch', `%${branch}%`)
             .limit(1000);
 
@@ -43,7 +43,7 @@ export async function GET(req) {
 
         let students = rawStudents || [];
         if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year));
+            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
         const usns = students.map(s => s.usn);
