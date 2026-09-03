@@ -80,21 +80,45 @@ export async function GET(req) {
         const batches = Array.from(batchSet).sort().reverse();
 
         // 2. Branches list - merge real branches table and active student branches
+        const branchLabels = {
+            'CS': 'Computer Science & Engineering',
+            'AI': 'AI & Machine Learning (AIML)',
+            'CI': 'AI & Machine Learning (CI)',
+            'AIML': 'AI & Machine Learning (AIML)',
+            'DS': 'Computer Science & Data Science (DS)',
+            'CD': 'Computer Science & Design / Data Science (CD)',
+            'CV': 'Civil Engineering',
+            'EC': 'Electronics & Communication Engineering',
+            'EE': 'Electrical & Electronics Engineering',
+            'ME': 'Mechanical Engineering',
+            'RI': 'Robotics & Artificial Intelligence'
+        };
+
         const branchMap = new Map();
-        DEFAULT_BRANCHES.forEach(b => branchMap.set(b.code, b));
+        DEFAULT_BRANCHES.forEach(b => branchMap.set(b.code, { ...b, label: branchLabels[b.code] || b.label }));
         if (metaBranches && Array.isArray(metaBranches)) {
             metaBranches.forEach(b => {
-                if (b.code) branchMap.set(b.code, { code: b.code, label: b.label || b.code, name: b.label || b.code });
+                if (b.code) {
+                    const label = branchLabels[b.code] || b.label || b.code;
+                    branchMap.set(b.code, { code: b.code, label, name: label });
+                }
             });
         }
         (rawStudents || []).forEach(s => {
-            if (s.branch && !branchMap.has(s.branch)) {
-                branchMap.set(s.branch, { code: s.branch, label: s.branch, name: s.branch });
+            const raw = (s.branch || '').trim();
+            if (raw) {
+                const code = raw === 'Computer Science (CSE)' ? 'CS' : raw;
+                if (!branchMap.has(code)) {
+                    const label = branchLabels[code] || raw;
+                    branchMap.set(code, { code, label, name: label });
+                }
             }
         });
         (rawClasses || []).forEach(c => {
-            if (c.branch && !branchMap.has(c.branch)) {
-                branchMap.set(c.branch, { code: c.branch, label: c.branch, name: c.branch });
+            const raw = (c.branch || '').trim();
+            if (raw && !branchMap.has(raw)) {
+                const label = branchLabels[raw] || raw;
+                branchMap.set(raw, { code: raw, label, name: label });
             }
         });
 

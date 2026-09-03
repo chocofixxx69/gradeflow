@@ -22,13 +22,14 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
+        const rawBranch = searchParams.get('branch') || '';
+        const branch = rawBranch.toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
         const batch = searchParams.get('batch') || '';
         const classId = searchParams.get('classId') || '';
         const section = searchParams.get('section') || '';
 
-        const cacheKey = `sem_analysis_v2:${branch}:${semester}:${batch}:${classId}:${section}`;
+        const cacheKey = `sem_analysis_v3:${branch || 'ALL'}:${semester}:${batch}:${classId}:${section}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
@@ -53,7 +54,7 @@ export async function GET(req) {
                 studentsList = stData || [];
             }
         } else {
-            const stData = await fetchDynamicStudents(supabaseAdmin, { branch });
+            const stData = await fetchDynamicStudents(supabaseAdmin, { branch: (!branch || branch === 'ALL') ? '' : branch });
             let filtered = stData || [];
 
             if (batch) {
@@ -84,11 +85,15 @@ export async function GET(req) {
         const allMarks = await fetchDynamicMarks(supabaseAdmin, { usns: studentUsns, semester });
 
         // 3. Fetch catalog subjects for this branch and semester
-        const { data: catSubjects } = await supabaseAdmin
-            .from('subject_catalog')
-            .select('*')
-            .ilike('branch', `%${branch}%`)
-            .eq('semester', semester);
+        let catQuery = supabaseAdmin.from('subject_catalog').select('*').eq('semester', semester);
+        if (branch && branch !== 'ALL') {
+            const b = branch.toUpperCase().trim();
+            if (b === 'AI' || b === 'AIML' || b === 'CI') catQuery = catQuery.or('branch.ilike.%AI%,branch.ilike.%CI%,branch.ilike.%AIML%');
+            else if (b === 'DS' || b === 'CD') catQuery = catQuery.or('branch.ilike.%DS%,branch.ilike.%CD%,branch.ilike.%DATA%');
+            else if (b === 'CS' || b === 'CSE') catQuery = catQuery.or('branch.ilike.%CS%,branch.ilike.%COMPUTER%');
+            else catQuery = catQuery.ilike('branch', `%${branch}%`);
+        }
+        const { data: catSubjects } = await catQuery;
 
         const catalogMap = new Map();
         (catSubjects || []).forEach(sub => {

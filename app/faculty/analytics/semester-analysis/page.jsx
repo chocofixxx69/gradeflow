@@ -297,8 +297,37 @@ function SemesterAnalysisContent() {
                             <Select
                                 label="Branch / Department"
                                 value={branch}
-                                onChange={e => setBranch(e.target.value)}
-                                options={meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                                onChange={e => {
+                                    setBranch(e.target.value);
+                                    setClassId('');
+                                }}
+                                options={[
+                                    { value: 'ALL', label: 'All Branches / Departments' },
+                                    ...meta.branches.map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))
+                                ]}
+                            />
+                        </div>
+                        <div>
+                            <Select
+                                label="Class / Section"
+                                value={classId}
+                                onChange={e => {
+                                    const nextClassId = e.target.value;
+                                    setClassId(nextClassId);
+                                    if (nextClassId) {
+                                        const c = (meta.classes || []).find(cls => String(cls.id) === String(nextClassId));
+                                        if (c) {
+                                            if (c.semester) setSemester(Number(c.semester));
+                                            if (c.branch && branch !== c.branch) setBranch(c.branch);
+                                        }
+                                    }
+                                }}
+                                options={[
+                                    { value: '', label: 'All Classes (Entire Cohort)' },
+                                    ...(meta.classes || [])
+                                        .filter(c => !branch || branch === 'ALL' || (c.branch && c.branch.toUpperCase().includes(branch.toUpperCase())))
+                                        .map(c => ({ value: c.id, label: `${c.name} (${c.branch} - Sem ${c.semester}${c.section ? ` Sec ${c.section}` : ''})` }))
+                                ]}
                             />
                         </div>
                         <div>
