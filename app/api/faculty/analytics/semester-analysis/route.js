@@ -28,7 +28,7 @@ export async function GET(req) {
         const classId = searchParams.get('classId') || '';
         const section = searchParams.get('section') || '';
 
-        const cacheKey = `sem_analysis:${branch}:${semester}:${batch}:${classId}:${section}`;
+        const cacheKey = `sem_analysis_v2:${branch}:${semester}:${batch}:${classId}:${section}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
@@ -112,25 +112,33 @@ export async function GET(req) {
             studentUsns = studentsList.map(s => s.usn);
         }
 
-        // 5. Determine unique subject columns across this dataset
+        // 5. Determine unique subject columns from marks actually taken by this cohort
         const subjectCodeMap = new Map();
-        (catSubjects || []).forEach(s => {
-            subjectCodeMap.set(s.subject_code.toUpperCase(), {
-                code: s.subject_code.toUpperCase(),
-                name: s.subject_name || s.subject_code,
-                credits: Number(s.credits) || 3
-            });
-        });
         (allMarks || []).forEach(m => {
             const code = (m.subject_code || m.code || '').toUpperCase();
             if (code && !subjectCodeMap.has(code)) {
+                const cat = catalogMap.get(code);
                 subjectCodeMap.set(code, {
                     code,
-                    name: m.subject_name || m.name || code,
-                    credits: resolveSubjectCredits(m, catalogMap.get(code))
+                    name: cat?.subject_name || m.subject_name || m.name || code,
+                    credits: Number(cat?.credits) || resolveSubjectCredits(m, cat)
                 });
             }
         });
+
+        // Fallback: If no marks exist yet for this semester, populate from catalog
+        if (subjectCodeMap.size === 0) {
+            (catSubjects || []).forEach(s => {
+                const code = s.subject_code.toUpperCase();
+                if (!code.startsWith('1B') && !code.includes('XX')) {
+                    subjectCodeMap.set(code, {
+                        code,
+                        name: s.subject_name || s.subject_code,
+                        credits: Number(s.credits) || 3
+                    });
+                }
+            });
+        }
 
         const subjectCols = Array.from(subjectCodeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
 

@@ -11,7 +11,7 @@ import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } fr
 import { Button, Select, Input } from '@/components/ui/Foundation';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
-import { getCachedApiData, apiRequest } from '@/lib/api/client';
+import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 
 export default function SemesterAnalysisPage() {
     return (
@@ -282,7 +282,7 @@ function SemesterAnalysisContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={loadAnalysis} variant="primary">
+                    <Button onClick={() => { clearApiCache(); loadAnalysis(); }} variant="primary">
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
                         Refresh
                     </Button>
