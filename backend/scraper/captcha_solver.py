@@ -11,9 +11,10 @@ def get_easyocr():
     if reader is None:
         try:
             import easyocr
-            # Load English model. It works better without GPU locally if dependencies aren't aligned.
-            print("[CAPTCHA] Initializing EasyOCR Engine...", file=sys.stderr)
-            reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+            import torch
+            has_gpu = torch.cuda.is_available()
+            print(f"[CAPTCHA] Initializing EasyOCR Engine (CUDA GPU = {has_gpu})...", file=sys.stderr)
+            reader = easyocr.Reader(['en'], gpu=has_gpu, verbose=False)
         except Exception as e:
             print(f"[CAPTCHA] Failed to load EasyOCR: {e}", file=sys.stderr)
     return reader
