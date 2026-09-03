@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
-import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
+import { resolveSubjectCredits } from '@/lib/export-utils';
+import { isFailedSubject, getGradePoint } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,6 +103,15 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
+        // When "All Batches" is selected without classId, only include students who appeared in this semester or are in/above it
+        if (!batch && !classId) {
+            studentsList = studentsList.filter(s => {
+                const uMarks = marksByUsn.get(s.usn) || [];
+                return uMarks.length > 0 || (s.semester && Number(s.semester) >= semester);
+            });
+            studentUsns = studentsList.map(s => s.usn);
+        }
+
         // 5. Determine unique subject columns across this dataset
         const subjectCodeMap = new Map();
         (catSubjects || []).forEach(s => {
@@ -175,8 +184,7 @@ export async function GET(req) {
                     const extMarks = m.external ?? m.see_marks ?? null;
                     const totMarks = m.total ?? m.total_marks ?? null;
                     const isFail = isFailedSubject(m);
-
-                    const gp = scoreToGradePoint(totMarks, grade);
+                    const gp = isFail ? 0 : getGradePoint(grade, student.scheme || '2022', totMarks, extMarks);
                     const ci = isFail ? 0 : cr;
                     const crp = ci * gp;
 
@@ -278,6 +286,7 @@ export async function GET(req) {
             studentsProcessed.push({
                 usn: student.usn,
                 name: student.name || student.usn,
+                isLE: isLateralEntry(student.usn, student.lateral_entry),
                 hasData,
                 totalRegisteredCr,
                 totalEarnedCi,

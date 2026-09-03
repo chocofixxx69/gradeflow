@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
+import Link from 'next/link';
 import AuthGuard from '../../../../components/AuthGuard';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -32,6 +33,7 @@ function SemesterAnalysisContent() {
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
     const [classId, setClassId] = useState('');
     const [viewMode, setViewMode] = useState('credits'); // 'credits' | 'marks'
+    const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'passed' | 'failed'
     const [searchQuery, setSearchQuery] = useState('');
 
     const initialData = getCachedApiData('/api/faculty/analytics/semester-analysis', {
@@ -100,11 +102,13 @@ function SemesterAnalysisContent() {
         }
     }, [branch, semester, batch, classId, loadAnalysis]);
 
-    // Filter students by search
+    // Filter students by status and search
     const filteredStudents = (data.students || []).filter(s => {
+        if (statusFilter === 'passed' && (s.arrearsCount > 0 || !s.hasData)) return false;
+        if (statusFilter === 'failed' && (s.arrearsCount === 0 || !s.hasData)) return false;
         if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
-        return s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+        const q = searchQuery.toLowerCase().trim();
+        return (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
     });
 
     // ── Excel Export ──
@@ -363,15 +367,54 @@ function SemesterAnalysisContent() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ padding: '6px 12px', borderRadius: '8px', background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '12px', fontWeight: 700 }}>
-                        Appeared: <strong style={{ color: 'var(--tx-main)' }}>{data.summary.totalAppeared}</strong>
-                    </span>
-                    <span style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', color: '#10B981', fontSize: '12px', fontWeight: 700 }}>
+                    <button
+                        onClick={() => setStatusFilter('all')}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border)',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: statusFilter === 'all' ? 'var(--primary)' : 'var(--surface)',
+                            color: statusFilter === 'all' ? '#FFFFFF' : 'var(--tx-main)',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        Appeared: <strong>{data.summary.totalAppeared}</strong>
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter(statusFilter === 'passed' ? 'all' : 'passed')}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid #10B981',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: statusFilter === 'passed' ? '#10B981' : 'rgba(16, 185, 129, 0.1)',
+                            color: statusFilter === 'passed' ? '#FFFFFF' : '#10B981',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
                         Passed: <strong>{data.summary.totalPassed}</strong> ({data.summary.passPercentage}%)
-                    </span>
-                    <span style={{ padding: '6px 12px', borderRadius: '8px', background: data.summary.totalFailed > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--surface)', border: `1px solid ${data.summary.totalFailed > 0 ? '#EF4444' : 'var(--border)'}`, color: data.summary.totalFailed > 0 ? '#EF4444' : 'var(--tx-muted)', fontSize: '12px', fontWeight: 700 }}>
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter(statusFilter === 'failed' ? 'all' : 'failed')}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: `1px solid ${data.summary.totalFailed > 0 ? '#EF4444' : 'var(--border)'}`,
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: statusFilter === 'failed' ? '#EF4444' : data.summary.totalFailed > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--surface)',
+                            color: statusFilter === 'failed' ? '#FFFFFF' : data.summary.totalFailed > 0 ? '#EF4444' : 'var(--tx-muted)',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
                         Arrears: <strong>{data.summary.totalFailed}</strong>
-                    </span>
+                    </button>
                 </div>
             </div>
 
@@ -421,20 +464,20 @@ function SemesterAnalysisContent() {
                             <tr style={{ fontSize: '10px', color: 'var(--tx-dim)', textTransform: 'uppercase' }}>
                                 {data.subjects.map(sub => (
                                     viewMode === 'credits' ? (
-                                        <span key={`cred-cols-${sub.code}`} style={{ display: 'contents' }}>
+                                        <Fragment key={`cred-cols-${sub.code}`}>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Cr</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Ci</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>G</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Gi</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border)' }}>CrP</th>
-                                        </span>
+                                        </Fragment>
                                     ) : (
-                                        <span key={`mark-cols-${sub.code}`} style={{ display: 'contents' }}>
+                                        <Fragment key={`mark-cols-${sub.code}`}>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Int</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Ext</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>Tot</th>
                                             <th style={{ padding: '6px 4px', borderRight: '1px solid var(--border)' }}>Grd</th>
-                                        </span>
+                                        </Fragment>
                                     )
                                 ))}
                             </tr>
@@ -443,7 +486,7 @@ function SemesterAnalysisContent() {
                             {filteredStudents.length === 0 ? (
                                 <tr>
                                     <td colSpan={data.subjects.length * 5 + 10} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>
-                                        {loading ? 'Calculating semester results...' : 'No students found matching current filters.'}
+                                        {loading ? 'Calculating semester results from live database...' : 'No students found matching current filters.'}
                                     </td>
                                 </tr>
                             ) : (
@@ -459,7 +502,16 @@ function SemesterAnalysisContent() {
                                             }}
                                         >
                                             <td style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--tx-dim)', borderRight: '1px solid var(--border-low)' }}>{idx + 1}</td>
-                                            <td style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 800, fontFamily: 'monospace', color: 'var(--tx-main)', borderRight: '1px solid var(--border-low)' }}>{s.usn}</td>
+                                            <td style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 800, fontFamily: 'monospace', borderRight: '1px solid var(--border-low)' }}>
+                                                <Link href={`/faculty/students/${s.usn}`} style={{ color: rowFail ? '#EF4444' : 'var(--primary)', textDecoration: 'none' }}>
+                                                    {s.usn}
+                                                </Link>
+                                                {s.isLE && (
+                                                    <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '9px', fontWeight: 800 }}>
+                                                        LE
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-main)', borderRight: '2px solid var(--border)' }}>{s.name}</td>
 
                                             {data.subjects.map(sub => {
@@ -477,22 +529,22 @@ function SemesterAnalysisContent() {
 
                                                 if (viewMode === 'credits') {
                                                     return (
-                                                        <span key={sub.code} style={{ display: 'contents' }}>
+                                                        <Fragment key={sub.code}>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>{d.cr}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)', ...failStyle }}>{d.ci}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)', ...failStyle }}>{d.g}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>{d.gi}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border)', fontWeight: 700 }}>{d.crp}</td>
-                                                        </span>
+                                                        </Fragment>
                                                     );
                                                 } else {
                                                     return (
-                                                        <span key={sub.code} style={{ display: 'contents' }}>
+                                                        <Fragment key={sub.code}>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>{d.internal ?? '—'}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)' }}>{d.external ?? '—'}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border-low)', ...failStyle }}>{d.total ?? '—'}</td>
                                                             <td style={{ padding: '6px 4px', borderRight: '1px solid var(--border)', ...failStyle }}>{d.g}</td>
-                                                        </span>
+                                                        </Fragment>
                                                     );
                                                 }
                                             })}
