@@ -115,12 +115,12 @@ function FacultyDashboardView({
     return (
         <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
             {/* 1. Teaching Load & Assigned Subjects */}
-            <section className={styles.section} aria-labelledby="faculty-assigned-title">
+            <section className={`${styles.section} ${styles.sectionTeaching}`} aria-labelledby="faculty-assigned-title">
                 <div className={styles.sectionHeader}>
                     <div>
                         <div className={styles.eyebrow}>Teaching Load</div>
                         <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects &amp; Classes</h2>
-                        <p className={styles.meta}>Your current semester academic teaching roster and assignments.</p>
+                        <p className={styles.meta}>Your current semester teaching roster and assignments.</p>
                     </div>
                 </div>
                 {assignedLoading ? (
@@ -134,16 +134,16 @@ function FacultyDashboardView({
                 ) : (
                     <>
                         {assignedClasses.length > 0 && (
-                            <div style={{ marginBottom: '16px' }}>
-                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+                            <div style={{ marginBottom: '14px' }}>
+                                <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
                                     Assigned Classes
                                 </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                     {assignedClasses.map(c => (
-                                        <div key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 700 }}>
-                                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>school</span>
+                                        <div key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 700 }}>
+                                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>school</span>
                                             <span>{c.name}</span>
-                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>({c.branch} · Sem {c.semester} · Sec {c.section})</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>({c.branch} · S{c.semester} · {c.section})</span>
                                         </div>
                                     ))}
                                 </div>
@@ -164,13 +164,16 @@ function FacultyDashboardView({
                 )}
             </section>
 
-            {/* 2. Faculty Command Center: Student Lookup */}
-            <section className={styles.section} aria-labelledby="faculty-lookup-title">
+            {/* 2. Faculty Command Center: Student Lookup – first on mobile */}
+            <section
+                className={`${styles.section} ${styles.sectionLookup}`}
+                aria-labelledby="faculty-lookup-title"
+            >
                 <div className={styles.sectionHeader}>
                     <div>
                         <div className={styles.eyebrow}>Faculty Command Center</div>
                         <h2 id="faculty-lookup-title" className={styles.sectionTitle}>Student Lookup</h2>
-                        <p className={styles.subtitle}>Search for any student by USN to view or fetch their official records.</p>
+                        <p className={styles.subtitle} style={{ display: 'none' }}>Search for any student by USN to view or fetch their official records.</p>
                     </div>
                     {scraping && <LoadingState density="compact" label="Fetching VTU records" />}
                 </div>
@@ -179,7 +182,7 @@ function FacultyDashboardView({
                     <SearchInput
                         label="Student USN"
                         hideLabel
-                        placeholder="Enter Student USN"
+                        placeholder="Enter Student USN (e.g. 2AB23CS043)"
                         value={usn}
                         onChange={(event) => setUsn?.(event.target.value.toUpperCase())}
                         onKeyDown={(event) => event.key === 'Enter' && lookupStudent?.(usn)}
@@ -194,7 +197,7 @@ function FacultyDashboardView({
                         onClick={() => scraping ? stopScraping?.() : fetchFromVTU?.()}
                         disabled={!usn && !scraping}
                     >
-                        {scraping ? 'Cancel Scraping' : 'Fetch VTU'}
+                        {scraping ? 'Stop' : 'Fetch VTU'}
                     </Button>
                 </Inline>
 
