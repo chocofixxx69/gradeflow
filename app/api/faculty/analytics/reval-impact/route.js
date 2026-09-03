@@ -12,7 +12,14 @@ export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
 function ok(data) {
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data }, {
+        headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Surrogate-Control': 'no-store'
+        }
+    });
 }
 
 function fail(message, code = 'ERROR', status = 400) {
@@ -62,18 +69,25 @@ export async function GET(req) {
 
         const studentByUsn = new Map(students.map(s => [s.usn, s]));
 
-        // Fetch attempts for this semester or all semesters directly
-        let query = supabaseAdmin
-            .from('subject_mark_attempts')
-            .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, scraped_at');
-
-        if (semester !== 'ALL' && !isNaN(semester)) {
-            query = query.eq('semester', semester);
+        // Fetch attempts for this semester or all semesters directly with automatic pagination
+        let rawAttempts = [];
+        let from = 0;
+        while (true) {
+            let q = supabaseAdmin
+                .from('subject_mark_attempts')
+                .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, scraped_at')
+                .order('id')
+                .range(from, from + 999);
+            if (semester !== 'ALL' && !isNaN(semester)) {
+                q = q.eq('semester', semester);
+            }
+            const { data: page, error: attemptsErr } = await q;
+            if (attemptsErr) throw attemptsErr;
+            if (!page || page.length === 0) break;
+            rawAttempts.push(...page);
+            if (page.length < 1000) break;
+            from += 1000;
         }
-
-        const { data: rawAttempts, error: attemptsErr } = await query;
-
-        if (attemptsErr) throw attemptsErr;
 
         // Filter by branch and batch
         const attempts = (rawAttempts || []).filter(a => {
