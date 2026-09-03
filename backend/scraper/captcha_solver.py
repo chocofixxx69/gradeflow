@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 import re
@@ -12,8 +13,10 @@ def get_easyocr():
         try:
             import easyocr
             import torch
-            has_gpu = torch.cuda.is_available()
-            print(f"[CAPTCHA] Initializing EasyOCR Engine (CUDA GPU = {has_gpu})...", file=sys.stderr)
+            force_cpu = os.getenv("FORCE_CPU", "false").lower() in ("true", "1", "yes")
+            has_gpu = False if force_cpu else bool(torch.cuda.is_available())
+            mode_str = "CUDA GPU" if has_gpu else ("Forced CPU" if force_cpu else "CPU")
+            print(f"[CAPTCHA] Initializing EasyOCR Engine ({mode_str})...", file=sys.stderr)
             reader = easyocr.Reader(['en'], gpu=has_gpu, verbose=False)
         except Exception as e:
             print(f"[CAPTCHA] Failed to load EasyOCR: {e}", file=sys.stderr)
