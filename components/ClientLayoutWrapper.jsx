@@ -1,8 +1,10 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { SWRConfig } from 'swr';
 import Sidebar from './Navbar';
 import { shouldHideNavigation } from './navigationConfig';
+import { swrGlobalConfig } from '../lib/api/live';
 
 function Footer() {
     return (
@@ -93,16 +95,18 @@ export default function ClientLayoutWrapper({ children }) {
     const hideSidebar = shouldHideNavigation(pathname);
 
     return (
-        <div className={`app-layout ${hideSidebar ? 'app-layout-public' : 'app-layout-authenticated'}`}>
-            {!hideSidebar && <Sidebar />}
-            <div
-                className={`main-content ${hideSidebar ? 'full-width' : ''}`}
-            >
-                <div className="main-content-body">
-                    {children}
+        <SWRConfig value={swrGlobalConfig}>
+            <div className={`app-layout ${hideSidebar ? 'app-layout-public' : 'app-layout-authenticated'}`}>
+                {!hideSidebar && <Sidebar />}
+                <div
+                    className={`main-content ${hideSidebar ? 'full-width' : ''}`}
+                >
+                    <div className="main-content-body">
+                        {children}
+                    </div>
+                    {!isLandingPage && <Footer />}
                 </div>
-                {!isLandingPage && <Footer />}
             </div>
-        </div>
+        </SWRConfig>
     );
 }

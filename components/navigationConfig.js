@@ -25,6 +25,7 @@ export const NAV_CONFIG = {
     { key: 'subjectAnalytics', label: 'Subject Analytics', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Curriculum' },
     { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Curriculum' },
     { key: 'subjects', label: 'Subjects Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Curriculum' },
+    { key: 'hallTickets', label: 'Hall Tickets', href: '/faculty/hall-tickets', icon: 'confirmation_number', group: 'Teaching & Curriculum' },
     { key: 'vtuUrls', label: 'VTU Result URLs', href: '/faculty/vtu-urls', icon: 'link', group: 'Teaching & Curriculum' },
 
     // Account
@@ -109,6 +110,7 @@ export const ROUTE_LABELS = {
   '/faculty/analytics/cohort-trends': 'Cohort Trends',
   '/faculty/analytics/sections-compare': 'Sections Comparison',
   '/faculty/batch-upload': 'Batch Upload',
+  '/faculty/hall-tickets': 'Hall Ticket Generator',
   '/faculty/vtu-urls': 'VTU Result URLs',
   '/faculty/internal': 'Faculty Administration',
   '/faculty/login': 'Faculty Login',

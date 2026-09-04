@@ -41,22 +41,45 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
+        // 1. Fetch classes, catalog, branches, and students in parallel
         const [
             { data: rawClasses },
             catalogSubjects,
             { data: metaBranches },
-            marksSubjects
+            rawStudents,
+            { count: totalMarksCount }
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
             fetchAllPaginated('subject_catalog', 'subject_code, subject_name, semester, branch, scheme, credits', supabaseAdmin),
             supabaseAdmin.from('branches').select('code, label'),
-            fetchAllPaginated('subject_marks', 'subject_code, subject_name, semester, credits, usn', supabaseAdmin)
+            fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry, name' }),
+            supabaseAdmin.from('subject_marks').select('*', { count: 'exact', head: true })
         ]);
 
-        // Dynamically fetch all students from the database without arbitrary limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry' });
+        // 2. Fetch all real marks using fast parallel chunking
+        const pageSize = 1000;
+        const totalPages = Math.ceil((totalMarksCount || 0) / pageSize);
+        const marksPromises = [];
+        for (let p = 0; p < totalPages; p++) {
+            marksPromises.push(
+                supabaseAdmin
+                    .from('subject_marks')
+                    .select('subject_code, subject_name, semester, credits, usn')
+                    .order('id')
+                    .range(p * pageSize, (p + 1) * pageSize - 1)
+                    .then(res => res.data || [])
+            );
+        }
+        const marksChunks = await Promise.all(marksPromises);
+        const marksSubjects = marksChunks.flat();
 
-        // 1. Derive distinct batches dynamically from database students and classes
+        // Map students for quick lookup
+        const studentMap = new Map();
+        (rawStudents || []).forEach(s => {
+            if (s.usn) studentMap.set(s.usn, s);
+        });
+
+        // 3. Derive distinct batches dynamically from database students, marks, and classes
         const batchSet = new Set();
         (rawStudents || []).forEach(s => {
             const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
@@ -66,6 +89,12 @@ export async function GET(req) {
                 batchSet.add(String(s.year));
             }
         });
+
+        (marksSubjects || []).forEach(m => {
+            const parsed = extractBatchFromUsn(m.usn);
+            if (parsed) batchSet.add(parsed.fullYear);
+        });
+
         (rawClasses || []).forEach(c => {
             if (c.batch) batchSet.add(String(c.batch));
             if (c.academic_year) {
@@ -74,7 +103,6 @@ export async function GET(req) {
             }
         });
 
-        // If no records in database yet, generate dynamic range around current calendar year
         if (batchSet.size === 0) {
             const cur = new Date().getFullYear();
             for (let y = cur; y >= cur - 4; y--) batchSet.add(String(y));
@@ -82,7 +110,7 @@ export async function GET(req) {
 
         const batches = Array.from(batchSet).sort().reverse();
 
-        // 2. Branches list - merge real branches table and active student branches
+        // 4. Branches list - merge real branches table and active student branches
         const branchLabels = {
             'CS': 'Computer Science & Engineering',
             'AI': 'AI & Machine Learning (AIML)',
@@ -128,32 +156,19 @@ export async function GET(req) {
 
         const branches = Array.from(branchMap.values());
 
-        // 3. Complete Subjects list merged from both catalog and real student marks in DB
+        // 5. Build Subject Directory: Primary source is REAL marks from subject_marks
         const subjectMap = new Map();
-
-        (catalogSubjects || []).forEach(s => {
-            const code = (s.subject_code || '').toUpperCase().trim();
-            if (!code) return;
-            const sem = Number(s.semester) || 1;
-            const b = (s.branch || 'ALL').toUpperCase().trim();
-            const key = `${code}|${sem}`;
-            subjectMap.set(key, {
-                code,
-                name: s.subject_name || code,
-                semester: sem,
-                branch: b,
-                branches: [b],
-                scheme: s.scheme || '2022',
-                credits: Number(s.credits) || 3
-            });
-        });
 
         (marksSubjects || []).forEach(m => {
             const code = (m.subject_code || '').toUpperCase().trim();
             if (!code) return;
             const sem = Number(m.semester) || 1;
-            const b = extractBranchFromUsn(m.usn) || 'CS';
             const key = `${code}|${sem}`;
+
+            const st = studentMap.get(m.usn);
+            const cohort = getStudentAcademicBatch(m.usn, st?.lateral_entry);
+            const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
+            const b = extractBranchFromUsn(m.usn) || 'CS';
 
             if (!subjectMap.has(key)) {
                 subjectMap.set(key, {
@@ -162,19 +177,72 @@ export async function GET(req) {
                     semester: sem,
                     branch: b,
                     branches: [b],
-                    scheme: '2022',
-                    credits: Number(m.credits) || 3
+                    scheme: code.startsWith('1') ? '2025' : '2022',
+                    credits: Number(m.credits) || 3,
+                    hasRealData: true,
+                    studentCount: 0,
+                    batches: [],
+                    batchCounts: {},
+                    branchCounts: {}
+                });
+            }
+
+            const entry = subjectMap.get(key);
+            entry.studentCount++;
+            if (!entry.branches.includes(b)) entry.branches.push(b);
+            if (!entry.batches.includes(batchYear)) entry.batches.push(batchYear);
+            entry.batchCounts[batchYear] = (entry.batchCounts[batchYear] || 0) + 1;
+            entry.branchCounts[b] = (entry.branchCounts[b] || 0) + 1;
+
+            if (m.subject_name && entry.name === code) {
+                entry.name = m.subject_name;
+            }
+        });
+
+        // Complement with catalog subjects for curriculum reference
+        (catalogSubjects || []).forEach(s => {
+            const code = (s.subject_code || '').toUpperCase().trim();
+            if (!code) return;
+            const sem = Number(s.semester) || 1;
+            const b = (s.branch || 'ALL').toUpperCase().trim();
+            const key = `${code}|${sem}`;
+
+            if (!subjectMap.has(key)) {
+                subjectMap.set(key, {
+                    code,
+                    name: s.subject_name || code,
+                    semester: sem,
+                    branch: b,
+                    branches: [b],
+                    scheme: s.scheme || (code.startsWith('1') ? '2025' : '2022'),
+                    credits: Number(s.credits) || 3,
+                    hasRealData: false,
+                    studentCount: 0,
+                    batches: [],
+                    batchCounts: {},
+                    branchCounts: {}
                 });
             } else {
                 const entry = subjectMap.get(key);
-                if (!entry.branches.includes(b)) entry.branches.push(b);
-                if (m.subject_name && (entry.name === code || entry.name.includes('TD/PSB'))) {
-                    entry.name = m.subject_name;
+                if (b && b !== 'ALL' && !entry.branches.includes(b)) {
+                    entry.branches.push(b);
+                }
+                if (s.credits && !entry.credits) {
+                    entry.credits = Number(s.credits);
                 }
             }
         });
 
-        const subjects = Array.from(subjectMap.values());
+        // Sort subjects: Active subjects with real marks first (sorted descending by studentCount), then catalog-only
+        const subjects = Array.from(subjectMap.values()).sort((a, b) => {
+            if (a.hasRealData && !b.hasRealData) return -1;
+            if (!a.hasRealData && b.hasRealData) return 1;
+            if (a.hasRealData && b.hasRealData) {
+                if (b.studentCount !== a.studentCount) return b.studentCount - a.studentCount;
+            }
+            if (a.semester !== b.semester) return a.semester - b.semester;
+            return a.code.localeCompare(b.code);
+        });
 
         const payload = {
             batches,
@@ -184,7 +252,7 @@ export async function GET(req) {
             classes: rawClasses || []
         };
 
-        setCached('analytics_meta_all', payload, 120_000);
+        setCached('analytics_meta_all', payload, 180_000);
 
         return ok(payload);
     } catch (err) {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiRequest } from '../../../lib/api/client';
+import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
@@ -582,19 +583,64 @@ function FacultyDashboardContent() {
     const [assignedSubjects, setAssignedSubjects] = useState([]);
     const [assignedClasses, setAssignedClasses] = useState([]);
     const [assignedLoading, setAssignedLoading] = useState(true);
-    const pollRef = useRef(null);
+    // The scrape job currently being watched: { id, usn, startedAt } or null.
+    const [scrapeJob, setScrapeJob] = useState(null);
     const backlogDialogRef = useRef(null);
     const backlogTriggerRef = useRef(null);
 
     const stopScraping = (silent = false) => {
-        if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-        }
+        setScrapeJob(null);
         setScraping(false);
         setScrapeProgress('');
         if (!silent) setMessage('Scraping scan halted.');
     };
+
+    // Live scrape progress. Polls only while a job is active, stops the moment
+    // the job reaches a terminal status.
+    const { data: liveJob } = useLive('/api/scrape/status', {
+        query: { jobId: scrapeJob?.id },
+        interval: LIVE.FAST,
+        enabled: Boolean(scrapeJob?.id),
+    });
+
+    useEffect(() => {
+        if (!scrapeJob?.id || !liveJob) return;
+
+        const { status, error: jobError, isTerminal } = liveJob;
+        const usnForJob = scrapeJob.usn;
+
+        if (!isTerminal) {
+            setScrapeProgress(
+                status === 'running'
+                    ? `Scanning VTU portals for ${usnForJob}...`
+                    : `Job ${scrapeJob.id.substring(0, 6)} queued for ${usnForJob}...`
+            );
+
+            // Surface rows as the scraper writes them, rather than only at the end.
+            lookupStudent(usnForJob, true);
+
+            // Safety net: stop watching after 15 minutes.
+            if (Date.now() - scrapeJob.startedAt > 15 * 60 * 1000) {
+                stopScraping(true);
+                setMessage('Scan timed out. Some records might still be processing.');
+                lookupStudent(usnForJob);
+            }
+            return;
+        }
+
+        stopScraping(true);
+        if (status === 'finished') {
+            setMessage('All portals scanned successfully!');
+        } else if (status === 'no_result') {
+            setMessage('Scan complete. No new results found.');
+        } else if (status === 'missing') {
+            setMessage('Scan job completed or removed.');
+        } else {
+            setMessage(jobError || 'Scrape failed.');
+        }
+        lookupStudent(usnForJob);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [liveJob, scrapeJob?.id]);
 
     const closeBacklogModal = () => {
         setShowBacklogModal(false);
@@ -796,44 +842,10 @@ function FacultyDashboardContent() {
                 const activeScheme = json.scheme || targetScheme;
                 setScrapeProgress(`Job ${jobId?.substring(0, 6)} queued. Scanning ${activeScheme} Scheme portals for ${cleanUSN}...`);
 
-                let attempts = 0;
-                pollRef.current = setInterval(async () => {
-                    attempts++;
-
-                    // Live UI Update: Fetch data EVEN while scraping to show results as they come in
-                    if (attempts % 3 === 0) {
-                        lookupStudent(cleanUSN, true); // Suppress full loading state
-                    }
-
-                    try {
-                        const { data: job, error } = await supabase
-                            .from('scraper_jobs')
-                            .select('status, error')
-                            .eq('id', jobId)
-                            .maybeSingle();
-
-                        if (!job) {
-                            // Job mysteriously vanished or was wiped manually
-                            stopScraping(true);
-                            setMessage('Scan job completed or removed.');
-                            await lookupStudent(cleanUSN);
-                        } else if (job?.status === 'finished') {
-                            stopScraping(true);
-                            setMessage('All portals scanned successfully!');
-                            await lookupStudent(cleanUSN);
-                        } else if (job?.status === 'error' || job?.status === 'no_result') {
-                            stopScraping(true);
-                            setMessage(job?.status === 'error' ? (job.error || 'Scrape failed') : 'Scan complete. No new results found.');
-                            await lookupStudent(cleanUSN);
-                        } else if (attempts > 180) { // 15 mins max
-                            stopScraping(true);
-                            setMessage('Scan timed out. Some records might still be processing.');
-                            await lookupStudent(cleanUSN);
-                        }
-                    } catch (e) {
-                        // Silent catch inside polling
-                    }
-                }, 5000);
+                // Hand the job to the live subscription below. It polls
+                // /api/scrape/status every LIVE.FAST ms and reacts to the
+                // terminal status, so there is no interval to manage here.
+                setScrapeJob({ id: jobId, usn: cleanUSN, startedAt: Date.now() });
             } else {
                 setMessage(typeof json.error === 'object' ? (json.error.message || 'Unable to process.') : (json.error || 'Unable to process.'));
                 setScraping(false);

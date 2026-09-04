@@ -9,16 +9,6 @@ function fail(error, status = 400) {
     return NextResponse.json({ success: false, error }, { status });
 }
 
-function detectBranch(usn) {
-    const branchMatch = usn.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,4})\d{3}$/);
-    let detected = branchMatch ? branchMatch[1] : '';
-    if (detected === 'CS') detected = 'CSE';
-    if (detected === 'IS') detected = 'ISE';
-    if (detected === 'EC') detected = 'ECE';
-    if (detected === 'ME') detected = 'MECH';
-    return detected || null;
-}
-
 function buildSession(profile) {
     return {
         usn: profile.usn,
@@ -31,10 +21,16 @@ function buildSession(profile) {
     };
 }
 
-// Activates a student account: sets the initial password (bcrypt) and
-// recovery PIN, creating the student's profile row if it doesn't exist yet
-// (e.g. no scraped/faculty-added record for this USN). Returns a signed
-// session the client stores exactly as it does after login.
+// Activates a student account: sets the initial password (bcrypt) and recovery
+// PIN on an EXISTING student record. Returns a signed session the client stores
+// exactly as it does after login.
+//
+// Activation never creates the profile. A student row is created in exactly one
+// place — backend/scraper/engine.py, after VTU actually returns results for that
+// USN — plus the explicit admin "add student" action. Creating one here meant a
+// mistyped USN silently produced a real profile with the USN as its name, a
+// guessed branch and a hardcoded 2022 scheme, which then had to be cleaned up by
+// hand. A USN with no record is now reported as not-yet-fetched instead.
 export async function POST(req) {
     try {
         const body = await req.json().catch(() => ({}));
@@ -78,23 +74,13 @@ export async function POST(req) {
             return NextResponse.json({ success: true, session: buildSession(updated), pin: generatedPin });
         }
 
-        const { data: created, error: insertErr } = await supabaseAdmin
-            .from('students')
-            .insert({
-                usn: cleanUSN,
-                name: cleanUSN,
-                password_hash: passwordHash,
-                recovery_pin: generatedPin,
-                activated_at: new Date().toISOString(),
-                scheme: '2022',
-                branch: detectBranch(cleanUSN),
-            })
-            .select()
-            .single();
-
-        if (insertErr) throw insertErr;
-
-        return NextResponse.json({ success: true, session: buildSession(created), pin: generatedPin });
+        // No record for this USN: do not invent one. Either the USN is mistyped,
+        // or this student's results have not been fetched from VTU yet.
+        return fail(
+            `No results have been fetched for ${cleanUSN} yet. Check the USN is correct, ` +
+            `and ask your faculty to fetch it from VTU before activating.`,
+            404
+        );
     } catch (err) {
         console.error('[POST /api/auth/activate]', err);
         return fail(err.message || 'Something went wrong during activation. Please try again.', 500);

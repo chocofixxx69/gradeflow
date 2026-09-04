@@ -3,7 +3,6 @@ import { requireStudent } from '../../../../lib/server-session';
 import { weightedCGPA, computeBacklogs, getAdminClient } from '../../../../lib/analytics-data';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
-import { generateFormulaPassword, hashStudentPassword } from '../../../../lib/student-auth';
 
 const supabaseAdmin = getAdminClient();
 
@@ -30,32 +29,18 @@ export async function GET(req) {
 
         if (pErr) throw pErr;
 
+        // Never auto-create the profile here. A student row is created in exactly
+        // one place — backend/scraper/engine.py, once VTU has actually returned
+        // results for the USN — plus the explicit admin "add student" action.
+        // This branch used to invent a profile from the session alone, guessing
+        // the branch and defaulting the scheme to 2022, so a mistyped USN became
+        // a real student record.
         if (!studentProfile) {
-            // Auto-create student profile if absent
-            const branchMatch = usn.match(/^\d[A-Z]{2}\d{2}([A-Z]{2,3})\d{3}$/);
-            const detectedBranch = branchMatch ? branchMatch[1] : '';
-            const normalizedBranch = detectedBranch === 'CS' ? 'CSE' : detectedBranch;
-
-            const cleanUSN = usn.toUpperCase().trim();
-            const stuName = session.name || cleanUSN;
-            const formulaPass = generateFormulaPassword(stuName, cleanUSN);
-            const passHash = await hashStudentPassword(formulaPass);
-
-            const { data: newProfile, error: insertErr } = await supabaseAdmin
-                .from('students')
-                .insert({
-                    usn: cleanUSN,
-                    name: stuName,
-                    scheme: session.scheme || '2022',
-                    branch: session.branch || normalizedBranch || 'CSE',
-                    password_hash: passHash,
-                })
-                .select()
-                .single();
-
-            if (!insertErr) {
-                studentProfile = newProfile;
-            }
+            return fail(
+                `No record found for ${usn}. Results for this USN have not been fetched from VTU yet.`,
+                'PROFILE_NOT_FOUND',
+                404
+            );
         }
 
         const studentId = studentProfile?.id;
