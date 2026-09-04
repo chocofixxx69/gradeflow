@@ -3,6 +3,7 @@ import { requireAdmin } from '../../../../../lib/server-session';
 import { fetchAllPaginated } from '../../../../../lib/supabase-utils';
 import { getAdminClient } from '../../../../../lib/analytics-data';
 import { generateFormulaPassword, hashStudentPassword } from '../../../../../lib/student-auth';
+import { calculateAcademicRecord } from '../../../../../lib/vtuAcademicEngine';
 
 const supabaseAdmin = getAdminClient();
 
@@ -24,12 +25,9 @@ export async function GET(req) {
 
         // If specific student_id details are requested
         if (studentId) {
-            // `marks` (manually-entered, keyed by student_id) covers only a small
-            // fraction of records — the vast majority of real results live in
-            // `subject_marks`, populated by the VTU scraper and keyed by usn, not
-            // student_id. Querying `marks` alone made this panel show "No marks
-            // synced" for almost every student even though their real results exist.
-            const [{ data: manualMarks }, { data: scrapedMarks }] = await Promise.all([
+            // Fetch student profile, manual marks, and scraped marks in parallel
+            const [{ data: student }, { data: manualMarks }, { data: scrapedMarks }] = await Promise.all([
+                supabaseAdmin.from('students').select('*').eq('id', studentId).maybeSingle(),
                 supabaseAdmin.from('marks').select('*').eq('student_id', studentId).order('semester', { ascending: true }),
                 usn
                     ? supabaseAdmin.from('subject_marks').select('*').eq('usn', usn).order('semester', { ascending: true })
@@ -46,10 +44,19 @@ export async function GET(req) {
                 })),
             ];
 
+            let academic = null;
+            try {
+                academic = await calculateAcademicRecord(combinedMarks, student || { usn });
+            } catch (calcErr) {
+                console.warn('[GET /api/admin/terminal/data] Academic calc error:', calcErr);
+            }
+
             return ok({
                 studentId,
+                student: student || null,
                 marks: combinedMarks,
-                documents: docs || []
+                documents: [],
+                academic
             });
         }
 
