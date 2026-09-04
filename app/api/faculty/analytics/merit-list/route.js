@@ -118,19 +118,41 @@ export async function GET(req) {
             if (a.hasBacklogs !== b.hasBacklogs) {
                 return a.hasBacklogs ? 1 : -1;
             }
-            if (b.gpa !== a.gpa) {
-                return b.gpa - a.gpa;
+            const agpa = Number(Number(a.gpa).toFixed(2));
+            const bgpa = Number(Number(b.gpa).toFixed(2));
+            if (bgpa !== agpa) {
+                return bgpa - agpa;
             }
-            return b.totalMarks - a.totalMarks;
+            if (b.totalMarks !== a.totalMarks) {
+                return b.totalMarks - a.totalMarks;
+            }
+            return (a.usn || '').localeCompare(b.usn || '');
         });
 
-        // Assign ranks and honors
+        // Assign ranks and honors dynamically (tied GPAs share the exact same rank)
         const total = candidateList.length;
-        const rankedStudents = candidateList.map((c, index) => {
-            const rank = index + 1;
+        let currentRank = 1;
+        let lastGpa = null;
+        let clearCount = 0;
+
+        const rankedStudents = candidateList.map((c) => {
+            let rank;
             let honors = 'Pass Class';
 
             if (!c.hasBacklogs) {
+                const roundedGpa = Number(Number(c.gpa).toFixed(2));
+                if (clearCount === 0) {
+                    currentRank = 1;
+                    lastGpa = roundedGpa;
+                } else if (roundedGpa === lastGpa) {
+                    // Tied GPA: exact same rank
+                } else {
+                    currentRank = currentRank + 1; // Dense ranking
+                    lastGpa = roundedGpa;
+                }
+                rank = currentRank;
+                clearCount++;
+
                 if (rank === 1) honors = 'Gold Medal (Rank 1)';
                 else if (rank === 2) honors = 'Silver Medal (Rank 2)';
                 else if (rank === 3) honors = 'Bronze Medal (Rank 3)';
@@ -138,6 +160,7 @@ export async function GET(req) {
                 else if (rank <= Math.ceil(total * 0.25)) honors = 'First Class (Top 25%)';
                 else honors = 'First Class';
             } else {
+                rank = '—';
                 honors = `Carrying ${c.backlogCount} Arrears`;
             }
 
@@ -148,7 +171,9 @@ export async function GET(req) {
             };
         });
 
-        const podium = rankedStudents.slice(0, 3);
+        // Podium includes all students who earned top-3 ranks (including all ties)
+        const podiumMedalists = rankedStudents.filter(s => typeof s.rank === 'number' && s.rank <= 3);
+        const podium = podiumMedalists.length > 0 ? podiumMedalists : rankedStudents.slice(0, 3);
         const highestScore = rankedStudents.length > 0 ? rankedStudents[0].gpa : 0;
         const avgScore = rankedStudents.length > 0
             ? Number((rankedStudents.reduce((acc, r) => acc + r.gpa, 0) / rankedStudents.length).toFixed(2))

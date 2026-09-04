@@ -17,7 +17,7 @@ const MEDAL = {
 };
 
 function Podium({ rows, scoreLabel }) {
-    const top3 = (rows || []).filter(r => r.rank <= 3 && typeof r.rank === 'number').slice(0, 3);
+    const top3 = (rows || []).filter(r => typeof r.rank === 'number' && r.rank <= 3);
     if (top3.length === 0) return null;
 
     return (

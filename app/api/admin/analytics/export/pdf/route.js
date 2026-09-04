@@ -106,15 +106,28 @@ export async function POST(req) {
         }
 
         // ── Top 10 Toppers by CGPA ──
-        const topCgpa = [...rows].filter(r => r.cgpa > 0).sort((a, b) => b.cgpa - a.cgpa).slice(0, 10);
+        const topCgpa = [...rows].filter(r => r.cgpa > 0).sort((a, b) => {
+            const bc = Number(Number(b.cgpa).toFixed(2));
+            const ac = Number(Number(a.cgpa).toFixed(2));
+            if (bc !== ac) return bc - ac;
+            return (a.usn || '').localeCompare(b.usn || '');
+        }).slice(0, 10);
+
         if (topCgpa.length) {
             doc.addPage();
             doc.setFontSize(14);
             doc.text('Class Toppers (Top 10 — CGPA Wise)', 14, 18);
+            let curRank = 1, lastCgpa = null;
+            const bodyRows = topCgpa.map((r, i) => {
+                const rounded = Number(Number(r.cgpa).toFixed(2));
+                if (i === 0) { curRank = 1; lastCgpa = rounded; }
+                else if (rounded !== lastCgpa) { curRank++; lastCgpa = rounded; }
+                return [`#${curRank}`, r.usn, r.name, r.branch, r.semester, r.cgpa ? r.cgpa.toFixed(2) : '—', r.total_backlogs];
+            });
             autoTable(doc, {
                 startY: 24,
                 head: [['Rank', 'USN', 'Name', 'Branch', 'Sem', 'CGPA', 'Backlogs']],
-                body: topCgpa.map((r, i) => [`#${i + 1}`, r.usn, r.name, r.branch, r.semester, r.cgpa ? r.cgpa.toFixed(2) : '—', r.total_backlogs]),
+                body: bodyRows,
                 theme: 'striped',
                 headStyles: { fillColor: [28, 25, 23] },
                 styles: { fontSize: 8.5 },
@@ -122,14 +135,27 @@ export async function POST(req) {
         }
 
         // ── Top 10 Toppers by SGPA ──
-        const topSgpa = [...rows].filter(r => r.sgpa > 0).sort((a, b) => b.sgpa - a.sgpa).slice(0, 10);
+        const topSgpa = [...rows].filter(r => r.sgpa > 0).sort((a, b) => {
+            const bs = Number(Number(b.sgpa).toFixed(2));
+            const as = Number(Number(a.sgpa).toFixed(2));
+            if (bs !== as) return bs - as;
+            return (a.usn || '').localeCompare(b.usn || '');
+        }).slice(0, 10);
+
         if (topSgpa.length) {
             doc.setFontSize(14);
             doc.text('Class Toppers (Top 10 — SGPA Wise)', 14, doc.lastAutoTable.finalY + 12);
+            let curRank = 1, lastSgpa = null;
+            const bodyRows = topSgpa.map((r, i) => {
+                const rounded = Number(Number(r.sgpa).toFixed(2));
+                if (i === 0) { curRank = 1; lastSgpa = rounded; }
+                else if (rounded !== lastSgpa) { curRank++; lastSgpa = rounded; }
+                return [`#${curRank}`, r.usn, r.name, r.branch, r.semester, r.sgpa ? r.sgpa.toFixed(2) : '—', r.earned_credits || r.total_credits || 20];
+            });
             autoTable(doc, {
                 startY: doc.lastAutoTable.finalY + 18,
                 head: [['Rank', 'USN', 'Name', 'Branch', 'Sem', 'SGPA', 'Credits']],
-                body: topSgpa.map((r, i) => [`#${i + 1}`, r.usn, r.name, r.branch, r.semester, r.sgpa ? r.sgpa.toFixed(2) : '—', r.earned_credits || r.total_credits || 20]),
+                body: bodyRows,
                 theme: 'striped',
                 headStyles: { fillColor: [15, 23, 42] },
                 styles: { fontSize: 8.5 },

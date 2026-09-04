@@ -101,9 +101,9 @@ export default function LeaderboardPage() {
     const filteredSemester = useMemo(() => applyFilters(rawSemesterList), [rawSemesterList, searchQuery, entryFilter]);
     const filteredSubject = useMemo(() => applyFilters(data?.subjectLeaderboard), [data?.subjectLeaderboard, searchQuery, entryFilter]);
 
-    const top3Overall = useMemo(() => (filteredOverall || []).slice(0, 3), [filteredOverall]);
-    const top3Semester = useMemo(() => (filteredSemester || []).slice(0, 3), [filteredSemester]);
-    const top3Subject = useMemo(() => (filteredSubject || []).slice(0, 3), [filteredSubject]);
+    const top3Overall = useMemo(() => (filteredOverall || []).filter(r => typeof r.rank === 'number' && r.rank <= 3), [filteredOverall]);
+    const top3Semester = useMemo(() => (filteredSemester || []).filter(r => typeof r.rank === 'number' && r.rank <= 3), [filteredSemester]);
+    const top3Subject = useMemo(() => (filteredSubject || []).filter(r => typeof r.rank === 'number' && r.rank <= 3), [filteredSubject]);
 
     const getMedal = (rank) => {
         if (rank === 1) return { icon: '🥇', label: '1st Place', color: '#D97706', bg: 'rgba(245, 158, 11, 0.12)' };
@@ -428,8 +428,8 @@ export default function LeaderboardPage() {
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
                         gap: '16px', marginBottom: '24px'
                     }}>
-                        {(activeTab === 'overall' ? top3Overall : activeTab === 'semester' ? top3Semester : top3Subject).map((topper, idx) => {
-                            const medal = getMedal(idx + 1);
+                        {(activeTab === 'overall' ? top3Overall : activeTab === 'semester' ? top3Semester : top3Subject).map((topper) => {
+                            const medal = getMedal(topper.rank);
                             const scoreLabel = activeTab === 'overall'
                                 ? `CGPA: ${topper.cgpa?.toFixed(2)}`
                                 : activeTab === 'semester'
@@ -443,7 +443,7 @@ export default function LeaderboardPage() {
                                         background: topper.isCurrentUser ? 'rgba(23, 75, 77, 0.05)' : 'var(--surface)',
                                         border: topper.isCurrentUser ? '2px solid var(--primary)' : '1px solid var(--border)',
                                         borderRadius: '14px', padding: '18px 20px', position: 'relative',
-                                        boxShadow: idx === 0 ? '0 8px 20px rgba(217, 119, 6, 0.12)' : '0 4px 12px rgba(0,0,0,0.03)',
+                                        boxShadow: topper.rank === 1 ? '0 8px 20px rgba(217, 119, 6, 0.12)' : '0 4px 12px rgba(0,0,0,0.03)',
                                         overflow: 'hidden'
                                     }}
                                 >

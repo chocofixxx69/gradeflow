@@ -163,56 +163,6 @@ function FacultyDashboardView({
                 )}
             </section>
 
-            {/* 2. Teaching Load & Assigned Subjects */}
-            <section className={`${styles.section} ${styles.sectionTeaching}`} aria-labelledby="faculty-assigned-title">
-                <div className={styles.sectionHeader}>
-                    <div>
-                        <div className={styles.eyebrow}>Teaching Load</div>
-                        <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects &amp; Classes</h2>
-                        <p className={styles.meta}>Your current semester teaching roster and assignments.</p>
-                    </div>
-                </div>
-                {assignedLoading ? (
-                    <LoadingState density="compact" label="Loading your assignments" />
-                ) : (assignedSubjects.length === 0 && assignedClasses.length === 0) ? (
-                    <EmptyState
-                        icon="assignment_ind"
-                        title="No Subjects Assigned Yet"
-                        description="An administrator hasn't linked you to any subjects yet. Once they do, they'll appear here automatically."
-                    />
-                ) : (
-                    <>
-                        {assignedClasses.length > 0 && (
-                            <div style={{ marginBottom: '14px' }}>
-                                <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
-                                    Assigned Classes
-                                </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                    {assignedClasses.map(c => (
-                                        <div key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 700 }}>
-                                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>school</span>
-                                            <span>{c.name}</span>
-                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>({c.branch} · S{c.semester} · {c.section})</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        <div className={styles.assignedGrid}>
-                            {assignedSubjects.map((a) => (
-                                <div key={a.id} className={styles.assignedCard}>
-                                    <div className={styles.assignedCode}>{a.subject_code}</div>
-                                    <div className={styles.assignedName}>{a.subject_catalog?.subject_name || 'Subject name unavailable'}</div>
-                                    <div className={styles.assignedMeta}>
-                                        {a.branch || '—'} · Sem {a.semester ?? '—'} · Scheme {a.scheme || '—'}{a.subject_catalog?.credits ? ` · ${a.subject_catalog.credits} Cr` : ''}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
-            </section>
-
             {student ? (
                 <>
                     <section className={styles.section} aria-labelledby="faculty-profile-title">
@@ -533,6 +483,56 @@ function FacultyDashboardView({
                     description="Enter a USN above to begin reviewing student records."
                 />
             )}
+
+            {/* Teaching Load & Assigned Subjects */}
+            <section className={`${styles.section} ${styles.sectionTeaching}`} aria-labelledby="faculty-assigned-title">
+                <div className={styles.sectionHeader}>
+                    <div>
+                        <div className={styles.eyebrow}>Teaching Load</div>
+                        <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects &amp; Classes</h2>
+                        <p className={styles.meta}>Your current semester teaching roster and assignments.</p>
+                    </div>
+                </div>
+                {assignedLoading ? (
+                    <LoadingState density="compact" label="Loading your assignments" />
+                ) : (assignedSubjects.length === 0 && assignedClasses.length === 0) ? (
+                    <EmptyState
+                        icon="assignment_ind"
+                        title="No Subjects Assigned Yet"
+                        description="An administrator hasn't linked you to any subjects yet. Once they do, they'll appear here automatically."
+                    />
+                ) : (
+                    <>
+                        {assignedClasses.length > 0 && (
+                            <div style={{ marginBottom: '14px' }}>
+                                <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+                                    Assigned Classes
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    {assignedClasses.map(c => (
+                                        <div key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 700 }}>
+                                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>school</span>
+                                            <span>{c.name}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>({c.branch} · S{c.semester} · {c.section})</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div className={styles.assignedGrid}>
+                            {assignedSubjects.map((a) => (
+                                <div key={a.id} className={styles.assignedCard}>
+                                    <div className={styles.assignedCode}>{a.subject_code}</div>
+                                    <div className={styles.assignedName}>{a.subject_catalog?.subject_name || 'Subject name unavailable'}</div>
+                                    <div className={styles.assignedMeta}>
+                                        {a.branch || '—'} · Sem {a.semester ?? '—'} · Scheme {a.scheme || '—'}{a.subject_catalog?.credits ? ` · ${a.subject_catalog.credits} Cr` : ''}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </section>
 
             {showBacklogModal && (
                 <div className={styles.modalOverlay} onClick={closeBacklogModal}>

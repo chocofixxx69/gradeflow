@@ -8,32 +8,26 @@ export const NAV_CONFIG = {
   ],
   faculty: [
     { key: 'dashboard', label: 'Dashboard', href: '/faculty/dashboard', icon: 'space_dashboard', group: 'Faculty Home' },
+
+    // Class Operations
     { key: 'classes', label: 'Classes', href: '/faculty/classes', icon: 'groups', group: 'Class Operations' },
     { key: 'students', label: 'Students', href: '/faculty/students', icon: 'badge', group: 'Class Operations' },
-    { key: 'subjects', label: 'Subjects', href: '/faculty/subjects', icon: 'library_books', group: 'Academic Management' },
-    { key: 'reports', label: 'Reports', href: '/faculty/reports', icon: 'analytics', group: 'Reporting' },
-    // Result Sheets: the official, exam-cycle-driven documents (one per
-    // semester/session declaration) — what you generate right after results
-    // are announced or revalued.
-    { key: 'semesterAnalysis', label: 'Semester Analysis', href: '/faculty/analytics/semester-analysis', icon: 'table_chart', group: 'Result Sheets' },
-    { key: 'batchReport', label: 'Batch Report', href: '/faculty/analytics/batch-report', icon: 'view_timeline', group: 'Result Sheets' },
-    { key: 'revalImpact', label: 'Reval Impact Delta', href: '/faculty/analytics/reval-impact', icon: 'published_with_changes', group: 'Result Sheets' },
-    // Rankings & Merit: who's on top, for recognition/notice-board purposes.
-    { key: 'classLeaderboard', label: 'Class Leaderboard', href: '/faculty/analytics/leaderboard', icon: 'emoji_events', group: 'Rankings & Merit' },
-    { key: 'meritList', label: 'Batch Merit List', href: '/faculty/analytics/merit-list', icon: 'military_tech', group: 'Rankings & Merit' },
-    // Comparative Analysis: X vs Y views across cohorts/sections/subjects/years.
-    { key: 'compare', label: 'Compare Students', href: '/faculty/analytics/compare', icon: 'compare_arrows', group: 'Comparative Analysis' },
-    { key: 'sectionsCompare', label: 'Sections Comparison', href: '/faculty/analytics/sections-compare', icon: 'view_column', group: 'Comparative Analysis' },
-    { key: 'cohortTrends', label: 'Cohort Trends', href: '/faculty/analytics/cohort-trends', icon: 'insights', group: 'Comparative Analysis' },
-    { key: 'deptOverview', label: 'Department Overview', href: '/faculty/analytics/department', icon: 'domain', group: 'Comparative Analysis' },
-    // Risk & Compliance: who needs attention, institutionally.
-    { key: 'eligibility', label: 'Eligibility Register', href: '/faculty/analytics/eligibility', icon: 'fact_check', group: 'Risk & Compliance' },
-    { key: 'backlogRegister', label: 'Standing Backlogs', href: '/faculty/analytics/backlogs', icon: 'warning', group: 'Risk & Compliance' },
-    // Insights: subject- and faculty-level performance breakdowns.
-    { key: 'subjectAnalytics', label: 'Subject Analytics', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Insights' },
-    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Insights' },
     { key: 'batchUpload', label: 'Batch Upload', href: '/faculty/batch-upload', icon: 'upload_file', group: 'Class Operations' },
-    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/faculty/vtu-urls', icon: 'link', group: 'Academic Management' },
+
+    // Academic Analytics Hubs
+    { key: 'resultsHub', label: 'Exam & Result Sheets', href: '/faculty/analytics/results', icon: 'table_chart', group: 'Academic Analytics' },
+    { key: 'meritHub', label: 'Rankings & Merit Center', href: '/faculty/analytics/merit', icon: 'military_tech', group: 'Academic Analytics' },
+    { key: 'complianceHub', label: 'Risk & Compliance', href: '/faculty/analytics/compliance', icon: 'fact_check', group: 'Academic Analytics' },
+    { key: 'intelligenceHub', label: 'Comparative Intelligence', href: '/faculty/analytics/intelligence', icon: 'insights', group: 'Academic Analytics' },
+    { key: 'reports', label: 'Department Reports', href: '/faculty/reports', icon: 'analytics', group: 'Academic Analytics' },
+
+    // Teaching & Curriculum
+    { key: 'subjectAnalytics', label: 'Subject Analytics', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Curriculum' },
+    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Curriculum' },
+    { key: 'subjects', label: 'Subjects Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Curriculum' },
+    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/faculty/vtu-urls', icon: 'link', group: 'Teaching & Curriculum' },
+
+    // Account
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   admin: [
@@ -95,12 +89,16 @@ export const ROUTE_LABELS = {
   '/faculty/dashboard': 'Dashboard',
   '/faculty/classes': 'Classes',
   '/faculty/students': 'Students Directory',
-  '/faculty/subjects': 'Subjects',
-  '/faculty/reports': 'Reports',
-  '/faculty/analytics/semester-analysis': 'Semester Analysis',
-  '/faculty/analytics/batch-report': 'Batch Report',
+  '/faculty/subjects': 'Subjects Catalog',
+  '/faculty/reports': 'Department Reports',
+  '/faculty/analytics/results': 'Exam & Result Sheets Hub',
+  '/faculty/analytics/merit': 'Rankings & Merit Center',
+  '/faculty/analytics/compliance': 'Academic Risk & Compliance Center',
+  '/faculty/analytics/intelligence': 'Comparative Intelligence Suite',
+  '/faculty/analytics/semester-analysis': 'Semester Analysis Gazette',
+  '/faculty/analytics/batch-report': 'Multi-Semester Batch Report',
   '/faculty/analytics/subject': 'Subject Analytics',
-  '/faculty/analytics/compare': 'Compare Students',
+  '/faculty/analytics/compare': 'Student Comparator',
   '/faculty/analytics/faculty-performance': 'Teaching Performance',
   '/faculty/analytics/eligibility': 'Eligibility Register',
   '/faculty/analytics/department': 'Department Overview',

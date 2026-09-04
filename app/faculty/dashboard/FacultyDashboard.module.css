@@ -10,9 +10,7 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Section identity for mobile reordering (applied via @media below) */
-.sectionLookup  { order: 0; }   /* default: natural DOM order */
-.sectionTeaching { order: 0; }  /* default: natural DOM order */
+
 
 /* ─── Sections ──────────────────────────────────────────── */
 .section,
@@ -501,9 +499,7 @@
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
-    /* Reorder sections: Lookup first, Teaching second */
-    .sectionLookup   { order: 1; }
-    .sectionTeaching { order: 2; }
+
 
     /* Reduce section padding on mobile */
     .section,

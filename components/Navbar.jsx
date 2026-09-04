@@ -176,7 +176,12 @@ export default function Navbar() {
     // (Faculty Home, Account, ...) stay exactly as they were — always expanded,
     // no toggle. Whichever group holds the current page always stays open, and
     // a user's manual expand/collapse choices persist per role.
-    const NAV_GROUP_COLLAPSE_THRESHOLD = 4;
+    // Multi-item nav groups collapse into an interactive dropdown/accordion
+    // so the sidebar stays compact and organized. Single-item groups (like
+    // Faculty Home / Dashboard) stay clean as a standard direct item. Whichever
+    // group holds the current active page always stays open automatically,
+    // and user manual expand/collapse choices persist per role.
+    const NAV_GROUP_COLLAPSE_THRESHOLD = 1;
     const activeGroupLabel = useMemo(() => {
         for (const group of navGroups) {
             if (group.items.some(link => isNavItemActive(pathname, link.href))) return group.label;
@@ -270,9 +275,10 @@ export default function Navbar() {
                     {navGroups.map(group => {
                         const isCollapsible = !collapsed && group.items.length > NAV_GROUP_COLLAPSE_THRESHOLD;
                         const isExpanded = !isCollapsible || Boolean(expandedGroups[group.label]);
+                        const hasActiveChild = group.items.some(link => isNavItemActive(pathname, link.href));
 
                         return (
-                        <div key={group.label}>
+                        <div key={group.label} className={`gf-nav-group${isCollapsible ? ' is-collapsible' : ''}${isExpanded ? ' is-expanded' : ' is-collapsed'}`}>
                             {!collapsed && (
                                 isCollapsible ? (
                                     <button
@@ -281,8 +287,15 @@ export default function Navbar() {
                                         onClick={() => toggleGroup(group.label)}
                                         aria-expanded={isExpanded}
                                     >
-                                        <span>{group.label}</span>
-                                        <span className="material-icons-round" aria-hidden="true">expand_more</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span>{group.label}</span>
+                                            {hasActiveChild && !isExpanded && (
+                                                <span className="gf-nav-group-active-dot" title="Active page inside" />
+                                            )}
+                                        </div>
+                                        <span className="material-icons-round gf-chevron-icon" aria-hidden="true">
+                                            {isExpanded ? 'expand_more' : 'chevron_right'}
+                                        </span>
                                     </button>
                                 ) : (
                                     <div className="gf-nav-group-title">

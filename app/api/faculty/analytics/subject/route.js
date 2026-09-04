@@ -120,27 +120,34 @@ export async function GET(req) {
         const passRate = appeared > 0 ? Number(((passed / appeared) * 100).toFixed(1)) : 0;
         const avgMarks = appeared > 0 ? Number((scoreSum / appeared).toFixed(1)) : 0;
 
-        // 5. Top 10 Performers
-        const sortedMarks = [...filteredMarks].sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0));
-
-        const topPerformers = sortedMarks.slice(0, 10).map((m, idx) => {
-            const st = studentMap.get(m.usn);
-            return {
-                rank: idx + 1,
-                usn: m.usn,
-                name: st?.name || m.usn,
-                internal: m.internal,
-                external: m.external,
-                total: m.total,
-                grade: m.grade || '—'
-            };
+        // 5. Sorted Marks & Dynamic Ranking
+        const sortedMarks = [...filteredMarks].sort((a, b) => {
+            const bt = Number(b.total) || 0;
+            const at = Number(a.total) || 0;
+            if (bt !== at) return bt - at;
+            const be = Number(b.external) || 0;
+            const ae = Number(a.external) || 0;
+            if (be !== ae) return be - ae;
+            return (a.usn || '').localeCompare(b.usn || '');
         });
 
-        // 6. Full Roster
+        let curRank = 1;
+        let lastScore = null;
         const studentRoster = sortedMarks.map((m, idx) => {
             const st = studentMap.get(m.usn);
+            const score = Number(m.total) || 0;
+            if (idx === 0) {
+                curRank = 1;
+                lastScore = score;
+            } else if (score === lastScore) {
+                // Tied score: keep same rank
+            } else {
+                curRank = curRank + 1; // Dense ranking
+                lastScore = score;
+            }
+
             return {
-                rank: idx + 1,
+                rank: curRank,
                 usn: m.usn,
                 name: st?.name || m.usn,
                 branch: st?.branch || branch || '—',
@@ -151,6 +158,17 @@ export async function GET(req) {
                 isFail: isFailedSubject(m)
             };
         });
+
+        // 6. Top 10 Performers
+        const topPerformers = studentRoster.slice(0, 10).map(r => ({
+            rank: r.rank,
+            usn: r.usn,
+            name: r.name,
+            internal: r.internal,
+            external: r.external,
+            total: r.total,
+            grade: r.grade
+        }));
 
         const gradeDistribution = Object.entries(gradeCounts).map(([grade, count]) => ({
             grade,

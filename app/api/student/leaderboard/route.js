@@ -204,14 +204,38 @@ async function getOrComputeCohortData(cohortConfig) {
     });
 
     overallLeaderboard.sort((a, b) => {
-        if (b.cgpa !== a.cgpa) return b.cgpa - a.cgpa;
+        const acgpa = Number(Number(a.cgpa || 0).toFixed(2));
+        const bcgpa = Number(Number(b.cgpa || 0).toFixed(2));
+        if (bcgpa !== acgpa) return bcgpa - acgpa;
         if (a.totalBacklogs !== b.totalBacklogs) return a.totalBacklogs - b.totalBacklogs;
         if (b.earnedCredits !== a.earnedCredits) return b.earnedCredits - a.earnedCredits;
-        return a.usn.localeCompare(b.usn);
+        return (a.usn || '').localeCompare(b.usn || '');
     });
 
-    overallLeaderboard.forEach((item, idx) => {
-        item.rank = idx + 1;
+    let curOverallRank = 1;
+    let lastCgpa = null;
+    let rankedOverallCount = 0;
+    overallLeaderboard.forEach((item) => {
+        const cgpaVal = item.cgpa !== null && item.cgpa !== undefined && !Number.isNaN(Number(item.cgpa)) && Number(item.cgpa) > 0
+            ? Number(Number(item.cgpa).toFixed(2))
+            : null;
+
+        if (cgpaVal === null) {
+            item.rank = '—';
+            return;
+        }
+
+        if (rankedOverallCount === 0) {
+            curOverallRank = 1;
+            lastCgpa = cgpaVal;
+        } else if (cgpaVal === lastCgpa) {
+            // Tied CGPA: identical rank
+        } else {
+            curOverallRank = curOverallRank + 1; // Dense ranking
+            lastCgpa = cgpaVal;
+        }
+        item.rank = curOverallRank;
+        rankedOverallCount++;
     });
 
     // 5. Precompute All Semester SGPA Leaderboards
@@ -246,16 +270,39 @@ async function getOrComputeCohortData(cohortConfig) {
             if (a.hasAppeared && !b.hasAppeared) return -1;
             if (!a.hasAppeared && b.hasAppeared) return 1;
             if (a.hasAppeared && b.hasAppeared) {
-                if (b.sgpa !== a.sgpa) return b.sgpa - a.sgpa;
+                const asgpa = Number(Number(a.sgpa || 0).toFixed(2));
+                const bsgpa = Number(Number(b.sgpa || 0).toFixed(2));
+                if (bsgpa !== asgpa) return bsgpa - asgpa;
                 if (b.earnedCredits !== a.earnedCredits) return b.earnedCredits - a.earnedCredits;
             }
-            return a.usn.localeCompare(b.usn);
+            return (a.usn || '').localeCompare(b.usn || '');
         });
 
-        let rankCount = 1;
+        let curSemRank = 1;
+        let lastSgpa = null;
+        let appearedCount = 0;
         list.forEach(item => {
             if (item.hasAppeared) {
-                item.rank = rankCount++;
+                const sgpaVal = item.sgpa !== null && item.sgpa !== undefined && !Number.isNaN(Number(item.sgpa))
+                    ? Number(Number(item.sgpa).toFixed(2))
+                    : null;
+
+                if (sgpaVal === null) {
+                    item.rank = '—';
+                    return;
+                }
+
+                if (appearedCount === 0) {
+                    curSemRank = 1;
+                    lastSgpa = sgpaVal;
+                } else if (sgpaVal === lastSgpa) {
+                    // Tied SGPA: identical rank
+                } else {
+                    curSemRank = curSemRank + 1; // Dense ranking
+                    lastSgpa = sgpaVal;
+                }
+                item.rank = curSemRank;
+                appearedCount++;
             } else {
                 item.rank = '—';
             }
@@ -433,14 +480,28 @@ export async function GET(req) {
             };
 
             const sortedScores = [...selectedSubObj.students].sort((a, b) => {
-                if (b.total !== a.total) return b.total - a.total;
-                if (b.external !== a.external) return b.external - a.external;
-                if (b.internal !== a.internal) return b.internal - a.internal;
-                return a.usn.localeCompare(b.usn);
+                const atotal = Number(a.total) || 0;
+                const btotal = Number(b.total) || 0;
+                if (btotal !== atotal) return btotal - atotal;
+                if (b.external !== a.external) return (Number(b.external) || 0) - (Number(a.external) || 0);
+                if (b.internal !== a.internal) return (Number(b.internal) || 0) - (Number(a.internal) || 0);
+                return (a.usn || '').localeCompare(b.usn || '');
             });
 
+            let curSubRank = 1;
+            let lastSubTotal = null;
             sortedScores.forEach((s, idx) => {
-                s.rank = idx + 1;
+                const totalScore = Number(s.total) || 0;
+                if (idx === 0) {
+                    curSubRank = 1;
+                    lastSubTotal = totalScore;
+                } else if (totalScore === lastSubTotal) {
+                    // Tied total score: identical rank
+                } else {
+                    curSubRank = curSubRank + 1; // Dense ranking
+                    lastSubTotal = totalScore;
+                }
+                s.rank = curSubRank;
                 s.isCurrentUser = s.usn === currentUsn;
             });
 
