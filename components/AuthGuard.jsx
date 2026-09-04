@@ -64,6 +64,8 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
     // (typeof window === 'undefined') checkSessionSync returns 'loading'
     // but Next.js won't render this on server since it's client-only.
     const [authResult, setAuthResult] = useState(() => checkSessionSync(role, facultyAllowed));
+    const authState = authResult?.state;
+    const userType = authResult?.userType;
 
     useEffect(() => {
         appHasMountedOnce = true;
