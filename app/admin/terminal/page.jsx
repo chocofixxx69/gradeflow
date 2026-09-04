@@ -18,8 +18,9 @@ const TAB_METADATA = {
     classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
     requests: { label: 'Faculty Access & Credentials', icon: 'verified_user', shortLabel: 'Faculty Access' },
     support: { label: 'Institutional Support Tickets', icon: 'support_agent', shortLabel: 'Support' },
-    activity: { label: 'Activity Logs & Audit Trail', icon: 'history', shortLabel: 'Activity Log' },
-    system: { label: 'System Health & Engine Audit', icon: 'health_and_safety', shortLabel: 'System Audit' },
+    activity: { label: 'Faculty Pedagogical & Activity Log', icon: 'history', shortLabel: 'Activity Log' },
+    audit: { label: 'System Health & Security Audit', icon: 'security', shortLabel: 'System Audit' },
+    system: { label: 'System Health & Security Audit', icon: 'security', shortLabel: 'System Audit' },
     settings: { label: 'Institutional Settings & Security', icon: 'settings', shortLabel: 'Settings' },
 };
 
@@ -1265,6 +1266,37 @@ function AdminPanelContent() {
         return searchMatch && typeMatch && dateMatch;
     });
     const uniqueTypes = [...new Set(activityLogs.map(l => l.action_type).filter(Boolean))];
+    const activeFacultyCount = useMemo(() => new Set(activityLogs.map(l => l.faculty_name || l._faculty?.full_name).filter(Boolean)).size, [activityLogs]);
+    const successRate = useMemo(() => activityLogs.length > 0 ? Math.round((activityLogs.filter(l => (l.sync_status || 'SUCCESS') === 'SUCCESS').length / activityLogs.length) * 100) : 100, [activityLogs]);
+
+    const handleExportFacultyCSV = () => {
+        if (!filteredActivity.length) {
+            alert('No faculty activity records to export.');
+            return;
+        }
+        const headers = ['Timestamp', 'Faculty Name', 'Faculty Email', 'Department', 'Action Type', 'Target USN / Details', 'Sync Status'];
+        const rows = filteredActivity.map(l => {
+            const fac = l._faculty || {};
+            return [
+                `"${l.created_at || ''}"`,
+                `"${(l.faculty_name || fac.full_name || 'Faculty').replace(/"/g, '""')}"`,
+                `"${fac.email || ''}"`,
+                `"${fac.department || ''}"`,
+                `"${l.action_type || ''}"`,
+                `"${(l.target_usn || l.details || '').replace(/"/g, '""')}"`,
+                `"${l.sync_status || 'SUCCESS'}"`
+            ];
+        });
+        const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `faculty_activity_log_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Group marks by semester for drawer
     const groupedMarks = {};
@@ -2738,8 +2770,56 @@ function AdminPanelContent() {
                 </>}
 
                 {tab === 'activity' && <>
-                    <div style={c.pageLabel}>Admin Control Panel</div>
-                    <h1 style={c.pageTitle}>Faculty Activity Log</h1>
+                    <div style={c.pageLabel}>Faculty Academic Operations</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                            <h1 style={{ ...c.pageTitle, marginBottom: '4px' }}>Faculty Activity Log</h1>
+                            <p style={{ margin: 0, fontSize: '13px', color: 'var(--tx-muted)' }}>
+                                Real-time pedagogical audit trail of faculty marks uploads, attendance entries, student profile lookups, and class roster syncs.
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...c.actionBtn(false), display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                onClick={handleExportFacultyCSV}
+                                title="Download faculty activity report as CSV"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>file_download</span>
+                                Export CSV
+                            </button>
+                            <button style={c.actionBtn(false)} onClick={loadData}>
+                                <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>refresh</span>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* KPI Stat Overview Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Total Actions Logged</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--tx-main)', marginTop: '2px' }}>{filteredActivity.length}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>All recorded faculty interactions</div>
+                        </div>
+
+                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Actions Today</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', marginTop: '2px' }}>{stats.activityToday || 0}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>Activity in current 24h window</div>
+                        </div>
+
+                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Active Faculty</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>{activeFacultyCount}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>Contributing instructors</div>
+                        </div>
+
+                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>Sync Success Rate</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#047857', marginTop: '2px' }}>{successRate}%</div>
+                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>Operational sync health</div>
+                        </div>
+                    </div>
 
                     {/* Filters */}
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
@@ -2766,15 +2846,23 @@ function AdminPanelContent() {
                             <option value="today">Today</option>
                             <option value="7d">Last 7 Days</option>
                         </select>
-                        <button style={c.actionBtn(false)} onClick={loadData}>
-                            <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>refresh</span>
-                            Refresh
-                        </button>
+                        {(activitySearch || activityTypeFilter !== 'all' || activityDateFilter !== 'all') && (
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '12px' }}
+                                onClick={() => {
+                                    setActivitySearch('');
+                                    setActivityTypeFilter('all');
+                                    setActivityDateFilter('all');
+                                }}
+                            >
+                                ✕ Reset
+                            </button>
+                        )}
                     </div>
 
                     <div style={c.tableWrap}>
                         <div style={c.tableHead}>
-                            <div style={c.tableTitle}>All Faculty Actions</div>
+                            <div style={c.tableTitle}>Faculty Pedagogical Action Records</div>
                             <div style={{ fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 600 }}>{filteredActivity.length} records</div>
                         </div>
                         {!isMobile ? (

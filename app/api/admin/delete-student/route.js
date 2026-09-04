@@ -77,28 +77,24 @@ async function requireVerifiedAdmin(req) {
     return { admin };
 }
 
+import { logServerAudit } from '../../../../lib/server-audit';
+
 async function logAdminDeletion(admin, usn) {
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from('audit_logs').insert({
-        faculty_id: admin.id,
-        faculty_name: admin.email,
-        faculty_email: admin.email,
-        action_type: 'ADMIN_DELETE_STUDENT',
-        entity_type: 'student',
-        entity_id: usn,
-        old_values: null,
-        new_values: null,
+    await logServerAudit({
+        action: 'ADMIN_DELETE_STUDENT',
+        actor: admin.email,
+        actorRole: 'admin',
+        severity: 'CRITICAL',
+        entityType: 'student',
+        entityId: usn,
+        description: `Permanently deleted student record for USN: ${usn}`,
         metadata: {
             usn,
             admin_id: admin.id,
             source: 'api/admin/delete-student',
             timestamp: new Date().toISOString(),
-        },
+        }
     });
-
-    if (error) {
-        console.error('Admin delete audit log failed:', error);
-    }
 }
 
 export async function POST(req) {
