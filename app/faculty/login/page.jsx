@@ -157,6 +157,7 @@ export default function FacultyLogin() {
                         isOpen={isIssueModalOpen}
                         onClose={() => setIsIssueModalOpen(false)}
                         defaultUserType="faculty"
+                        lockUserType={true}
                         defaultIdentifier={email}
                     />
                 </CardContent>

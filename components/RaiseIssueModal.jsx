@@ -1,9 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiRequest } from '../lib/api/client';
 
-export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'student', defaultIdentifier = '' }) {
+export default function RaiseIssueModal({
+    isOpen,
+    onClose,
+    defaultUserType = 'student',
+    defaultIdentifier = '',
+    lockUserType = true
+}) {
     const [userType, setUserType] = useState(defaultUserType);
     const [identifier, setIdentifier] = useState(defaultIdentifier);
     const [name, setName] = useState('');
@@ -14,6 +20,18 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [successData, setSuccessData] = useState(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setUserType(defaultUserType);
+            setIdentifier(defaultIdentifier || '');
+            setError('');
+            setSuccessData(null);
+            setSubject('');
+            setDescription('');
+            setIssueType('password_reset');
+        }
+    }, [isOpen, defaultUserType, defaultIdentifier]);
 
     if (!isOpen) return null;
 
@@ -193,41 +211,72 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                 </div>
                             )}
 
-                            {/* User Type Switcher */}
+                            {/* User Type Switcher / Indicator */}
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '6px' }}>
-                                    I am raising this as a:
+                                    {lockUserType ? 'Raising issue as:' : 'I am raising this as a:'}
                                 </label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setUserType('student')}
+                                {lockUserType ? (
+                                    <div
                                         style={{
-                                            padding: '8px 12px', minHeight: '44px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
-                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                            border: userType === 'student' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
-                                            background: userType === 'student' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
-                                            color: userType === 'student' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586c6d)'
+                                            padding: '8px 14px', minHeight: '44px', borderRadius: '8px', fontSize: '0.88rem', fontWeight: '600',
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            border: '2px solid var(--primary, #174B4D)',
+                                            background: 'var(--surface-low, #fdf6ed)',
+                                            color: 'var(--primary, #174B4D)',
+                                            boxSizing: 'border-box'
                                         }}
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>school</span>
-                                        Student
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setUserType('faculty')}
-                                        style={{
-                                            padding: '8px 12px', minHeight: '44px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
-                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                            border: userType === 'faculty' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
-                                            background: userType === 'faculty' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
-                                            color: userType === 'faculty' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586c6d)'
-                                        }}
-                                    >
-                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>badge</span>
-                                        Faculty
-                                    </button>
-                                </div>
+                                        <span className="material-icons-round" style={{ fontSize: '20px' }}>
+                                            {userType === 'faculty' ? 'badge' : 'school'}
+                                        </span>
+                                        <span style={{ fontWeight: 700 }}>
+                                            {userType === 'faculty' ? 'Faculty' : 'Student'}
+                                        </span>
+                                        <span style={{
+                                            marginLeft: 'auto',
+                                            fontSize: '0.72rem',
+                                            fontWeight: '600',
+                                            color: 'var(--tx-muted, #586c6d)',
+                                            background: 'rgba(23, 75, 77, 0.08)',
+                                            padding: '3px 8px',
+                                            borderRadius: '6px'
+                                        }}>
+                                            {userType === 'faculty' ? 'Faculty Portal' : 'Student Portal'}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setUserType('student')}
+                                            style={{
+                                                padding: '8px 12px', minHeight: '44px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                border: userType === 'student' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
+                                                background: userType === 'student' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
+                                                color: userType === 'student' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586c6d)'
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>school</span>
+                                            Student
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setUserType('faculty')}
+                                            style={{
+                                                padding: '8px 12px', minHeight: '44px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                border: userType === 'faculty' ? '2px solid var(--primary, #174B4D)' : '1px solid var(--border, #d1d8da)',
+                                                background: userType === 'faculty' ? 'var(--surface-low, #fdf6ed)' : '#ffffff',
+                                                color: userType === 'faculty' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586c6d)'
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>badge</span>
+                                            Faculty
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Identifier Input */}
@@ -236,11 +285,11 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                     {userType === 'student' ? 'University Seat Number (USN) *' : 'Institutional Email *'}
                                 </label>
                                 <input
-                                    type="text"
+                                    type={userType === 'student' ? 'text' : 'email'}
                                     required
                                     placeholder={userType === 'student' ? 'e.g. 2AB23CS063' : 'e.g. faculty@institution.edu'}
                                     value={identifier}
-                                    onChange={(e) => setIdentifier(e.target.value.toUpperCase())}
+                                    onChange={(e) => setIdentifier(userType === 'student' ? e.target.value.toUpperCase() : e.target.value)}
                                     style={{
                                         width: '100%', padding: '10px 12px', borderRadius: '8px',
                                         border: '1px solid var(--border, #d1d8da)', fontSize: '0.9rem',
@@ -267,8 +316,8 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                 >
                                     <option value="password_reset">🔑 Password Reset / Forgot Password</option>
                                     <option value="login_issue">🔒 Account Login / Access Problem</option>
-                                    <option value="marks_dispute">📊 Marks / Results Discrepancy</option>
-                                    <option value="profile_correction">📝 Profile / Name / USN Correction</option>
+                                    <option value="marks_dispute">{userType === 'faculty' ? '📊 Marks Submission / Discrepancy' : '📊 Marks / Results Discrepancy'}</option>
+                                    <option value="profile_correction">{userType === 'faculty' ? '📝 Profile / Name / Department Correction' : '📝 Profile / Name / USN Correction'}</option>
                                     <option value="other">💬 Other Inquiry / Technical Issue</option>
                                 </select>
                             </div>
@@ -281,7 +330,7 @@ export default function RaiseIssueModal({ isOpen, onClose, defaultUserType = 'st
                                 <input
                                     type="text"
                                     required
-                                    placeholder={issueType === 'password_reset' ? 'e.g. Please reset my account password' : 'e.g. Cannot access 4th semester results'}
+                                    placeholder={issueType === 'password_reset' ? 'e.g. Please reset my account password' : (userType === 'faculty' ? 'e.g. Cannot access assigned subjects' : 'e.g. Cannot access 4th semester results')}
                                     value={subject}
                                     onChange={(e) => setSubject(e.target.value)}
                                     style={{

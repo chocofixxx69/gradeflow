@@ -403,6 +403,7 @@ function StudentAuthContent() {
                     isOpen={isIssueModalOpen}
                     onClose={() => setIsIssueModalOpen(false)}
                     defaultUserType="student"
+                    lockUserType={true}
                     defaultIdentifier={email}
                 />
             </Card>

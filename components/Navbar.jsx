@@ -378,6 +378,7 @@ export default function Navbar() {
                     isOpen={isIssueModalOpen}
                     onClose={() => setIsIssueModalOpen(false)}
                     defaultUserType={activeRole === 'faculty' ? 'faculty' : 'student'}
+                    lockUserType={true}
                     defaultIdentifier={user?.usn || user?.email || ''}
                 />
 
