@@ -388,8 +388,31 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                     marginTop: '20px', background: 'var(--surface)', border: '1px solid var(--border)',
                     borderRadius: '14px', padding: '24px', boxShadow: '0 8px 24px rgba(0,0,0,0.06)'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <button
+                                onClick={() => setSelectedTicket(null)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface-low)',
+                                    color: 'var(--tx-main)',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
+                                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                                title="Back to ticket list"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '15px' }}>arrow_back</span>
+                                Back to Tickets
+                            </button>
                             <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>
                                 #{selectedTicket.ticket_number}
                             </span>
@@ -403,6 +426,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                         <button
                             onClick={() => setSelectedTicket(null)}
                             style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)' }}
+                            title="Close (Esc)"
                         >
                             <span className="material-icons-round">close</span>
                         </button>

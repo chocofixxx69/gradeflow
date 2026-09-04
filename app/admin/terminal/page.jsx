@@ -12,6 +12,17 @@ import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { supabase } from '../../../lib/supabase';
 
+const TAB_METADATA = {
+    overview: { label: 'Institutional Overview', icon: 'dashboard', shortLabel: 'Overview' },
+    students: { label: 'Student Directory & Access Control', icon: 'school', shortLabel: 'Students' },
+    classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
+    requests: { label: 'Faculty Access & Credentials', icon: 'verified_user', shortLabel: 'Faculty Access' },
+    support: { label: 'Institutional Support Tickets', icon: 'support_agent', shortLabel: 'Support' },
+    activity: { label: 'Activity Logs & Audit Trail', icon: 'history', shortLabel: 'Activity Log' },
+    system: { label: 'System Health & Engine Audit', icon: 'health_and_safety', shortLabel: 'System Audit' },
+    settings: { label: 'Institutional Settings & Security', icon: 'settings', shortLabel: 'Settings' },
+};
+
 function AdminPanelContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -46,17 +57,10 @@ function AdminPanelContent() {
         };
     }, [isMobile, mobileMenuOpen]);
 
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape' && mobileMenuOpen) {
-                setMobileMenuOpen(false);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [mobileMenuOpen]);
     const initialTab = searchParams?.get('tab') || 'overview';
     const [tab, setTab] = useState(initialTab);
+    const [tabHistory, setTabHistory] = useState([]);
+    const [navigationOrigin, setNavigationOrigin] = useState(null);
     const [students, setStudents] = useState([]);
     const [requests, setRequests] = useState([]);
     const [activityLogs, setActivityLogs] = useState([]);
@@ -152,6 +156,136 @@ function AdminPanelContent() {
     const [tokenInput, setTokenInput] = useState('');
     const [reloadingData, setReloadingData] = useState(false);
     const [reloadDataSuccess, setReloadDataSuccess] = useState(false);
+
+    const switchTab = useCallback((newTab, origin = null) => {
+        if (newTab === tab && !origin) return;
+        setTabHistory(prev => {
+            const filtered = prev.filter(t => t !== tab);
+            return [...filtered, tab];
+        });
+        if (origin) {
+            setNavigationOrigin(origin);
+        } else if (newTab === 'overview') {
+            setNavigationOrigin(null);
+        }
+        setTab(newTab);
+        if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', newTab);
+            window.history.pushState({ tab: newTab }, '', url.toString());
+        }
+    }, [tab]);
+
+    const goBack = useCallback(() => {
+        // Priority 1: Close active drawers or modals
+        if (selectedStudent) {
+            setSelectedStudent(null);
+            return;
+        }
+        if (selectedFaculty) {
+            setSelectedFaculty(null);
+            return;
+        }
+        if (showAddStudent) {
+            setShowAddStudent(false);
+            return;
+        }
+        if (showAddFaculty) {
+            setShowAddFaculty(false);
+            return;
+        }
+        if (editingFaculty) {
+            setEditingFaculty(null);
+            return;
+        }
+
+        // Priority 2: In Students tab with active cohort/branch filter, clear filter and return to Overview
+        if (tab === 'students' && (studentSemFilter !== 'all' || studentBranchFilter !== 'all')) {
+            setStudentSemFilter('all');
+            setStudentBranchFilter('all');
+            if (navigationOrigin?.from === 'overview' || tabHistory[tabHistory.length - 1] === 'overview') {
+                setTab('overview');
+                setNavigationOrigin(null);
+                if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'overview');
+                    window.history.pushState({ tab: 'overview' }, '', url.toString());
+                }
+                return;
+            }
+        }
+
+        // Priority 3: Pop from tabHistory if available
+        if (tabHistory.length > 0) {
+            const previous = tabHistory[tabHistory.length - 1];
+            setTabHistory(prev => prev.slice(0, -1));
+            setTab(previous);
+            if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', previous);
+                window.history.pushState({ tab: previous }, '', url.toString());
+            }
+            return;
+        }
+
+        // Priority 4: Default fallback: return to overview
+        if (tab !== 'overview') {
+            setTab('overview');
+            setNavigationOrigin(null);
+            if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'overview');
+                window.history.pushState({ tab: 'overview' }, '', url.toString());
+            }
+        }
+    }, [selectedStudent, selectedFaculty, showAddStudent, showAddFaculty, editingFaculty, tab, studentSemFilter, studentBranchFilter, navigationOrigin, tabHistory]);
+
+    // Handle browser Back and Forward buttons (popstate)
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handlePopState = (e) => {
+            if (selectedStudent) {
+                setSelectedStudent(null);
+                return;
+            }
+            if (selectedFaculty) {
+                setSelectedFaculty(null);
+                return;
+            }
+            if (showAddStudent) {
+                setShowAddStudent(false);
+                return;
+            }
+            if (showAddFaculty) {
+                setShowAddFaculty(false);
+                return;
+            }
+            if (editingFaculty) {
+                setEditingFaculty(null);
+                return;
+            }
+            const currentTab = e.state?.tab || new URLSearchParams(window.location.search).get('tab') || 'overview';
+            setTab(currentTab);
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [selectedStudent, selectedFaculty, showAddStudent, showAddFaculty, editingFaculty]);
+
+    // Enhanced Escape key handler to close any active drawer or modal
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                if (mobileMenuOpen) setMobileMenuOpen(false);
+                if (selectedStudent) setSelectedStudent(null);
+                if (selectedFaculty) setSelectedFaculty(null);
+                if (showAddStudent) setShowAddStudent(false);
+                if (showAddFaculty) setShowAddFaculty(false);
+                if (editingFaculty) setEditingFaculty(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [mobileMenuOpen, selectedStudent, selectedFaculty, showAddStudent, showAddFaculty, editingFaculty]);
 
     const fetchSettings = useCallback(async () => {
         setSettingsLoading(true);
@@ -1185,12 +1319,12 @@ function AdminPanelContent() {
             <aside style={c.sidebar}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'space-between', padding: '0 4px', marginBottom: '8px' }}>
                     {(!sidebarCollapsed || isMobile) ? (
-                        <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => { setTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>
+                        <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => { switchTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>
                             <div style={c.logoBox}>G</div>
                             <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>GradeFlow</span>
                         </div>
                     ) : (
-                        <div style={{ ...c.logoBox, cursor: 'pointer' }} onClick={() => { setTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>G</div>
+                        <div style={{ ...c.logoBox, cursor: 'pointer' }} onClick={() => { switchTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>G</div>
                     )}
                     {isMobile ? (
                         <button
@@ -1222,7 +1356,7 @@ function AdminPanelContent() {
                                 justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
                                 padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
                             }}
-                            onClick={() => { setTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
+                            onClick={() => { switchTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
                             title={sidebarCollapsed && !isMobile ? n.label : undefined}
                         >
                             <span className="material-icons-round" style={{ fontSize: '18px' }}>{n.icon}</span>
@@ -1277,6 +1411,115 @@ function AdminPanelContent() {
                     </div>
                 )}
 
+                {/* Global Top Breadcrumbs & Back Navigation Bar for all non-overview tabs */}
+                {tab !== 'overview' && (
+                    <div
+                        className="gf-fade-up"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            marginBottom: '20px',
+                            padding: '10px 16px',
+                            background: 'var(--surface-low)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '12px',
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                                onClick={goBack}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--tx-main)',
+                                    fontSize: '12px',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.borderColor = 'var(--primary)';
+                                    e.currentTarget.style.color = 'var(--primary)';
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                    e.currentTarget.style.color = 'var(--tx-main)';
+                                }}
+                                title="Go back to previous view or overview"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
+                                <span>Back {tabHistory.length > 0 ? `to ${TAB_METADATA[tabHistory[tabHistory.length - 1]]?.shortLabel || 'Previous'}` : 'to Overview'}</span>
+                            </button>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--tx-dim)' }}>
+                                <span
+                                    style={{ color: 'var(--tx-muted)', cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => switchTab('overview')}
+                                    onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                                    onMouseLeave={e => e.currentTarget.style.color = 'var(--tx-muted)'}
+                                    title="Return to Institutional Overview"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>dashboard</span>
+                                    Overview
+                                </span>
+                                <span>›</span>
+                                <span style={{ color: 'var(--tx-main)', fontWeight: 800 }}>
+                                    {TAB_METADATA[tab]?.shortLabel || tab}
+                                </span>
+                                {tab === 'students' && studentSemFilter !== 'all' && (
+                                    <>
+                                        <span>›</span>
+                                        <span style={{ color: 'var(--primary)', fontWeight: 800, background: 'rgba(37,99,235,0.08)', padding: '2px 8px', borderRadius: '6px' }}>
+                                            Semester {studentSemFilter} Cohort
+                                        </span>
+                                    </>
+                                )}
+                                {tab === 'students' && studentBranchFilter !== 'all' && (
+                                    <>
+                                        <span>›</span>
+                                        <span style={{ color: 'var(--primary)', fontWeight: 800, background: 'rgba(37,99,235,0.08)', padding: '2px 8px', borderRadius: '6px' }}>
+                                            {studentBranchFilter}
+                                        </span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Direct return to Overview shortcut */}
+                        <button
+                            onClick={() => switchTab('overview')}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                background: 'transparent',
+                                border: 'none',
+                                color: 'var(--tx-muted)',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--tx-muted)'}
+                            title="Jump directly to Institutional Overview"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '16px' }}>home</span>
+                            <span>Institutional Overview</span>
+                        </button>
+                    </div>
+                )}
+
                 {tab === 'overview' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
@@ -1302,7 +1545,7 @@ function AdminPanelContent() {
                             { label: 'Faculty Activity Logs', val: activityLogs.length, sub: `${stats.activityToday} Action(s) Today`, icon: 'history', link: 'activity' },
                             { label: 'Open Support Issues', val: openTicketsCount, warn: openTicketsCount > 0, sub: 'Pending Admin Inquiries', icon: 'support_agent', link: 'support' },
                         ].map(st => (
-                            <div key={st.label} style={{ ...c.statCard, cursor: st.link ? 'pointer' : 'default', transition: 'all 0.15s ease' }} onClick={() => st.link && setTab(st.link)}>
+                            <div key={st.label} style={{ ...c.statCard, cursor: st.link ? 'pointer' : 'default', transition: 'all 0.15s ease' }} onClick={() => st.link && switchTab(st.link, { from: 'overview', title: 'Institutional Overview' })}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                     <div style={c.statLabel}>{st.label}</div>
                                     <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--tx-dim)', opacity: 0.4 }}>{st.icon}</span>
@@ -1323,7 +1566,7 @@ function AdminPanelContent() {
                                     <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Department & Branch Enrollment</h3>
                                     <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '4px 0 0 0' }}>Real student enrollment breakdown across active engineering departments.</p>
                                 </div>
-                                <button style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '11px' }} onClick={() => { setStudentBranchFilter('all'); setTab('students'); }}>
+                                <button style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '11px' }} onClick={() => { setStudentBranchFilter('all'); switchTab('students', { from: 'overview', title: 'Institutional Overview' }); }}>
                                     View All
                                 </button>
                             </div>
@@ -1334,7 +1577,7 @@ function AdminPanelContent() {
                                     return (
                                         <div
                                             key={branch}
-                                            onClick={() => { setStudentBranchFilter(branch); setTab('students'); }}
+                                            onClick={() => { setStudentBranchFilter(branch); switchTab('students', { from: 'overview', title: 'Institutional Overview', reason: branch }); }}
                                             style={{
                                                 background: 'var(--surface-low)',
                                                 border: '1px solid var(--border)',
@@ -1377,7 +1620,7 @@ function AdminPanelContent() {
                                     {semesterBreakdown.map(([sem, count]) => (
                                         <div
                                             key={sem}
-                                            onClick={() => { setStudentSemFilter(String(sem)); setTab('students'); }}
+                                            onClick={() => { setStudentSemFilter(String(sem)); switchTab('students', { from: 'overview', title: 'Institutional Overview', reason: `Semester ${sem}` }); }}
                                             style={{
                                                 background: 'var(--surface-low)',
                                                 border: '1px solid var(--border)',
@@ -1405,7 +1648,7 @@ function AdminPanelContent() {
                                         <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)', margin: 0 }}>Recent Faculty Activity</h3>
                                         <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '2px 0 0 0' }}>Real-time audit log of staff interactions.</p>
                                     </div>
-                                    <button style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px' }} onClick={() => setTab('activity')}>
+                                    <button style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px' }} onClick={() => switchTab('activity', { from: 'overview', title: 'Institutional Overview' })}>
                                         Full Log ({activityLogs.length})
                                     </button>
                                 </div>
@@ -1445,7 +1688,7 @@ function AdminPanelContent() {
                                 <div style={c.tableTitle}>Recent Student Registrations & Dossiers</div>
                                 <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>Showing latest students registered in the institution database.</div>
                             </div>
-                            <button style={c.actionBtn(true)} onClick={() => setTab('students')}>View All {students.length} Students</button>
+                            <button style={c.actionBtn(true)} onClick={() => switchTab('students', { from: 'overview', title: 'Institutional Overview' })}>View All {students.length} Students</button>
                         </div>
                         {!isMobile ? (
                             <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse' }}>
@@ -1551,6 +1794,80 @@ function AdminPanelContent() {
                             </button>
                         </div>
                     </div>
+
+                    {/* Active Cohort / Branch Drill-down Banner */}
+                    {(studentSemFilter !== 'all' || studentBranchFilter !== 'all') && (
+                        <div
+                            className="gf-fade-up"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                background: 'rgba(37, 99, 235, 0.07)',
+                                border: '1px solid rgba(37, 99, 235, 0.28)',
+                                borderRadius: '12px',
+                                padding: '12px 18px',
+                                marginBottom: '20px',
+                                flexWrap: 'wrap',
+                                gap: '12px',
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                                    <span className="material-icons-round" style={{ fontSize: '20px' }}>filter_alt</span>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                        Active Cohort: {studentSemFilter !== 'all' ? `Semester ${studentSemFilter} Students` : ''} {studentBranchFilter !== 'all' ? `· ${studentBranchFilter}` : ''}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                        Showing {filtered.length} student{filtered.length === 1 ? '' : 's'} matching current filter selection.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                    onClick={() => {
+                                        setStudentSemFilter('all');
+                                        setStudentBranchFilter('all');
+                                    }}
+                                    style={{
+                                        ...c.actionBtn(false),
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        fontSize: '12px',
+                                        padding: '7px 14px',
+                                        background: 'var(--surface)',
+                                    }}
+                                    title="Reset filters and show all students in directory"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>clear</span>
+                                    Show All Students
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setStudentSemFilter('all');
+                                        setStudentBranchFilter('all');
+                                        switchTab('overview');
+                                    }}
+                                    style={{
+                                        ...c.actionBtn(true),
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        fontSize: '12px',
+                                        padding: '7px 16px',
+                                    }}
+                                    title="Clear cohort filter and return to Institutional Overview"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>arrow_back</span>
+                                    Back to Overview
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Action notification toast */}
                     {studentActionMsg && (
@@ -2887,7 +3204,7 @@ function AdminPanelContent() {
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     <button
-                                        onClick={() => setTab('requests')}
+                                        onClick={() => switchTab('requests', { from: 'settings', title: 'Settings' })}
                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2902,7 +3219,7 @@ function AdminPanelContent() {
                                     </button>
 
                                     <button
-                                        onClick={() => setTab('students')}
+                                        onClick={() => switchTab('students', { from: 'settings', title: 'Settings' })}
                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2913,7 +3230,7 @@ function AdminPanelContent() {
                                     </button>
 
                                     <button
-                                        onClick={() => setTab('classes')}
+                                        onClick={() => switchTab('classes', { from: 'settings', title: 'Settings' })}
                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2944,6 +3261,46 @@ function AdminPanelContent() {
             {selectedStudent && (
                 <div style={c.overlay} onClick={e => { if (e.target === e.currentTarget) setSelectedStudent(null); }}>
                     <div style={c.drawer} className="gf-fade-up">
+                        {/* Drawer Top Navigation Bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid var(--border)', width: '100%' }}>
+                            <button
+                                onClick={() => setSelectedStudent(null)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 14px',
+                                    borderRadius: '8px',
+                                    background: 'var(--surface-low)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--tx-main)',
+                                    fontSize: '12px',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.borderColor = 'var(--primary)';
+                                    e.currentTarget.style.color = 'var(--primary)';
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                    e.currentTarget.style.color = 'var(--tx-main)';
+                                }}
+                                title="Close dossier and return to student directory"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
+                                <span>Back to Student Directory</span>
+                            </button>
+                            <button
+                                onClick={() => setSelectedStudent(null)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}
+                                title="Close (Esc)"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '22px' }}>close</span>
+                            </button>
+                        </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '20px', minWidth: 0, flex: 1 }}>
                                 <div style={{ ...c.avatar, width: isMobile ? '48px' : '64px', height: isMobile ? '48px' : '64px', fontSize: isMobile ? '18px' : '22px', borderRadius: '14px' }}>
@@ -3341,7 +3698,16 @@ function AdminPanelContent() {
             {showAddStudent && (
                 <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setShowAddStudent(false); }}>
                     <div style={c.modalCard} className="gf-fade-up">
-                        <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '8px', letterSpacing: '-0.03em' }}>Add New Student</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.03em' }}>Add New Student</h2>
+                            <button
+                                onClick={() => setShowAddStudent(false)}
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
+                                title="Close (Esc)"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '22px' }}>close</span>
+                            </button>
+                        </div>
                         <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '24px', lineHeight: 1.6 }}>
                             Create a student profile. When this student logs in with this USN, they will connect to this record automatically.
                         </p>
@@ -3368,6 +3734,46 @@ function AdminPanelContent() {
             {selectedFaculty && (
                 <div style={c.overlay} onClick={e => { if (e.target === e.currentTarget) setSelectedFaculty(null); }}>
                     <div style={c.drawer} className="gf-fade-up">
+                        {/* Faculty Drawer Top Navigation Bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid var(--border)', width: '100%' }}>
+                            <button
+                                onClick={() => setSelectedFaculty(null)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 14px',
+                                    borderRadius: '8px',
+                                    background: 'var(--surface-low)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--tx-main)',
+                                    fontSize: '12px',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.borderColor = 'var(--primary)';
+                                    e.currentTarget.style.color = 'var(--primary)';
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                    e.currentTarget.style.color = 'var(--tx-main)';
+                                }}
+                                title="Close dossier and return to faculty directory"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
+                                <span>Back to Faculty Directory</span>
+                            </button>
+                            <button
+                                onClick={() => setSelectedFaculty(null)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}
+                                title="Close (Esc)"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '22px' }}>close</span>
+                            </button>
+                        </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '20px', minWidth: 0, flex: 1 }}>
                                 <div style={{ ...c.avatar, width: isMobile ? '48px' : '64px', height: isMobile ? '48px' : '64px', fontSize: isMobile ? '18px' : '22px', borderRadius: '14px' }}>
@@ -3557,7 +3963,16 @@ function AdminPanelContent() {
             {showAddFaculty && (
                 <div style={c.modal} onClick={e => { if (e.target === e.currentTarget) setShowAddFaculty(false); }}>
                     <div style={c.modalCard} className="gf-fade-up">
-                        <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '8px', letterSpacing: '-0.03em' }}>Onboard Faculty Member</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <h2 style={{ fontSize: '22px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.03em' }}>Onboard Faculty Member</h2>
+                            <button
+                                onClick={() => setShowAddFaculty(false)}
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
+                                title="Close (Esc)"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '22px' }}>close</span>
+                            </button>
+                        </div>
                         <p style={{ fontSize: '13px', color: 'var(--tx-muted)', marginBottom: '24px', lineHeight: 1.6 }}>
                             Register a new faculty member. A secure institutional Access Key will be automatically generated for them to link their GradeFlow account.
                         </p>
