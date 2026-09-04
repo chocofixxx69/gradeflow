@@ -29,12 +29,11 @@ export async function GET(req) {
             // `subject_marks`, populated by the VTU scraper and keyed by usn, not
             // student_id. Querying `marks` alone made this panel show "No marks
             // synced" for almost every student even though their real results exist.
-            const [{ data: manualMarks }, { data: scrapedMarks }, { data: docs }] = await Promise.all([
+            const [{ data: manualMarks }, { data: scrapedMarks }] = await Promise.all([
                 supabaseAdmin.from('marks').select('*').eq('student_id', studentId).order('semester', { ascending: true }),
                 usn
                     ? supabaseAdmin.from('subject_marks').select('*').eq('usn', usn).order('semester', { ascending: true })
-                    : Promise.resolve({ data: [] }),
-                supabaseAdmin.from('documents').select('*').eq('student_id', studentId).order('created_at', { ascending: false })
+                    : Promise.resolve({ data: [] })
             ]);
 
             const combinedMarks = [
@@ -58,17 +57,15 @@ export async function GET(req) {
         const [
             students,
             { data: facultyOnboarding },
-            { data: marksCount },
+            { count: marksCount },
             { data: facultyActivity },
-            { data: documentsCount },
             { data: classes }
         ] = await Promise.all([
-            fetchAllPaginated('students', 'id, usn, name, branch, scheme, semester, year, lateral_entry, status, suspended, suspend_reason, created_at, updated_at', supabaseAdmin, 'created_at', false),
+            fetchAllPaginated('students', 'id, usn, name, branch, scheme, semester, year, lateral_entry, activated_at, is_suspended, suspended_at, suspended_reason, created_at, updated_at', supabaseAdmin, 'created_at', false),
             supabaseAdmin.from('faculty_onboarding').select('*').order('created_at', { ascending: false }),
-            supabaseAdmin.from('marks').select('id', { count: 'exact', head: true }),
+            supabaseAdmin.from('subject_marks').select('id', { count: 'exact', head: true }),
             supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(300),
-            supabaseAdmin.from('documents').select('id', { count: 'exact', head: true }),
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, subject_name, subject_code, faculty_id, created_at')
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, scheme, academic_year, faculty_id, created_at')
         ]);
 
         // Derive facultyList from facultyOnboarding to avoid duplicate query
@@ -85,9 +82,8 @@ export async function GET(req) {
             counts: {
                 totalStudents: students?.length || 0,
                 totalFacultyOnboarding: facultyOnboarding?.length || 0,
-                totalMarksRecords: marksCount?.count || 0,
+                totalMarksRecords: marksCount || 0,
                 totalFacultyActivities: facultyActivity?.length || 0,
-                totalDocuments: documentsCount?.count || 0,
                 totalClasses: classes?.length || 0,
             }
         });
