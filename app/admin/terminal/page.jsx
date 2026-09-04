@@ -78,6 +78,7 @@ function AdminPanelContent() {
     const [search, setSearch] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [studentDetails, setStudentDetails] = useState(null);
+    const [detailError, setDetailError] = useState('');
     const [detailTab, setDetailTab] = useState('marks');
     const [adminUser, setAdminUser] = useState(null);
     const [copiedKey, setCopiedKey] = useState(null);
@@ -431,6 +432,7 @@ function AdminPanelContent() {
     const openStudent = async (student) => {
         setSelectedStudent(student);
         setStudentDetails(null);
+        setDetailError('');
         setDetailTab('marks');
         try {
             const data = await apiRequest('/api/admin/terminal/data', { query: { student_id: student.id, usn: student.usn } });
@@ -442,7 +444,8 @@ function AdminPanelContent() {
             });
         } catch (err) {
             console.error('Error fetching student details:', err);
-            setStudentDetails({ marks: [], docs: [], academic: null, student });
+            setDetailError(err?.message || 'Failed to load this student\'s records. Please retry.');
+            setStudentDetails(null);
         }
     };
 
@@ -3409,7 +3412,19 @@ function AdminPanelContent() {
 
                         {detailTab === 'marks' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                {!studentDetails ? (
+                                {detailError ? (
+                                    <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--red)' }}>error_outline</span>
+                                        <div style={{ marginTop: '12px', fontSize: '14px', fontWeight: 800, color: 'var(--red)' }}>Failed to load academic records</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '4px' }}>{detailError}</div>
+                                        <button
+                                            style={{ ...c.actionBtn(false), marginTop: '16px' }}
+                                            onClick={() => openStudent(selectedStudent)}
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
+                                ) : !studentDetails ? (
                                     <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--tx-dim)' }}>
                                         <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}>sync</span>
                                         <div style={{ marginTop: '12px', fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Compiling VTU Academic Dossier…</div>
