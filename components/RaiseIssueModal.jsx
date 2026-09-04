@@ -14,6 +14,8 @@ export default function RaiseIssueModal({
     const [identifier, setIdentifier] = useState(defaultIdentifier);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
+    const [contactInfo, setContactInfo] = useState('');
+    const [priority, setPriority] = useState('normal');
     const [issueType, setIssueType] = useState('password_reset');
     const [subject, setSubject] = useState('');
     const [description, setDescription] = useState('');
@@ -25,6 +27,10 @@ export default function RaiseIssueModal({
         if (isOpen) {
             setUserType(defaultUserType);
             setIdentifier(defaultIdentifier || '');
+            setName('');
+            setEmail('');
+            setContactInfo('');
+            setPriority('normal');
             setError('');
             setSuccessData(null);
             setSubject('');
@@ -35,10 +41,51 @@ export default function RaiseIssueModal({
 
     if (!isOpen) return null;
 
+    const getSubjectPlaceholder = () => {
+        switch (issueType) {
+            case 'password_reset':
+                return 'e.g. Please reset my account password';
+            case 'login_issue':
+                return userType === 'faculty' ? 'e.g. Cannot sign in with institutional credentials' : 'e.g. Account activation key expired / Login error';
+            case 'subject_allocation':
+                return 'e.g. Subject 21CS52 not visible in my assigned courses';
+            case 'marks_dispute':
+                return userType === 'faculty' ? 'e.g. Need to unlock IA-2 marks for Section A' : 'e.g. IA-1 score discrepancy in Data Structures';
+            case 'attendance_issue':
+                return userType === 'faculty' ? 'e.g. Attendance locked for 5th semester Section B' : 'e.g. Attendance percentage mismatch in Operating Systems';
+            case 'profile_correction':
+                return userType === 'faculty' ? 'e.g. Designation update to Associate Professor' : 'e.g. Spelling error in registered name';
+            case 'student_record':
+                return 'e.g. USN 2AB23CS045 missing from class roster';
+            case 'grade_card_issue':
+                return 'e.g. Grade card download generates blank PDF';
+            case 'reval_query':
+                return 'e.g. Re-evaluation status query for 3rd semester';
+            case 'course_registration':
+                return 'e.g. Unable to select open elective subject';
+            case 'report_issue':
+                return 'e.g. Excel export error for semester result sheet';
+            default:
+                return 'e.g. Summary of the problem or request';
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setBusy(true);
+
+        let fullDescription = description.trim();
+        const metaNotes = [];
+        if (priority && priority !== 'normal') {
+            metaNotes.push(`Priority: ${priority.toUpperCase()}`);
+        }
+        if (contactInfo && contactInfo.trim()) {
+            metaNotes.push(`Contact: ${contactInfo.trim()}`);
+        }
+        if (metaNotes.length > 0) {
+            fullDescription = `[${metaNotes.join(' | ')}]\n\n${fullDescription}`;
+        }
 
         try {
             const res = await apiRequest('/api/support/tickets', {
@@ -46,11 +93,11 @@ export default function RaiseIssueModal({
                 body: JSON.stringify({
                     user_type: userType,
                     user_identifier: identifier,
-                    user_name: name,
-                    user_email: email,
+                    user_name: name.trim() || undefined,
+                    user_email: userType === 'faculty' ? (identifier.includes('@') ? identifier.trim() : undefined) : (email.trim() || undefined),
                     issue_type: issueType,
                     subject: subject || (issueType === 'password_reset' ? 'Password Reset Request' : 'Support Request'),
-                    description
+                    description: fullDescription
                 })
             });
 
@@ -299,6 +346,44 @@ export default function RaiseIssueModal({
                                 />
                             </div>
 
+                            {/* Contact & Name Details (2-Column Grid) */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
+                                        Full Name <span style={{ color: 'var(--tx-muted, #586c6d)', fontWeight: '400' }}>(Optional)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder={userType === 'faculty' ? 'e.g. Dr. A. K. Sharma' : 'e.g. Rahul Sharma'}
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '9px 12px', borderRadius: '8px',
+                                            border: '1px solid var(--border, #d1d8da)', fontSize: '0.88rem',
+                                            background: '#ffffff', color: 'var(--tx-main, #0a181c)',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
+                                        Contact Phone / Alt. Email <span style={{ color: 'var(--tx-muted, #586c6d)', fontWeight: '400' }}>(Optional)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. +91 98765 43210 or personal@gmail.com"
+                                        value={contactInfo}
+                                        onChange={(e) => setContactInfo(e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '9px 12px', borderRadius: '8px',
+                                            border: '1px solid var(--border, #d1d8da)', fontSize: '0.88rem',
+                                            background: '#ffffff', color: 'var(--tx-main, #0a181c)',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
                             {/* Issue Category */}
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
@@ -314,12 +399,83 @@ export default function RaiseIssueModal({
                                         boxSizing: 'border-box'
                                     }}
                                 >
-                                    <option value="password_reset">🔑 Password Reset / Forgot Password</option>
-                                    <option value="login_issue">🔒 Account Login / Access Problem</option>
-                                    <option value="marks_dispute">{userType === 'faculty' ? '📊 Marks Submission / Discrepancy' : '📊 Marks / Results Discrepancy'}</option>
-                                    <option value="profile_correction">{userType === 'faculty' ? '📝 Profile / Name / Department Correction' : '📝 Profile / Name / USN Correction'}</option>
-                                    <option value="other">💬 Other Inquiry / Technical Issue</option>
+                                    {userType === 'faculty' ? (
+                                        <>
+                                            <option value="password_reset">🔑 Password Reset / Forgot Password</option>
+                                            <option value="login_issue">🔒 Account Login / Access Problem</option>
+                                            <option value="subject_allocation">📚 Subject Assignment / Missing Subject</option>
+                                            <option value="marks_dispute">📊 Marks Submission / IA Entry Discrepancy</option>
+                                            <option value="attendance_issue">📅 Attendance Entry / Freeze Issue</option>
+                                            <option value="profile_correction">📝 Profile / Name / Department Correction</option>
+                                            <option value="student_record">🎓 Student Lookup / Class Roster Issue</option>
+                                            <option value="report_issue">📑 Report Card / Excel Export Error</option>
+                                            <option value="other">💬 Other Inquiry / Technical Issue</option>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <option value="password_reset">🔑 Password Reset / Forgot Password</option>
+                                            <option value="login_issue">🔒 Account Activation / Login Problem</option>
+                                            <option value="marks_dispute">📊 Internal / External Marks Discrepancy</option>
+                                            <option value="attendance_issue">📅 Attendance Shortage / Discrepancy</option>
+                                            <option value="profile_correction">📝 Profile / Name / USN Correction</option>
+                                            <option value="grade_card_issue">📄 Grade Sheet / Transcript Download Issue</option>
+                                            <option value="reval_query">🔄 Re-evaluation / Make-up Exam Query</option>
+                                            <option value="course_registration">📋 Course / Elective Registration Issue</option>
+                                            <option value="other">💬 Other Inquiry / Technical Issue</option>
+                                        </>
+                                    )}
                                 </select>
+                            </div>
+
+                            {/* Urgency / Priority */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '6px' }}>
+                                    Urgency Level
+                                </label>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPriority('normal')}
+                                        style={{
+                                            padding: '7px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600,
+                                            cursor: 'pointer', border: priority === 'normal' ? '2px solid #059669' : '1px solid var(--border, #d1d8da)',
+                                            background: priority === 'normal' ? '#ecfdf5' : '#ffffff',
+                                            color: priority === 'normal' ? '#047857' : 'var(--tx-muted, #586c6d)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                                        Normal
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPriority('high')}
+                                        style={{
+                                            padding: '7px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600,
+                                            cursor: 'pointer', border: priority === 'high' ? '2px solid #d97706' : '1px solid var(--border, #d1d8da)',
+                                            background: priority === 'high' ? '#fffbeb' : '#ffffff',
+                                            color: priority === 'high' ? '#b45309' : 'var(--tx-muted, #586c6d)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }} />
+                                        High
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPriority('urgent')}
+                                        style={{
+                                            padding: '7px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600,
+                                            cursor: 'pointer', border: priority === 'urgent' ? '2px solid #dc2626' : '1px solid var(--border, #d1d8da)',
+                                            background: priority === 'urgent' ? '#fef2f2' : '#ffffff',
+                                            color: priority === 'urgent' ? '#b91c1c' : 'var(--tx-muted, #586c6d)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                                        Urgent
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Subject */}
@@ -330,7 +486,7 @@ export default function RaiseIssueModal({
                                 <input
                                     type="text"
                                     required
-                                    placeholder={issueType === 'password_reset' ? 'e.g. Please reset my account password' : (userType === 'faculty' ? 'e.g. Cannot access assigned subjects' : 'e.g. Cannot access 4th semester results')}
+                                    placeholder={getSubjectPlaceholder()}
                                     value={subject}
                                     onChange={(e) => setSubject(e.target.value)}
                                     style={{
@@ -350,7 +506,7 @@ export default function RaiseIssueModal({
                                 <textarea
                                     required
                                     rows={3}
-                                    placeholder="Provide any details that will help the administrator assist you..."
+                                    placeholder="Provide any details that will help the administrator assist you (e.g. subject code, semester, error message, exact details)..."
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     style={{

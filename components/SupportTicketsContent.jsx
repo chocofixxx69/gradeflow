@@ -93,8 +93,15 @@ export function SupportTicketsContent({ onStatsUpdate }) {
         switch (type) {
             case 'password_reset': return '🔑 Password Reset';
             case 'login_issue': return '🔒 Login Problem';
-            case 'marks_dispute': return '📊 Marks Dispute';
+            case 'subject_allocation': return '📚 Subject Allocation';
+            case 'marks_dispute': return '📊 Marks Discrepancy';
+            case 'attendance_issue': return '📅 Attendance Issue';
             case 'profile_correction': return '📝 Profile Correction';
+            case 'student_record': return '🎓 Student Record Access';
+            case 'grade_card_issue': return '📄 Grade Sheet Download';
+            case 'reval_query': return '🔄 Re-evaluation Query';
+            case 'course_registration': return '📋 Course Registration';
+            case 'report_issue': return '📑 Report / Export Error';
             default: return '💬 General Support';
         }
     };
@@ -337,6 +344,21 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                                                         </button>
                                                     )}
 
+                                                    {t.user_type === 'faculty' && (t.issue_type === 'password_reset' || t.issue_type === 'login_issue') && t.status !== 'resolved' && (
+                                                        <button
+                                                            onClick={() => setConfirmingAction({ type: 'reset_password', ticket: t })}
+                                                            title="Reset faculty password to temporary access key"
+                                                            style={{
+                                                                padding: '6px 10px', borderRadius: '6px', border: 'none',
+                                                                background: '#b45309', color: '#ffffff', fontSize: '0.78rem',
+                                                                fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                                            }}
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>vpn_key</span>
+                                                            Reset Key
+                                                        </button>
+                                                    )}
+
                                                     {t.status !== 'resolved' && (
                                                         <button
                                                             onClick={() => setConfirmingAction({ type: 'resolve', ticket: t })}
@@ -438,7 +460,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
 
                     {/* Action Bar */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        {selectedTicket.user_type === 'student' && (
+                        {selectedTicket.user_type === 'student' ? (
                             <button
                                 onClick={() => setConfirmingAction({ type: 'reset_password', ticket: selectedTicket })}
                                 style={{
@@ -450,7 +472,19 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                                 <span className="material-icons-round" style={{ fontSize: '18px' }}>lock_reset</span>
                                 1-Click Formula Password Reset
                             </button>
-                        )}
+                        ) : (selectedTicket.issue_type === 'password_reset' || selectedTicket.issue_type === 'login_issue') && selectedTicket.status !== 'resolved' ? (
+                            <button
+                                onClick={() => setConfirmingAction({ type: 'reset_password', ticket: selectedTicket })}
+                                style={{
+                                    padding: '10px 18px', borderRadius: '8px', border: 'none',
+                                    background: '#b45309', color: '#ffffff', fontWeight: 600,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem'
+                                }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '18px' }}>vpn_key</span>
+                                Reset Faculty Password (Temp Key)
+                            </button>
+                        ) : null}
 
                         {selectedTicket.status !== 'resolved' && (
                             <button
@@ -475,6 +509,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                                     cursor: 'pointer', fontSize: '0.88rem'
                                 }}
                             >
+                                <span className="material-icons-round" style={{ fontSize: '18px' }}>pending_actions</span>
                                 Mark In-Progress
                             </button>
                         )}
@@ -517,7 +552,9 @@ export function SupportTicketsContent({ onStatsUpdate }) {
 
                         <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--tx-muted)', lineHeight: '1.5' }}>
                             {confirmingAction.type === 'reset_password'
-                                ? `This will reset the student's password to the standard institutional formula (first 2 letters of name + last 3 digits of USN), allowing them to log in immediately case-insensitively. The ticket will also be marked as resolved.`
+                                ? (confirmingAction.ticket.user_type === 'student'
+                                    ? `This will reset the student's password to the standard institutional formula (first 2 letters of name + last 3 digits of USN), allowing them to log in immediately case-insensitively. The ticket will also be marked as resolved.`
+                                    : `This will reset the faculty member's password to a secure temporary access key (FAC-XXXXXX). The temporary key will be recorded in the ticket resolution notes and the ticket will be marked as resolved.`)
                                 : `Add optional resolution notes before confirming:`}
                         </p>
 
