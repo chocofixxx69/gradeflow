@@ -260,15 +260,18 @@ function ExamResultsHubContent() {
                     return;
                 }
                 const headers = ['USN', 'Name', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Outcome'];
-                const rows = filteredRevalRoster.map(r => [
-                    r.usn,
-                    r.name,
-                    r.subject_code,
-                    r.originalExternal ?? '—',
-                    r.revalExternal ?? '—',
-                    (r.deltaMarks ?? 0) > 0 ? `+${r.deltaMarks}` : (r.deltaMarks ?? 0),
-                    r.outcome || 'No Change'
-                ]);
+                const rows = filteredRevalRoster.map(r => {
+                    const deltaVal = r.deltaMarks ?? r.delta;
+                    return [
+                        r.usn,
+                        r.name,
+                        r.subject_code,
+                        r.originalExternal !== null && r.originalExternal !== undefined ? r.originalExternal : (r.preMarks ?? '—'),
+                        r.revalExternal !== null && r.revalExternal !== undefined ? r.revalExternal : (r.postMarks ?? '—'),
+                        deltaVal !== null && deltaVal !== undefined ? (deltaVal > 0 ? `+${deltaVal}` : deltaVal) : '—',
+                        r.outcome || 'No Change'
+                    ];
+                });
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 XLSX.utils.book_append_sheet(wb, ws, 'Revaluation Delta');
                 XLSX.writeFile(wb, `Revaluation_Delta_${branch}_Sem${semester}.xlsx`);
@@ -369,16 +372,19 @@ function ExamResultsHubContent() {
                 doc.setFont('helvetica', 'normal');
                 doc.text(`Evaluated Applications: ${filteredRevalRoster.length} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
-                const tableHead = [['USN', 'Name', 'Subject', 'Original', 'Reval', 'Delta', 'Outcome']];
-                const tableBody = filteredRevalRoster.map(r => [
-                    r.usn,
-                    r.name,
-                    r.subject_code,
-                    r.originalExternal ?? '—',
-                    r.revalExternal ?? '—',
-                    (r.deltaMarks ?? 0) > 0 ? `+${r.deltaMarks}` : (r.deltaMarks ?? 0),
-                    r.outcome || 'No Change'
-                ]);
+                const tableHead = [['USN', 'Name', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Outcome']];
+                const tableBody = filteredRevalRoster.map(r => {
+                    const deltaVal = r.deltaMarks ?? r.delta;
+                    return [
+                        r.usn,
+                        r.name,
+                        r.subject_code,
+                        r.originalExternal !== null && r.originalExternal !== undefined ? String(r.originalExternal) : (r.preMarks !== null && r.preMarks !== undefined ? String(r.preMarks) : '—'),
+                        r.revalExternal !== null && r.revalExternal !== undefined ? String(r.revalExternal) : (r.postMarks !== null && r.postMarks !== undefined ? String(r.postMarks) : '—'),
+                        deltaVal !== null && deltaVal !== undefined ? (deltaVal > 0 ? `+${deltaVal}` : String(deltaVal)) : '—',
+                        r.outcome || 'No Change'
+                    ];
+                });
 
                 autoTable(doc, {
                     head: tableHead,
@@ -533,6 +539,22 @@ function ExamResultsHubContent() {
                                 value={upToSemester}
                                 onChange={e => setUpToSemester(Number(e.target.value))}
                                 options={(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: s, label: `Up to Semester ${s}` }))}
+                            />
+                        )}
+
+                        {viewTab === 'reval' && (
+                            <Select
+                                label="Outcome Filter"
+                                value={outcomeFilter}
+                                onChange={e => setOutcomeFilter(e.target.value)}
+                                options={[
+                                    { value: 'ALL', label: 'All Outcomes' },
+                                    { value: 'Cleared Backlog', label: 'Cleared Backlog' },
+                                    { value: 'Grade Upgraded', label: 'Grade Upgraded' },
+                                    { value: 'Confirmed', label: 'Confirmed (No Change)' },
+                                    { value: 'Marks Decreased', label: 'Marks Decreased' },
+                                    { value: 'Awaiting Original Mark', label: 'Awaiting Original Mark' },
+                                ]}
                             />
                         )}
 
@@ -826,7 +848,12 @@ function ExamResultsHubContent() {
                                             </tr>
                                         ) : (
                                             filteredRevalRoster.map((r, idx) => {
-                                                const isGain = r.deltaMarks > 0;
+                                                const deltaVal = r.deltaMarks !== null && r.deltaMarks !== undefined ? r.deltaMarks : (r.delta !== null && r.delta !== undefined ? r.delta : null);
+                                                const isGain = typeof deltaVal === 'number' && deltaVal > 0;
+                                                const isLoss = typeof deltaVal === 'number' && deltaVal < 0;
+                                                const origVal = r.originalExternal !== null && r.originalExternal !== undefined ? r.originalExternal : (r.preMarks !== null && r.preMarks !== undefined ? r.preMarks : '—');
+                                                const revalVal = r.revalExternal !== null && r.revalExternal !== undefined ? r.revalExternal : (r.postMarks !== null && r.postMarks !== undefined ? r.postMarks : '—');
+
                                                 return (
                                                     <tr key={`${r.usn}-${r.subject_code}-${idx}`} style={{ borderBottom: '1px solid var(--border)' }}>
                                                         <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>
@@ -838,14 +865,14 @@ function ExamResultsHubContent() {
                                                         <td style={{ padding: '14px 16px', fontFamily: 'monospace' }}>
                                                             {r.subject_code}
                                                         </td>
-                                                        <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                                                            {r.originalExternal ?? '—'}
+                                                        <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                                            {origVal}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                                            {r.revalExternal ?? '—'}
+                                                            {revalVal}
                                                         </td>
-                                                        <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: isGain ? '#16A34A' : 'var(--tx-dim)' }}>
-                                                            {isGain ? `+${r.deltaMarks}` : r.deltaMarks}
+                                                        <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: isGain ? '#16A34A' : (isLoss ? '#DC2626' : 'var(--tx-dim)') }}>
+                                                            {deltaVal !== null && deltaVal !== undefined ? (isGain ? `+${deltaVal}` : deltaVal) : '—'}
                                                         </td>
                                                         <td style={{ padding: '14px 16px' }}>
                                                             <span style={{
@@ -853,8 +880,24 @@ function ExamResultsHubContent() {
                                                                 borderRadius: '20px',
                                                                 fontSize: '11px',
                                                                 fontWeight: 800,
-                                                                background: r.outcome === 'UPGRADED_PASS' ? 'rgba(34, 197, 94, 0.12)' : r.outcome === 'UPGRADED' ? 'rgba(59, 130, 246, 0.12)' : 'var(--surface-low)',
-                                                                color: r.outcome === 'UPGRADED_PASS' ? '#16A34A' : r.outcome === 'UPGRADED' ? '#2563EB' : 'var(--tx-muted)'
+                                                                background: (r.outcome === 'Cleared Backlog' || r.outcome === 'UPGRADED_PASS')
+                                                                    ? 'rgba(34, 197, 94, 0.12)'
+                                                                    : (r.outcome === 'Grade Upgraded' || r.outcome === 'UPGRADED')
+                                                                    ? 'rgba(59, 130, 246, 0.12)'
+                                                                    : (r.outcome === 'Marks Decreased' || r.outcome === 'DECREASED')
+                                                                    ? 'rgba(239, 68, 68, 0.12)'
+                                                                    : (r.outcome === 'Awaiting Original Mark')
+                                                                    ? 'rgba(245, 158, 11, 0.12)'
+                                                                    : 'var(--surface-low)',
+                                                                color: (r.outcome === 'Cleared Backlog' || r.outcome === 'UPGRADED_PASS')
+                                                                    ? '#16A34A'
+                                                                    : (r.outcome === 'Grade Upgraded' || r.outcome === 'UPGRADED')
+                                                                    ? '#2563EB'
+                                                                    : (r.outcome === 'Marks Decreased' || r.outcome === 'DECREASED')
+                                                                    ? '#DC2626'
+                                                                    : (r.outcome === 'Awaiting Original Mark')
+                                                                    ? '#D97706'
+                                                                    : 'var(--tx-muted)'
                                                             }}>
                                                                 {r.outcome}
                                                             </span>

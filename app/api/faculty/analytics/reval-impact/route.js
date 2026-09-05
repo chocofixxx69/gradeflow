@@ -104,7 +104,7 @@ export async function GET(req) {
         while (true) {
             let q = supabaseAdmin
                 .from('subject_mark_attempts')
-                .select('id, result_id, usn, subject_code, subject_name, semester, total, grade, exam_name, announced_date, scraped_at')
+                .select('id, result_id, usn, subject_code, subject_name, semester, internal, external, total, grade, credits, exam_name, announced_date, scraped_at')
                 .order('id')
                 .range(from, from + 999);
             if (semester !== 'ALL' && !isNaN(semester)) {
@@ -154,15 +154,25 @@ export async function GET(req) {
                 const cycle = examCycleKey(attempt.exam_name);
                 const prior = subjectAttempts.find(a => !a.isReval && examCycleKey(a.exam_name) === cycle);
 
+                const revalExternal = attempt.external !== null && attempt.external !== undefined ? Number(attempt.external) : null;
+                const revalInternal = attempt.internal !== null && attempt.internal !== undefined ? Number(attempt.internal) : null;
+                const postScore = (attempt.total !== null && attempt.total !== undefined) ? Number(attempt.total) : ((revalExternal ?? 0) + (revalInternal ?? 0));
+
                 if (!prior) {
                     awaitingOriginalCount++;
-                    const postScore = Number(attempt.total) || 0;
                     deltaRoster.push({
                         usn,
                         name: stu?.name || usn,
                         semester: attempt.semester,
                         subject_code: attempt.subject_code,
                         subject_name: attempt.subject_name || attempt.subject_code,
+                        originalExternal: null,
+                        revalExternal,
+                        deltaMarks: null,
+                        originalInternal: null,
+                        revalInternal,
+                        originalTotal: null,
+                        revalTotal: postScore,
                         preMarks: null,
                         preGrade: null,
                         postMarks: postScore,
@@ -181,11 +191,19 @@ export async function GET(req) {
                     return;
                 }
 
-                const preScore = Number(prior.total) || 0;
-                const postScore = Number(attempt.total) || 0;
+                const originalExternal = prior.external !== null && prior.external !== undefined ? Number(prior.external) : null;
+                const originalInternal = prior.internal !== null && prior.internal !== undefined ? Number(prior.internal) : null;
+                const preScore = (prior.total !== null && prior.total !== undefined) ? Number(prior.total) : ((originalExternal ?? 0) + (originalInternal ?? 0));
                 const preGrade = prior.grade || '—';
                 const postGrade = attempt.grade || '—';
+
+                // SEE marks are the external evaluation component modified in revaluation.
+                // Fall back to total marks if external is not distinct.
+                const deltaMarks = (revalExternal !== null && originalExternal !== null)
+                    ? (revalExternal - originalExternal)
+                    : (postScore - preScore);
                 const delta = postScore - preScore;
+
                 const wasFailingBefore = isFailedSubject(prior);
                 const isFailingNow = isFailedSubject(attempt);
 
@@ -193,10 +211,10 @@ export async function GET(req) {
                 if (wasFailingBefore && !isFailingNow) {
                     outcome = 'Cleared Backlog';
                     clearedCount++;
-                } else if (delta > 0) {
+                } else if (deltaMarks > 0) {
                     outcome = 'Grade Upgraded';
                     upgradedCount++;
-                } else if (delta < 0) {
+                } else if (deltaMarks < 0) {
                     outcome = 'Marks Decreased';
                     decreasedCount++;
                 } else {
@@ -219,6 +237,13 @@ export async function GET(req) {
                     semester: attempt.semester,
                     subject_code: attempt.subject_code,
                     subject_name: attempt.subject_name || attempt.subject_code,
+                    originalExternal,
+                    revalExternal,
+                    deltaMarks,
+                    originalInternal,
+                    revalInternal,
+                    originalTotal: preScore,
+                    revalTotal: postScore,
                     preMarks: preScore,
                     preGrade,
                     postMarks: postScore,
