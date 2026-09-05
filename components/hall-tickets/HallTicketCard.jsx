@@ -137,7 +137,7 @@ export default function HallTicketCard({
                 </div>
 
                 {/* 5. Timetable Grid + Student Photo Block */}
-                <div className="aitm-card-timetable-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 115px', minHeight: '100px' }}>
+                <div className="aitm-card-timetable-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 115px' }}>
                     {/* Timetable Table */}
                     <div>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', textAlign: 'center' }}>
@@ -201,7 +201,7 @@ export default function HallTicketCard({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-end',
-                padding: '38px 6px 4px 6px', /* ~10.5mm clear space matching PDF sigSpace */
+                padding: '28px 6px 4px 6px', /* Snug calibrated signature spacing */
                 fontSize: '11px',
                 fontWeight: '800'
             }}>

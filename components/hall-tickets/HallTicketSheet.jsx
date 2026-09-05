@@ -18,16 +18,17 @@ export default function HallTicketSheet({
             style={{
                 width: '100%',
                 maxWidth: '780px',
-                minHeight: '1060px', // Proportional to A4 Portrait ratio
+                minHeight: 'auto',
                 backgroundColor: '#FFFFFF',
                 margin: '0 auto 28px auto',
-                padding: '24px 24px',
+                padding: '16px 20px',
                 boxSizing: 'border-box',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
                 border: '1px solid #E5E7EB',
+                borderRadius: '8px',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between',
+                justifyContent: 'flex-start',
                 position: 'relative'
             }}
         >

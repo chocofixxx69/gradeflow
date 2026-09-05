@@ -278,12 +278,26 @@ function HallTicketsContent() {
         // A4 page dimensions: 210mm x 297mm
         const marginX = 14;
         const contentWidth = 182; // 210 - (14 * 2)
-        const cardBoxHeight = 72; // outer card box height (border to border)
-        const sigSpace = 11; // 11mm of clear space for physical pen signature
+        const headerHeight = 19;
+        const bannerHeight = 5.2;
+        const row1Height = 5.2;
+        const row2Height = 5.2;
+        const thHeight = 5;
+        const rowH = 4.8;
+        const numSubjects = timetable.length;
+        const tableHeight = thHeight + (numSubjects * rowH);
+        
+        // Dynamic snug cardBoxHeight: snaps cleanly immediately below the last subject row (no awkward empty gap)
+        const cardBoxHeight = headerHeight + bannerHeight + row1Height + row2Height + tableHeight;
+        
+        const sigSpace = 10; // 10mm of clear white space for physical pen signatures
         const sigLabelHeight = 4; // height of "Signature of Class Advisor" text
-        const cutGap = 3; // gap before and after cutline
-        const ticketSlotHeight = 92; // 72 + 11 + 4 + (cutGap * 2) = ~93mm (3 fit cleanly in 279mm <= 297mm)
-        const topMargin = 10;
+        const cutGap = 3.5; // gap before and after cutline
+        const ticketSlotHeight = cardBoxHeight + sigSpace + sigLabelHeight + (cutGap * 2);
+        
+        // Centered top margin so all 3 tickets are balanced on the A4 sheet
+        const totalUsedHeight = (ticketSlotHeight * 3) - cutGap;
+        const topMargin = Math.max(8, Math.round((297 - totalUsedHeight) / 2));
 
         sheets.forEach((sheetStudents, sheetIdx) => {
             if (sheetIdx > 0) doc.addPage();
@@ -291,13 +305,12 @@ function HallTicketsContent() {
             sheetStudents.forEach((student, cardIdx) => {
                 const startY = topMargin + (cardIdx * ticketSlotHeight);
 
-                // 1. Outer Box Border
+                // 1. Outer Box Border (snug to the exact height of the subjects)
                 doc.setDrawColor(0, 0, 0);
                 doc.setLineWidth(0.35);
                 doc.rect(marginX, startY, contentWidth, cardBoxHeight);
 
                 // 2. Header Box (19mm)
-                const headerHeight = 19;
                 doc.line(marginX, startY + headerHeight, marginX + contentWidth, startY + headerHeight);
 
                 // Logo Column Box (24mm wide)
@@ -331,7 +344,6 @@ function HallTicketsContent() {
 
                 // 3. Examination Banner (5.2mm)
                 const bannerY = startY + headerHeight;
-                const bannerHeight = 5.2;
                 doc.line(marginX, bannerY + bannerHeight, marginX + contentWidth, bannerY + bannerHeight);
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.5);
@@ -339,7 +351,6 @@ function HallTicketsContent() {
 
                 // 4. Student Details Row 1: Branch & USN (5.2mm)
                 const row1Y = bannerY + bannerHeight;
-                const row1Height = 5.2;
                 doc.line(marginX, row1Y + row1Height, marginX + contentWidth, row1Y + row1Height);
 
                 doc.setFont('times', 'bold');
@@ -348,11 +359,6 @@ function HallTicketsContent() {
                 doc.line(marginX + 18, row1Y, marginX + 18, row1Y + row1Height);
 
                 doc.setFont('times', 'normal');
-                // Canonical branch code, resolved the same way everywhere. The
-                // previous rule ("contains 'computer' and longer than 25 chars
-                // -> CS, else print the raw text") made the same class show
-                // "CS" for one student and "Computer Science (CSE)" for the
-                // next, and printed "CS" on AI & ML tickets.
                 const branchLabel = canonicalBranchCode(student.branch_code)
                     || canonicalBranchCode(student.usn ? extractBranchFromUsn(student.usn) : null)
                     || canonicalBranchCode(student.branch)
@@ -371,7 +377,6 @@ function HallTicketsContent() {
 
                 // 5. Student Details Row 2: Name (5.2mm)
                 const row2Y = row1Y + row1Height;
-                const row2Height = 5.2;
                 doc.line(marginX, row2Y + row2Height, marginX + contentWidth, row2Y + row2Height);
 
                 doc.setFont('times', 'bold');
@@ -383,7 +388,7 @@ function HallTicketsContent() {
                 doc.setFontSize(8.8);
                 doc.text((student.name || '').toUpperCase(), marginX + 20, row2Y + 3.8);
 
-                // 6. Timetable + Photo Grid
+                // 6. Timetable + Photo Grid (Snug Fit without empty gaps)
                 const tableY = row2Y + row2Height;
                 const photoBoxWidth = 32;
                 const tableWidth = contentWidth - photoBoxWidth; // 150mm
@@ -392,11 +397,10 @@ function HallTicketsContent() {
                 const colCodeW = 28;
                 const colNameW = tableWidth - (colDateW + colTimeW + colCodeW); // 52mm
 
-                // Vertical Divider between Timetable and Photo box
+                // Vertical Divider between Timetable and Photo box (ends exactly at table bottom)
                 doc.line(marginX + tableWidth, tableY, marginX + tableWidth, startY + cardBoxHeight);
 
                 // Timetable Header (5mm)
-                const thHeight = 5;
                 doc.line(marginX, tableY + thHeight, marginX + tableWidth, tableY + thHeight);
 
                 doc.setFont('times', 'bold');
@@ -413,7 +417,6 @@ function HallTicketsContent() {
                 doc.text('Subject name', marginX + colDateW + colTimeW + colCodeW + colNameW / 2, tableY + 3.5, { align: 'center' });
 
                 // Timetable Rows
-                const rowH = 4.8;
                 timetable.forEach((exam, rIdx) => {
                     const rowTop = tableY + thHeight + (rIdx * rowH);
                     doc.line(marginX, rowTop + rowH, marginX + tableWidth, rowTop + rowH);
@@ -430,14 +433,14 @@ function HallTicketsContent() {
                     doc.text(exam.subjectName, marginX + colDateW + colTimeW + colCodeW + colNameW / 2, rowTop + 3.4, { align: 'center' });
                 });
 
-                // Photo Placeholder text inside photo box (matching reference PDF)
+                // Photo Placeholder text inside photo box (vertically centered)
                 doc.setFont('times', 'normal');
                 doc.setFontSize(8);
                 doc.setTextColor(150, 150, 150);
-                doc.text('[ Photo ]', marginX + tableWidth + photoBoxWidth / 2, tableY + 18, { align: 'center' });
+                doc.text('[ Photo ]', marginX + tableWidth + photoBoxWidth / 2, tableY + (tableHeight / 2) + 1.5, { align: 'center' });
                 doc.setTextColor(0, 0, 0);
 
-                // 7. Signature Footer with Generous Physical Signature Spacing
+                // 7. Signature Footer with Clean Physical Signature Spacing
                 const sigLabelY = startY + cardBoxHeight + sigSpace;
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.5);
