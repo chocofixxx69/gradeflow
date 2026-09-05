@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
 import { useLive, LIVE } from '@/lib/api/live';
@@ -285,77 +285,26 @@ function HallTicketsContent() {
         const cBranch = canonicalBranchCode(branch) || branch;
         const branchCohort = matrix[cBranch] || matrix[branch] || null;
 
-        const semCounts = batch
-            ? (branchCohort?.batches?.[batch]?.semesters || {})
-            : (branchCohort?.semesters || {});
+        const branchSemCounts = branchCohort?.semesters || {};
+        const batchSemCounts = batch ? (branchCohort?.batches?.[batch]?.semesters || {}) : branchSemCounts;
 
         return [1, 2, 3, 4, 5, 6, 7, 8].map(s => {
-            const count = semCounts[s] || 0;
+            const count = batch ? (batchSemCounts[s] || 0) : (branchSemCounts[s] || 0);
+            const totalBranchCount = branchSemCounts[s] || 0;
             const roman = ROMAN_SEMESTERS[s] || String(s);
+            const badge = count > 0 
+                ? ` · ${count} stu` 
+                : (totalBranchCount > 0 ? ` · ${totalBranchCount} in dept` : '');
             return {
                 value: s,
-                label: `Semester ${s} (${roman})${count > 0 ? ` · ${count} students` : ' · (0)'}`,
+                label: `Semester ${s} (${roman})${badge}`,
                 studentCount: count
             };
         });
     }, [meta?.cohortMatrix, branch, batch]);
 
-    // Smart auto-selection: whenever branch or batch changes, if the currently selected semester
-    // has 0 students in the database for that cohort, automatically switch to the semester
-    // with the highest student count. This prevents accidental "No students found" states.
-    useEffect(() => {
-        if (classId) return; // class mode manages its own semester
-        const matrix = meta?.cohortMatrix || {};
-        const cBranch = canonicalBranchCode(branch) || branch;
-        const branchCohort = matrix[cBranch] || matrix[branch] || null;
-        if (!branchCohort) return;
-
-        const semCounts = batch
-            ? (branchCohort.batches?.[batch]?.semesters || {})
-            : (branchCohort.semesters || {});
-
-        const currentCount = semCounts[semester] || 0;
-        if (currentCount === 0) {
-            const activeSems = Object.entries(semCounts)
-                .filter(([_, cnt]) => cnt > 0)
-                .sort((a, b) => b[1] - a[1]);
-
-            if (activeSems.length > 0) {
-                setSemester(Number(activeSems[0][0]));
-            }
-        }
-    }, [branch, batch, meta?.cohortMatrix, classId, semester]);
-
-    // Update Exam Title when Semester, Exam Type, or Month/Year changes
-    useEffect(() => {
-        const roman = ROMAN_SEMESTERS[semester] || String(semester);
-        setExamTitle(`${roman} Semester ${examType} ${examMonthYear} Examination`);
-    }, [semester, examType, examMonthYear]);
-
-    // Update Department Name when branch changes
-    useEffect(() => {
-        const foundBranch = meta.branches.find(b => b.code === branch);
-        const name = foundBranch?.label || foundBranch?.name || 'Computer Science & Engineering';
-        const cleanName = name.replace(/\band\b/gi, '&');
-        setDepartmentName(`Department of ${cleanName}`);
-    }, [branch, meta.branches]);
-
-    // Filtered Students: allStudents returned by API already match branch and batch
-    const filteredStudents = useMemo(() => {
-        return (allStudents || []).sort((a, b) => (a.usn || '').localeCompare(b.usn || ''));
-    }, [allStudents]);
-
-    // Pre-select all students when the student list loads or changes
-    useEffect(() => {
-        if (filteredStudents.length > 0) {
-            setSelectedUsns(new Set(filteredStudents.map(s => s.usn)));
-        } else {
-            setSelectedUsns(new Set());
-        }
-    }, [filteredStudents]);
-
     // Auto-fill Timetable dynamically from live syllabus / subject_catalog in DB
-    const autoFillSyllabus = async (targetBranch = branch, targetSem = semester) => {
+    const autoFillSyllabus = useCallback(async (targetBranch = branch, targetSem = semester) => {
         setTimetableLoading(true);
         try {
             const normBranch = canonicalBranchCode(targetBranch) || targetBranch || 'CS';
@@ -426,7 +375,91 @@ function HallTicketsContent() {
         } finally {
             setTimetableLoading(false);
         }
-    };
+    }, [branch, semester, meta?.subjects]);
+
+    // Explicit Semester change handler that never reverts
+    const handleSemesterChange = useCallback((newSem) => {
+        const s = Number(newSem);
+        setSemester(s);
+        autoFillSyllabus(branch, s);
+
+        // Sync batch if currently selected batch has 0 students in the new semester
+        const matrix = meta?.cohortMatrix || {};
+        const cBranch = canonicalBranchCode(branch) || branch;
+        const branchCohort = matrix[cBranch] || matrix[branch] || null;
+        if (branchCohort?.batches) {
+            const curBatchCount = branchCohort.batches[batch]?.semesters?.[s] || 0;
+            if (curBatchCount === 0) {
+                const matchingBatch = Object.keys(branchCohort.batches).find(
+                    b => (branchCohort.batches[b]?.semesters?.[s] || 0) > 0
+                );
+                if (matchingBatch) {
+                    setBatch(matchingBatch);
+                } else {
+                    setBatch('');
+                }
+            }
+        }
+    }, [branch, batch, meta?.cohortMatrix, autoFillSyllabus]);
+
+    // Explicit Batch change handler
+    const handleBatchChange = useCallback((newBatch) => {
+        setBatch(newBatch);
+        const matrix = meta?.cohortMatrix || {};
+        const cBranch = canonicalBranchCode(branch) || branch;
+        const branchCohort = matrix[cBranch] || matrix[branch] || null;
+        if (!branchCohort) return;
+
+        const semCounts = newBatch
+            ? (branchCohort.batches?.[newBatch]?.semesters || {})
+            : (branchCohort.semesters || {});
+
+        if ((semCounts[semester] || 0) === 0) {
+            const activeSems = Object.entries(semCounts)
+                .filter(([_, cnt]) => cnt > 0)
+                .sort((a, b) => b[1] - a[1]);
+            if (activeSems.length > 0) {
+                const targetSem = Number(activeSems[0][0]);
+                setSemester(targetSem);
+                autoFillSyllabus(branch, targetSem);
+            }
+        }
+    }, [branch, semester, meta?.cohortMatrix, autoFillSyllabus]);
+
+    // Explicit Branch change handler
+    const handleBranchChange = useCallback((newBranch) => {
+        setBranch(newBranch);
+        autoFillSyllabus(newBranch, semester);
+    }, [semester, autoFillSyllabus]);
+
+    // Update Exam Title when Semester, Exam Type, or Month/Year changes
+    useEffect(() => {
+        const roman = ROMAN_SEMESTERS[semester] || String(semester);
+        setExamTitle(`${roman} Semester ${examType} ${examMonthYear} Examination`);
+    }, [semester, examType, examMonthYear]);
+
+    // Update Department Name when branch changes
+    useEffect(() => {
+        const foundBranch = meta.branches.find(b => b.code === branch);
+        const name = foundBranch?.label || foundBranch?.name || 'Computer Science & Engineering';
+        const cleanName = name.replace(/\band\b/gi, '&');
+        setDepartmentName(`Department of ${cleanName}`);
+    }, [branch, meta.branches]);
+
+    // Filtered Students: allStudents returned by API already match branch and batch
+    const filteredStudents = useMemo(() => {
+        return (allStudents || []).sort((a, b) => (a.usn || '').localeCompare(b.usn || ''));
+    }, [allStudents]);
+
+    // Pre-select all students when the student list loads or changes
+    useEffect(() => {
+        if (filteredStudents.length > 0) {
+            setSelectedUsns(new Set(filteredStudents.map(s => s.usn)));
+        } else {
+            setSelectedUsns(new Set());
+        }
+    }, [filteredStudents]);
+
 
     // Selected students objects
     const selectedStudentsList = useMemo(() => {
@@ -967,7 +1000,7 @@ function HallTicketsContent() {
                                         label="Department"
                                         value={branch}
                                         disabled={Boolean(classId)}
-                                        onChange={e => setBranch(e.target.value)}
+                                        onChange={e => handleBranchChange(e.target.value)}
                                         options={branchOptions}
                                     />
                                 </div>
@@ -976,7 +1009,7 @@ function HallTicketsContent() {
                                         label="Semester"
                                         value={semester}
                                         disabled={Boolean(classId)}
-                                        onChange={e => setSemester(Number(e.target.value))}
+                                        onChange={e => handleSemesterChange(e.target.value)}
                                         options={semesterOptions}
                                     />
                                 </div>
@@ -985,7 +1018,7 @@ function HallTicketsContent() {
                                         label="Batch Year"
                                         value={batch}
                                         disabled={Boolean(classId)}
-                                        onChange={e => setBatch(e.target.value)}
+                                        onChange={e => handleBatchChange(e.target.value)}
                                         options={batchOptions}
                                     />
                                 </div>
