@@ -191,7 +191,7 @@ function InstitutionalIntelligenceContent() {
             const wb = XLSX.utils.book_new();
 
             if (viewTab === 'department') {
-                const sList = deptReport.semesters || [];
+                const sList = deptReport?.semesters || [];
                 if (sList.length === 0) {
                     alert('No department trends data available to export.');
                     return;
@@ -209,7 +209,7 @@ function InstitutionalIntelligenceContent() {
                 XLSX.utils.book_append_sheet(wb, ws, 'Department Trends');
                 XLSX.writeFile(wb, `Department_Overview_${branch}.xlsx`);
             } else if (viewTab === 'sections') {
-                const cList = sectionReport.sectionComparisons || [];
+                const cList = sectionReport?.sectionComparisons || [];
                 if (cList.length === 0) {
                     alert('No section comparison data available to export.');
                     return;
@@ -227,7 +227,7 @@ function InstitutionalIntelligenceContent() {
                 XLSX.utils.book_append_sheet(wb, ws, 'Section Benchmarks');
                 XLSX.writeFile(wb, `Section_Comparison_${branch}_Sem${semester}.xlsx`);
             } else {
-                const tList = comparatorData.trajectory || [];
+                const tList = comparatorData?.trajectory || [];
                 if (tList.length === 0) {
                     alert('No student comparison data available to export.');
                     return;
@@ -253,7 +253,7 @@ function InstitutionalIntelligenceContent() {
             const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
             if (viewTab === 'department') {
-                const sList = deptReport.semesters || [];
+                const sList = deptReport?.semesters || [];
                 if (sList.length === 0) {
                     alert('No department trends data available to download.');
                     return;
@@ -287,7 +287,7 @@ function InstitutionalIntelligenceContent() {
 
                 doc.save(`Department_Overview_${branch}.pdf`);
             } else if (viewTab === 'sections') {
-                const cList = sectionReport.sectionComparisons || [];
+                const cList = sectionReport?.sectionComparisons || [];
                 if (cList.length === 0) {
                     alert('No section comparison data available to download.');
                     return;
@@ -321,7 +321,7 @@ function InstitutionalIntelligenceContent() {
 
                 doc.save(`Section_Comparison_${branch}_Sem${semester}.pdf`);
             } else {
-                const tList = comparatorData.trajectory || [];
+                const tList = comparatorData?.trajectory || [];
                 if (tList.length === 0) {
                     alert('No student comparison data available to download.');
                     return;
@@ -532,15 +532,15 @@ function InstitutionalIntelligenceContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Total Active Cohort</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{deptReport.summary.totalStudents}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{deptReport?.summary?.totalStudents ?? 0}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Department size</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Overall Department Pass Rate</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: deptReport.summary.overallPassRate >= 70 ? '#16A34A' : '#DC2626' }}>
-                                    {deptReport.summary.overallPassRate.toFixed(1)}%
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: (deptReport?.summary?.overallPassRate ?? 0) >= 70 ? '#16A34A' : '#DC2626' }}>
+                                    {(deptReport?.summary?.overallPassRate ?? 0).toFixed(1)}%
                                 </div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Mean pass benchmark</div>
                             </CardContent>
@@ -548,14 +548,14 @@ function InstitutionalIntelligenceContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Department Avg CGPA</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{deptReport.summary.avgCGPA.toFixed(2)}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{(deptReport?.summary?.avgCGPA ?? 0).toFixed(2)}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>GPA index</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Cumulative Backlogs</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#DC2626' }}>{deptReport.summary.totalBacklogs}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#DC2626' }}>{deptReport?.summary?.totalBacklogs ?? 0}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Arrears recorded</div>
                             </CardContent>
                         </Card>
@@ -568,7 +568,7 @@ function InstitutionalIntelligenceContent() {
                         <CardContent style={{ padding: '20px' }}>
                             <div style={{ height: '320px', width: '100%' }}>
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={deptReport.semesters || []}>
+                                    <ComposedChart data={deptReport?.semesters || []}>
                                         <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                                         <XAxis dataKey="semester" tickFormatter={s => `Sem ${s}`} />
                                         <YAxis yAxisId="left" domain={[0, 100]} unit="%" />
@@ -592,21 +592,21 @@ function InstitutionalIntelligenceContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Top Performing Section</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>Section {sectionReport.benchmarks.bestSection}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>Section {sectionReport?.benchmarks?.bestSection ?? '—'}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Benchmark leader</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Benchmark Mean SGPA</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{sectionReport.benchmarks.benchmarkAvg.toFixed(2)}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{(sectionReport?.benchmarks?.benchmarkAvg ?? 0).toFixed(2)}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Cross-section baseline</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Section Variance / Spread</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{sectionReport.benchmarks.sectionSpread.toFixed(2)} pts</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{(sectionReport?.benchmarks?.sectionSpread ?? 0).toFixed(2)} pts</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Min-to-max disparity</div>
                             </CardContent>
                         </Card>
@@ -634,12 +634,12 @@ function InstitutionalIntelligenceContent() {
                                             <tr>
                                                 <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>Analyzing sections data...</td>
                                             </tr>
-                                        ) : (sectionReport.sectionComparisons || []).length === 0 ? (
+                                        ) : (sectionReport?.sectionComparisons || []).length === 0 ? (
                                             <tr>
                                                 <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>No section comparisons recorded for this semester.</td>
                                             </tr>
                                         ) : (
-                                            sectionReport.sectionComparisons.map(s => (
+                                            (sectionReport?.sectionComparisons || []).map(s => (
                                                 <tr key={s.section} style={{ borderBottom: '1px solid var(--border)' }}>
                                                     <td style={{ padding: '14px 16px', fontWeight: 800, color: 'var(--tx-main)' }}>
                                                         Section {s.section}
@@ -689,7 +689,7 @@ function InstitutionalIntelligenceContent() {
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ height: '340px', width: '100%' }}>
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={comparatorData.trajectory || []}>
+                                        <LineChart data={comparatorData?.trajectory || []}>
                                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                                             <XAxis dataKey="semester" tickFormatter={s => `Sem ${s}`} />
                                             <YAxis domain={[0, 10]} />
