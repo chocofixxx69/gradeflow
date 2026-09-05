@@ -428,7 +428,7 @@ export default function LeaderboardPage() {
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
                         gap: '16px', marginBottom: '24px'
                     }}>
-                        {(activeTab === 'overall' ? top3Overall : activeTab === 'semester' ? top3Semester : top3Subject).map((topper) => {
+                        {(activeTab === 'overall' ? top3Overall : activeTab === 'semester' ? top3Semester : top3Subject).map((topper, idx) => {
                             const medal = getMedal(topper.rank);
                             const scoreLabel = activeTab === 'overall'
                                 ? `CGPA: ${topper.cgpa?.toFixed(2)}`
@@ -481,7 +481,7 @@ export default function LeaderboardPage() {
 
                                     <div style={{
                                         background: 'var(--surface-low)', padding: '8px 12px', borderRadius: '8px',
-                                        fontWeight: 800, fontSize: '0.92rem', color: idx === 0 ? '#b45309' : 'var(--tx-main)',
+                                        fontWeight: 800, fontSize: '0.92rem', color: (topper?.rank === 1 || idx === 0) ? '#b45309' : 'var(--tx-main)',
                                         display: 'inline-block'
                                     }}>
                                         {scoreLabel}
