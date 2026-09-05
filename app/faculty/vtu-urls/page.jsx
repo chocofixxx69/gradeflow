@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../../lib/supabase';
 import AuthGuard from '../../../components/AuthGuard';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
