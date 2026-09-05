@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
@@ -19,7 +19,13 @@ import { getCleanBranchOptions } from '@/lib/semester-utils';
 export default function RankingsAndMeritPage() {
     return (
         <AuthGuard role="faculty">
-            <RankingsAndMeritContent />
+            <Suspense fallback={
+                <div style={{ padding: '40px 24px', maxWidth: '1400px', margin: '0 auto', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                    Loading Rankings & Merit Center...
+                </div>
+            }>
+                <RankingsAndMeritContent />
+            </Suspense>
         </AuthGuard>
     );
 }

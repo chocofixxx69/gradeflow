@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
@@ -4531,7 +4531,13 @@ function AdminPanelContent() {
 export default function AdminPanel() {
     return (
         <AuthGuard role="admin">
-            <AdminPanelContent />
+            <Suspense fallback={
+                <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tx-muted)' }}>
+                    Loading Admin Panel...
+                </div>
+            }>
+                <AdminPanelContent />
+            </Suspense>
         </AuthGuard>
     );
 }
