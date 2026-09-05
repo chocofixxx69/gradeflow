@@ -219,7 +219,8 @@ export function ClassesContent({ embedded = false }) {
                 targetSemester: exportSemester,
                 institutionInfo: {
                     collegeName: 'Anjuman Institute of Technology and Management',
-                    department: `Department of ${selectedClass.branch || 'CSE'}`,
+                    department: selectedClass.branch ? (selectedClass.branch.startsWith('Department of') ? selectedClass.branch : `Department of ${selectedClass.branch}`) : 'Department of Computer Science & Engineering',
+                    address: '(Anjumanabad, Bhatkal - 581320)',
                     batch: selectedClass.batch || '',
                     academicYear: selectedClass.academic_year || ''
                 },
@@ -242,7 +243,8 @@ export function ClassesContent({ embedded = false }) {
                 targetSemester: exportSemester,
                 institutionInfo: {
                     collegeName: 'Anjuman Institute of Technology and Management',
-                    department: `Department of ${selectedClass.branch || 'CSE'}`,
+                    department: selectedClass.branch ? (selectedClass.branch.startsWith('Department of') ? selectedClass.branch : `Department of ${selectedClass.branch}`) : 'Department of Computer Science & Engineering',
+                    address: '(Anjumanabad, Bhatkal - 581320)',
                     batch: selectedClass.batch || '',
                     academicYear: selectedClass.academic_year || ''
                 },
