@@ -242,16 +242,15 @@
     "usn": "2AB23CD018",
     "is_lateral": false,
     "found_semesters": [
-      6
-    ],
-    "missing_semesters": [
       1,
       2,
       3,
       4,
-      5
+      5,
+      6
     ],
-    "status": "PARTIALLY_SCRAPED"
+    "missing_semesters": [],
+    "status": "COMPLETE"
   },
   {
     "usn": "2AB23CD019",
@@ -861,6 +860,21 @@
     "status": "COMPLETE"
   },
   {
+    "usn": "2AB23CS004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
     "usn": "2AB23CS005",
     "is_lateral": false,
     "found_semesters": [
@@ -879,16 +893,15 @@
     "usn": "2AB23CS006",
     "is_lateral": false,
     "found_semesters": [
+      1,
       2,
       3,
       4,
       5,
       6
     ],
-    "missing_semesters": [
-      1
-    ],
-    "status": "PARTIALLY_SCRAPED"
+    "missing_semesters": [],
+    "status": "COMPLETE"
   },
   {
     "usn": "2AB23CS007",
@@ -1896,6 +1909,21 @@
     "status": "COMPLETE"
   },
   {
+    "usn": "2AB23CS085",
+    "is_lateral": false,
+    "found_semesters": [
+      3,
+      4
+    ],
+    "missing_semesters": [
+      1,
+      2,
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
     "usn": "2AB23CS900",
     "is_lateral": false,
     "found_semesters": [
@@ -1927,31 +1955,29 @@
     "usn": "2AB23CV002",
     "is_lateral": false,
     "found_semesters": [
+      1,
+      2,
       3,
       4,
       5,
       6
     ],
-    "missing_semesters": [
-      1,
-      2
-    ],
-    "status": "PARTIALLY_SCRAPED"
+    "missing_semesters": [],
+    "status": "COMPLETE"
   },
   {
     "usn": "2AB23CV003",
     "is_lateral": false,
     "found_semesters": [
       1,
+      2,
       3,
       4,
       5,
       6
     ],
-    "missing_semesters": [
-      2
-    ],
-    "status": "PARTIALLY_SCRAPED"
+    "missing_semesters": [],
+    "status": "COMPLETE"
   },
   {
     "usn": "2AB23CV004",
@@ -1968,6 +1994,1065 @@
     "status": "COMPLETE"
   },
   {
+    "usn": "2AB23CV008",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      3,
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23CV009",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23CV010",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      1,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23CV011",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23CV012",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23CV014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC002",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC003",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      2
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC005",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      6
+    ],
+    "missing_semesters": [
+      4,
+      5
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC007",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC008",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC009",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC010",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC011",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC013",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC015",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      1,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC016",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC017",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC018",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC019",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC020",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1,
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC021",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC022",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      3
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC023",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC024",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC025",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      2,
+      3
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC026",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC027",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC028",
+    "is_lateral": false,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1,
+      2
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC029",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EC030",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      6
+    ],
+    "missing_semesters": [
+      5
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC031",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EC032",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      3,
+      4,
+      6
+    ],
+    "missing_semesters": [
+      2,
+      5
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE001",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EE002",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE003",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EE005",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EE006",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23EE007",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE008",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      4
+    ],
+    "missing_semesters": [
+      3,
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE009",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      3,
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE010",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1,
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23EE011",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23ME001",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23ME002",
+    "is_lateral": false,
+    "found_semesters": [
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      1,
+      2,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23ME003",
+    "is_lateral": false,
+    "found_semesters": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      1
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23ME005",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      4
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23ME006",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [
+      2
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23ME007",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3
+    ],
+    "missing_semesters": [
+      4,
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB23ME008",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB23ME009",
+    "is_lateral": false,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CD004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CD014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CD024",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI024",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI034",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI040",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI041",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI042",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI043",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI044",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI045",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI046",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI047",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI048",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI049",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CI054",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
     "usn": "2AB24CI400",
     "is_lateral": true,
     "found_semesters": [
@@ -1978,6 +3063,216 @@
     ],
     "missing_semesters": [],
     "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CS004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS024",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS034",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS040",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS041",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS042",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS043",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS045",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS047",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS048",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS049",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS054",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CS074",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
   },
   {
     "usn": "2AB24CS400",
@@ -2077,5 +3372,315 @@
     ],
     "missing_semesters": [],
     "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CV004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24CV400",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CV402",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CV403",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CV406",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24CV407",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24EC004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EC014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EC024",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EC400",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      5
+    ],
+    "missing_semesters": [
+      4,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EE400",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24EE401",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24EE402",
+    "is_lateral": true,
+    "found_semesters": [
+      4,
+      6
+    ],
+    "missing_semesters": [
+      3,
+      5
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EE403",
+    "is_lateral": true,
+    "found_semesters": [
+      4,
+      6
+    ],
+    "missing_semesters": [
+      3,
+      5
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EE404",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5
+    ],
+    "missing_semesters": [
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24EE405",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24EE406",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24EE407",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24ME400",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24ME401",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24ME402",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24ME403",
+    "is_lateral": true,
+    "found_semesters": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "missing_semesters": [],
+    "status": "COMPLETE"
+  },
+  {
+    "usn": "2AB24RI004",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
+  },
+  {
+    "usn": "2AB24RI014",
+    "is_lateral": true,
+    "found_semesters": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "missing_semesters": [
+      5,
+      6
+    ],
+    "status": "PARTIALLY_SCRAPED"
   }
 ]
