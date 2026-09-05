@@ -147,7 +147,7 @@ export async function GET(req) {
             profile: studentProfile || { usn },
             cgpa,
             totalBacklogs: backlogsInfo.totalBacklogs,
-            backlogsList: backlogsInfo.backlogSubjects || [],
+            backlogsList: backlogsInfo.failedSubjects || backlogsInfo.backlogSubjects || [],
             remarks: remarks || [],
             semesterSummary: Object.values(semesterSummary),
             recentResults,
