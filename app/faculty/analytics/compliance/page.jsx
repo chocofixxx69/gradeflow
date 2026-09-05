@@ -13,6 +13,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
+import { getCleanBranchOptions } from '@/lib/semester-utils';
 
 export default function AcademicCompliancePage() {
     return (
@@ -88,7 +89,7 @@ function AcademicComplianceContent() {
     useEffect(() => {
         async function loadMeta() {
             try {
-                const res = await apiRequest('/api/faculty/analytics/meta');
+                const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
                 if (res) setMeta(res);
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -463,7 +464,7 @@ function AcademicComplianceContent() {
                             label="Branch / Department"
                             value={branch}
                             onChange={e => setBranch(e.target.value)}
-                            options={(meta.branches || []).map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                            options={getCleanBranchOptions(meta.branches)}
                         />
 
                         <Select

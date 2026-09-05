@@ -13,6 +13,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
+import { getCleanBranchOptions } from '@/lib/semester-utils';
 
 export default function ExamResultsHubPage() {
     return (
@@ -128,7 +129,7 @@ function ExamResultsHubContent() {
     useEffect(() => {
         async function loadMeta() {
             try {
-                const res = await apiRequest('/api/faculty/analytics/meta');
+                const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
                 if (res) setMeta(res);
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -561,14 +562,7 @@ function ExamResultsHubContent() {
                             label="Branch / Department"
                             value={branch}
                             onChange={e => setBranch(e.target.value)}
-                            options={
-                                (meta.branches && meta.branches.length > 0)
-                                    ? meta.branches.map(b => ({
-                                        value: b.code,
-                                        label: b.code === 'ALL' ? 'ALL - All Branches / Departments' : `${b.code} - ${b.label || b.name}`
-                                    }))
-                                    : [{ value: 'ALL', label: 'ALL - All Branches / Departments' }]
-                            }
+                            options={getCleanBranchOptions(meta.branches)}
                         />
 
                         <Select

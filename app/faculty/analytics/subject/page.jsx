@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AuthGuard from '../../../../components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
-import { matchesBranch } from '@/lib/semester-utils';
+import { matchesBranch, getCleanBranchOptions } from '@/lib/semester-utils';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -81,7 +81,7 @@ function SubjectAnalyticsContent() {
     useEffect(() => {
         async function loadMeta() {
             try {
-                const res = await apiRequest('/api/faculty/analytics/meta');
+                const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
                 if (res) {
                     setMeta(res);
                 }
@@ -370,13 +370,7 @@ function SubjectAnalyticsContent() {
                                 label="Branch / Department"
                                 value={branch}
                                 onChange={e => setBranch(e.target.value)}
-                                options={[
-                                    { value: 'ALL', label: 'All Branches / Departments' },
-                                    ...meta.branches.filter(b => b.code !== 'ALL').map(b => ({
-                                        value: b.code,
-                                        label: `${b.code} - ${b.label || b.name}`
-                                    }))
-                                ]}
+                                options={getCleanBranchOptions(meta.branches)}
                             />
                         </div>
                         <div>
