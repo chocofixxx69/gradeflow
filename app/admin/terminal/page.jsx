@@ -971,22 +971,32 @@ function AdminPanelContent() {
 
     /**
      * VTU USN batch classifier.
-     * - Regular (num < 200):    batch = USN year        (e.g. 2AB23CS043 → Batch 2023)
-     * - Lateral/Special (num ≥ 200): batch = USN year - 1  (e.g. 2AB24CS400 → Batch 2023, 2AB23CS900 → Batch 2022)
-     * Returns: { batch: '2023'|'2024'|..., isLateral: true|false }
+     *
+     * RULE:
+     *   num < 200  → regular → batch = own USN year   (2AB23CS043 → Batch 2023)
+     *   num ≥ 200  → lateral → batch = USN year - 1   (2AB24CS400 → Batch 2023)
+     *
+     *   CLAMP: if (USN year - 1) < 2023, the student stays in their own USN year.
+     *   This handles 2AB23CS900 → would compute Batch 2022 but clamps to Batch 2023.
      */
+    const MIN_BATCH_YEAR = 2023;
     const classifyStudentBatch = (usn) => {
         const u = (usn || '').toUpperCase();
         const m = u.match(/2AB(\d{2})[A-Z]+(\d{3})/);
         if (!m) return { batch: 'unknown', isLateral: false };
         const yearCode = parseInt(m[1], 10);
         const num = parseInt(m[2], 10);
+        const ownBatch = `20${String(yearCode).padStart(2, '0')}`;
         if (num >= 200) {
-            // Lateral/special entry: belongs to previous year's cohort
-            return { batch: `20${String(yearCode - 1).padStart(2, '0')}`, isLateral: true };
+            const cohortYear = 2000 + yearCode - 1;
+            if (cohortYear >= MIN_BATCH_YEAR) {
+                // Lateral entry: belongs to previous year's cohort
+                return { batch: String(cohortYear), isLateral: true };
+            }
+            // Cohort year would be before institution started — keep in own batch
+            return { batch: ownBatch, isLateral: true };
         }
-        // Regular student — stays in own year
-        return { batch: `20${String(yearCode).padStart(2, '0')}`, isLateral: false };
+        return { batch: ownBatch, isLateral: false };
     };
 
     // Dynamic batch list — uses correct VTU lateral entry classification
