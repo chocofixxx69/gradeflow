@@ -11,7 +11,6 @@ const pages = [
   '/faculty/register',
   '/faculty/dashboard',
   '/faculty/classes',
-  '/faculty/batch-upload',
   '/faculty/subjects',
   '/faculty/reports',
   '/faculty/vtu-urls',

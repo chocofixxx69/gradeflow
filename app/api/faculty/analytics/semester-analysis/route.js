@@ -6,10 +6,21 @@ import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject, getGradePoint } from '@/lib/vtuGrades';
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data }, {
+        headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Surrogate-Control': 'no-store'
+        }
+    });
 }
 
 function fail(message, code = 'ERROR', status = 400) {
@@ -17,6 +28,7 @@ function fail(message, code = 'ERROR', status = 400) {
 }
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
@@ -27,7 +39,7 @@ export async function GET(req) {
         const semester = parseInt(searchParams.get('semester') || '3', 10);
         const batch = searchParams.get('batch') || '';
         const classId = searchParams.get('classId') || '';
-        const section = searchParams.get('section') || '';
+        const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
 
         const cacheKey = `sem_analysis_v4:${branch || 'ALL'}:${semester}:${batch}:${classId}:${section}`;
         const cached = getCached(cacheKey);
@@ -35,7 +47,24 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Resolve student list based on classId or branch/batch
+        // 1. Fetch classes & class_students for dynamic section resolution
+        const [
+            { data: rawClasses },
+            { data: rawClassStudents }
+        ] = await Promise.all([
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section'),
+            supabaseAdmin.from('class_students').select('class_id, usn')
+        ]);
+        const classById = new Map((rawClasses || []).map(c => [c.id, c]));
+        const usnToSectionMap = new Map();
+        (rawClassStudents || []).forEach(cs => {
+            const c = classById.get(cs.class_id);
+            if (c && c.section) {
+                usnToSectionMap.set(cs.usn, c.section.toUpperCase().trim());
+            }
+        });
+
+        // 2. Resolve student list based on classId or branch/batch/section
         let studentUsns = [];
         let studentsList = [];
 
@@ -57,8 +86,12 @@ export async function GET(req) {
             const stData = await fetchDynamicStudents(supabaseAdmin, { branch: (!branch || branch === 'ALL') ? '' : branch });
             let filtered = stData || [];
 
-            if (batch) {
+            if (batch && batch.toUpperCase() !== 'ALL') {
                 filtered = filtered.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+            }
+
+            if (section && section !== 'ALL') {
+                filtered = filtered.filter(s => usnToSectionMap.get(s.usn) === section);
             }
 
             studentsList = filtered;
@@ -299,6 +332,8 @@ export async function GET(req) {
             studentsProcessed.push({
                 usn: student.usn,
                 name: student.name || student.usn,
+                branch: student.branch || (student.usn.length >= 7 ? student.usn.substring(5, 7).toUpperCase() : '—'),
+                section: usnToSectionMap.get(student.usn) || '—',
                 isLE: isLateralEntry(student.usn, student.lateral_entry),
                 hasData,
                 totalRegisteredCr,

@@ -12,7 +12,6 @@ export const NAV_CONFIG = {
     // Class Operations
     { key: 'classes', label: 'Classes', href: '/faculty/classes', icon: 'groups', group: 'Class Operations' },
     { key: 'students', label: 'Students', href: '/faculty/students', icon: 'badge', group: 'Class Operations' },
-    { key: 'batchUpload', label: 'Batch Upload', href: '/faculty/batch-upload', icon: 'upload_file', group: 'Class Operations' },
 
     // Academic Analytics Hubs
     { key: 'resultsHub', label: 'Exam & Result Sheets', href: '/faculty/analytics/results', icon: 'table_chart', group: 'Academic Analytics' },
@@ -109,7 +108,6 @@ export const ROUTE_LABELS = {
   '/faculty/analytics/backlogs': 'Standing Backlogs',
   '/faculty/analytics/cohort-trends': 'Cohort Trends',
   '/faculty/analytics/sections-compare': 'Sections Comparison',
-  '/faculty/batch-upload': 'Batch Upload',
   '/faculty/hall-tickets': 'Hall Ticket Generator',
   '/faculty/vtu-urls': 'VTU Result URLs',
   '/faculty/internal': 'Faculty Administration',

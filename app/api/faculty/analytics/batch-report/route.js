@@ -6,10 +6,21 @@ import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data }, {
+        headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Surrogate-Control': 'no-store'
+        }
+    });
 }
 
 function fail(message, code = 'ERROR', status = 400) {
@@ -17,27 +28,50 @@ function fail(message, code = 'ERROR', status = 400) {
 }
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
+        const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
+        const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
         const upToSemester = Math.min(8, Math.max(1, parseInt(searchParams.get('upToSemester') || '6', 10)));
 
-        const cacheKey = `batch_report:${branch}:${batch}:${upToSemester}`;
+        const cacheKey = `batch_report:${branch}:${batch}:${upToSemester}:${section}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students dynamically for this branch & batch without limits
-        const stData = await fetchDynamicStudents(supabaseAdmin, { branch });
+        // 1. Fetch classes & class_students for dynamic section resolution
+        const [
+            { data: rawClasses },
+            { data: rawClassStudents }
+        ] = await Promise.all([
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section'),
+            supabaseAdmin.from('class_students').select('class_id, usn')
+        ]);
+        const classById = new Map((rawClasses || []).map(c => [c.id, c]));
+        const usnToSectionMap = new Map();
+        (rawClassStudents || []).forEach(cs => {
+            const c = classById.get(cs.class_id);
+            if (c && c.section) {
+                usnToSectionMap.set(cs.usn, c.section.toUpperCase().trim());
+            }
+        });
+
+        // 2. Fetch students dynamically for this branch & batch without limits
+        const stData = await fetchDynamicStudents(supabaseAdmin, { branch: branch === 'ALL' ? '' : branch });
         let students = stData || [];
 
-        if (batch) {
+        if (batch && batch.toUpperCase() !== 'ALL') {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        }
+
+        if (section && section !== 'ALL') {
+            students = students.filter(s => usnToSectionMap.get(s.usn) === section);
         }
 
         if (students.length === 0) {
@@ -60,11 +94,22 @@ export async function GET(req) {
         const rawMarks = await fetchDynamicMarks(supabaseAdmin, { usns });
         const marksData = (rawMarks || []).filter(m => Number(m.semester) <= upToSemester);
 
-        const { data: remarksData } = await supabaseAdmin
-            .from('academic_remarks')
-            .select('student_usn, semester, sgpa')
-            .in('student_usn', usns.slice(0, 300))
-            .lte('semester', upToSemester);
+        // Fetch academic remarks for all scoped USNs in parallel chunks to prevent URL length overflow
+        const remarksPromises = [];
+        const chunkSize = 150;
+        for (let i = 0; i < usns.length; i += chunkSize) {
+            const chunk = usns.slice(i, i + chunkSize);
+            remarksPromises.push(
+                supabaseAdmin
+                    .from('academic_remarks')
+                    .select('student_usn, semester, sgpa')
+                    .in('student_usn', chunk)
+                    .lte('semester', upToSemester)
+                    .then(res => res.data || [])
+            );
+        }
+        const remarksChunks = await Promise.all(remarksPromises);
+        const remarksData = remarksChunks.flat();
 
         // Group remarks and marks by USN
         const remarksByUsn = new Map();
@@ -186,7 +231,8 @@ export async function GET(req) {
             processedStudents.push({
                 usn: student.usn,
                 name: student.name || student.usn,
-                branch: student.branch,
+                branch: student.branch || (student.usn.length >= 7 ? student.usn.substring(5, 7).toUpperCase() : '—'),
+                section: usnToSectionMap.get(student.usn) || '—',
                 isLE,
                 semesters,
                 cumulativeCredits,

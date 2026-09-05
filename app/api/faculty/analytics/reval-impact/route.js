@@ -86,14 +86,36 @@ export async function GET(req) {
         const semParam = (searchParams.get('semester') || 'ALL').toUpperCase().trim();
         const semester = (semParam === 'ALL' || !semParam) ? 'ALL' : parseInt(semParam, 10);
         const batch = searchParams.get('batch') || '';
+        const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
 
         const supabaseAdmin = getAdminClient();
 
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' });
+        // 1. Fetch classes & class_students for dynamic section resolution
+        const [
+            rawStudents,
+            { data: rawClasses },
+            { data: rawClassStudents }
+        ] = await Promise.all([
+            fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' }),
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section'),
+            supabaseAdmin.from('class_students').select('class_id, usn')
+        ]);
+
+        const classById = new Map((rawClasses || []).map(c => [c.id, c]));
+        const usnToSectionMap = new Map();
+        (rawClassStudents || []).forEach(cs => {
+            const c = classById.get(cs.class_id);
+            if (c && c.section) {
+                usnToSectionMap.set(cs.usn, c.section.toUpperCase().trim());
+            }
+        });
 
         let students = rawStudents || [];
-        if (batch) {
+        if (batch && batch.toUpperCase() !== 'ALL') {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        }
+        if (section && section !== 'ALL') {
+            students = students.filter(s => usnToSectionMap.get(s.usn) === section);
         }
 
         const studentByUsn = new Map(students.map(s => [s.usn, s]));
@@ -118,9 +140,9 @@ export async function GET(req) {
             from += 1000;
         }
 
-        // Filter by branch and batch
+        // Filter by branch, batch, and section
         const attempts = (rawAttempts || []).filter(a => {
-            if (branch === 'ALL' && !batch) return true;
+            if (branch === 'ALL' && (!batch || batch.toUpperCase() === 'ALL') && (!section || section === 'ALL')) return true;
             return studentByUsn.has(a.usn);
         });
         const bySubject = new Map(); // `${usn}|${semester}|${subject_code}` -> attempt rows, each tagged with isReval
@@ -163,6 +185,8 @@ export async function GET(req) {
                     deltaRoster.push({
                         usn,
                         name: stu?.name || usn,
+                        branch: stu?.branch || (usn.length >= 7 ? usn.substring(5, 7).toUpperCase() : '—'),
+                        section: usnToSectionMap.get(usn) || '—',
                         semester: attempt.semester,
                         subject_code: attempt.subject_code,
                         subject_name: attempt.subject_name || attempt.subject_code,
@@ -234,6 +258,8 @@ export async function GET(req) {
                 deltaRoster.push({
                     usn,
                     name: stu?.name || usn,
+                    branch: stu?.branch || (usn.length >= 7 ? usn.substring(5, 7).toUpperCase() : '—'),
+                    section: usnToSectionMap.get(usn) || '—',
                     semester: attempt.semester,
                     subject_code: attempt.subject_code,
                     subject_name: attempt.subject_name || attempt.subject_code,

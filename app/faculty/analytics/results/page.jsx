@@ -41,7 +41,39 @@ function ExamResultsHubContent() {
     const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
     const [semester, setSemester] = useState(() => Number(initialSaved.semester) || 3);
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
+    const [section, setSection] = useState('ALL');
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Dynamically derive available sections from live classes metadata
+    const availableSections = useMemo(() => {
+        const classes = meta.classes || [];
+        const norm = (b) => {
+            if (!b) return '';
+            const s = String(b).toUpperCase().trim();
+            if (s === 'AI' || s === 'AIML' || s === 'CI') return 'AI';
+            if (s === 'CD' || s === 'CSD' || s === 'DS') return 'CD';
+            if (s === 'CS' || s === 'CSE') return 'CS';
+            if (s === 'EC' || s === 'ECE') return 'EC';
+            if (s === 'EE' || s === 'EEE') return 'EE';
+            if (s === 'CV' || s === 'CIVIL') return 'CV';
+            if (s === 'ME' || s === 'MECH') return 'ME';
+            if (s === 'RI' || s === 'ROBOTICS') return 'RI';
+            return s;
+        };
+
+        const relevantClasses = classes.filter(c => {
+            if (branch && branch !== 'ALL' && norm(c.branch) !== norm(branch)) return false;
+            if (viewTab !== 'batch' && semester && c.semester && Number(c.semester) !== Number(semester)) return false;
+            return true;
+        });
+        const sectionSet = new Set(relevantClasses.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean));
+        if (sectionSet.size === 0 && classes.length > 0) {
+            classes.forEach(c => {
+                if (c.section) sectionSet.add(c.section.trim().toUpperCase());
+            });
+        }
+        return Array.from(sectionSet).sort();
+    }, [meta.classes, branch, semester, viewTab]);
 
     // Tab 1: Semester Analysis States
     const [viewMode, setViewMode] = useState('credits'); // 'credits' | 'marks'
@@ -110,7 +142,7 @@ function ExamResultsHubContent() {
         if (!branch || !semester || !batch) return;
         setSemLoading(true);
         try {
-            const query = { branch, semester, batch };
+            const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/semester-analysis', { query });
             if (res) setSemData(res);
         } catch (err) {
@@ -118,14 +150,14 @@ function ExamResultsHubContent() {
         } finally {
             setSemLoading(false);
         }
-    }, [branch, semester, batch]);
+    }, [branch, semester, batch, section]);
 
     // 3. Fetch Batch Trajectory Data
     const loadBatchTrajectory = useCallback(async () => {
         if (!branch || !batch) return;
         setBatchLoading(true);
         try {
-            const query = { branch, batch, upToSemester };
+            const query = { branch, batch, upToSemester, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/batch-report', { query });
             if (res) setBatchData(res);
         } catch (err) {
@@ -133,14 +165,14 @@ function ExamResultsHubContent() {
         } finally {
             setBatchLoading(false);
         }
-    }, [branch, batch, upToSemester]);
+    }, [branch, batch, upToSemester, section]);
 
     // 4. Fetch Reval Impact Data
     const loadRevalData = useCallback(async () => {
         if (!branch) return;
         setRevalLoading(true);
         try {
-            const query = { branch, semester, batch, t: Date.now() };
+            const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/reval-impact', { query });
             if (res) setRevalData(res);
         } catch (err) {
@@ -148,7 +180,7 @@ function ExamResultsHubContent() {
         } finally {
             setRevalLoading(false);
         }
-    }, [branch, semester, batch]);
+    }, [branch, semester, batch, section]);
 
     useEffect(() => {
         if (viewTab === 'semester') {
@@ -516,14 +548,20 @@ function ExamResultsHubContent() {
                             label="Branch / Department"
                             value={branch}
                             onChange={e => setBranch(e.target.value)}
-                            options={(meta.branches || []).map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))}
+                            options={[
+                                { value: 'ALL', label: 'All Branches (College-Wide)' },
+                                ...(meta.branches || []).map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))
+                            ]}
                         />
 
                         <Select
                             label="Graduation Batch"
                             value={batch}
                             onChange={e => setBatch(e.target.value)}
-                            options={(meta.batches || []).map(b => ({ value: b, label: `Batch ${b}` }))}
+                            options={[
+                                { value: 'ALL', label: 'All Batches (All Cohorts)' },
+                                ...(meta.batches || []).map(b => ({ value: b, label: `Batch ${b}` }))
+                            ]}
                         />
 
                         {viewTab !== 'batch' ? (
@@ -541,6 +579,16 @@ function ExamResultsHubContent() {
                                 options={(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: s, label: `Up to Semester ${s}` }))}
                             />
                         )}
+
+                        <Select
+                            label="Section"
+                            value={section}
+                            onChange={e => setSection(e.target.value)}
+                            options={[
+                                { value: 'ALL', label: availableSections.length > 0 ? `All Sections (${availableSections.join(', ')})` : 'All Sections (Whole Cohort)' },
+                                ...availableSections.map(s => ({ value: s, label: `Section ${s}` }))
+                            ]}
+                        />
 
                         {viewTab === 'reval' && (
                             <Select
@@ -640,7 +688,10 @@ function ExamResultsHubContent() {
                                                         {s.usn}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
-                                                        {s.name}
+                                                        <div>{s.name}</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500, marginTop: '2px' }}>
+                                                            {s.branch || (s.usn.length >= 7 ? s.usn.substring(5, 7).toUpperCase() : '—')}{s.section && s.section !== '—' ? ` • Sec ${s.section}` : ''}
+                                                        </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-main)' }}>
                                                         {s.totalMarks}
@@ -750,7 +801,10 @@ function ExamResultsHubContent() {
                                                         {s.usn}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
-                                                        {s.name}
+                                                        <div>{s.name}</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500, marginTop: '2px' }}>
+                                                            {s.branch || (s.usn.length >= 7 ? s.usn.substring(5, 7).toUpperCase() : '—')}{s.section && s.section !== '—' ? ` • Sec ${s.section}` : ''}
+                                                        </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--primary)' }}>
                                                         {s.cgpa.toFixed(2)}
@@ -860,7 +914,10 @@ function ExamResultsHubContent() {
                                                             {r.usn}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
-                                                            {r.name}
+                                                            <div>{r.name}</div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500, marginTop: '2px' }}>
+                                                                {r.branch || '—'}{r.section && r.section !== '—' ? ` • Sec ${r.section}` : ''}
+                                                            </div>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontFamily: 'monospace' }}>
                                                             {r.subject_code}
