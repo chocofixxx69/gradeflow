@@ -1,5 +1,6 @@
 import React from 'react';
 import AitmLogo from './AitmLogo';
+import { canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
 
 /**
  * HallTicketCard — Exact reproduction of the official Anjuman Institute of Technology & Management
@@ -27,10 +28,17 @@ export default function HallTicketCard({
         { date: '25/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BEE654B', subjectName: 'TRES' }
     ]
 }) {
-    // Standardize branch display name
-    const branchDisplay = student.branch && student.branch.toLowerCase().includes('computer')
-        ? (student.branch.length > 25 ? 'CS' : student.branch)
-        : (student.branch || 'CS');
+    // Canonical branch code, resolved identically to the rest of the app.
+    // The previous rule ("contains 'computer' and longer than 25 characters ->
+    // CS, otherwise print the raw text") printed two different labels for one
+    // class - "CS" for a student stored as "CS" and "Computer Science (CSE)"
+    // for the next - and stamped "CS" on AI & ML tickets, because it fell
+    // through to the default for every non-computer branch.
+    const branchDisplay =
+        canonicalBranchCode(student.branch_code)
+        || canonicalBranchCode(extractBranchFromUsn(student.usn))
+        || canonicalBranchCode(student.branch)
+        || '—';
 
     return (
         <div

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
-import { matchesBranch, matchesBatch } from '@/lib/semester-utils';
+import { matchesBranch, matchesBatch, canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
@@ -63,7 +63,12 @@ function HallTicketsContent() {
     const [loading, setLoading] = useState(true);
     const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [] });
 
-    // Scope Selection
+    // Scope Selection. A hall ticket cohort is a class, so classId is the
+    // primary selector; branch/batch/semester remain as a fallback for ad-hoc
+    // cohorts that have no class record yet.
+    const [classId, setClassId] = useState('');
+    const [classes, setClasses] = useState([]);
+    const [activeClass, setActiveClass] = useState(null);
     const [branch, setBranch] = useState('CS');
     const [semester, setSemester] = useState(6);
     const [batch, setBatch] = useState('2023');
@@ -101,29 +106,53 @@ function HallTicketsContent() {
         loadMeta();
     }, []);
 
-    // 2. Fetch Students from DB using dedicated Hall Tickets API (no pagination caps)
+    // 1b. Load the class list that drives the primary scope selector.
+    useEffect(() => {
+        async function loadClasses() {
+            try {
+                const res = await apiRequest('/api/classes');
+                setClasses(res?.classes || []);
+            } catch (err) {
+                console.error('Class loading failed:', err);
+            }
+        }
+        loadClasses();
+    }, []);
+
+    // 2. Fetch Students. When a class is selected its roster is authoritative;
+    // otherwise fall back to the branch/batch/semester filters.
     const loadStudents = useCallback(async () => {
         setLoading(true);
         try {
-            const query = { branch };
-            if (batch) query.batch = batch;
-            if (semester) query.semester = semester;
+            const query = classId
+                ? { class_id: classId }
+                : { branch, ...(batch ? { batch } : {}), ...(semester ? { semester } : {}) };
+
             const res = await apiRequest('/api/faculty/hall-tickets/students', { query });
-            if (res && res.students) {
-                setAllStudents(res.students);
-            } else if (res && Array.isArray(res.data?.students)) {
-                setAllStudents(res.data.students);
-            }
+            const payload = res?.students ? res : res?.data;
+
+            setAllStudents(payload?.students || []);
+            setActiveClass(payload?.class || null);
         } catch (err) {
             console.error('Students fetch error:', err);
+            setAllStudents([]);
         } finally {
             setLoading(false);
         }
-    }, [branch, batch, semester]);
+    }, [classId, branch, batch, semester]);
 
     useEffect(() => {
         loadStudents();
     }, [loadStudents]);
+
+    // Selecting a class fixes the exam scope to that class's own semester and
+    // department, so the printed header can never disagree with the roster.
+    useEffect(() => {
+        if (!activeClass) return;
+        if (activeClass.semester) setSemester(Number(activeClass.semester));
+        if (activeClass.branch_code) setBranch(activeClass.branch_code);
+        if (activeClass.batch) setBatch(String(activeClass.batch));
+    }, [activeClass]);
 
     // Update Exam Title when Semester, Exam Type, or Month/Year changes
     useEffect(() => {
@@ -332,9 +361,15 @@ function HallTicketsContent() {
                 doc.line(marginX + 18, row1Y, marginX + 18, row1Y + row1Height);
 
                 doc.setFont('times', 'normal');
-                const branchLabel = student.branch?.toLowerCase().includes('computer')
-                    ? (student.branch.length > 25 ? 'CS' : student.branch)
-                    : (student.branch || 'CS');
+                // Canonical branch code, resolved the same way everywhere. The
+                // previous rule ("contains 'computer' and longer than 25 chars
+                // -> CS, else print the raw text") made the same class show
+                // "CS" for one student and "Computer Science (CSE)" for the
+                // next, and printed "CS" on AI & ML tickets.
+                const branchLabel = canonicalBranchCode(student.branch_code)
+                    || canonicalBranchCode(student.usn ? extractBranchFromUsn(student.usn) : null)
+                    || canonicalBranchCode(student.branch)
+                    || '—';
                 doc.text(branchLabel, marginX + 20, row1Y + 3.8);
 
                 const usnSplitX = marginX + 118;
@@ -454,6 +489,16 @@ function HallTicketsContent() {
                     header, nav, aside, .no-print, .gf-page-header, .config-panel, .screen-only-page-number {
                         display: none !important;
                     }
+                    /* The on-screen preview renders only the sheet being viewed
+                       (Paged mode), so printing it yielded a single page. The
+                       print-only container below holds every sheet; swap to it
+                       here and hide the interactive preview entirely. */
+                    .aitm-screen-preview {
+                        display: none !important;
+                    }
+                    .aitm-print-all {
+                        display: block !important;
+                    }
                     .aitm-sheets-scroll-container {
                         max-height: none !important;
                         overflow: visible !important;
@@ -508,11 +553,39 @@ function HallTicketsContent() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 125px), 1fr))', gap: '14px' }}>
+                            {/* Class is the primary selector: pick a class and its
+                                roster is the cohort, exactly as recorded in
+                                class_students. */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <Select
+                                    label="Class"
+                                    value={classId}
+                                    onChange={e => setClassId(e.target.value)}
+                                    options={[
+                                        { value: '', label: 'Manual scope (choose department, semester & batch below)' },
+                                        ...classes.map(c => ({
+                                            value: c.id,
+                                            label: `${c.name} — Sem ${c.semester ?? '?'} · ${c.student_count ?? 0} students`,
+                                        })),
+                                    ]}
+                                />
+                                {classId && activeClass && (
+                                    <div style={{ marginTop: '6px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
+                                        Roster locked to <strong>{activeClass.name}</strong>
+                                        {activeClass.branch_code ? ` · ${activeClass.branch_code}` : ''}
+                                        {activeClass.semester ? ` · Semester ${activeClass.semester}` : ''}
+                                        {activeClass.scheme ? ` · ${activeClass.scheme} scheme` : ''}
+                                        . Only students in this class can be issued a hall ticket.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 125px), 1fr))', gap: '14px', opacity: classId ? 0.55 : 1 }}>
                                 <div>
                                     <Select
                                         label="Department"
                                         value={branch}
+                                        disabled={Boolean(classId)}
                                         onChange={e => setBranch(e.target.value)}
                                         options={[
                                             { value: 'CS', label: 'CS - Computer Science' },
@@ -521,7 +594,8 @@ function HallTicketsContent() {
                                             { value: 'EC', label: 'EC - Electronics & Comm' },
                                             { value: 'EE', label: 'EE - Electrical & Electronics' },
                                             { value: 'CV', label: 'CV - Civil Engineering' },
-                                            { value: 'ME', label: 'ME - Mechanical Engineering' }
+                                            { value: 'ME', label: 'ME - Mechanical Engineering' },
+                                            { value: 'RI', label: 'RI - Robotics & AI' }
                                         ]}
                                     />
                                 </div>
@@ -529,6 +603,7 @@ function HallTicketsContent() {
                                     <Select
                                         label="Semester"
                                         value={semester}
+                                        disabled={Boolean(classId)}
                                         onChange={e => setSemester(Number(e.target.value))}
                                         options={[1,2,3,4,5,6,7,8].map(s => ({ value: s, label: `Semester ${s} (${ROMAN_SEMESTERS[s]})` }))}
                                     />
@@ -537,6 +612,7 @@ function HallTicketsContent() {
                                     <Select
                                         label="Batch Year"
                                         value={batch}
+                                        disabled={Boolean(classId)}
                                         onChange={e => setBatch(e.target.value)}
                                         options={[
                                             { value: '', label: 'All Batches' },
@@ -651,18 +727,41 @@ function HallTicketsContent() {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ marginBottom: '12px' }}>
-                                <Input
-                                    placeholder="Search by USN or Name..."
-                                    value={studentSearch}
-                                    onChange={e => setStudentSearch(e.target.value)}
-                                />
+                            <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                                <div style={{ flex: 1 }}>
+                                    <Input
+                                        placeholder={classId ? 'Search by USN or Name within this class...' : 'Search by USN or Name...'}
+                                        value={studentSearch}
+                                        onChange={e => setStudentSearch(e.target.value)}
+                                    />
+                                </div>
+                                {/* Issue a ticket for one student: type the USN, then
+                                    narrow the selection to just the matches. The
+                                    search only ever spans the chosen class, so a
+                                    student outside it cannot be issued a ticket. */}
+                                <Button
+                                    variant="ghost"
+                                    disabled={!studentSearch || visibleStudentsInChecklist.length === 0}
+                                    onClick={() => setSelectedUsns(new Set(visibleStudentsInChecklist.map(s => s.usn)))}
+                                    title="Select only the students matching this search"
+                                >
+                                    Only these ({visibleStudentsInChecklist.length})
+                                </Button>
                             </div>
+                            {studentSearch && classId && (
+                                <div style={{ marginTop: '-4px', marginBottom: '10px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
+                                    Searching within {activeClass?.name || 'the selected class'} only.
+                                </div>
+                            )}
 
                             <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--border-low)', borderRadius: '8px' }}>
                                 {visibleStudentsInChecklist.length === 0 ? (
                                     <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '12px' }}>
-                                        {loading ? 'Loading student roster...' : 'No students found in this branch/batch.'}
+                                        {loading
+                                            ? 'Loading student roster...'
+                                            : classId
+                                                ? 'No students in this class match your search.'
+                                                : 'No students found in this branch/batch.'}
                                     </div>
                                 ) : (
                                     visibleStudentsInChecklist.map((s) => {
@@ -837,9 +936,35 @@ function HallTicketsContent() {
                         </div>
                     </div>
 
+                    {/*
+                      Print-only: every sheet, always in the DOM.
+                      window.print() can only output what is rendered, and the
+                      preview below renders a single sheet in Paged mode - which
+                      is why printing produced one page while the PDF (built from
+                      data, not the DOM) came out complete. Hidden on screen,
+                      revealed by the @media print rules above.
+                    */}
+                    <div className="aitm-print-all" style={{ display: 'none' }} aria-hidden="true">
+                        {sheets.map((sheetStudents, sheetIdx) => (
+                            <HallTicketSheet
+                                key={`print-${sheetIdx}`}
+                                students={sheetStudents}
+                                examMeta={{
+                                    title: examTitle,
+                                    department: departmentName,
+                                    collegeName: 'ANJUMAN INSTITUTE OF TECHNOLOGY & MANAGEMENT',
+                                    collegeAddress: 'Anjumanabad, Bhatkal-582320'
+                                }}
+                                timetable={timetable}
+                                pageNumber={sheetIdx + 1}
+                                totalPages={sheets.length}
+                            />
+                        ))}
+                    </div>
+
                     {/* Sheets Container: when in All Sheets mode, scroll internally so the page doesn't stretch and left panel stays unaffected */}
                     <div
-                        className="aitm-sheets-scroll-container"
+                        className="aitm-sheets-scroll-container aitm-screen-preview"
                         style={{
                             width: '100%',
                             maxHeight: previewMode === 'continuous' ? '82vh' : 'none',
