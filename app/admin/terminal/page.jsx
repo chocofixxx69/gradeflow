@@ -969,29 +969,41 @@ function AdminPanelContent() {
         return Array.from(new Set(students.map(s => (s.branch || '').toUpperCase()).filter(Boolean))).sort();
     }, [students]);
 
-    // Dynamic batch list derived from real USN patterns — only shows batches that actually exist
+    /**
+     * VTU USN batch classifier.
+     * - Regular students: number < 200 → batch = USN year (e.g. 2AB23CS043 → Batch 2023)
+     * - Lateral entry: number ≥ 200 → batch = USN year - 1 (e.g. 2AB24CS400 → Batch 2023)
+     * Returns: { batch: '2023'|'2024'|..., isLateral: true|false }
+     */
+    const classifyStudentBatch = (usn) => {
+        const u = (usn || '').toUpperCase();
+        const m = u.match(/2AB(\d{2})[A-Z]+(\d{3})/);
+        if (!m) return { batch: 'unknown', isLateral: false };
+        const yearCode = parseInt(m[1], 10);
+        const num = parseInt(m[2], 10);
+        if (num >= 200) {
+            // Lateral entry: belongs to previous year's cohort
+            return { batch: `20${String(yearCode - 1).padStart(2, '0')}`, isLateral: true };
+        }
+        return { batch: `20${String(yearCode).padStart(2, '0')}`, isLateral: false };
+    };
+
+    // Dynamic batch list — uses correct VTU lateral entry classification
     const availableBatches = useMemo(() => {
-        const BATCH_PATTERNS = [
-            { code: '2023', tag: '2AB23', label: 'Batch 2023–27 (4th Year)', year: '2023' },
-            { code: '2024', tag: '2AB24', label: 'Batch 2024–28 (3rd Year)', year: '2024' },
-            { code: '2025', tag: '2AB25', label: 'Batch 2025–29 (2nd Year)', year: '2025' },
-            { code: '2026', tag: '2AB26', label: 'Batch 2026–30 (1st Year)', year: '2026' },
-        ];
+        const BATCH_META = {
+            '2023': { label: 'Batch 2023–27 (4th Year)' },
+            '2024': { label: 'Batch 2024–28 (3rd Year)' },
+            '2025': { label: 'Batch 2025–29 (2nd Year)' },
+            '2026': { label: 'Batch 2026–30 (1st Year)' },
+        };
         const counts = {};
-        let lateralCount = 0;
         students.forEach(s => {
-            const u = (s.usn || '').toUpperCase();
-            for (const b of BATCH_PATTERNS) {
-                if (u.includes(b.tag)) { counts[b.code] = (counts[b.code] || 0) + 1; break; }
-            }
-            const m = u.match(/2AB\d{2}[A-Z]{2}(\d{3})/);
-            if (m && parseInt(m[1], 10) >= 400) lateralCount++;
+            const { batch } = classifyStudentBatch(s.usn);
+            if (batch !== 'unknown') counts[batch] = (counts[batch] || 0) + 1;
         });
-        const result = BATCH_PATTERNS
-            .filter(b => (counts[b.code] || 0) > 0)
-            .map(b => ({ ...b, count: counts[b.code] || 0 }));
-        if (lateralCount > 0) result.push({ code: 'lateral', label: 'Lateral Entry (Diploma)', count: lateralCount });
-        return result;
+        return Object.keys(counts)
+            .sort()
+            .map(batch => ({ code: batch, label: BATCH_META[batch]?.label || `Batch ${batch}`, count: counts[batch] }));
     }, [students]);
 
     const branchBreakdown = useMemo(() => {
@@ -1012,27 +1024,21 @@ function AdminPanelContent() {
         return Object.entries(map).sort(([a], [b]) => Number(a) - Number(b));
     }, [students]);
 
-    // Academic Batches (Graduating Classes derived from USN 2ABxx)
+    // Academic Batches (Graduating Classes) using correct VTU lateral entry logic
     const batchBreakdown = useMemo(() => {
         const counts = {
             '2023': { label: 'Class of 2027 (Final Year)', code: '2023', count: 0, sem: 'Semester 7', academicYear: '4th Year' },
             '2024': { label: 'Class of 2028 (3rd Year)', code: '2024', count: 0, sem: 'Semester 5', academicYear: '3rd Year' },
             '2025': { label: 'Class of 2029 (2nd Year)', code: '2025', count: 0, sem: 'Semester 3', academicYear: '2nd Year' },
         };
-        let lateralCount = 0;
 
         students.forEach(s => {
-            const u = (s.usn || '').toUpperCase();
-            if (u.includes('2AB23')) counts['2023'].count++;
-            else if (u.includes('2AB24')) counts['2024'].count++;
-            else if (u.includes('2AB25')) counts['2025'].count++;
-
-            const m = u.match(/2AB\d{2}[A-Z]{2}(\d{3})/);
-            if (m && parseInt(m[1], 10) >= 400) lateralCount++;
+            const { batch } = classifyStudentBatch(s.usn);
+            if (counts[batch]) counts[batch].count++;
         });
 
-        return { batches: Object.values(counts), lateralCount };
-    }, [students]);
+        return { batches: Object.values(counts), lateralCount: students.filter(s => classifyStudentBatch(s.usn).isLateral).length };
+    }, [students, classifyStudentBatch]);
 
     // Base scoped students matching search, branch, semester, and batch
     const baseScopedStudents = useMemo(() => {
@@ -1050,14 +1056,9 @@ function AdminPanelContent() {
             }
 
             if (studentBatchFilter !== 'all') {
-                const u = (s.usn || '').toUpperCase();
-                if (studentBatchFilter === '2023' && !u.includes('2AB23')) return false;
-                if (studentBatchFilter === '2024' && !u.includes('2AB24')) return false;
-                if (studentBatchFilter === '2025' && !u.includes('2AB25')) return false;
-                if (studentBatchFilter === 'lateral') {
-                    const m = u.match(/2AB\d{2}[A-Z]{2}(\d{3})/);
-                    if (!m || parseInt(m[1], 10) < 400) return false;
-                }
+                // Use correct VTU lateral entry batch classification
+                const { batch } = classifyStudentBatch(s.usn);
+                if (batch !== studentBatchFilter) return false;
             }
 
             return true;
@@ -1617,14 +1618,7 @@ function AdminPanelContent() {
                                         </span>
                                     </>
                                 )}
-                                {tab === 'students' && studentBatchFilter !== 'all' && (
-                                    <>
-                                        <span>›</span>
-                                        <span style={{ color: 'var(--primary)', fontWeight: 800, background: 'rgba(37,99,235,0.08)', padding: '2px 8px', borderRadius: '6px' }}>
-                                            {availableBatches.find(b => b.code === studentBatchFilter)?.label || `Batch ${studentBatchFilter}`}
-                                        </span>
-                                    </>
-                                )}
+
                             </div>
                         </div>
 
@@ -2064,7 +2058,7 @@ function AdminPanelContent() {
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                        Active Cohort: {studentSemFilter !== 'all' ? `Semester ${studentSemFilter} Students` : ''} {studentBranchFilter !== 'all' ? `· ${studentBranchFilter}` : ''} {studentBatchFilter !== 'all' ? `· ${studentBatchFilter === 'lateral' ? 'Diploma Lateral Entries' : `Batch ${studentBatchFilter}`}` : ''}
+                                        Active Cohort: {studentSemFilter !== 'all' ? `Semester ${studentSemFilter} Students` : ''} {studentBranchFilter !== 'all' ? `· ${studentBranchFilter}` : ''} {studentBatchFilter !== 'all' ? `· Batch ${studentBatchFilter}` : ''}
                                     </div>
                                     <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
                                         Showing {filtered.length} student{filtered.length === 1 ? '' : 's'} matching current filter selection.
@@ -2374,7 +2368,7 @@ function AdminPanelContent() {
                                                             <div style={{ fontWeight: 800, color: s.is_suspended ? 'var(--red)' : 'var(--tx-main)' }}>
                                                                 {s.name || 'Student'}
                                                             </div>
-                                                            {s.lateral_entry && (
+                                                            {classifyStudentBatch(s.usn).isLateral && (
                                                                 <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Lateral Entry</span>
                                                             )}
                                                         </div>
