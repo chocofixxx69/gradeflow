@@ -41,26 +41,25 @@ export default function HallTicketSheet({
                         />
                     </div>
 
-                    {/* Scissor Cutting Line between tickets on the same sheet (Single line, perfectly stretched, no wrapping) */}
+                    {/* Scissor Cutting Line between tickets on the same sheet (Exact Courier monospace line matching PDF) */}
                     {idx < students.length - 1 && (
                         <div
                             className="aitm-cutting-line"
                             style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                margin: '10px 0 14px 0',
-                                color: '#1F2937',
-                                userSelect: 'none',
+                                textAlign: 'center',
+                                fontFamily: "'Courier New', Courier, monospace",
+                                fontWeight: 'bold',
+                                fontSize: '10.5px',
+                                color: '#000000',
+                                margin: '8px 0',
+                                letterSpacing: '0.02em',
+                                whiteSpace: 'nowrap',
                                 overflow: 'hidden',
-                                width: '100%'
+                                userSelect: 'none'
                             }}
                             title="Scissor Cutting Guide"
                         >
-                            <div style={{ flex: 1, borderBottom: '1.2px dashed #4B5563' }} />
-                            <span style={{ padding: '0 12px', fontSize: '11px', fontWeight: 900, fontFamily: 'monospace', color: '#111827' }}>X</span>
-                            <div style={{ flex: 1.2, borderBottom: '1.2px dashed #4B5563' }} />
-                            <span style={{ padding: '0 12px', fontSize: '11px', fontWeight: 900, fontFamily: 'monospace', color: '#111827' }}>X</span>
-                            <div style={{ flex: 1, borderBottom: '1.2px dashed #4B5563' }} />
+                            -----------------------------------------X------------------------------------------------X--------------------------------------
                         </div>
                     )}
                 </React.Fragment>
@@ -68,7 +67,7 @@ export default function HallTicketSheet({
 
             {/* If fewer than 3 students on the last page, render empty slots to maintain layout height */}
             {students.length < 3 && Array.from({ length: 3 - students.length }).map((_, i) => (
-                <div className="aitm-ticket-slot aitm-empty-slot" key={`empty-${i}`} style={{ flex: '1', visibility: 'hidden' }} />
+                <div className="aitm-ticket-slot aitm-empty-slot" key={`empty-${i}`} style={{ flex: '1 1 0', visibility: 'hidden' }} />
             ))}
 
             {/* Subtle sheet numbering in footer for screen preview */}

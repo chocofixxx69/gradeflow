@@ -477,7 +477,7 @@ function HallTicketsContent() {
                 @media print {
                     @page {
                         size: A4 portrait;
-                        margin: 5mm 8mm;
+                        margin: 8mm 12mm;
                     }
                     html, body {
                         background: #FFFFFF !important;
@@ -486,55 +486,83 @@ function HallTicketsContent() {
                         padding: 0 !important;
                         width: 100% !important;
                         height: auto !important;
+                        min-height: 0 !important;
                         overflow: visible !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
-                    /* Hide everything except print sheets */
-                    header, nav, aside, .no-print, .gf-page-header, .config-panel, .screen-only-page-number {
-                        display: none !important;
-                    }
+
+                    /* 1. Hide ALL non-print elements: shell topbar, sidebar, footer, toolbar buttons, controls */
+                    header,
+                    nav,
+                    aside,
+                    footer,
+                    .gf-shell-topbar,
+                    .gf-mobile-header,
+                    .gf-sidebar,
+                    .no-print,
+                    .no-print *,
+                    .aitm-header-toolbar,
+                    .aitm-header-toolbar *,
+                    .gf-page-header,
+                    .config-panel,
+                    .aitm-preview-controls,
+                    .screen-only-page-number,
                     .aitm-screen-preview {
                         display: none !important;
+                        visibility: hidden !important;
+                        height: 0 !important;
+                        min-height: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        border: none !important;
+                        overflow: hidden !important;
                     }
 
-                    /* Reset all outer page wrappers so no padding, margin, grid, or flex constrains print layout */
-                    #__next, main, .gf-fade-up, .gf-fade-up > div, div:has(> .aitm-print-all) {
+                    /* 2. Neutralize all outer page wrappers so no padding, margin, grid, or flex constrains print layout */
+                    .app-layout,
+                    .app-layout-authenticated,
+                    .main-content,
+                    .main-content-body,
+                    #__next,
+                    main,
+                    .gf-fade-up,
+                    .aitm-main-layout-grid,
+                    .aitm-preview-panel {
+                        display: block !important;
+                        position: static !important;
                         margin: 0 !important;
                         padding: 0 !important;
                         width: 100% !important;
                         max-width: 100% !important;
-                        display: block !important;
+                        min-height: 0 !important;
+                        height: auto !important;
                         border: none !important;
                         box-shadow: none !important;
                         background: transparent !important;
+                        overflow: visible !important;
+                        gap: 0 !important;
                     }
 
+                    /* 3. Reveal print sheets */
                     .aitm-print-all {
                         display: block !important;
                         width: 100% !important;
                         margin: 0 !important;
                         padding: 0 !important;
+                        position: static !important;
                     }
 
-                    .aitm-sheets-scroll-container {
-                        max-height: none !important;
-                        overflow: visible !important;
-                        background: transparent !important;
-                        border: none !important;
-                        padding: 0 !important;
-                    }
-
-                    /* A4 Sheet Container: Exactly 284mm height to guarantee 3 tickets per sheet on standard A4 (297mm - 10mm margins = 287mm) */
+                    /* 4. A4 Sheet Container: Exactly 278mm height (A4 297mm - 16mm margins = 281mm printable) guaranteeing 3 tickets per sheet with zero overflow */
                     .aitm-a4-sheet {
                         box-shadow: none !important;
                         border: none !important;
                         margin: 0 !important;
-                        padding: 1.5mm 0 !important;
+                        padding: 0 !important;
                         width: 100% !important;
                         max-width: 100% !important;
-                        height: 284mm !important;
-                        max-height: 284mm !important;
+                        height: 278mm !important;
+                        max-height: 278mm !important;
                         min-height: 0 !important;
                         box-sizing: border-box !important;
                         page-break-inside: avoid !important;
@@ -545,6 +573,7 @@ function HallTicketsContent() {
                         flex-direction: column !important;
                         justifyContent: space-between !important;
                         overflow: hidden !important;
+                        background: #FFFFFF !important;
                     }
 
                     .aitm-a4-sheet:last-of-type {
@@ -552,29 +581,42 @@ function HallTicketsContent() {
                         break-after: auto !important;
                     }
 
-                    /* Slot container: exactly 1/3 of printable sheet, never overflow */
+                    /* 5. Slot container: exactly 1/3 of printable sheet, never overflow */
                     .aitm-ticket-slot {
                         flex: 1 1 0 !important;
-                        max-height: 90mm !important;
+                        max-height: 89mm !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justifyContent: center !important;
                         overflow: hidden !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
                     }
 
                     .aitm-hall-ticket-card {
+                        width: 100% !important;
                         max-width: 100% !important;
+                        margin: 0 auto !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
+                        font-family: 'Times New Roman', Times, serif !important;
                     }
 
-                    /* Compact institutional card styles for crisp 3-per-page A4 printing */
+                    /* 6. Compact institutional card styles strictly synchronized with PDF */
+                    .aitm-card-outer-box {
+                        border: 1.2px solid #000000 !important;
+                    }
+                    .aitm-card-header-row {
+                        grid-template-columns: 88px 1fr !important;
+                        border-bottom: 1.2px solid #000000 !important;
+                    }
                     .aitm-card-logo-box {
                         padding: 2px !important;
+                        border-right: 1.2px solid #000000 !important;
                     }
                     .aitm-card-logo-img {
-                        width: 56px !important;
-                        height: 56px !important;
+                        width: 58px !important;
+                        height: 58px !important;
                     }
                     .aitm-card-college-name {
                         font-size: 11.5px !important;
@@ -593,41 +635,55 @@ function HallTicketsContent() {
                         margin-top: 2px !important;
                     }
                     .aitm-card-banner {
-                        padding: 2.5px 6px !important;
-                        font-size: 10.5px !important;
+                        padding: 2px 6px !important;
+                        font-size: 10px !important;
+                        border-bottom: 1.2px solid #000000 !important;
+                        background-color: #F3F4F6 !important;
                     }
                     .aitm-card-meta-row {
                         font-size: 10px !important;
+                        border-bottom: 1.2px solid #000000 !important;
                     }
                     .aitm-card-meta-row div {
-                        padding: 2.5px 5px !important;
+                        padding: 2px 5px !important;
+                        border-right-color: #000000 !important;
                     }
                     .aitm-card-name-row {
                         font-size: 10.5px !important;
+                        border-bottom: 1.2px solid #000000 !important;
                     }
                     .aitm-card-name-row div {
-                        padding: 2.5px 5px !important;
+                        padding: 2px 5px !important;
+                        border-right-color: #000000 !important;
                     }
                     .aitm-card-timetable-grid {
-                        min-height: 75px !important;
+                        min-height: 68px !important;
+                        grid-template-columns: 1fr 108px !important;
                     }
                     .aitm-card-timetable-grid table th,
                     .aitm-card-timetable-grid table td {
-                        padding: 2.5px 3px !important;
+                        padding: 2px 3px !important;
                         font-size: 9.5px !important;
+                        border-color: #000000 !important;
+                    }
+                    .aitm-card-photo-box {
+                        border-left: 1.2px solid #000000 !important;
+                        padding: 4px !important;
                     }
                     .aitm-card-signatures {
-                        padding: 22px 6px 2px 6px !important;
+                        padding: 26px 4px 2px 4px !important;
                         font-size: 10px !important;
                     }
                     .aitm-cutting-line {
-                        margin: 2.5px 0 3.5px 0 !important;
+                        margin: 3px 0 !important;
+                        font-size: 9.5px !important;
+                        color: #000000 !important;
                     }
                 }
             `}</style>
 
             {/* Header Toolbar */}
-            <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+            <div className="no-print aitm-header-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
                     <PageHeaderEyebrow>Academic Operations & Examination</PageHeaderEyebrow>
                     <PageHeaderTitle>Hall Ticket Generator</PageHeaderTitle>
@@ -648,7 +704,7 @@ function HallTicketsContent() {
             </div>
 
             {/* Main 2-Column Content */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '28px', alignItems: 'flex-start' }}>
+            <div className="aitm-main-layout-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '28px', alignItems: 'flex-start' }}>
                 {/* ── LEFT PANEL: Configuration & Settings (Restored to exact spacious original layout) ── */}
                 <div className="no-print config-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     {/* Scope Selector Card */}
@@ -917,9 +973,9 @@ function HallTicketsContent() {
                 </div>
 
                 {/* ── RIGHT PANEL: Live Interactive Preview (A4 Sheet 3-per-page) ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="aitm-preview-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {/* Preview Controls Header */}
-                    <div className="no-print" style={{
+                    <div className="no-print aitm-preview-controls" style={{
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',

@@ -137,25 +137,25 @@ export default function HallTicketCard({
                 </div>
 
                 {/* 5. Timetable Grid + Student Photo Block */}
-                <div className="aitm-card-timetable-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 125px', minHeight: '110px' }}>
+                <div className="aitm-card-timetable-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 115px', minHeight: '100px' }}>
                     {/* Timetable Table */}
                     <div>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', textAlign: 'center' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1.5px solid #000000', backgroundColor: '#FAFAFA' }}>
-                                    <th style={{ width: '22%', padding: '4px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Date</th>
-                                    <th style={{ width: '38%', padding: '4px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Time</th>
-                                    <th style={{ width: '20%', padding: '4px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Subject Code</th>
-                                    <th style={{ width: '20%', padding: '4px', fontWeight: '800' }}>Subject name</th>
+                                    <th style={{ width: '18%', padding: '3.5px 3px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Date</th>
+                                    <th style={{ width: '29%', padding: '3.5px 3px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Time</th>
+                                    <th style={{ width: '18%', padding: '3.5px 3px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Subject Code</th>
+                                    <th style={{ width: '35%', padding: '3.5px 3px', fontWeight: '800' }}>Subject name</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {timetable.map((row, idx) => (
                                     <tr key={idx} style={{ borderBottom: idx < timetable.length - 1 ? '1px solid #000000' : 'none' }}>
-                                        <td style={{ padding: '4px 4px', borderRight: '1.5px solid #000000' }}>{row.date}</td>
-                                        <td style={{ padding: '4px 4px', borderRight: '1.5px solid #000000' }}>{row.time}</td>
-                                        <td style={{ padding: '4px 4px', borderRight: '1.5px solid #000000', fontWeight: '700' }}>{row.subjectCode}</td>
-                                        <td style={{ padding: '4px 4px', fontWeight: '700' }}>{row.subjectName}</td>
+                                        <td style={{ padding: '3.5px 3px', borderRight: '1.5px solid #000000' }}>{row.date}</td>
+                                        <td style={{ padding: '3.5px 3px', borderRight: '1.5px solid #000000' }}>{row.time}</td>
+                                        <td style={{ padding: '3.5px 3px', borderRight: '1.5px solid #000000', fontFamily: 'Courier, monospace', fontWeight: 'bold' }}>{row.subjectCode}</td>
+                                        <td style={{ padding: '3.5px 3px', fontWeight: 'bold' }}>{row.subjectName}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -176,8 +176,8 @@ export default function HallTicketCard({
                                 src={student.photo_url}
                                 alt={student.name}
                                 style={{
-                                    maxWidth: '90px',
-                                    maxHeight: '105px',
+                                    maxWidth: '85px',
+                                    maxHeight: '98px',
                                     objectFit: 'cover',
                                     border: '1px solid #9CA3AF'
                                 }}
@@ -196,12 +196,12 @@ export default function HallTicketCard({
                 </div>
             </div>
 
-            {/* 6. Signatures Row with Proper Vertical Space for Physical Signatures */}
+            {/* 6. Signatures Row with Generous Vertical Space for Physical Signatures */}
             <div className="aitm-card-signatures" style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-end',
-                padding: '42px 6px 4px 6px', /* 42px (~11mm) of clear white space for advisor and HoD signatures */
+                padding: '38px 6px 4px 6px', /* ~10.5mm clear space matching PDF sigSpace */
                 fontSize: '11px',
                 fontWeight: '800'
             }}>
