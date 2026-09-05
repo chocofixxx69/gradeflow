@@ -72,7 +72,17 @@ const KNOWN_VTU_ACRONYMS = {
     'ADVANCED JAVA PROGRAMMING': 'AJP',
     'HIGH PERFORMANCE COMPUTING': 'HPC',
     'POWER SYSTEM ANALYSIS - I': 'PSA-1',
-    'CONTROL SYSTEMS': 'CS'
+    'CONTROL SYSTEMS': 'CS',
+    'CLOUD COMPUTING OPEN STACK GOOGLE': 'CC',
+    'PROFESSIONAL ELECTIVE COURSE': 'PEC',
+    'OPEN ELECTIVE COURSE': 'OEC',
+    'ABILITY ENHANCEMENT COURSE SKILL DEVELOPMENT COURSE V': 'AEC-V',
+    'PHYSICAL EDUCATION': 'PE',
+    'INDIAN KNOWLEDGE SYSTEM': 'IKS',
+    'CAPSTONE PROJECT PHASE I': 'CP-1',
+    'IOT LABORATORY': 'IOT LAB',
+    'MACHINE LEARNING LAB': 'ML LAB',
+    'PROJECT PHASE I': 'PRJ-1'
 };
 
 function getSubjectShortName(name, code) {
@@ -98,15 +108,10 @@ export default function HallTicketsPage() {
 function HallTicketsContent() {
     const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [], cohortMatrix: {} });
 
-    // Scope Selection. A hall ticket cohort is a class, so classId is the
-    // primary selector; branch/batch/semester remain as a fallback for ad-hoc
-    // cohorts that have no class record yet.
-    // classes, activeClass, allStudents and loading are all derived from the
-    // live subscriptions below rather than held as separate state.
-    const [classId, setClassId] = useState('');
+    // Scope Selection. Faculty can select a Department, Semester, and one or multiple Classes.
+    const [selectedClassIds, setSelectedClassIds] = useState([]);
     const [branch, setBranch] = useState('CS');
-    const [semester, setSemester] = useState(7);
-    const [batch, setBatch] = useState('2023');
+    const [semester, setSemester] = useState(6);
 
     // Students Data
     const [selectedUsns, setSelectedUsns] = useState(new Set());
@@ -148,7 +153,7 @@ function HallTicketsContent() {
         async function loadCatalog() {
             const normBranch = canonicalBranchCode(branch) || branch || 'CS';
             try {
-                const res = await apiRequest(`/api/subjects?branch=${normBranch}&semester=${semester}&scheme=2022`);
+                const res = await apiRequest(`/api/subjects?branch=${normBranch}&semester=${semester}`);
                 if (!cancelled && res?.subjects && res.subjects.length > 0) {
                     const formatted = res.subjects.map(s => ({
                         code: s.code,
@@ -181,19 +186,28 @@ function HallTicketsContent() {
         return () => { cancelled = true; };
     }, [branch, semester, meta?.subjects]);
 
-    // 1b. Class list driving the primary scope selector. Polled, so a class
-    // created elsewhere shows up here without a reload.
+    // 1b. Class list driving the primary scope selector.
     const { data: classesData } = useLive('/api/classes', { interval: LIVE.NORMAL });
     const classes = useMemo(() => classesData?.classes || [], [classesData]);
 
-    // 2. Roster. When a class is selected its roster is authoritative; otherwise
-    // fall back to the branch/batch/semester filters. Polled so a student added
-    // to or removed from the class appears here while the sheet is being built.
-    const rosterQuery = useMemo(() => (
-        classId
-            ? { class_id: classId }
-            : { branch, ...(batch ? { batch } : {}), ...(semester ? { semester } : {}) }
-    ), [classId, branch, batch, semester]);
+    // Available classes filtered to the chosen Department & Semester
+    const availableBranchSemClasses = useMemo(() => {
+        const normBranch = canonicalBranchCode(branch) || branch;
+        return classes.filter(c => {
+            const bMatch = matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch);
+            const sMatch = Number(c.semester) === Number(semester);
+            return bMatch && sMatch;
+        });
+    }, [classes, branch, semester]);
+
+    // 2. Roster. If specific class(es) are selected, query by class_ids; otherwise
+    // query by branch & semester directly.
+    const rosterQuery = useMemo(() => {
+        if (selectedClassIds.length > 0) {
+            return { class_ids: selectedClassIds.join(',') };
+        }
+        return { branch, semester: String(semester) };
+    }, [selectedClassIds, branch, semester]);
 
     const {
         data: rosterData,
@@ -206,19 +220,8 @@ function HallTicketsContent() {
 
     const allStudents = useMemo(() => rosterData?.students || [], [rosterData]);
     const activeClass = useMemo(() => rosterData?.class || null, [rosterData]);
+    const activeClasses = useMemo(() => rosterData?.classes || [], [rosterData]);
     const loading = rosterLoading;
-
-    // Selecting a class fixes the exam scope to that class's own semester and
-    // department, so the printed header can never disagree with the roster.
-    useEffect(() => {
-        if (!activeClass) return;
-        if (activeClass.semester) setSemester(Number(activeClass.semester));
-        if (activeClass.branch_code) setBranch(activeClass.branch_code);
-        if (activeClass.batch) setBatch(String(activeClass.batch));
-        if (activeClass.branch_code && activeClass.semester) {
-            autoFillSyllabus(activeClass.branch_code, Number(activeClass.semester));
-        }
-    }, [activeClass]);
 
     // Dynamic branch options derived from live database metadata & cohort matrix
     const branchOptions = useMemo(() => {
@@ -259,49 +262,29 @@ function HallTicketsContent() {
         });
     }, [meta?.branches, meta?.cohortMatrix]);
 
-    // Dynamic batch options for the selected branch with student count badges
-    const batchOptions = useMemo(() => {
-        const matrix = meta?.cohortMatrix || {};
-        const cBranch = canonicalBranchCode(branch) || branch;
-        const branchCohort = matrix[cBranch] || matrix[branch] || null;
-        const allBatches = meta?.batches && meta.batches.length > 0 ? meta.batches : ['2023', '2024', '2025', '2026'];
-
-        return [
-            { value: '', label: 'All Batches' },
-            ...allBatches.map(b => {
-                const count = branchCohort?.batches?.[b]?.total ?? 0;
-                return {
-                    value: b,
-                    label: `${b.slice(-2)} Batch (${b})${count > 0 ? ` · ${count} students` : ''}`,
-                    studentCount: count
-                };
-            })
-        ];
-    }, [meta?.batches, meta?.cohortMatrix, branch]);
-
     // Dynamic semester options with live student counts per semester
     const semesterOptions = useMemo(() => {
         const matrix = meta?.cohortMatrix || {};
         const cBranch = canonicalBranchCode(branch) || branch;
         const branchCohort = matrix[cBranch] || matrix[branch] || null;
-
         const branchSemCounts = branchCohort?.semesters || {};
-        const batchSemCounts = batch ? (branchCohort?.batches?.[batch]?.semesters || {}) : branchSemCounts;
 
         return [1, 2, 3, 4, 5, 6, 7, 8].map(s => {
-            const count = batch ? (batchSemCounts[s] || 0) : (branchSemCounts[s] || 0);
-            const totalBranchCount = branchSemCounts[s] || 0;
+            const count = branchSemCounts[s] || 0;
             const roman = ROMAN_SEMESTERS[s] || String(s);
-            const badge = count > 0 
-                ? ` · ${count} stu` 
-                : (totalBranchCount > 0 ? ` · ${totalBranchCount} in dept` : '');
+            // Also count enrolled students across active classes for this sem
+            const classCount = classes
+                .filter(c => (matchesBranch(c.branch, cBranch) || matchesBranch(c.branch_code, cBranch)) && Number(c.semester) === Number(s))
+                .reduce((sum, c) => sum + (c.student_count || 0), 0);
+            const displayCount = count > 0 ? count : classCount;
+            const badge = displayCount > 0 ? ` · ${displayCount} stu` : '';
             return {
                 value: s,
                 label: `Semester ${s} (${roman})${badge}`,
-                studentCount: count
+                studentCount: displayCount
             };
         });
-    }, [meta?.cohortMatrix, branch, batch]);
+    }, [meta?.cohortMatrix, branch, classes]);
 
     // Auto-fill Timetable dynamically from live syllabus / subject_catalog in DB
     const autoFillSyllabus = useCallback(async (targetBranch = branch, targetSem = semester) => {
@@ -312,7 +295,7 @@ function HallTicketsContent() {
 
             // 1. Live query to /api/subjects for official scheme 2022/2025 catalog
             try {
-                const res = await apiRequest(`/api/subjects?branch=${normBranch}&semester=${targetSem}&scheme=2022`);
+                const res = await apiRequest(`/api/subjects?branch=${normBranch}&semester=${targetSem}`);
                 if (res?.subjects && res.subjects.length > 0) {
                     subjectList = res.subjects;
                 }
@@ -382,54 +365,36 @@ function HallTicketsContent() {
         const s = Number(newSem);
         setSemester(s);
         autoFillSyllabus(branch, s);
+        // Reset selected classes when semester changes so they match the new semester
+        setSelectedClassIds([]);
+    }, [branch, autoFillSyllabus]);
 
-        // Sync batch if currently selected batch has 0 students in the new semester
-        const matrix = meta?.cohortMatrix || {};
-        const cBranch = canonicalBranchCode(branch) || branch;
-        const branchCohort = matrix[cBranch] || matrix[branch] || null;
-        if (branchCohort?.batches) {
-            const curBatchCount = branchCohort.batches[batch]?.semesters?.[s] || 0;
-            if (curBatchCount === 0) {
-                const matchingBatch = Object.keys(branchCohort.batches).find(
-                    b => (branchCohort.batches[b]?.semesters?.[s] || 0) > 0
-                );
-                if (matchingBatch) {
-                    setBatch(matchingBatch);
-                } else {
-                    setBatch('');
-                }
+    // Class selection handlers
+    const toggleClassSelection = useCallback((id) => {
+        setSelectedClassIds(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(cId => cId !== id);
+            } else {
+                return [...prev, id];
             }
+        });
+    }, []);
+
+    const selectAllBranchSemClasses = useCallback(() => {
+        if (availableBranchSemClasses.length > 0) {
+            setSelectedClassIds(availableBranchSemClasses.map(c => c.id));
         }
-    }, [branch, batch, meta?.cohortMatrix, autoFillSyllabus]);
+    }, [availableBranchSemClasses]);
 
-    // Explicit Batch change handler
-    const handleBatchChange = useCallback((newBatch) => {
-        setBatch(newBatch);
-        const matrix = meta?.cohortMatrix || {};
-        const cBranch = canonicalBranchCode(branch) || branch;
-        const branchCohort = matrix[cBranch] || matrix[branch] || null;
-        if (!branchCohort) return;
-
-        const semCounts = newBatch
-            ? (branchCohort.batches?.[newBatch]?.semesters || {})
-            : (branchCohort.semesters || {});
-
-        if ((semCounts[semester] || 0) === 0) {
-            const activeSems = Object.entries(semCounts)
-                .filter(([_, cnt]) => cnt > 0)
-                .sort((a, b) => b[1] - a[1]);
-            if (activeSems.length > 0) {
-                const targetSem = Number(activeSems[0][0]);
-                setSemester(targetSem);
-                autoFillSyllabus(branch, targetSem);
-            }
-        }
-    }, [branch, semester, meta?.cohortMatrix, autoFillSyllabus]);
+    const deselectAllClasses = useCallback(() => {
+        setSelectedClassIds([]);
+    }, []);
 
     // Explicit Branch change handler
     const handleBranchChange = useCallback((newBranch) => {
         setBranch(newBranch);
         autoFillSyllabus(newBranch, semester);
+        setSelectedClassIds([]);
     }, [semester, autoFillSyllabus]);
 
     // Update Exam Title when Semester, Exam Type, or Month/Year changes
@@ -961,45 +926,32 @@ function HallTicketsContent() {
                     {/* Scope Selector Card */}
                     <Card>
                         <CardHeader>
-                            <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>tune</span>
-                                Class & Cohort Scope
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {/* Class is the primary selector: pick a class and its
-                                roster is the cohort, exactly as recorded in
-                                class_students. */}
-                            <div style={{ marginBottom: '16px' }}>
-                                <Select
-                                    label="Class"
-                                    value={classId}
-                                    onChange={e => setClassId(e.target.value)}
-                                    options={[
-                                        { value: '', label: 'Manual scope (choose department, semester & batch below)' },
-                                        ...classes.map(c => ({
-                                            value: c.id,
-                                            label: `${c.name} — Sem ${c.semester ?? '?'} · ${c.student_count ?? 0} students`,
-                                        })),
-                                    ]}
-                                />
-                                {classId && activeClass && (
-                                    <div style={{ marginTop: '6px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
-                                        Roster locked to <strong>{activeClass.name}</strong>
-                                        {activeClass.branch_code ? ` · ${activeClass.branch_code}` : ''}
-                                        {activeClass.semester ? ` · Semester ${activeClass.semester}` : ''}
-                                        {activeClass.scheme ? ` · ${activeClass.scheme} scheme` : ''}
-                                        . Only students in this class can be issued a hall ticket.
-                                    </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>tune</span>
+                                    Class & Cohort Scope
+                                </CardTitle>
+                                {selectedClassIds.length > 0 && (
+                                    <span style={{
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        color: 'var(--primary)',
+                                        background: 'rgba(59, 130, 246, 0.1)',
+                                        padding: '3px 8px',
+                                        borderRadius: '12px'
+                                    }}>
+                                        {selectedClassIds.length} {selectedClassIds.length === 1 ? 'Class' : 'Classes'} Selected
+                                    </span>
                                 )}
                             </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 125px), 1fr))', gap: '14px', opacity: classId ? 0.55 : 1 }}>
+                        </CardHeader>
+                        <CardContent style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Row 1: Department & Semester */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '14px' }}>
                                 <div>
                                     <Select
                                         label="Department"
                                         value={branch}
-                                        disabled={Boolean(classId)}
                                         onChange={e => handleBranchChange(e.target.value)}
                                         options={branchOptions}
                                     />
@@ -1008,19 +960,143 @@ function HallTicketsContent() {
                                     <Select
                                         label="Semester"
                                         value={semester}
-                                        disabled={Boolean(classId)}
                                         onChange={e => handleSemesterChange(e.target.value)}
                                         options={semesterOptions}
                                     />
                                 </div>
-                                <div>
-                                    <Select
-                                        label="Batch Year"
-                                        value={batch}
-                                        disabled={Boolean(classId)}
-                                        onChange={e => handleBatchChange(e.target.value)}
-                                        options={batchOptions}
-                                    />
+                            </div>
+
+                            {/* Row 2: Class Selection (Multi-select) */}
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                        Class / Section (Select One or Multiple)
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        {availableBranchSemClasses.length > 0 && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={selectAllBranchSemClasses}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: 'var(--primary)',
+                                                        fontWeight: 700,
+                                                        fontSize: '11px',
+                                                        cursor: 'pointer',
+                                                        padding: '2px 4px'
+                                                    }}
+                                                >
+                                                    Select All ({availableBranchSemClasses.length})
+                                                </button>
+                                                <span style={{ color: 'var(--border)' }}>•</span>
+                                            </>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={deselectAllClasses}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: selectedClassIds.length === 0 ? 'var(--primary)' : 'var(--tx-muted)',
+                                                fontWeight: selectedClassIds.length === 0 ? 800 : 600,
+                                                fontSize: '11px',
+                                                cursor: 'pointer',
+                                                padding: '2px 4px'
+                                            }}
+                                        >
+                                            Entire Semester Cohort
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {availableBranchSemClasses.length === 0 ? (
+                                    <div style={{
+                                        padding: '12px 14px',
+                                        borderRadius: '8px',
+                                        border: selectedClassIds.length === 0 ? '1.5px solid rgba(59, 130, 246, 0.4)' : '1px solid var(--border)',
+                                        background: selectedClassIds.length === 0 ? 'rgba(59, 130, 246, 0.05)' : 'var(--surface-low)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '10px'
+                                    }}>
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
+                                                Entire {branch} Semester {semester} Cohort
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                No specific class sections found for Sem {semester}. Pulling all {filteredStudents.length} students in this cohort.
+                                            </div>
+                                        </div>
+                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>
+                                            Active
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {availableBranchSemClasses.map(c => {
+                                            const isSelected = selectedClassIds.includes(c.id);
+                                            return (
+                                                <div
+                                                    key={c.id}
+                                                    onClick={() => toggleClassSelection(c.id)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '10px 14px',
+                                                        borderRadius: '8px',
+                                                        border: `1.5px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                                                        background: isSelected ? 'rgba(59, 130, 246, 0.06)' : 'var(--surface-low)',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => {}}
+                                                            style={{ cursor: 'pointer', accentColor: 'var(--primary)' }}
+                                                        />
+                                                        <div>
+                                                            <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>
+                                                                {c.name} {c.section ? `· Section ${c.section}` : ''}
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                                Semester {c.semester} · {c.student_count ?? 0} students
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <span style={{
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        color: isSelected ? 'var(--primary)' : 'var(--tx-dim)',
+                                                        background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '12px'
+                                                    }}>
+                                                        {isSelected ? '✓ Included' : '+ Select'}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Scope Helper Summary */}
+                                <div style={{ marginTop: '8px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
+                                    {selectedClassIds.length > 0 ? (
+                                        <>
+                                            Roster filtered to <strong>{selectedClassIds.length} selected {selectedClassIds.length === 1 ? 'class' : 'classes'}</strong> ({filteredStudents.length} students).
+                                        </>
+                                    ) : (
+                                        <>
+                                            Roster includes <strong>all students</strong> in {branch} Semester {semester} ({filteredStudents.length} students).
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </CardContent>
@@ -1139,15 +1215,11 @@ function HallTicketsContent() {
                             <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                                 <div style={{ flex: 1 }}>
                                     <Input
-                                        placeholder={classId ? 'Search by USN or Name within this class...' : 'Search by USN or Name...'}
+                                        placeholder={selectedClassIds.length > 0 ? 'Search by USN or Name within selected classes...' : 'Search by USN or Name...'}
                                         value={studentSearch}
                                         onChange={e => setStudentSearch(e.target.value)}
                                     />
                                 </div>
-                                {/* Issue a ticket for one student: type the USN, then
-                                    narrow the selection to just the matches. The
-                                    search only ever spans the chosen class, so a
-                                    student outside it cannot be issued a ticket. */}
                                 <Button
                                     variant="ghost"
                                     disabled={!studentSearch || visibleStudentsInChecklist.length === 0}
@@ -1157,9 +1229,9 @@ function HallTicketsContent() {
                                     Only these ({visibleStudentsInChecklist.length})
                                 </Button>
                             </div>
-                            {studentSearch && classId && (
+                            {studentSearch && selectedClassIds.length > 0 && (
                                 <div style={{ marginTop: '-4px', marginBottom: '10px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
-                                    Searching within {activeClass?.name || 'the selected class'} only.
+                                    Searching within {selectedClassIds.length} selected class(es) only.
                                 </div>
                             )}
 
@@ -1168,9 +1240,9 @@ function HallTicketsContent() {
                                     <div style={{ padding: '24px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '12px' }}>
                                         {loading
                                             ? 'Loading student roster...'
-                                            : classId
-                                                ? 'No students in this class match your search.'
-                                                : 'No students found in this branch/batch.'}
+                                            : selectedClassIds.length > 0
+                                                ? 'No students in the selected class(es) match your search.'
+                                                : 'No students found in this branch/semester.'}
                                     </div>
                                 ) : (
                                     visibleStudentsInChecklist.map((s) => {

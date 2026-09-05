@@ -19,7 +19,12 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const classId = (searchParams.get('class_id') || '').trim();
+        const rawClassIds = [
+            ...searchParams.getAll('class_id'),
+            ...(searchParams.get('class_ids') ? searchParams.get('class_ids').split(',') : [])
+        ].map(s => s.trim()).filter(Boolean);
+        const classIds = Array.from(new Set(rawClassIds));
+
         const branch = (searchParams.get('branch') || '').toUpperCase().trim();
         const batch = (searchParams.get('batch') || '').trim();
         const semester = searchParams.get('semester') ? parseInt(searchParams.get('semester'), 10) : null;
@@ -27,33 +32,39 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // ── Class mode ────────────────────────────────────────────────────────
-        // A hall ticket cohort is a class, so when a class is chosen its roster
-        // is the answer outright: no branch/batch guessing, and no chance of
-        // pulling in a student who is not actually in that class.
-        if (classId) {
+        // ── Class mode (single or multiple classes) ───────────────────────────
+        // A hall ticket cohort can span one or multiple classes (e.g. CS-A and CS-B).
+        // Querying class_roster ensures only authorized enrolled students are included.
+        if (classIds.length > 0) {
             const { data: roster, error: rErr } = await supabaseAdmin
                 .from('class_roster')
-                .select('student_id, usn, student_name, student_branch, student_branch_label, student_semester, class_name, class_branch, class_semester, class_scheme, section, batch, academic_year, is_suspended, semester_mismatch')
-                .eq('class_id', classId)
+                .select('student_id, usn, student_name, student_branch, student_branch_label, student_semester, class_name, class_branch, class_semester, class_scheme, section, batch, academic_year, is_suspended, semester_mismatch, class_id')
+                .in('class_id', classIds)
                 .order('usn', { ascending: true });
 
             if (rErr) throw rErr;
 
-            let students = (roster || [])
-                .filter(r => !r.is_suspended)
-                .map(r => ({
+            const seenUsns = new Set();
+            let students = [];
+            for (const r of (roster || [])) {
+                if (r.is_suspended) continue;
+                const cleanUsn = (r.usn || '').toUpperCase().trim();
+                if (seenUsns.has(cleanUsn)) continue;
+                seenUsns.add(cleanUsn);
+                students.push({
                     id: r.student_id,
                     usn: r.usn,
                     name: r.student_name,
-                    // Canonical code and its official label - never the raw
-                    // free-text branch, which is spelled inconsistently.
                     branch: r.student_branch,
                     branch_code: r.student_branch,
                     branch_label: r.student_branch_label,
                     semester: r.student_semester,
                     semester_mismatch: r.semester_mismatch,
-                }));
+                    class_id: r.class_id,
+                    class_name: r.class_name,
+                    section: r.section,
+                });
+            }
 
             if (search) {
                 students = students.filter(s =>
@@ -62,22 +73,31 @@ export async function GET(req) {
                 );
             }
 
-            const first = (roster || [])[0];
+            students.sort((a, b) => (a.usn || '').localeCompare(b.usn || ''));
+
+            const classesInfo = (roster || []).reduce((acc, r) => {
+                if (r.class_id && !acc.some(c => c.id === r.class_id)) {
+                    acc.push({
+                        id: r.class_id,
+                        name: r.class_name,
+                        branch_code: r.class_branch,
+                        semester: r.class_semester,
+                        scheme: r.class_scheme,
+                        section: r.section,
+                        batch: r.batch,
+                        academic_year: r.academic_year,
+                    });
+                }
+                return acc;
+            }, []);
+
             return ok({
                 students,
                 total: students.length,
                 mode: 'class',
-                class: first ? {
-                    id: classId,
-                    name: first.class_name,
-                    branch_code: first.class_branch,
-                    semester: first.class_semester,
-                    scheme: first.class_scheme,
-                    section: first.section,
-                    batch: first.batch,
-                    academic_year: first.academic_year,
-                } : { id: classId },
-                filtersApplied: { classId, search },
+                class: classesInfo[0] || { id: classIds[0] },
+                classes: classesInfo,
+                filtersApplied: { classIds, search },
             });
         }
 

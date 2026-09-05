@@ -26,7 +26,7 @@ export async function GET(req) {
     if (authError) return authError;
 
     const { searchParams } = new URL(req.url);
-    const scheme = searchParams.get('scheme') || '2022';
+    const reqScheme = searchParams.get('scheme');
     const rawBranch = searchParams.get('branch') || 'CS';
     const branch = normalizeBranch(rawBranch);
     const semester = searchParams.get('semester');
@@ -35,14 +35,33 @@ export async function GET(req) {
         let query = supabaseAdmin
             .from('subject_catalog')
             .select('*')
-            .eq('scheme', scheme)
             .in('branch', Array.from(new Set([branch, rawBranch])));
+
+        if (reqScheme && reqScheme !== 'all') {
+            query = query.eq('scheme', reqScheme);
+        }
 
         if (semester && semester !== 'all') {
             query = query.eq('semester', parseInt(semester));
         }
 
-        const { data, error } = await query.order('semester', { ascending: true }).order('subject_code', { ascending: true });
+        let { data, error } = await query.order('semester', { ascending: true }).order('subject_code', { ascending: true });
+
+        // Fallback: if requested scheme had no records, search any scheme for this branch & semester
+        if ((!data || data.length === 0) && reqScheme && reqScheme !== 'all') {
+            let fallbackQuery = supabaseAdmin
+                .from('subject_catalog')
+                .select('*')
+                .in('branch', Array.from(new Set([branch, rawBranch])));
+            if (semester && semester !== 'all') {
+                fallbackQuery = fallbackQuery.eq('semester', parseInt(semester));
+            }
+            const fb = await fallbackQuery.order('semester', { ascending: true }).order('subject_code', { ascending: true });
+            if (fb.data && fb.data.length > 0) {
+                data = fb.data;
+                error = null;
+            }
+        }
 
         if (error) {
             console.error('[GET /api/subjects] Database Query Error:', error);

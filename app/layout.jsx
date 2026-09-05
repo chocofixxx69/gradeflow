@@ -34,6 +34,22 @@ export default function RootLayout({ children }) {
                     href="https://fonts.googleapis.com/icon?family=Material+Icons+Round"
                     rel="stylesheet"
                 />
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `
+                            window.addEventListener('error', function(e) {
+                                if (e.filename && (e.filename.includes('chrome-extension://') || e.filename.includes('moz-extension://'))) {
+                                    e.stopImmediatePropagation();
+                                }
+                            }, true);
+                            window.addEventListener('unhandledrejection', function(e) {
+                                if (e.reason && e.reason.stack && (e.reason.stack.includes('chrome-extension://') || e.reason.stack.includes('moz-extension://'))) {
+                                    e.stopImmediatePropagation();
+                                }
+                            }, true);
+                        `
+                    }}
+                />
             </head>
             <body className={inter.className} suppressHydrationWarning>
                 <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
