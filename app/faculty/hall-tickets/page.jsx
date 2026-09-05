@@ -52,6 +52,42 @@ const ROMAN_SEMESTERS = {
     1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'VI', 7: 'VII', 8: 'VIII'
 };
 
+const KNOWN_VTU_ACRONYMS = {
+    'INTERNET OF THINGS': 'IOT',
+    'PARALLEL COMPUTING': 'PC',
+    'CRYPTOGRAPHY & NETWORK SECURITY': 'CNS',
+    'CRYPTOGRAPHY AND NETWORK SECURITY': 'CNS',
+    'MACHINE LEARNING': 'ML',
+    'CLOUD COMPUTING': 'CC',
+    'COMPUTER VISION': 'CV',
+    'OPERATING SYSTEMS': 'OS',
+    'DATA STRUCTURES AND APPLICATIONS': 'DSA',
+    'DATA STRUCTURES': 'DS',
+    'BIG DATA ANALYTICS': 'BDA',
+    'ARTIFICIAL INTELLIGENCE & MACHINE LEARNING': 'AIML',
+    'MICROCONTROLLERS & EMBEDDED SYSTEMS': 'MES',
+    'DIGITAL DESIGN AND COMPUTER ORGANIZATION': 'DDCO',
+    'SOFTWARE ENGINEERING AND PROJECT MANAGEMENT': 'SEPM',
+    'THEORY OF COMPUTATION': 'TOC',
+    'DATABASE MANAGEMENT SYSTEMS': 'DBMS',
+    'ADVANCED JAVA PROGRAMMING': 'AJP',
+    'HIGH PERFORMANCE COMPUTING': 'HPC',
+    'POWER SYSTEM ANALYSIS - I': 'PSA-1',
+    'CONTROL SYSTEMS': 'CS'
+};
+
+function getSubjectShortName(name, code) {
+    if (!name) return code || '';
+    const cleanUpper = name.replace(/[^a-zA-Z0-9\s&]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (KNOWN_VTU_ACRONYMS[cleanUpper]) return KNOWN_VTU_ACRONYMS[cleanUpper];
+
+    const words = cleanUpper.split(/\s+/).filter(w => !['AND', 'OF', 'THE', 'FOR', 'TO', 'IN', 'WITH', 'BY', '&'].includes(w));
+    if (words.length > 1) {
+        return words.map(w => w[0]).join('').slice(0, 5);
+    }
+    return (words[0] || code || '').slice(0, 5);
+}
+
 export default function HallTicketsPage() {
     return (
         <AuthGuard role="faculty">
@@ -86,6 +122,7 @@ function HallTicketsContent() {
     // Timetable
     const [timetable, setTimetable] = useState(DEFAULT_TIMETABLES[7] || DEFAULT_TIMETABLES[6]);
     const [timetableLoading, setTimetableLoading] = useState(false);
+    const [catalogSubjects, setCatalogSubjects] = useState([]);
 
     // Preview Controls
     const [previewMode, setPreviewMode] = useState('paged'); // 'paged' | 'continuous'
@@ -105,6 +142,45 @@ function HallTicketsContent() {
         }
         loadMeta();
     }, []);
+
+    // 1b. Fetch active catalog subjects for the current branch & semester from /api/subjects
+    useEffect(() => {
+        let cancelled = false;
+        async function loadCatalog() {
+            const normBranch = canonicalBranchCode(branch) || branch || 'CS';
+            try {
+                const res = await apiRequest(`/api/subjects?branch=${normBranch}&semester=${semester}&scheme=2022`);
+                if (!cancelled && res?.subjects && res.subjects.length > 0) {
+                    const formatted = res.subjects.map(s => ({
+                        code: s.code,
+                        name: s.name,
+                        shortName: getSubjectShortName(s.name, s.code),
+                        credits: s.credits
+                    }));
+                    setCatalogSubjects(formatted);
+                    return;
+                }
+            } catch (err) {
+                console.warn('Live catalog fetch for branch/sem failed:', err);
+            }
+
+            // Fallback to meta.subjects
+            if (!cancelled && meta?.subjects?.length > 0) {
+                const filtered = (meta.subjects || []).filter(s => {
+                    if (Number(s.semester) !== Number(semester)) return false;
+                    return s.branches?.some(b => matchesBranch(b, normBranch)) || matchesBranch(s.branch, normBranch);
+                }).map(s => ({
+                    code: s.code,
+                    name: s.name,
+                    shortName: getSubjectShortName(s.name, s.code),
+                    credits: s.credits
+                }));
+                setCatalogSubjects(filtered);
+            }
+        }
+        loadCatalog();
+        return () => { cancelled = true; };
+    }, [branch, semester, meta?.subjects]);
 
     // 1b. Class list driving the primary scope selector. Polled, so a class
     // created elsewhere shows up here without a reload.
@@ -969,6 +1045,7 @@ function HallTicketsContent() {
                                 onChange={setTimetable}
                                 onAutoFill={() => autoFillSyllabus(branch, semester)}
                                 loading={timetableLoading}
+                                catalogSubjects={catalogSubjects}
                             />
                         </CardContent>
                     </Card>
