@@ -969,6 +969,31 @@ function AdminPanelContent() {
         return Array.from(new Set(students.map(s => (s.branch || '').toUpperCase()).filter(Boolean))).sort();
     }, [students]);
 
+    // Dynamic batch list derived from real USN patterns — only shows batches that actually exist
+    const availableBatches = useMemo(() => {
+        const BATCH_PATTERNS = [
+            { code: '2023', tag: '2AB23', label: 'Batch 2023–27 (4th Year)', year: '2023' },
+            { code: '2024', tag: '2AB24', label: 'Batch 2024–28 (3rd Year)', year: '2024' },
+            { code: '2025', tag: '2AB25', label: 'Batch 2025–29 (2nd Year)', year: '2025' },
+            { code: '2026', tag: '2AB26', label: 'Batch 2026–30 (1st Year)', year: '2026' },
+        ];
+        const counts = {};
+        let lateralCount = 0;
+        students.forEach(s => {
+            const u = (s.usn || '').toUpperCase();
+            for (const b of BATCH_PATTERNS) {
+                if (u.includes(b.tag)) { counts[b.code] = (counts[b.code] || 0) + 1; break; }
+            }
+            const m = u.match(/2AB\d{2}[A-Z]{2}(\d{3})/);
+            if (m && parseInt(m[1], 10) >= 400) lateralCount++;
+        });
+        const result = BATCH_PATTERNS
+            .filter(b => (counts[b.code] || 0) > 0)
+            .map(b => ({ ...b, count: counts[b.code] || 0 }));
+        if (lateralCount > 0) result.push({ code: 'lateral', label: 'Lateral Entry (Diploma)', count: lateralCount });
+        return result;
+    }, [students]);
+
     const branchBreakdown = useMemo(() => {
         const map = {};
         students.forEach(s => {
@@ -1589,6 +1614,14 @@ function AdminPanelContent() {
                                         <span>›</span>
                                         <span style={{ color: 'var(--primary)', fontWeight: 800, background: 'rgba(37,99,235,0.08)', padding: '2px 8px', borderRadius: '6px' }}>
                                             {studentBranchFilter}
+                                        </span>
+                                    </>
+                                )}
+                                {tab === 'students' && studentBatchFilter !== 'all' && (
+                                    <>
+                                        <span>›</span>
+                                        <span style={{ color: 'var(--primary)', fontWeight: 800, background: 'rgba(37,99,235,0.08)', padding: '2px 8px', borderRadius: '6px' }}>
+                                            {availableBatches.find(b => b.code === studentBatchFilter)?.label || `Batch ${studentBatchFilter}`}
                                         </span>
                                     </>
                                 )}
@@ -2222,6 +2255,20 @@ function AdminPanelContent() {
                                         <option key={sm} value={sm}>Semester {sm}</option>
                                     ))}
                                 </select>
+
+                                {/* Batch Filter — dynamic, only shows batches with real students */}
+                                {availableBatches.length > 0 && (
+                                    <select
+                                        value={studentBatchFilter}
+                                        onChange={e => setStudentBatchFilter(e.target.value)}
+                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                    >
+                                        <option value="all">All Batches</option>
+                                        {availableBatches.map(b => (
+                                            <option key={b.code} value={b.code}>{b.label} ({b.count})</option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
                         </div>
 
