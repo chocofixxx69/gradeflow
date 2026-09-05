@@ -33,7 +33,7 @@ export default function HallTicketSheet({
         >
             {students.map((student, idx) => (
                 <React.Fragment key={student.usn || idx}>
-                    <div style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div className="aitm-ticket-slot" style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         <HallTicketCard
                             student={student}
                             examMeta={examMeta}
@@ -44,6 +44,7 @@ export default function HallTicketSheet({
                     {/* Scissor Cutting Line between tickets on the same sheet (Single line, perfectly stretched, no wrapping) */}
                     {idx < students.length - 1 && (
                         <div
+                            className="aitm-cutting-line"
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -67,7 +68,7 @@ export default function HallTicketSheet({
 
             {/* If fewer than 3 students on the last page, render empty slots to maintain layout height */}
             {students.length < 3 && Array.from({ length: 3 - students.length }).map((_, i) => (
-                <div key={`empty-${i}`} style={{ flex: '1', visibility: 'hidden' }} />
+                <div className="aitm-ticket-slot aitm-empty-slot" key={`empty-${i}`} style={{ flex: '1', visibility: 'hidden' }} />
             ))}
 
             {/* Subtle sheet numbering in footer for screen preview */}

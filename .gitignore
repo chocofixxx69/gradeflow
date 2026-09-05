@@ -32,10 +32,12 @@ Thumbs.db
 # Student PII — NEVER commit (real names + USNs)
 backend/students.csv
 backend/usn_list.txt
+backend/unscraped_leads_to_run.*
 *.csv
 
 # PDF/Temp files
 *.pdf
+*.log
 tmp/
 temp/
 training_data/

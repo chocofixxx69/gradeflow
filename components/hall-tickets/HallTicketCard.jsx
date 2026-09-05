@@ -55,11 +55,11 @@ export default function HallTicketCard({
             }}
         >
             {/* Outer Box with Standard Institutional Border */}
-            <div style={{ border: '1.5px solid #000000', boxSizing: 'border-box' }}>
+            <div className="aitm-card-outer-box" style={{ border: '1.5px solid #000000', boxSizing: 'border-box' }}>
                 {/* 1. Header Row (Logo + College Info) */}
-                <div style={{ display: 'grid', gridTemplateColumns: '95px 1fr', borderBottom: '1.5px solid #000000' }}>
+                <div className="aitm-card-header-row" style={{ display: 'grid', gridTemplateColumns: '95px 1fr', borderBottom: '1.5px solid #000000' }}>
                     {/* Left Logo Box */}
-                    <div style={{
+                    <div className="aitm-card-logo-box" style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -68,6 +68,7 @@ export default function HallTicketCard({
                         backgroundColor: '#FFFFFF'
                     }}>
                         <img
+                            className="aitm-card-logo-img"
                             src="/aitm-logo.png"
                             alt="AITM Crest"
                             style={{
@@ -80,24 +81,24 @@ export default function HallTicketCard({
                     </div>
 
                     {/* Right Header Texts */}
-                    <div style={{ padding: '6px 10px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '900', letterSpacing: '0.01em', textTransform: 'uppercase', lineHeight: 1.25 }}>
+                    <div className="aitm-card-header-text" style={{ padding: '6px 10px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        <div className="aitm-card-college-name" style={{ fontSize: '13px', fontWeight: '900', letterSpacing: '0.01em', textTransform: 'uppercase', lineHeight: 1.25 }}>
                             {examMeta.collegeName || 'ANJUMAN INSTITUTE OF TECHNOLOGY & MANAGEMENT'}
                         </div>
-                        <div style={{ fontSize: '10.5px', marginTop: '2px', color: '#111827' }}>
+                        <div className="aitm-card-college-address" style={{ fontSize: '10.5px', marginTop: '2px', color: '#111827' }}>
                             {examMeta.collegeAddress || 'Anjumanabad, Bhatkal-582320'}
                         </div>
-                        <div style={{ fontSize: '11px', fontWeight: '600', marginTop: '2px' }}>
+                        <div className="aitm-card-dept-name" style={{ fontSize: '11px', fontWeight: '600', marginTop: '2px' }}>
                             {examMeta.department || 'Department of Computer Science & Engineering'}
                         </div>
-                        <div style={{ fontSize: '12px', fontWeight: '900', marginTop: '3px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        <div className="aitm-card-hall-ticket-label" style={{ fontSize: '12px', fontWeight: '900', marginTop: '3px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                             HALL TICKET
                         </div>
                     </div>
                 </div>
 
                 {/* 2. Examination Title Banner */}
-                <div style={{
+                <div className="aitm-card-banner" style={{
                     borderBottom: '1.5px solid #000000',
                     textAlign: 'center',
                     padding: '3.5px 8px',
@@ -110,7 +111,7 @@ export default function HallTicketCard({
                 </div>
 
                 {/* 3. Student Details Row 1: Branch + USN */}
-                <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr 55px 140px', borderBottom: '1.5px solid #000000', fontSize: '11px' }}>
+                <div className="aitm-card-meta-row" style={{ display: 'grid', gridTemplateColumns: '70px 1fr 55px 140px', borderBottom: '1.5px solid #000000', fontSize: '11px' }}>
                     <div style={{ padding: '3.5px 6px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>
                         Branch
                     </div>
@@ -126,7 +127,7 @@ export default function HallTicketCard({
                 </div>
 
                 {/* 4. Student Details Row 2: Name */}
-                <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', borderBottom: '1.5px solid #000000', fontSize: '11.5px' }}>
+                <div className="aitm-card-name-row" style={{ display: 'grid', gridTemplateColumns: '70px 1fr', borderBottom: '1.5px solid #000000', fontSize: '11.5px' }}>
                     <div style={{ padding: '3.5px 6px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>
                         Name
                     </div>
@@ -136,7 +137,7 @@ export default function HallTicketCard({
                 </div>
 
                 {/* 5. Timetable Grid + Student Photo Block */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 125px', minHeight: '110px' }}>
+                <div className="aitm-card-timetable-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 125px', minHeight: '110px' }}>
                     {/* Timetable Table */}
                     <div>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', textAlign: 'center' }}>
@@ -162,7 +163,7 @@ export default function HallTicketCard({
                     </div>
 
                     {/* Student Photo Column */}
-                    <div style={{
+                    <div className="aitm-card-photo-box" style={{
                         borderLeft: '1.5px solid #000000',
                         display: 'flex',
                         alignItems: 'center',
@@ -196,7 +197,7 @@ export default function HallTicketCard({
             </div>
 
             {/* 6. Signatures Row with Proper Vertical Space for Physical Signatures */}
-            <div style={{
+            <div className="aitm-card-signatures" style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-end',

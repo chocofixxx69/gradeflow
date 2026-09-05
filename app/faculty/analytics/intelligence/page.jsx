@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
@@ -18,7 +18,13 @@ import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 export default function InstitutionalIntelligencePage() {
     return (
         <AuthGuard role="faculty">
-            <InstitutionalIntelligenceContent />
+            <Suspense fallback={
+                <div style={{ padding: '40px 24px', maxWidth: '1400px', margin: '0 auto', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                    Loading Institutional Intelligence...
+                </div>
+            }>
+                <InstitutionalIntelligenceContent />
+            </Suspense>
         </AuthGuard>
     );
 }
@@ -369,7 +375,7 @@ function InstitutionalIntelligenceContent() {
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Button onClick={handleRefresh} variant="secondary" disabled={isRefreshing || deptLoading || sectionLoading || compLoading}>
+                    <Button onClick={handleRefresh} variant="secondary" disabled={isRefreshing || deptLoading || sectionLoading || comparatorLoading}>
                         <span className={`material-icons-round ${isRefreshing ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
                         {isRefreshing ? 'Refreshing...' : 'Refresh'}
                     </Button>
@@ -540,7 +546,7 @@ function InstitutionalIntelligenceContent() {
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Overall Department Pass Rate</div>
                                 <div style={{ fontSize: '28px', fontWeight: 900, color: (deptReport?.summary?.overallPassRate ?? 0) >= 70 ? '#16A34A' : '#DC2626' }}>
-                                    {(deptReport?.summary?.overallPassRate ?? 0).toFixed(1)}%
+                                    {typeof deptReport?.summary?.overallPassRate === 'number' ? `${deptReport.summary.overallPassRate.toFixed(1)}%` : '—'}
                                 </div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Mean pass benchmark</div>
                             </CardContent>
@@ -548,7 +554,9 @@ function InstitutionalIntelligenceContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Department Avg CGPA</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{(deptReport?.summary?.avgCGPA ?? 0).toFixed(2)}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>
+                                    {typeof deptReport?.summary?.avgCGPA === 'number' ? deptReport.summary.avgCGPA.toFixed(2) : '—'}
+                                </div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>GPA index</div>
                             </CardContent>
                         </Card>
@@ -648,10 +656,10 @@ function InstitutionalIntelligenceContent() {
                                                         {s.studentCount}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--primary)' }}>
-                                                        {s.avgSGPA.toFixed(2)}
+                                                        {typeof s.avgSGPA === 'number' ? s.avgSGPA.toFixed(2) : (s.avgSGPA ?? '—')}
                                                     </td>
-                                                    <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: s.passRate >= 70 ? '#16A34A' : '#DC2626' }}>
-                                                        {s.passRate.toFixed(1)}%
+                                                    <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: (s.passRate ?? 0) >= 70 ? '#16A34A' : '#DC2626' }}>
+                                                        {typeof s.passRate === 'number' ? `${s.passRate.toFixed(1)}%` : (s.passRate ?? '—')}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                         {s.distinctionCount}
