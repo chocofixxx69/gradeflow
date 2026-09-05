@@ -144,7 +144,8 @@ function ScheduleCalendar({ timetable, activeMonth, onMonthChange }) {
 export default function TimetableEditor({
     timetable = [],
     onChange = () => {},
-    onAutoFill = () => {}
+    onAutoFill = () => {},
+    loading = false
 }) {
     const handleUpdateRow = (index, field, value) => {
         const updated = [...timetable];
@@ -220,6 +221,7 @@ export default function TimetableEditor({
                     <button
                         type="button"
                         onClick={onAutoFill}
+                        disabled={loading}
                         style={{
                             background: 'var(--surface-low)',
                             color: 'var(--primary)',
@@ -228,14 +230,17 @@ export default function TimetableEditor({
                             padding: '4px 10px',
                             fontSize: '11px',
                             fontWeight: 700,
-                            cursor: 'pointer',
+                            cursor: loading ? 'wait' : 'pointer',
+                            opacity: loading ? 0.7 : 1,
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px'
                         }}
                     >
-                        <span className="material-icons-round" style={{ fontSize: '14px' }}>auto_fix_high</span>
-                        Auto-fill from Syllabus
+                        <span className="material-icons-round" style={{ fontSize: '14px' }}>
+                            {loading ? 'sync' : 'auto_fix_high'}
+                        </span>
+                        {loading ? 'Fetching Syllabus...' : 'Auto-fill from Syllabus'}
                     </button>
                     <button
                         type="button"

@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { fetchAllPaginated } from '@/lib/supabase-utils';
 import { getCached, setCached } from '@/lib/server-cache';
-import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn } from '@/lib/semester-utils';
+import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn, canonicalBranchCode } from '@/lib/semester-utils';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
@@ -68,7 +68,7 @@ export async function GET(req) {
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
             fetchAllPaginated('subject_catalog', 'subject_code, subject_name, semester, branch, scheme, credits', supabaseAdmin),
             supabaseAdmin.from('branches').select('code, label'),
-            fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry, name' }),
+            fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry, name, semester' }),
             supabaseAdmin.from('subject_marks').select('*', { count: 'exact', head: true })
         ]);
 
@@ -170,7 +170,45 @@ export async function GET(req) {
             }
         });
 
-        const branches = Array.from(branchMap.values());
+        // Build dynamic cohort matrix & student counts directly from actual students in DB
+        const cohortMatrix = {};
+        const branchStudentCounts = {};
+        const batchStudentCounts = {};
+
+        (rawStudents || []).forEach(s => {
+            const bCode = canonicalBranchCode(s.branch) || extractBranchFromUsn(s.usn) || 'CS';
+            const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
+            const batchYear = cohort?.fullYear || (s.year ? String(s.year) : '2023');
+            const sem = Number(s.semester);
+
+            branchStudentCounts[bCode] = (branchStudentCounts[bCode] || 0) + 1;
+            batchStudentCounts[batchYear] = (batchStudentCounts[batchYear] || 0) + 1;
+
+            if (!cohortMatrix[bCode]) {
+                cohortMatrix[bCode] = { total: 0, batches: {}, semesters: {} };
+            }
+            cohortMatrix[bCode].total++;
+            if (sem) {
+                cohortMatrix[bCode].semesters[sem] = (cohortMatrix[bCode].semesters[sem] || 0) + 1;
+            }
+
+            if (!cohortMatrix[bCode].batches[batchYear]) {
+                cohortMatrix[bCode].batches[batchYear] = { total: 0, semesters: {} };
+            }
+            cohortMatrix[bCode].batches[batchYear].total++;
+            if (sem) {
+                cohortMatrix[bCode].batches[batchYear].semesters[sem] = (cohortMatrix[bCode].batches[batchYear].semesters[sem] || 0) + 1;
+            }
+        });
+
+        const branches = Array.from(branchMap.values()).map(b => {
+            const bCode = canonicalBranchCode(b.code) || b.code;
+            const count = b.code === 'ALL' ? (rawStudents || []).length : (branchStudentCounts[bCode] || branchStudentCounts[b.code] || 0);
+            return {
+                ...b,
+                studentCount: count
+            };
+        });
 
         // 5. Build Subject Directory: Primary source is REAL marks from subject_marks
         const subjectMap = new Map();
@@ -281,7 +319,9 @@ export async function GET(req) {
             branches,
             semesters,
             subjects,
-            classes: rawClasses || []
+            classes: rawClasses || [],
+            cohortMatrix,
+            totalStudents: (rawStudents || []).length
         };
 
         setCached('analytics_meta_all', payload, 60_000);

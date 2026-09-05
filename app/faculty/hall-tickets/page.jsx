@@ -61,7 +61,7 @@ export default function HallTicketsPage() {
 }
 
 function HallTicketsContent() {
-    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [] });
+    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [], cohortMatrix: {} });
 
     // Scope Selection. A hall ticket cohort is a class, so classId is the
     // primary selector; branch/batch/semester remain as a fallback for ad-hoc
@@ -70,7 +70,7 @@ function HallTicketsContent() {
     // live subscriptions below rather than held as separate state.
     const [classId, setClassId] = useState('');
     const [branch, setBranch] = useState('CS');
-    const [semester, setSemester] = useState(6);
+    const [semester, setSemester] = useState(7);
     const [batch, setBatch] = useState('2023');
 
     // Students Data
@@ -80,11 +80,12 @@ function HallTicketsContent() {
     // Exam Metadata
     const [examType, setExamType] = useState('IA-1'); // 'IA-1' | 'IA-2' | 'IA-3' | 'Semester End'
     const [examMonthYear, setExamMonthYear] = useState('MARCH 2026');
-    const [examTitle, setExamTitle] = useState('VI Semester IA-1 MARCH 2026 Examination');
+    const [examTitle, setExamTitle] = useState('VII Semester IA-1 MARCH 2026 Examination');
     const [departmentName, setDepartmentName] = useState('Department of Computer Science & Engineering');
 
     // Timetable
-    const [timetable, setTimetable] = useState(DEFAULT_TIMETABLES[6]);
+    const [timetable, setTimetable] = useState(DEFAULT_TIMETABLES[7] || DEFAULT_TIMETABLES[6]);
+    const [timetableLoading, setTimetableLoading] = useState(false);
 
     // Preview Controls
     const [previewMode, setPreviewMode] = useState('paged'); // 'paged' | 'continuous'
@@ -139,7 +140,116 @@ function HallTicketsContent() {
         if (activeClass.semester) setSemester(Number(activeClass.semester));
         if (activeClass.branch_code) setBranch(activeClass.branch_code);
         if (activeClass.batch) setBatch(String(activeClass.batch));
+        if (activeClass.branch_code && activeClass.semester) {
+            autoFillSyllabus(activeClass.branch_code, Number(activeClass.semester));
+        }
     }, [activeClass]);
+
+    // Dynamic branch options derived from live database metadata & cohort matrix
+    const branchOptions = useMemo(() => {
+        const matrix = meta?.cohortMatrix || {};
+        const knownOrder = ['CS', 'AI', 'DS', 'EC', 'EE', 'CV', 'ME', 'RI'];
+
+        let list = (meta?.branches || []).filter(b => b.code !== 'ALL');
+        if (list.length === 0) {
+            list = [
+                { code: 'CS', label: 'Computer Science & Engineering' },
+                { code: 'AI', label: 'AI & Machine Learning (AIML)' },
+                { code: 'DS', label: 'Computer Science & Data Science' },
+                { code: 'EC', label: 'Electronics & Communication' },
+                { code: 'EE', label: 'Electrical & Electronics' },
+                { code: 'CV', label: 'Civil Engineering' },
+                { code: 'ME', label: 'Mechanical Engineering' },
+                { code: 'RI', label: 'Robotics & Artificial Intelligence' }
+            ];
+        }
+
+        const sorted = [...list].sort((a, b) => {
+            const idxA = knownOrder.indexOf(a.code);
+            const idxB = knownOrder.indexOf(b.code);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return (a.label || a.code).localeCompare(b.label || b.code);
+        });
+
+        return sorted.map(b => {
+            const cCode = canonicalBranchCode(b.code) || b.code;
+            const count = b.studentCount ?? matrix[cCode]?.total ?? matrix[b.code]?.total ?? 0;
+            return {
+                value: b.code,
+                label: `${b.code} - ${b.label || b.name || b.code}${count > 0 ? ` (${count} students)` : ''}`,
+                studentCount: count
+            };
+        });
+    }, [meta?.branches, meta?.cohortMatrix]);
+
+    // Dynamic batch options for the selected branch with student count badges
+    const batchOptions = useMemo(() => {
+        const matrix = meta?.cohortMatrix || {};
+        const cBranch = canonicalBranchCode(branch) || branch;
+        const branchCohort = matrix[cBranch] || matrix[branch] || null;
+        const allBatches = meta?.batches && meta.batches.length > 0 ? meta.batches : ['2023', '2024', '2025', '2026'];
+
+        return [
+            { value: '', label: 'All Batches' },
+            ...allBatches.map(b => {
+                const count = branchCohort?.batches?.[b]?.total ?? 0;
+                return {
+                    value: b,
+                    label: `${b.slice(-2)} Batch (${b})${count > 0 ? ` · ${count} students` : ''}`,
+                    studentCount: count
+                };
+            })
+        ];
+    }, [meta?.batches, meta?.cohortMatrix, branch]);
+
+    // Dynamic semester options with live student counts per semester
+    const semesterOptions = useMemo(() => {
+        const matrix = meta?.cohortMatrix || {};
+        const cBranch = canonicalBranchCode(branch) || branch;
+        const branchCohort = matrix[cBranch] || matrix[branch] || null;
+
+        const semCounts = batch
+            ? (branchCohort?.batches?.[batch]?.semesters || {})
+            : (branchCohort?.semesters || {});
+
+        return [1, 2, 3, 4, 5, 6, 7, 8].map(s => {
+            const count = semCounts[s] || 0;
+            const roman = ROMAN_SEMESTERS[s] || String(s);
+            return {
+                value: s,
+                label: `Semester ${s} (${roman})${count > 0 ? ` · ${count} students` : ' · (0)'}`,
+                studentCount: count
+            };
+        });
+    }, [meta?.cohortMatrix, branch, batch]);
+
+    // Smart auto-selection: whenever branch or batch changes, if the currently selected semester
+    // has 0 students in the database for that cohort, automatically switch to the semester
+    // with the highest student count. This prevents accidental "No students found" states.
+    useEffect(() => {
+        if (classId) return; // class mode manages its own semester
+        const matrix = meta?.cohortMatrix || {};
+        const cBranch = canonicalBranchCode(branch) || branch;
+        const branchCohort = matrix[cBranch] || matrix[branch] || null;
+        if (!branchCohort) return;
+
+        const semCounts = batch
+            ? (branchCohort.batches?.[batch]?.semesters || {})
+            : (branchCohort.semesters || {});
+
+        const currentCount = semCounts[semester] || 0;
+        if (currentCount === 0) {
+            const activeSems = Object.entries(semCounts)
+                .filter(([_, cnt]) => cnt > 0)
+                .sort((a, b) => b[1] - a[1]);
+
+            if (activeSems.length > 0) {
+                setSemester(Number(activeSems[0][0]));
+            }
+        }
+    }, [branch, batch, meta?.cohortMatrix, classId, semester]);
 
     // Update Exam Title when Semester, Exam Type, or Month/Year changes
     useEffect(() => {
@@ -169,35 +279,77 @@ function HallTicketsContent() {
         }
     }, [filteredStudents]);
 
-    // Auto-fill Timetable from Catalog / Presets
-    const handleAutoFillTimetable = () => {
-        if (DEFAULT_TIMETABLES[semester]) {
-            setTimetable(DEFAULT_TIMETABLES[semester]);
-            return;
-        }
+    // Auto-fill Timetable dynamically from live syllabus / subject_catalog in DB
+    const autoFillSyllabus = async (targetBranch = branch, targetSem = semester) => {
+        setTimetableLoading(true);
+        try {
+            const normBranch = canonicalBranchCode(targetBranch) || targetBranch || 'CS';
+            let subjectList = [];
 
-        // Pull from metadata subjects if available
-        const semSubjects = (meta.subjects || []).filter(s => {
-            if (s.semester !== semester) return false;
-            return s.branches?.some(b => matchesBranch(b, branch)) || matchesBranch(s.branch, branch);
-        }).slice(0, 5);
+            // 1. Live query to /api/subjects for official scheme 2022/2025 catalog
+            try {
+                const res = await apiRequest(`/api/subjects?branch=${normBranch}&semester=${targetSem}&scheme=2022`);
+                if (res?.subjects && res.subjects.length > 0) {
+                    subjectList = res.subjects;
+                }
+            } catch (err) {
+                console.warn('Live syllabus fetch failed, falling back to metadata:', err);
+            }
 
-        if (semSubjects.length > 0) {
-            const today = new Date();
-            const formatted = semSubjects.map((s, idx) => {
-                const examDate = new Date(today);
-                examDate.setDate(today.getDate() + Math.floor(idx / 2));
-                const dStr = `${String(examDate.getDate()).padStart(2, '0')}/${String(examDate.getMonth() + 1).padStart(2, '0')}/${examDate.getFullYear()}`;
-                const timeSlot = idx % 2 === 0 ? '10:00 am to 11:00 am' : '02:30 pm to 03:30 pm';
-                const abbr = s.name.split(' ').map(w => w[0]).join('').slice(0, 4);
-                return {
-                    date: dStr,
-                    time: timeSlot,
-                    subjectCode: s.code,
-                    subjectName: abbr || s.code
-                };
-            });
-            setTimetable(formatted);
+            // 2. Fallback to meta.subjects if /api/subjects had no records
+            if (subjectList.length === 0 && meta?.subjects?.length > 0) {
+                subjectList = (meta.subjects || []).filter(s => {
+                    if (Number(s.semester) !== Number(targetSem)) return false;
+                    return s.branches?.some(b => matchesBranch(b, normBranch)) || matchesBranch(s.branch, normBranch);
+                });
+            }
+
+            // 3. If subjects found, map to timetable slots
+            if (subjectList.length > 0) {
+                const today = new Date();
+                const dayOffset = ((1 + 7 - today.getDay()) % 7) || 7; // upcoming Monday
+                const startDate = new Date(today);
+                startDate.setDate(today.getDate() + dayOffset);
+
+                // Filter out non-theory/project courses if possible
+                const theorySubjects = subjectList.filter(s => {
+                    const c = (s.code || '').toUpperCase();
+                    return !c.includes('PRJ') && !c.includes('INT') && !c.includes('NSK');
+                });
+                const chosenSubjects = theorySubjects.length >= 4 ? theorySubjects.slice(0, 6) : subjectList.slice(0, 5);
+
+                const formatted = chosenSubjects.map((s, idx) => {
+                    const examDate = new Date(startDate);
+                    examDate.setDate(startDate.getDate() + Math.floor(idx / 2));
+                    const dStr = `${String(examDate.getDate()).padStart(2, '0')}/${String(examDate.getMonth() + 1).padStart(2, '0')}/${examDate.getFullYear()}`;
+                    const timeSlot = idx % 2 === 0 ? '10:00 am to 11:00 am' : '02:30 pm to 03:30 pm';
+
+                    // Clean acronym from course name
+                    const words = (s.name || '').replace(/[^a-zA-Z0-9\s]/g, ' ').trim().split(/\s+/);
+                    const shortName = words.length > 1
+                        ? words.filter(w => !['AND', 'OF', 'THE', 'FOR', 'TO', 'IN'].includes(w.toUpperCase())).map(w => w[0]).join('').toUpperCase().slice(0, 5)
+                        : (words[0] || '').slice(0, 5).toUpperCase();
+
+                    return {
+                        date: dStr,
+                        time: timeSlot,
+                        subjectCode: s.code,
+                        subjectName: shortName || s.code
+                    };
+                });
+
+                if (formatted.length > 0) {
+                    setTimetable(formatted);
+                    return;
+                }
+            }
+
+            // 4. Default timetable fallback by semester
+            if (DEFAULT_TIMETABLES[targetSem]) {
+                setTimetable(DEFAULT_TIMETABLES[targetSem]);
+            }
+        } finally {
+            setTimetableLoading(false);
         }
     };
 
@@ -740,16 +892,7 @@ function HallTicketsContent() {
                                         value={branch}
                                         disabled={Boolean(classId)}
                                         onChange={e => setBranch(e.target.value)}
-                                        options={[
-                                            { value: 'CS', label: 'CS - Computer Science' },
-                                            { value: 'CI', label: 'CI - AI & Machine Learning' },
-                                            { value: 'CD', label: 'CD - Data Science' },
-                                            { value: 'EC', label: 'EC - Electronics & Comm' },
-                                            { value: 'EE', label: 'EE - Electrical & Electronics' },
-                                            { value: 'CV', label: 'CV - Civil Engineering' },
-                                            { value: 'ME', label: 'ME - Mechanical Engineering' },
-                                            { value: 'RI', label: 'RI - Robotics & AI' }
-                                        ]}
+                                        options={branchOptions}
                                     />
                                 </div>
                                 <div>
@@ -758,7 +901,7 @@ function HallTicketsContent() {
                                         value={semester}
                                         disabled={Boolean(classId)}
                                         onChange={e => setSemester(Number(e.target.value))}
-                                        options={[1,2,3,4,5,6,7,8].map(s => ({ value: s, label: `Semester ${s} (${ROMAN_SEMESTERS[s]})` }))}
+                                        options={semesterOptions}
                                     />
                                 </div>
                                 <div>
@@ -767,13 +910,7 @@ function HallTicketsContent() {
                                         value={batch}
                                         disabled={Boolean(classId)}
                                         onChange={e => setBatch(e.target.value)}
-                                        options={[
-                                            { value: '', label: 'All Batches' },
-                                            ...(meta.batches && meta.batches.length > 0 ? meta.batches : ['2021', '2022', '2023', '2024', '2025', '2026']).map(b => ({
-                                                value: b,
-                                                label: `${b.slice(-2)} Batch (${b})`
-                                            }))
-                                        ]}
+                                        options={batchOptions}
                                     />
                                 </div>
                             </div>
@@ -830,7 +967,8 @@ function HallTicketsContent() {
                             <TimetableEditor
                                 timetable={timetable}
                                 onChange={setTimetable}
-                                onAutoFill={handleAutoFillTimetable}
+                                onAutoFill={() => autoFillSyllabus(branch, semester)}
+                                loading={timetableLoading}
                             />
                         </CardContent>
                     </Card>
