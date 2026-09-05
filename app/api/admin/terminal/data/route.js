@@ -66,14 +66,25 @@ export async function GET(req) {
             { data: facultyOnboarding },
             { count: marksCount },
             { data: facultyActivity },
-            { data: classes }
+            { data: classes },
+            { data: sgpaRows }
         ] = await Promise.all([
             fetchAllPaginated('students', 'id, usn, name, branch, scheme, semester, year, lateral_entry, activated_at, is_suspended, suspended_at, suspended_reason, created_at, updated_at', supabaseAdmin, 'created_at', false),
             supabaseAdmin.from('faculty_onboarding').select('*').order('created_at', { ascending: false }),
             supabaseAdmin.from('subject_marks').select('id', { count: 'exact', head: true }),
             supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(300),
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, scheme, academic_year, faculty_id, created_at')
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, scheme, academic_year, faculty_id, created_at'),
+            supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa').not('sgpa', 'is', null),
         ]);
+
+        // Aggregate SGPA stats from academic_remarks
+        const validSgpa = (sgpaRows || []).map(r => parseFloat(r.sgpa)).filter(v => !isNaN(v) && v > 0);
+        const totalExams = validSgpa.length;
+        const avgSgpa = totalExams > 0 ? (validSgpa.reduce((a, b) => a + b, 0) / totalExams) : 0;
+        const distinctionCount = validSgpa.filter(v => v >= 8.0).length;
+        const firstClassCount = validSgpa.filter(v => v >= 6.75 && v < 8.0).length;
+        const secondClassCount = validSgpa.filter(v => v >= 5.0 && v < 6.75).length;
+        const remedialCount = validSgpa.filter(v => v < 5.0).length;
 
         // Derive facultyList from facultyOnboarding to avoid duplicate query
         const facultyList = (facultyOnboarding || []).map(f => ({
@@ -92,7 +103,20 @@ export async function GET(req) {
                 totalMarksRecords: marksCount || 0,
                 totalFacultyActivities: facultyActivity?.length || 0,
                 totalClasses: classes?.length || 0,
-            }
+            },
+            vtuStats: {
+                totalExams,
+                totalMarks: marksCount || 0,
+                avgSgpa: Math.round(avgSgpa * 100) / 100,
+                distinctionCount,
+                firstClassCount,
+                secondClassCount,
+                remedialCount,
+                distinctionPct: totalExams > 0 ? Math.round(distinctionCount / totalExams * 1000) / 10 : 0,
+                firstClassPct: totalExams > 0 ? Math.round(firstClassCount / totalExams * 1000) / 10 : 0,
+                secondClassPct: totalExams > 0 ? Math.round(secondClassCount / totalExams * 1000) / 10 : 0,
+                remedialPct: totalExams > 0 ? Math.round(remedialCount / totalExams * 1000) / 10 : 0,
+            },
         });
     } catch (err) {
         console.error('[GET /api/admin/terminal/data]', err);

@@ -4,12 +4,29 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+function EyeIcon({ open }) {
+    return open ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+        </svg>
+    ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+    );
+}
+
 export default function AdminLogin() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [systemToken, setSystemToken] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showToken, setShowToken] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const router = useRouter();
 
     const handleLogin = async (e) => {
@@ -84,6 +101,19 @@ export default function AdminLogin() {
             fontWeight: 500, marginBottom: 'var(--space-5)', lineHeight: 1.6,
         },
         backRow: { textAlign: 'center', marginTop: 'var(--space-5)', fontSize: '13px' },
+        inputWrap: {
+            position: 'relative', display: 'flex', alignItems: 'center',
+            marginBottom: 'var(--space-5)',
+        },
+        inputInner: {
+            flex: 1, marginBottom: 0, paddingRight: '42px',
+        },
+        eyeBtn: {
+            position: 'absolute', right: '12px', background: 'none', border: 'none',
+            cursor: 'pointer', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center',
+            padding: '4px', borderRadius: 'var(--radius-2)',
+            transition: 'color 0.15s ease',
+        },
     };
 
     return (
@@ -104,15 +134,20 @@ export default function AdminLogin() {
 
                 <form onSubmit={handleLogin}>
                     <label style={s.label}>System Access Token</label>
-                    <input
-                        className="gf-input"
-                        style={{ marginBottom: 'var(--space-5)', background: 'var(--surface-low)' }}
-                        type="password"
-                        placeholder="Private system key"
-                        value={systemToken}
-                        onChange={e => setSystemToken(e.target.value)}
-                        required
-                    />
+                    <div style={s.inputWrap}>
+                        <input
+                            className="gf-input"
+                            style={{ ...s.inputInner, background: 'var(--surface-low)' }}
+                            type={showToken ? 'text' : 'password'}
+                            placeholder="Private system key"
+                            value={systemToken}
+                            onChange={e => setSystemToken(e.target.value)}
+                            required
+                        />
+                        <button type="button" style={s.eyeBtn} onClick={() => setShowToken(v => !v)} aria-label={showToken ? 'Hide token' : 'Show token'}>
+                            <EyeIcon open={showToken} />
+                        </button>
+                    </div>
 
                     <label style={s.label}>Admin Email</label>
                     <input
@@ -127,16 +162,21 @@ export default function AdminLogin() {
                     />
 
                     <label style={s.label}>Password</label>
-                    <input
-                        className="gf-input"
-                        style={{ marginBottom: 'var(--space-5)', background: 'var(--surface-low)' }}
-                        type="password"
-                        placeholder="Admin password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        required
-                        autoComplete="current-password"
-                    />
+                    <div style={s.inputWrap}>
+                        <input
+                            className="gf-input"
+                            style={{ ...s.inputInner, background: 'var(--surface-low)' }}
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Admin password"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            required
+                            autoComplete="current-password"
+                        />
+                        <button type="button" style={s.eyeBtn} onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                            <EyeIcon open={showPassword} />
+                        </button>
+                    </div>
 
                     <button
                         className="gf-btn gf-btn-primary"

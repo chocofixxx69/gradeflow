@@ -74,6 +74,7 @@ function AdminPanelContent() {
     const [activityTypeFilter, setActivityTypeFilter] = useState('all');
     const [activityDateFilter, setActivityDateFilter] = useState('all');
     const [stats, setStats] = useState({ students: 0, pending: 0, faculty: 0, totalMarks: 0, activityToday: 0 });
+    const [vtuStats, setVtuStats] = useState({ totalExams: 0, totalMarks: 0, avgSgpa: 0, distinctionCount: 0, firstClassCount: 0, secondClassCount: 0, remedialCount: 0, distinctionPct: 0, firstClassPct: 0, secondClassPct: 0, remedialPct: 0 });
     const [openTicketsCount, setOpenTicketsCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
@@ -437,6 +438,7 @@ function AdminPanelContent() {
             setRequests(r);
             setActivityLogs(enrichedLogs);
             setClassesList(resData?.classes || []);
+            if (resData?.vtuStats) setVtuStats(resData.vtuStats);
 
             const todayStr = new Date().toISOString().slice(0, 10);
             const todayCount = l.filter(x => x.created_at?.startsWith(todayStr)).length;
@@ -1806,51 +1808,51 @@ function AdminPanelContent() {
                             </div>
 
                             {/* VTU Exam Academic Merit & Performance Telemetry (Real Verified Results) */}
-                            <div style={c.statCard}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)', margin: 0 }}>VTU Exam Performance Telemetry</h3>
-                                            <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.1)', color: '#047857' }}>
-                                                VERIFIED
-                                            </span>
-                                        </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '2px 0 0 0' }}>
-                                            Based on 3,505 university exam results & 16,951 subject marks.
-                                        </p>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Inst. Avg SGPA</div>
-                                        <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--primary)' }}>6.53</div>
-                                    </div>
-                                </div>
+                             <div style={c.statCard}>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                     <div>
+                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                             <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)', margin: 0 }}>VTU Exam Performance Telemetry</h3>
+                                             <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.1)', color: '#047857' }}>
+                                                 LIVE
+                                             </span>
+                                         </div>
+                                         <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '2px 0 0 0' }}>
+                                             Based on {vtuStats.totalExams.toLocaleString()} semester results &amp; {(vtuStats.totalMarks || 0).toLocaleString()} subject marks.
+                                         </p>
+                                     </div>
+                                     <div style={{ textAlign: 'right' }}>
+                                         <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Inst. Avg SGPA</div>
+                                         <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--primary)' }}>{vtuStats.avgSgpa > 0 ? vtuStats.avgSgpa.toFixed(2) : '—'}</div>
+                                     </div>
+                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>Distinction (≥ 8.0)</div>
-                                        <div style={{ fontSize: '16px', fontWeight: 900, color: '#047857', marginTop: '2px' }}>152 <span style={{ fontSize: '11px', fontWeight: 600 }}> (27.2%)</span></div>
-                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Dean's Honor Standing</div>
-                                    </div>
+                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                     <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                         <div style={{ fontSize: '10px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>Distinction (≥ 8.0)</div>
+                                         <div style={{ fontSize: '16px', fontWeight: 900, color: '#047857', marginTop: '2px' }}>{vtuStats.distinctionCount} <span style={{ fontSize: '11px', fontWeight: 600 }}>({vtuStats.distinctionPct}%)</span></div>
+                                         <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Dean's Honor Standing</div>
+                                     </div>
 
-                                    <div style={{ background: 'rgba(37, 99, 235, 0.06)', border: '1px solid rgba(37, 99, 235, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase' }}>First Class (6.75 - 7.99)</div>
-                                        <div style={{ fontSize: '16px', fontWeight: 900, color: '#1d4ed8', marginTop: '2px' }}>132 <span style={{ fontSize: '11px', fontWeight: 600 }}> (23.6%)</span></div>
-                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Good Academic Standing</div>
-                                    </div>
+                                     <div style={{ background: 'rgba(37, 99, 235, 0.06)', border: '1px solid rgba(37, 99, 235, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                         <div style={{ fontSize: '10px', fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase' }}>First Class (6.75 - 7.99)</div>
+                                         <div style={{ fontSize: '16px', fontWeight: 900, color: '#1d4ed8', marginTop: '2px' }}>{vtuStats.firstClassCount} <span style={{ fontSize: '11px', fontWeight: 600 }}>({vtuStats.firstClassPct}%)</span></div>
+                                         <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Good Academic Standing</div>
+                                     </div>
 
-                                    <div style={{ background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Second Class (5.0 - 6.74)</div>
-                                        <div style={{ fontSize: '16px', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>98 <span style={{ fontSize: '11px', fontWeight: 600 }}> (17.5%)</span></div>
-                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Satisfactory Progress</div>
-                                    </div>
+                                     <div style={{ background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                         <div style={{ fontSize: '10px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Second Class (5.0 - 6.74)</div>
+                                         <div style={{ fontSize: '16px', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>{vtuStats.secondClassCount} <span style={{ fontSize: '11px', fontWeight: 600 }}>({vtuStats.secondClassPct}%)</span></div>
+                                         <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Satisfactory Progress</div>
+                                     </div>
 
-                                    <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase' }}>Remedial Watch (&lt; 5.0)</div>
-                                        <div style={{ fontSize: '16px', fontWeight: 900, color: '#b91c1c', marginTop: '2px' }}>109 <span style={{ fontSize: '11px', fontWeight: 600 }}> (19.5%)</span></div>
-                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Backlog Remediation Alert</div>
-                                    </div>
-                                </div>
-                            </div>
+                                     <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                         <div style={{ fontSize: '10px', fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase' }}>Remedial Watch (&lt; 5.0)</div>
+                                         <div style={{ fontSize: '16px', fontWeight: 900, color: '#b91c1c', marginTop: '2px' }}>{vtuStats.remedialCount} <span style={{ fontSize: '11px', fontWeight: 600 }}>({vtuStats.remedialPct}%)</span></div>
+                                         <div style={{ fontSize: '10px', color: 'var(--tx-muted)', marginTop: '2px' }}>Backlog Remediation Alert</div>
+                                     </div>
+                                 </div>
+                             </div>
 
                             {/* Live Faculty Audit Telemetry Stream */}
                             <div style={c.statCard}>
