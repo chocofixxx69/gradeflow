@@ -184,7 +184,7 @@ export default function TimetableEditor({
     const { byCode, byFamily, options } = useMemo(() => {
         const code = new Map();
         const family = new Map();
-        (subjects || []).forEach(s => {
+        (catalogSubjects || []).forEach(s => {
             const c = String(s.code || s.subject_code || '').toUpperCase().trim();
             const n = String(s.name || s.subject_name || '').trim();
             if (!c) return;
@@ -198,7 +198,7 @@ export default function TimetableEditor({
             byFamily: family,
             options: [...code.values()].sort((a, b) => a.code.localeCompare(b.code)),
         };
-    }, [subjects]);
+    }, [catalogSubjects]);
 
     /** Catalog entry for a typed code, falling back to its elective family. */
     const lookup = (raw) => {
