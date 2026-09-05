@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
+import { useLive, LIVE } from '@/lib/api/live';
 import { matchesBranch, matchesBatch, canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
@@ -60,21 +61,19 @@ export default function HallTicketsPage() {
 }
 
 function HallTicketsContent() {
-    const [loading, setLoading] = useState(true);
     const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [] });
 
     // Scope Selection. A hall ticket cohort is a class, so classId is the
     // primary selector; branch/batch/semester remain as a fallback for ad-hoc
     // cohorts that have no class record yet.
+    // classes, activeClass, allStudents and loading are all derived from the
+    // live subscriptions below rather than held as separate state.
     const [classId, setClassId] = useState('');
-    const [classes, setClasses] = useState([]);
-    const [activeClass, setActiveClass] = useState(null);
     const [branch, setBranch] = useState('CS');
     const [semester, setSemester] = useState(6);
     const [batch, setBatch] = useState('2023');
 
     // Students Data
-    const [allStudents, setAllStudents] = useState([]);
     const [selectedUsns, setSelectedUsns] = useState(new Set());
     const [studentSearch, setStudentSearch] = useState('');
 
@@ -106,44 +105,32 @@ function HallTicketsContent() {
         loadMeta();
     }, []);
 
-    // 1b. Load the class list that drives the primary scope selector.
-    useEffect(() => {
-        async function loadClasses() {
-            try {
-                const res = await apiRequest('/api/classes');
-                setClasses(res?.classes || []);
-            } catch (err) {
-                console.error('Class loading failed:', err);
-            }
-        }
-        loadClasses();
-    }, []);
+    // 1b. Class list driving the primary scope selector. Polled, so a class
+    // created elsewhere shows up here without a reload.
+    const { data: classesData } = useLive('/api/classes', { interval: LIVE.NORMAL });
+    const classes = useMemo(() => classesData?.classes || [], [classesData]);
 
-    // 2. Fetch Students. When a class is selected its roster is authoritative;
-    // otherwise fall back to the branch/batch/semester filters.
-    const loadStudents = useCallback(async () => {
-        setLoading(true);
-        try {
-            const query = classId
-                ? { class_id: classId }
-                : { branch, ...(batch ? { batch } : {}), ...(semester ? { semester } : {}) };
+    // 2. Roster. When a class is selected its roster is authoritative; otherwise
+    // fall back to the branch/batch/semester filters. Polled so a student added
+    // to or removed from the class appears here while the sheet is being built.
+    const rosterQuery = useMemo(() => (
+        classId
+            ? { class_id: classId }
+            : { branch, ...(batch ? { batch } : {}), ...(semester ? { semester } : {}) }
+    ), [classId, branch, batch, semester]);
 
-            const res = await apiRequest('/api/faculty/hall-tickets/students', { query });
-            const payload = res?.students ? res : res?.data;
+    const {
+        data: rosterData,
+        isLoading: rosterLoading,
+        isRefreshing: rosterRefreshing,
+    } = useLive('/api/faculty/hall-tickets/students', {
+        query: rosterQuery,
+        interval: LIVE.NORMAL,
+    });
 
-            setAllStudents(payload?.students || []);
-            setActiveClass(payload?.class || null);
-        } catch (err) {
-            console.error('Students fetch error:', err);
-            setAllStudents([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [classId, branch, batch, semester]);
-
-    useEffect(() => {
-        loadStudents();
-    }, [loadStudents]);
+    const allStudents = useMemo(() => rosterData?.students || [], [rosterData]);
+    const activeClass = useMemo(() => rosterData?.class || null, [rosterData]);
+    const loading = rosterLoading;
 
     // Selecting a class fixes the exam scope to that class's own semester and
     // department, so the printed header can never disagree with the roster.
@@ -852,6 +839,14 @@ function HallTicketsContent() {
                                 <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <span className="material-icons-round" style={{ fontSize: '20px', color: '#10B981' }}>checklist</span>
                                     Student Roster ({selectedStudentsList.length} of {filteredStudents.length} Selected)
+                                    {rosterRefreshing && (
+                                        <span
+                                            title="Refreshing from the database"
+                                            style={{ marginLeft: '8px', fontSize: '10px', fontWeight: 600, color: 'var(--tx-muted)' }}
+                                        >
+                                            • updating
+                                        </span>
+                                    )}
                                 </CardTitle>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {studentSearch.trim() && visibleStudentsInChecklist.length > 0 && (
