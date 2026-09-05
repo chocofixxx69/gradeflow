@@ -9,6 +9,8 @@ import { AuditLogContent } from '../../../components/AuditLogContent';
 import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
 import { FacultyAssignmentsContent } from '../../../components/FacultyAssignmentsContent';
 import { ConfirmDialog } from '../../../components/ui';
+import AdminAnalyticsPage from '../analytics/page.jsx';
+import { AnalyticsFiltersProvider } from '../analytics/AnalyticsFiltersContext';
 import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { supabase } from '../../../lib/supabase';
@@ -23,6 +25,7 @@ const TAB_METADATA = {
     activity: { label: 'Faculty Pedagogical & Activity Log', icon: 'history', shortLabel: 'Activity Log' },
     audit: { label: 'System Health & Security Audit', icon: 'security', shortLabel: 'System Audit' },
     system: { label: 'System Health & Security Audit', icon: 'security', shortLabel: 'System Audit' },
+    analytics: { label: 'Institutional Analytics', icon: 'analytics', shortLabel: 'Analytics' },
     settings: { label: 'Institutional Settings & Security', icon: 'settings', shortLabel: 'Settings' },
 };
 
@@ -1296,6 +1299,7 @@ function AdminPanelContent() {
         { id: 'support', label: 'Support & Issues', icon: 'support_agent' },
         { id: 'activity', label: 'Activity Log', icon: 'history' },
         { id: 'audit', label: 'System Audit', icon: 'security' },
+        { id: 'analytics', label: 'Institutional Analytics', icon: 'analytics' },
         { id: 'settings', label: 'Settings', icon: 'settings_suggest' },
     ];
 

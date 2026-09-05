@@ -31,6 +31,7 @@ export const NAV_CONFIG = {
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   admin: [
+    { key: 'terminal', label: 'Admin Console', href: '/admin/terminal', icon: 'dashboard', group: 'Institution' },
     { key: 'classes', label: 'Classes', href: '/admin/classes', icon: 'groups', group: 'Institution' },
     { key: 'examSessions', label: 'Exam Sessions', href: '/admin/exam-sessions', icon: 'event', group: 'Institution' },
     { key: 'facultyAssignments', label: 'Faculty Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },

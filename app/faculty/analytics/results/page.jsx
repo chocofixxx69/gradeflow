@@ -184,13 +184,17 @@ function ExamResultsHubContent() {
 
     useEffect(() => {
         if (viewTab === 'semester') {
+            if (semester === 'ALL') {
+                setSemester(3);
+                return;
+            }
             loadSemesterData();
         } else if (viewTab === 'batch') {
             loadBatchTrajectory();
         } else {
             loadRevalData();
         }
-    }, [viewTab, loadSemesterData, loadBatchTrajectory, loadRevalData]);
+    }, [viewTab, semester, loadSemesterData, loadBatchTrajectory, loadRevalData]);
 
     // Filtered lists
     const filteredSemesterStudents = useMemo(() => {
@@ -231,6 +235,14 @@ function ExamResultsHubContent() {
         setIsRefreshing(true);
         clearApiCache();
         try {
+            // Reload metadata with fresh=1 to dynamically discover any newly scraped semesters, batches, or classes
+            try {
+                const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+                if (freshMeta) setMeta(freshMeta);
+            } catch (err) {
+                console.warn('Metadata refresh notice:', err);
+            }
+
             if (viewTab === 'semester') {
                 await loadSemesterData();
             } else if (viewTab === 'batch') {
@@ -568,8 +580,11 @@ function ExamResultsHubContent() {
                             <Select
                                 label="Semester"
                                 value={semester}
-                                onChange={e => setSemester(Number(e.target.value))}
-                                options={(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: s, label: `Semester ${s}` }))}
+                                onChange={e => setSemester(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                                options={viewTab === 'reval' ? [
+                                    { value: 'ALL', label: 'All Semesters (Cumulative Course)' },
+                                    ...(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: s, label: `Semester ${s}` }))
+                                ] : (meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: s, label: `Semester ${s}` }))}
                             />
                         ) : (
                             <Select

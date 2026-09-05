@@ -29,50 +29,83 @@ function fail(message, code = 'ERROR', status = 400) {
 function formatExamSession(code) {
     if (!code) return 'University Exam';
     const c = String(code).trim();
-    if (/^MJ26rv/i.test(c)) return 'May/June 2026 Reval';
-    if (/^MJ26/i.test(c)) return 'May/June 2026 Regular';
-    if (/^D25J26RV/i.test(c)) return 'Dec 25/Jan 26 Reval';
-    if (/^D25J26/i.test(c)) return 'Dec 25/Jan 26 Regular';
-    if (/^JJRVcbcs25/i.test(c)) return 'Jun/Jul 2025 Reval';
-    if (/^JJEcbcs25/i.test(c)) return 'Jun/Jul 2025 Regular';
-    if (/^SERVcbcs25/i.test(c)) return 'Summer 2025 Reval';
-    if (/^DJRVcbcs25/i.test(c)) return 'Dec 24/Jan 25 Reval';
-    if (/^DJcbcs25/i.test(c)) return 'Dec 24/Jan 25 Regular';
-    if (/^JJRVcbcs24/i.test(c)) return 'Jun/Jul 2024 Reval';
-    if (/^JJEcbcs24/i.test(c)) return 'Jun/Jul 2024 Regular';
-    if (/^DJRVcbcs24/i.test(c)) return 'Dec 23/Jan 24 Reval';
-    if (/^DJcbcs24/i.test(c)) return 'Dec 23/Jan 24 Regular';
-    if (/rv/i.test(c)) return `${c} (Reval)`;
+    const isReval = /rv|reval/i.test(c);
+    const suffix = isReval ? ' Reval' : ' Regular';
+
+    const mDecJan = c.match(/D(\d+)J(\d+)/i);
+    if (mDecJan) {
+        const y1 = mDecJan[1].length === 1 ? `200${mDecJan[1]}` : (mDecJan[1].length === 2 ? `20${mDecJan[1]}` : mDecJan[1]);
+        const y2 = mDecJan[2].length === 1 ? `200${mDecJan[2]}` : (mDecJan[2].length === 2 ? `20${mDecJan[2]}` : mDecJan[2]);
+        return `Dec ${y1.slice(-2)}/Jan ${y2.slice(-2)}${suffix}`;
+    }
+
+    const mMJ = c.match(/MJ(\d+)/i);
+    if (mMJ) {
+        const y = mMJ[1].length === 2 ? `20${mMJ[1]}` : mMJ[1];
+        return `May/June ${y}${suffix}`;
+    }
+
+    const mJJ = c.match(/JJ.*?(\d{2,4})/i);
+    if (mJJ) {
+        const y = mJJ[1].length === 2 ? `20${mJJ[1]}` : mJJ[1];
+        return `Jun/Jul ${y}${suffix}`;
+    }
+
+    const mDJ = c.match(/DJ.*?(\d{2,4})/i);
+    if (mDJ) {
+        const y = mDJ[1].length === 2 ? `20${mDJ[1]}` : mDJ[1];
+        return `Dec/Jan ${y}${suffix}`;
+    }
+
+    const mSE = c.match(/SE.*?(\d{2,4})/i);
+    if (mSE) {
+        const y = mSE[1].length === 2 ? `20${mSE[1]}` : mSE[1];
+        return `Summer ${y}${suffix}`;
+    }
+
+    if (isReval) return `${c} (Reval)`;
     return c;
 }
 
-// Maps a raw scraped exam_name to the real academic cycle it belongs to, so a
-// revaluation is only ever compared against the regular declaration of the
-// SAME cycle — e.g. "D25J26RVcbcs" pairs only with "D25J26Ecbcs", never a
-// different cycle. This deliberately does NOT use scraped_at ordering: the
-// scraper visits exam URLs in whatever order they're queued, not in real
-// chronological order, so scrape timestamps can (and do, confirmed against
-// live data) show a revaluation scraped seconds BEFORE its own regular exam —
-// an artifact of scrape order, not academic reality. Same-cycle exam-name
-// matching is the only reliable signal for "which regular attempt does this
-// revaluation actually follow."
+// Maps any raw scraped exam_name (current or future) to its canonical academic cycle,
+// ensuring that a revaluation attempt automatically pairs with the regular attempt
+// of the exact same exam cycle without hardcoded exam year tables.
 function examCycleKey(examName) {
-    const c = String(examName || '').trim();
-    if (/^MJ26rv/i.test(c)) return 'MJ26';
-    if (/^MJ26/i.test(c)) return 'MJ26';
-    if (/^D25J26RV/i.test(c)) return 'D25J26';
-    if (/^D25J26/i.test(c)) return 'D25J26';
-    if (/^JJRVcbcs25/i.test(c)) return 'JJ25';
-    if (/^JJEcbcs25/i.test(c)) return 'JJ25';
-    if (/^SERVcbcs25/i.test(c)) return 'SE25';
-    if (/^SEcbcs25/i.test(c)) return 'SE25';
-    if (/^DJRVcbcs25/i.test(c)) return 'DJ25';
-    if (/^DJcbcs25/i.test(c)) return 'DJ25';
-    if (/^JJRVcbcs24/i.test(c)) return 'JJ24';
-    if (/^JJEcbcs24/i.test(c)) return 'JJ24';
-    if (/^DJRVcbcs24/i.test(c)) return 'DJ24';
-    if (/^DJcbcs24/i.test(c)) return 'DJ24';
-    return c; // unrecognized naming — treat as its own cycle, never cross-matched
+    if (!examName) return 'UNKNOWN';
+    const c = String(examName).trim().toUpperCase();
+    const clean = c.replace(/\.(PHP|HTML?)/i, '').replace(/^INDEX/i, '');
+
+    // Pattern 1: Dec XX / Jan YY e.g. D25J26, D26J27, D27J28
+    const mDecJan = clean.match(/D(\d+)J(\d+)/i);
+    if (mDecJan) return `D${mDecJan[1]}J${mDecJan[2]}`;
+
+    // Pattern 2: May/June XX e.g. MJ26, MJ27, MJ28
+    const mMJ = clean.match(/MJ(\d+)/i);
+    if (mMJ) return `MJ${mMJ[1]}`;
+
+    // Pattern 3: Jun/Jul XX e.g. JJ24, JJ25, JJ26
+    const mJJ = clean.match(/JJ(?:RV|E)?(?:CBCS)?(\d+)/i) || clean.match(/JJ(\d+)/i);
+    if (mJJ) return `JJ${mJJ[1]}`;
+
+    // Pattern 4: Dec/Jan XX e.g. DJ24, DJ25, DJ26
+    const mDJ = clean.match(/DJ(?:RV|E)?(?:CBCS)?(\d+)/i) || clean.match(/DJ(\d+)/i);
+    if (mDJ) return `DJ${mDJ[1]}`;
+
+    // Pattern 5: Summer/SE XX e.g. SE25, SE26
+    const mSE = clean.match(/SE(?:RV)?(?:CBCS)?(\d+)/i);
+    if (mSE) return `SE${mSE[1]}`;
+
+    // Pattern 6: MakeUp XX e.g. MAKEUPECBCS24, MAKEUP25
+    const mMU = clean.match(/MAKEUP(?:E)?(?:CBCS)?(\d+)/i);
+    if (mMU) return `MAKEUP${mMU[1]}`;
+
+    // Universal fallback: strip reval / cbcs / regular markers
+    const genericKey = clean
+        .replace(/RV|REVAL/g, '')
+        .replace(/CBCS|ECBCS|REGULAR/g, '')
+        .replace(/[^A-Z0-9]/g, '');
+
+    return genericKey || clean;
 }
 
 export async function GET(req) {

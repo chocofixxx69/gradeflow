@@ -5,10 +5,20 @@ import { fetchAllPaginated } from '@/lib/supabase-utils';
 import { getCached, setCached } from '@/lib/server-cache';
 import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn } from '@/lib/semester-utils';
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data }, {
+        headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    });
 }
 
 function fail(message, code = 'ERROR', status = 400) {
@@ -30,13 +40,19 @@ const DEFAULT_BRANCHES = [
 ];
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        const cachedMeta = getCached('analytics_meta_all');
-        if (cachedMeta) {
-            return ok(cachedMeta);
+        const { searchParams } = new URL(req.url);
+        const forceFresh = searchParams.get('fresh') === '1' || searchParams.has('t');
+
+        if (!forceFresh) {
+            const cachedMeta = getCached('analytics_meta_all');
+            if (cachedMeta) {
+                return ok(cachedMeta);
+            }
         }
 
         const supabaseAdmin = getAdminClient();
@@ -244,15 +260,31 @@ export async function GET(req) {
             return a.code.localeCompare(b.code);
         });
 
+        // Dynamically discover all active semesters present in marks, catalog, and classes
+        const semSet = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+        (marksSubjects || []).forEach(m => {
+            const semNum = Number(m.semester);
+            if (!isNaN(semNum) && semNum > 0) semSet.add(semNum);
+        });
+        (catalogSubjects || []).forEach(s => {
+            const semNum = Number(s.semester);
+            if (!isNaN(semNum) && semNum > 0) semSet.add(semNum);
+        });
+        (rawClasses || []).forEach(c => {
+            const semNum = Number(c.semester);
+            if (!isNaN(semNum) && semNum > 0) semSet.add(semNum);
+        });
+        const semesters = Array.from(semSet).sort((a, b) => a - b);
+
         const payload = {
             batches,
             branches,
-            semesters: [1, 2, 3, 4, 5, 6, 7, 8],
+            semesters,
             subjects,
             classes: rawClasses || []
         };
 
-        setCached('analytics_meta_all', payload, 180_000);
+        setCached('analytics_meta_all', payload, 60_000);
 
         return ok(payload);
     } catch (err) {
