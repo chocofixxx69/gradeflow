@@ -10,8 +10,7 @@ import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } fr
 import { Button, Select, Input } from '@/components/ui/Foundation';
 import HallTicketSheet from '@/components/hall-tickets/HallTicketSheet';
 import TimetableEditor from '@/components/hall-tickets/TimetableEditor';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { getJsPDF } from '@/lib/lazy-export-libs';
 
 // Standard default timetable by semester for CS stream
 const DEFAULT_TIMETABLES = {
@@ -495,6 +494,7 @@ function HallTicketsContent() {
     const handleDownloadPDF = async () => {
         if (selectedStudentsList.length === 0) return;
 
+        const { jsPDF } = await getJsPDF();
         const logoData = await getLogoDataUrl();
         const DocClass = typeof jsPDF === 'function' ? jsPDF : (jsPDF?.jsPDF || jsPDF?.default || window?.jspdf?.jsPDF);
         const doc = new DocClass({

@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
@@ -206,8 +204,9 @@ function RankingsAndMeritContent() {
     };
 
     // ── Excel Export ──
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
         try {
+            const XLSX = await getXLSX();
             const wb = XLSX.utils.book_new();
             if (viewTab === 'merit') {
                 const students = filteredMeritStudents.length > 0 ? filteredMeritStudents : (meritReport.rankedStudents || []);
@@ -288,8 +287,9 @@ function RankingsAndMeritContent() {
     };
 
     // ── PDF Export ──
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
         try {
+            const { jsPDF, autoTable } = await getJsPDF();
             const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
             if (viewTab === 'merit') {
                 const students = filteredMeritStudents.length > 0 ? filteredMeritStudents : (meritReport.rankedStudents || []);

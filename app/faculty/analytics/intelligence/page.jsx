@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { ResponsiveContainer, BarChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ComposedChart, LineChart } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
@@ -193,8 +191,9 @@ function InstitutionalIntelligenceContent() {
     };
 
     // ── Excel Export ──
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
         try {
+            const XLSX = await getXLSX();
             const wb = XLSX.utils.book_new();
 
             if (viewTab === 'department') {
@@ -255,8 +254,9 @@ function InstitutionalIntelligenceContent() {
     };
 
     // ── PDF Export ──
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
         try {
+            const { jsPDF, autoTable } = await getJsPDF();
             const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
             if (viewTab === 'department') {

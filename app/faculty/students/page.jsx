@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
@@ -87,7 +85,8 @@ function StudentsDirectoryContent() {
     };
 
     // ── Excel Export ──
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
+        const XLSX = await getXLSX();
         const wb = XLSX.utils.book_new();
         const headers = ['#', 'USN', 'Name', 'Department', 'Semester', 'Batch', 'CGPA', 'Backlogs Count', 'Backlog Credits', 'Status'];
         const rows = (students || []).map((s, idx) => [
@@ -109,7 +108,8 @@ function StudentsDirectoryContent() {
     };
 
     // ── PDF Export ──
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
+        const { jsPDF, autoTable } = await getJsPDF();
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');

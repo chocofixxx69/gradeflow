@@ -6,7 +6,6 @@ import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
-import { calculateAcademicRecord, normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
 import styles from './FacultyDashboard.module.css';
 
@@ -749,41 +748,27 @@ function FacultyDashboardContent() {
         try {
             const resData = await apiRequest('/api/faculty/dashboard', { query: { search_usn: cleanUSN, _t: Date.now() } });
             const profile = resData?.profile || { usn: cleanUSN, name: cleanUSN };
-            const studentMarks = [];
-            const resultMarks = resData?.recentResults || [];
 
-            // CRITICAL: Only include marks that strictly belong to the searched USN
-            const strictResultMarks = (resultMarks || []).filter(m => {
-                const mUsn = (m.usn || '').trim().toUpperCase();
-                return !mUsn || mUsn === cleanUSN;
-            });
+            // Use the server-pre-computed academic record — no client-side Supabase call needed.
+            // (Previously this called calculateAcademicRecord() here in the browser, which
+            // tried to fetch subject_catalog via the anon key and crashed under RLS.)
+            const marksBySemester = resData?.marksBySemester || {};
+            const semSGPAs = resData?.semSGPAs || {};
+            const semStatsData = resData?.semStats || {};
+            const cgpaValue = resData?.cgpa || 0;
 
-            const allMarksRaw = [
-                ...(studentMarks || []).map(m => ({ ...m, source: 'manual', exam_date: 'Manual Entry' })),
-                ...(strictResultMarks || []).map(m => ({
-                    ...m,
-                    source: 'scraped',
-                    cie_marks: m.internal,
-                    see_marks: m.external,
-                    total_marks: m.total,
-                    announced_date: m.announced_date || (m.results?.exam_name ? String(m.results.exam_name) : 'Scraped Record')
-                }))
-            ];
-
-            // ── Run Canonical Academic Calculation Pipeline ──
-            const record = await calculateAcademicRecord(allMarksRaw, profile);
-
-            setStudent(record.profile);
-            setMarks(record.marksBySemester);
-            setSgpas(record.semSGPAs);
-            setSemStats(record.semStats);
-            setCgpa(record.cgpa);
+            setStudent(profile);
+            setMarks(marksBySemester);
+            setSgpas(semSGPAs);
+            setSemStats(semStatsData);
+            setCgpa(cgpaValue);
 
             // Audit Log
             await recordFacultyAction(faculty, 'VIEW_RECORD', cleanUSN);
 
             if (!silent) {
-                setMessage(`Found ${record.profile.name || cleanUSN} - ${record.totalSubjects} subjects processed.`);
+                const subjectCount = resData?.totalSubjects ?? Object.values(marksBySemester).flat().length;
+                setMessage(`Found ${profile.name || cleanUSN} - ${subjectCount} subjects processed.`);
             }
 
         } catch (err) {

@@ -5,7 +5,7 @@ import { logAuditAction } from '../../../lib/audit-logger';
 import { supabase } from '../../../lib/supabase';
 import AuthGuard from '../../../components/AuthGuard';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import * as XLSX from 'xlsx';
+import { getXLSX } from '@/lib/lazy-export-libs';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Input, Button, Select } from '@/components/ui/Foundation';
@@ -278,8 +278,9 @@ export default function SubjectsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
+        const XLSX = await getXLSX();
         const wb = XLSX.read(evt.target.result, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
@@ -327,7 +328,8 @@ export default function SubjectsPage() {
   };
 
   // ── Excel Export ──
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const XLSX = await getXLSX();
     const wb = XLSX.utils.book_new();
 
     // Summary sheet

@@ -6,8 +6,6 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject, getGradeRank } from '../../lib/vtuGrades';
-import { calculateAcademicRecord } from '../../lib/vtuAcademicEngine';
-import { supabase } from '../../lib/supabase';
 import { LIVE } from '../../lib/api/live';
 import styles from './Dashboard.module.css';
 
@@ -527,6 +525,13 @@ function StudentDashboardView({
     );
 }
 
+/** Lightweight grade → grade-point map (mirrors vtuAcademicEngine, no Supabase needed). */
+function gradeToPoint(g) {
+    const grade = (g || '').toUpperCase().trim();
+    const map = { 'O': 10, 'S': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5, 'P': 4, 'D': 4, 'F': 0, 'AB': 0, 'X': 0 };
+    return map[grade] ?? 0;
+}
+
 function DashboardContent() {
     const router = useRouter();
     const [student, setStudent] = useState(null);
@@ -602,17 +607,47 @@ function DashboardContent() {
         try {
             const data = await apiRequest('/api/student/dashboard', { headers: getStudentAuthHeaders(session) });
             const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
-            const resultMarks = data?.recentResults || [];
 
-            // ── Run Canonical Academic Calculation Pipeline ──
-            const record = await calculateAcademicRecord(resultMarks, profile);
+            // Use server-pre-computed values — no client-side Supabase/catalog fetch needed.
+            // The dashboard API returns cgpa, semesterSummary, recentResults already grouped.
+            const recentResults = data?.recentResults || [];
+            const cgpaValue = data?.cgpa || 0;
 
-            setStudent(record.profile);
-            setMarks(record.marksBySemester);
-            setSgpas(record.semSGPAs);
-            setSemStats(record.semStats);
-            setCgpa(record.cgpa);
-            setPercentage(Math.max(0, (record.cgpa - 0.75) * 10));
+            // Group marks by semester (recentResults already have correct semester fields from API)
+            const marksBySem = {};
+            recentResults.forEach(m => {
+                const sem = m.semester || 1;
+                if (!marksBySem[sem]) marksBySem[sem] = [];
+                marksBySem[sem].push(m);
+            });
+
+            // Compute per-sem SGPA from marks (lightweight, no Supabase)
+            const semSGPAs = {};
+            const semStatsMap = {};
+            Object.entries(marksBySem).forEach(([sem, subjects]) => {
+                let totalCr = 0, earnedCr = 0, weightedGP = 0, backlogs = 0;
+                subjects.forEach(s => {
+                    const cr = s.credits || 0;
+                    const gp = s.grade_point ?? (s.grade ? gradeToPoint(s.grade) : 0);
+                    totalCr += cr;
+                    if (isFailedSubject(s)) {
+                        backlogs++;
+                    } else {
+                        earnedCr += cr;
+                        weightedGP += cr * gp;
+                    }
+                });
+                const sgpa = totalCr > 0 ? +(weightedGP / totalCr).toFixed(2) : 0;
+                semSGPAs[sem] = sgpa;
+                semStatsMap[sem] = { sgpa, earnedCredits: earnedCr, registeredCredits: totalCr, backlogs, subjectCount: subjects.length };
+            });
+
+            setStudent(profile);
+            setMarks(marksBySem);
+            setSgpas(semSGPAs);
+            setSemStats(semStatsMap);
+            setCgpa(cgpaValue);
+            setPercentage(Math.max(0, (cgpaValue - 0.75) * 10));
 
         } catch (err) {
             console.error('Failed to load student data:', err);

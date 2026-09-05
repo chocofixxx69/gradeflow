@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
+import { calculateAcademicRecord } from '../../../../lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '../../../../lib/subjectCreditResolver';
+import { isLateralEntry } from '../../../../lib/semester-utils';
 
 const supabaseAdmin = getAdminClient();
 
@@ -30,7 +33,11 @@ export async function GET(req) {
         // If faculty searches for a specific student USN
         if (searchUsn) {
             const cleanUSN = searchUsn.toUpperCase().trim();
-            const [{ data: studentProfile }, { data: resultMarks }] = await Promise.all([
+            const [
+                { data: studentProfile },
+                { data: resultMarks },
+                catalogIndex
+            ] = await Promise.all([
                 supabaseAdmin
                     .from('students')
                     .select('*')
@@ -39,15 +46,52 @@ export async function GET(req) {
                 supabaseAdmin
                     .from('subject_marks')
                     .select('*, results(exam_name)')
-                    .eq('usn', cleanUSN)
+                    .eq('usn', cleanUSN),
+                // Fetch catalog on the server (admin key bypasses RLS) to avoid
+                // the client trying to query it via the anon key and crashing.
+                fetchCatalogIndex(supabaseAdmin)
             ]);
 
-            const [{ data: studentMarks }] = await Promise.all([
-                studentProfile?.id ? supabaseAdmin.from('marks').select('*').eq('student_id', studentProfile.id) : { data: [] }
-            ]);
+            const { data: studentMarks } = studentProfile?.id
+                ? await supabaseAdmin.from('marks').select('*').eq('student_id', studentProfile.id)
+                : { data: [] };
+
+            const profile = studentProfile || { usn: cleanUSN, name: cleanUSN };
+            const lateral = isLateralEntry(cleanUSN, studentProfile?.lateral_entry);
+
+            // Merge all marks — identical shape as the client used to produce
+            const allMarksRaw = [
+                ...(studentMarks || []).map(m => ({ ...m, source: 'manual', exam_date: 'Manual Entry' })),
+                ...(resultMarks || [])
+                    .filter(m => (m.usn || '').toUpperCase() === cleanUSN)
+                    .map(m => ({
+                        ...m,
+                        source: 'scraped',
+                        cie_marks: m.internal,
+                        see_marks: m.external,
+                        total_marks: m.total,
+                        announced_date: m.announced_date || (m.results?.exam_name ? String(m.results.exam_name) : 'Scraped Record')
+                    }))
+            ];
+
+            // Run the canonical academic pipeline SERVER-SIDE with the admin catalog
+            const record = await calculateAcademicRecord(allMarksRaw, {
+                usn: cleanUSN,
+                name: profile.name,
+                branch: profile.branch || '',
+                scheme: profile.scheme || '2022'
+            }, { catalogIndex });
 
             return ok({
-                profile: studentProfile || { usn: cleanUSN, name: cleanUSN },
+                profile: record.profile,
+                // Pre-computed — client uses these directly, no client-side Supabase needed
+                marksBySemester: record.marksBySemester,
+                semSGPAs: record.semSGPAs,
+                semStats: record.semStats,
+                cgpa: record.cgpa,
+                totalSubjects: record.totalSubjects,
+                totalActiveBacklogs: record.totalActiveBacklogs,
+                // Also expose raw for backwards compat
                 recentResults: (resultMarks || []).filter(m => m.usn === cleanUSN),
                 studentMarks: studentMarks || []
             });

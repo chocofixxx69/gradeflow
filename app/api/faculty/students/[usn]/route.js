@@ -3,7 +3,9 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
-import { isLateralEntry } from '@/lib/semester-utils';
+import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
+import { fetchAllPaginated } from '@/lib/supabase-utils';
+import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,77 @@ function ok(data) {
 
 function fail(message, code = 'ERROR', status = 400) {
     return NextResponse.json({ success: false, error: { code, message } }, { status });
+}
+
+/**
+ * Build a lookup map: subject_code (uppercased) → semester number
+ * from subject_catalog rows filtered by branch + scheme.
+ * Used to infer semester when subject_marks.semester is NULL/0.
+ *
+ * Strategy (priority order):
+ *   1. Exact branch match
+ *   2. 'ALL' branch rows (shared/common subjects)
+ *
+ * We intentionally do NOT restrict to a single scheme so that backlog
+ * re-attempt rows (which carry the original scheme code) still resolve.
+ */
+function buildCodeToSemMap(catalogRows, branch) {
+    const map = new Map(); // subject_code → semester
+    const normBranch = (branch || '').toUpperCase().trim();
+
+    // Two-pass: first load ALL-branch rows (lower priority), then branch-specific (overrides)
+    for (const row of (catalogRows || [])) {
+        const rowBranch = (row.branch || '').toUpperCase().trim();
+        if (rowBranch === 'ALL') {
+            const code = (row.subject_code || '').toUpperCase().trim();
+            const sem = Number(row.semester);
+            if (code && sem > 0 && !map.has(code)) {
+                map.set(code, sem);
+            }
+        }
+    }
+    for (const row of (catalogRows || [])) {
+        const rowBranch = (row.branch || '').toUpperCase().trim();
+        if (rowBranch === normBranch || rowBranch === canonicalBranchCode(normBranch)) {
+            const code = (row.subject_code || '').toUpperCase().trim();
+            const sem = Number(row.semester);
+            if (code && sem > 0) {
+                map.set(code, sem); // branch-specific overrides ALL
+            }
+        }
+    }
+    return map;
+}
+
+/**
+ * Infer semester from subject code via catalog.
+ * Also handles VTU elective variant codes:
+ *   BCS405A → try BCS405X (same-family elective slot)
+ *   BEE654B → try BXX654X (cross-department open elective slot)
+ */
+function inferSemester(code, codeToSemMap) {
+    if (!code || !codeToSemMap) return null;
+    const c = code.toUpperCase().trim();
+
+    // Exact match
+    if (codeToSemMap.has(c)) return codeToSemMap.get(c);
+
+    // Variant ending in letter: BCS405A → BCS405X
+    const variantMatch = c.match(/^(.+\d)([A-Z])$/);
+    if (variantMatch) {
+        const familyKey = variantMatch[1] + 'X';
+        if (codeToSemMap.has(familyKey)) return codeToSemMap.get(familyKey);
+    }
+
+    // Cross-dept elective: BEE654B → BXX654X
+    const deptMatch = c.match(/^(\d*)B([A-Z]{2,4})(\d+)([A-Z])$/);
+    if (deptMatch) {
+        const [, lead, , digits] = deptMatch;
+        const genericKey = `${lead}BXX${digits}X`;
+        if (codeToSemMap.has(genericKey)) return codeToSemMap.get(genericKey);
+    }
+
+    return null;
 }
 
 export async function GET(req, { params }) {
@@ -35,11 +108,16 @@ export async function GET(req, { params }) {
 
         if (stuErr) throw stuErr;
 
-        // 2. Fetch subject marks and academic remarks
+        // Resolve branch from student record or USN (most authoritative)
+        const studentBranch = normalizeBranch(student?.branch, cleanUsn) ||
+            canonicalBranchCode(extractBranchFromUsn(cleanUsn)) || 'CS';
+
+        // 2. Fetch subject marks, academic remarks, results, AND subject_catalog in parallel
         const [
             { data: rawMarks },
             { data: rawRemarks },
-            { data: rawResults }
+            { data: rawResults },
+            catalogRows
         ] = await Promise.all([
             supabaseAdmin
                 .from('subject_marks')
@@ -55,11 +133,20 @@ export async function GET(req, { params }) {
             supabaseAdmin
                 .from('results')
                 .select('*')
-                .eq('usn', cleanUsn)
+                .eq('usn', cleanUsn),
+            // Fetch catalog for this branch (and ALL branch) to enable semester inference
+            fetchAllPaginated(
+                'subject_catalog',
+                'subject_code, semester, branch, scheme, credits',
+                supabaseAdmin
+            )
         ]);
 
         const marks = rawMarks || [];
         const remarks = rawRemarks || [];
+
+        // Build semester-inference map from catalog
+        const codeToSemMap = buildCodeToSemMap(catalogRows, studentBranch);
 
         // 3. Compute Backlogs
         const backlogInfo = computeBacklogs(marks);
@@ -73,9 +160,18 @@ export async function GET(req, { params }) {
         let subjectsClearedCount = 0;
         let subjectsFailedCount = 0;
         let bestSgpa = 0;
+        let semesterInferredCount = 0;
 
         marks.forEach(m => {
-            const sem = m.semester || 1;
+            const code = (m.subject_code || '').toUpperCase().trim();
+
+            // ── CORE FIX: infer semester from subject_catalog when NULL/0 ──
+            const storedSem = Number(m.semester) || 0;
+            const inferredSem = storedSem > 0 ? null : inferSemester(code, codeToSemMap);
+            const sem = storedSem > 0 ? storedSem : (inferredSem || 1);
+            const semesterWasInferred = storedSem === 0 && inferredSem !== null;
+            if (semesterWasInferred) semesterInferredCount++;
+
             if (!semesterMarks[sem]) semesterMarks[sem] = [];
 
             const isFail = isFailedSubject(m);
@@ -101,8 +197,8 @@ export async function GET(req, { params }) {
 
             semesterMarks[sem].push({
                 id: m.id,
-                subject_code: m.subject_code,
-                subject_name: m.subject_name || m.subject_code,
+                subject_code: code,
+                subject_name: m.subject_name || code,
                 credits: cr,
                 internal: m.internal,
                 external: m.external,
@@ -111,7 +207,8 @@ export async function GET(req, { params }) {
                 grade_point: gp,
                 is_fail: isFail,
                 result: isFail ? 'FAIL' : 'PASS',
-                exam_session: m.results?.exam_name || 'Regular'
+                exam_session: m.results?.exam_name || 'Regular',
+                semester_inferred: semesterWasInferred   // data-quality flag for UI
             });
         });
 
@@ -145,7 +242,8 @@ export async function GET(req, { params }) {
                 sgpa: semSgpa,
                 earnedCredits: semEarnedCr,
                 registeredCredits: semRegCr,
-                backlogs: semBacklogs
+                backlogs: semBacklogs,
+                subjectCount: sList.length
             };
 
             trend.push({
@@ -211,7 +309,8 @@ export async function GET(req, { params }) {
                 credits_earned: totalCreditsEarned,
                 subjects_cleared: subjectsClearedCount,
                 subjects_failed: subjectsFailedCount,
-                best_sgpa: bestSgpa
+                best_sgpa: bestSgpa,
+                semester_inferred_count: semesterInferredCount  // diagnostic: how many subjects had semester inferred
             },
             trend,
             gradeDistribution,

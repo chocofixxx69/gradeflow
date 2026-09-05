@@ -1,11 +1,10 @@
 'use client';
 
+import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
+
 import { useState, useEffect, useCallback } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select } from '@/components/ui/Foundation';
@@ -69,7 +68,8 @@ function FacultyPerformanceContent() {
     }, [loadPerformance]);
 
     // ── Excel Export ──
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
+        const XLSX = await getXLSX();
         const wb = XLSX.utils.book_new();
 
         const headers = ['#', 'Faculty Name', 'Department', 'Assigned Subjects', 'Students Appeared', 'Passed', 'Failed', 'Pass %', 'Average Score'];
@@ -91,7 +91,8 @@ function FacultyPerformanceContent() {
     };
 
     // ── PDF Export ──
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
+        const { jsPDF, autoTable } = await getJsPDF();
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
         doc.setFontSize(14);
