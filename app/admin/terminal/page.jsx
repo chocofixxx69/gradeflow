@@ -971,8 +971,9 @@ function AdminPanelContent() {
 
     /**
      * VTU USN batch classifier.
-     * - Regular students: number < 200 → batch = USN year (e.g. 2AB23CS043 → Batch 2023)
-     * - Lateral entry: number ≥ 200 → batch = USN year - 1 (e.g. 2AB24CS400 → Batch 2023)
+     * - Regular (num < 200):         batch = USN year  (e.g. 2AB23CS043 → Batch 2023)
+     * - Lateral entry (200 ≤ num < 900): batch = USN year - 1  (e.g. 2AB24CS400 → Batch 2023)
+     * - Transfer/Special (num ≥ 900): batch = USN year  (e.g. 2AB23CS900 → Batch 2023, NOT 2022)
      * Returns: { batch: '2023'|'2024'|..., isLateral: true|false }
      */
     const classifyStudentBatch = (usn) => {
@@ -981,10 +982,11 @@ function AdminPanelContent() {
         if (!m) return { batch: 'unknown', isLateral: false };
         const yearCode = parseInt(m[1], 10);
         const num = parseInt(m[2], 10);
-        if (num >= 200) {
+        if (num >= 200 && num < 900) {
             // Lateral entry: belongs to previous year's cohort
             return { batch: `20${String(yearCode - 1).padStart(2, '0')}`, isLateral: true };
         }
+        // Regular student OR 900+ transfer/special — stays in own year
         return { batch: `20${String(yearCode).padStart(2, '0')}`, isLateral: false };
     };
 
