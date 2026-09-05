@@ -598,7 +598,7 @@ function AcademicComplianceContent() {
                                             </tr>
                                         ) : (
                                             filteredEligibilityStudents.map(s => {
-                                                const isDetained = s.isDetained;
+                                                const isDetained = s.isDetained ?? (!s.isEligible || s.status === 'Detained');
                                                 return (
                                                     <tr key={s.usn} style={{ borderBottom: '1px solid var(--border)' }}>
                                                         <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>
@@ -626,7 +626,7 @@ function AcademicComplianceContent() {
                                                             </span>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', color: isDetained ? '#DC2626' : 'var(--tx-muted)', fontSize: '12px' }}>
-                                                            {isDetained ? s.detentionReasons?.join('; ') : 'Cleared for Vertical Progression'}
+                                                            {isDetained ? (Array.isArray(s.detentionReasons) && s.detentionReasons.length > 0 ? s.detentionReasons.join('; ') : 'Barred from Vertical Progression') : 'Cleared for Vertical Progression'}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                                                             <Link href={`/faculty/students/${s.usn}`} style={{ textDecoration: 'none' }}>

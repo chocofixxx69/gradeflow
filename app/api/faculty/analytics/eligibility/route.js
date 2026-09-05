@@ -74,7 +74,7 @@ export async function GET(req) {
             const backlogInfo = computeBacklogs(uMarks);
             const activeBacklogs = backlogInfo.failedSubjects;
             const totalBacklogs = activeBacklogs.length;
-            const isLE = isLateralEntry(student.usn, student.lateral_entry);
+            const isLE = isLateralEntry(student.usn, student.lateral_entry) || /[A-Z]{2,3}9\d{2}/i.test(student.usn);
             const totalEarnedCredits = uMarks.filter(m => !isFailedSubject(m)).reduce((acc, m) => acc + resolveSubjectCredits(m), 0);
             const year1EarnedCredits = uMarks
                 .filter(m => (Number(m.semester) === 1 || Number(m.semester) === 2) && !isFailedSubject(m))
@@ -82,10 +82,24 @@ export async function GET(req) {
 
             let isEligible = true;
             const reasons = [];
+            const currentStudentSem = Number(student.semester) || 0;
+            const alreadyPassedGate = currentStudentSem > targetSemester;
 
+            // If the student has already progressed beyond the target gate semester,
+            // they have already satisfied this progression gate in a prior academic year.
+            if (alreadyPassedGate) {
+                // For admission to 7th Semester (Rule 3), students carrying any 1st-year backlog are barred
+                if (targetSemester === 7) {
+                    const sem1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
+                    if (sem1And2Backlogs.length > 0 && !isLE) {
+                        isEligible = false;
+                        reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
+                    }
+                }
+            }
             // Rule 1: Admission to 3rd Semester (Year 2 entry)
             // VTU Regulation: Student must earn a minimum of 20 credits in 1st Year and not carry > 4 backlogs
-            if (targetSemester === 3) {
+            else if (targetSemester === 3) {
                 if (year1EarnedCredits < 20 && !isLE) {
                     isEligible = false;
                     reasons.push(`Earned only ${year1EarnedCredits} credits in 1st Year (VTU Minimum Required to move to 2nd Year: 20 credits).`);
@@ -138,6 +152,7 @@ export async function GET(req) {
                     semester: b.semester
                 })),
                 isEligible,
+                isDetained: !isEligible,
                 status: isEligible ? 'Eligible' : 'Detained',
                 detentionReasons: reasons
             };
