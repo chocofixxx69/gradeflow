@@ -7,6 +7,7 @@ import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
 import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
+import { FacultyAssignmentsContent } from '../../../components/FacultyAssignmentsContent';
 import { ConfirmDialog } from '../../../components/ui';
 import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
@@ -16,6 +17,7 @@ const TAB_METADATA = {
     overview: { label: 'Institutional Overview', icon: 'dashboard', shortLabel: 'Overview' },
     students: { label: 'Student Directory & Access Control', icon: 'school', shortLabel: 'Students' },
     classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
+    assignments: { label: 'Faculty Subject Assignments & Mapping', icon: 'assignment_ind', shortLabel: 'Subject Assignments' },
     requests: { label: 'Faculty Access & Credentials', icon: 'verified_user', shortLabel: 'Faculty Access' },
     support: { label: 'Institutional Support Tickets', icon: 'support_agent', shortLabel: 'Support' },
     activity: { label: 'Faculty Pedagogical & Activity Log', icon: 'history', shortLabel: 'Activity Log' },
@@ -393,6 +395,28 @@ function AdminPanelContent() {
         setLoading(true);
         setLoadError('');
         try {
+            // Proactively ensure admin session cookies are active and aligned
+            if (typeof window !== 'undefined') {
+                try {
+                    const admStr = localStorage.getItem('admin_session');
+                    if (admStr) {
+                        const adm = JSON.parse(admStr);
+                        if (adm?.token) {
+                            await fetch('/api/auth/session/sync', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ role: 'admin', token: adm.token, email: adm.email }),
+                            }).then(r => r.json()).then(res => {
+                                if (res?.sessionToken && adm.sessionToken !== res.sessionToken) {
+                                    adm.sessionToken = res.sessionToken;
+                                    localStorage.setItem('admin_session', JSON.stringify(adm));
+                                }
+                            }).catch(() => {});
+                        }
+                    }
+                } catch {}
+            }
+
             const resData = await apiRequest('/api/admin/terminal/data');
             const s = resData?.students || [];
             const r = resData?.facultyOnboarding || [];
@@ -1267,6 +1291,7 @@ function AdminPanelContent() {
         { id: 'overview', label: 'Overview', icon: 'space_dashboard' },
         { id: 'students', label: 'Students', icon: 'school' },
         { id: 'classes', label: 'Classes', icon: 'groups' },
+        { id: 'assignments', label: 'Subject Assignments', icon: 'assignment_ind' },
         { id: 'requests', label: 'Faculty Access', icon: 'verified_user' },
         { id: 'support', label: 'Support & Issues', icon: 'support_agent' },
         { id: 'activity', label: 'Activity Log', icon: 'history' },
@@ -2471,8 +2496,12 @@ function AdminPanelContent() {
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <button style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }} onClick={loadData} disabled={loading}>
-                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>refresh</span>
-                                Reload
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)', animation: loading ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
+                                {loading ? 'Reloading…' : 'Reload'}
+                            </button>
+                            <button style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }} onClick={() => switchTab('assignments')}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>assignment_ind</span>
+                                Subject Assignments
                             </button>
                             <button style={c.actionBtn(true)} onClick={() => setShowAddFaculty(true)}>
                                 <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '4px' }}>person_add</span>
@@ -3090,6 +3119,8 @@ function AdminPanelContent() {
                 </>}
 
                 {tab === 'classes' && <ClassesContent embedded={true} />}
+
+                {tab === 'assignments' && <FacultyAssignmentsContent embedded={true} />}
 
                 {tab === 'support' && <SupportTicketsContent onStatsUpdate={(s) => setOpenTicketsCount(s?.open || 0)} />}
 
@@ -4131,6 +4162,16 @@ function AdminPanelContent() {
                             >
                                 <span className="material-icons-round" style={{ fontSize: '14px' }}>edit</span>
                                 Edit Profile
+                            </button>
+                            <button
+                                style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--primary)', color: 'var(--primary)', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => {
+                                    setSelectedFaculty(null);
+                                    switchTab('assignments');
+                                }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '15px' }}>assignment_ind</span>
+                                Assign Subjects
                             </button>
                             <button
                                 style={{ ...c.actionBtn(false), padding: '8px 14px', fontSize: '11px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent', display: 'flex', alignItems: 'center', gap: '4px' }}

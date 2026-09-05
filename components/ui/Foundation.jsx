@@ -1,6 +1,6 @@
 'use client';
 
-import { cloneElement, forwardRef, isValidElement, useId } from 'react';
+import { cloneElement, forwardRef, isValidElement, useId, useState } from 'react';
 import styles from './Foundation.module.css';
 
 function cx(...classes) {
@@ -306,12 +306,36 @@ export const Input = forwardRef(function Input({
     required = false,
     successText,
     type = 'text',
+    showPasswordToggle = true,
     ...props
 }, ref) {
     const generatedId = useId();
     const inputId = id || generatedId;
     const message = getValidationMessage({ error, helperText, successText });
     const messageId = message ? `${inputId}-${message.idSuffix}` : undefined;
+    const [passwordVisible, setPasswordVisible] = useState(false);
+
+    const isPassword = type === 'password';
+    const effectiveType = isPassword && passwordVisible ? 'text' : type;
+    const canTogglePassword = isPassword && showPasswordToggle;
+
+    const inputControl = (
+        <input
+            ref={ref}
+            id={inputId}
+            className={cx(
+                styles.fieldControl,
+                density === 'compact' && styles.fieldControlCompact,
+                canTogglePassword && (density === 'compact' ? styles.passwordInputCompact : styles.passwordInput),
+                error && styles.fieldInvalid
+            )}
+            type={effectiveType}
+            required={required}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={getDescribedBy({ messageId, ariaDescribedBy, describedBy })}
+            {...props}
+        />
+    );
 
     return (
         <div className={cx(styles.field, density === 'compact' && styles.fieldCompact, className)}>
@@ -320,16 +344,26 @@ export const Input = forwardRef(function Input({
                     {label} {required && <span className={styles.fieldRequired}>*</span>}
                 </label>
             )}
-            <input
-                ref={ref}
-                id={inputId}
-                className={cx(styles.fieldControl, density === 'compact' && styles.fieldControlCompact, error && styles.fieldInvalid)}
-                type={type}
-                required={required}
-                aria-invalid={error ? true : undefined}
-                aria-describedby={getDescribedBy({ messageId, ariaDescribedBy, describedBy })}
-                {...props}
-            />
+            {canTogglePassword ? (
+                <div className={styles.passwordWrap}>
+                    {inputControl}
+                    <button
+                        type="button"
+                        className={cx(styles.passwordToggle, density === 'compact' && styles.passwordToggleCompact)}
+                        onClick={() => setPasswordVisible(prev => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        title={passwordVisible ? 'Hide password' : 'Show password'}
+                        aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                        tabIndex={-1}
+                    >
+                        <span className={cx('material-icons-round', styles.passwordToggleIcon)}>
+                            {passwordVisible ? 'visibility_off' : 'visibility'}
+                        </span>
+                    </button>
+                </div>
+            ) : (
+                inputControl
+            )}
             {message && <FieldMessage id={messageId} type={message.type}>{message.content}</FieldMessage>}
         </div>
     );

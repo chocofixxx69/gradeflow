@@ -25,6 +25,14 @@
   font-feature-settings: 'liga';
 }
 
+/* Disable native browser password reveal eye icon (Edge / IE) to prevent duplicate icons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 :root {
   /* Enterprise Academic Palette */
   --primary: #174B4D;

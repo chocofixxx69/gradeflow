@@ -541,6 +541,76 @@
   right: var(--space-1);
 }
 
+.passwordWrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.passwordInput {
+  padding-right: 44px;
+}
+
+.passwordInput::-ms-reveal,
+.passwordInput::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.passwordInputCompact {
+  padding-right: 38px;
+}
+
+.passwordInputCompact::-ms-reveal,
+.passwordInputCompact::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--tx-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  padding: 0;
+  z-index: 2;
+  user-select: none;
+}
+
+.passwordToggle:hover {
+  color: var(--tx-main);
+  background: var(--surface-low);
+}
+
+.passwordToggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.passwordToggleCompact {
+  width: 28px;
+  height: 28px;
+  right: var(--space-1);
+}
+
+.passwordToggleIcon {
+  font-size: 19px;
+  line-height: 1;
+}
+
 .emptyState {
   width: 100%;
   display: flex;

@@ -2,7 +2,14 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { createSessionCookie, signStudentSession } from '../../../../lib/server-session';
+import {
+    createSessionCookie,
+    signStudentSession,
+    signSession,
+    ADMIN_SESSION_COOKIE,
+    FACULTY_SESSION_COOKIE,
+    STAFF_SESSION_COOKIE,
+} from '../../../../lib/server-session';
 import { verifyStudentPassword } from '../../../../lib/student-auth';
 import { checkRateLimit, getClientIp } from '../../../../lib/rate-limit';
 
@@ -35,8 +42,20 @@ function safeCompareHex(a, b) {
 }
 
 function successResponse(body, sessionPayload) {
-    const response = NextResponse.json(body);
-    response.cookies.set(createSessionCookie(sessionPayload));
+    const token = signSession(sessionPayload);
+    const enrichedSession = {
+        ...(body.session || {}),
+        sessionToken: token,
+    };
+    const response = NextResponse.json({
+        ...body,
+        sessionToken: token,
+        session: enrichedSession,
+    });
+
+    const specificCookieName = sessionPayload.role === 'admin' ? ADMIN_SESSION_COOKIE : FACULTY_SESSION_COOKIE;
+    response.cookies.set(createSessionCookie(sessionPayload, specificCookieName));
+    response.cookies.set(createSessionCookie(sessionPayload, STAFF_SESSION_COOKIE));
     return response;
 }
 
@@ -123,7 +142,22 @@ async function loginFaculty({ email, password }) {
         return failureResponse(`Your faculty account is currently pending verification (${faculty.status}).`, 401);
     }
 
-    const passwordMatches = await bcrypt.compare(password, faculty.password || '');
+    let passwordMatches = false;
+    if (faculty.password) {
+        passwordMatches = await bcrypt.compare(password, faculty.password).catch(() => false);
+    }
+    if (!passwordMatches && faculty.password_hash) {
+        passwordMatches = await bcrypt.compare(password, faculty.password_hash).catch(() => false);
+    }
+    // Also allow direct sign-in with admin-issued Access Key
+    if (!passwordMatches && faculty.generated_access_key) {
+        const cleanInput = String(password || '').trim().toUpperCase().replace(/\s+/g, '');
+        const cleanKey = String(faculty.generated_access_key || '').trim().toUpperCase().replace(/\s+/g, '');
+        if (cleanInput && cleanKey && cleanInput === cleanKey) {
+            passwordMatches = true;
+        }
+    }
+
     if (!passwordMatches) {
         return failureResponse('The password you entered is incorrect.', 401);
     }

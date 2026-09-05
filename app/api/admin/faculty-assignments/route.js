@@ -26,15 +26,34 @@ export async function GET(req) {
         const client = getAdminClient();
         let query = client
             .from('faculty_subject_assignments')
-            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at, faculty_onboarding(full_name, email), classes(name, branch, semester, section)')
+            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at, faculty_onboarding(id, full_name, email, department), classes(id, name, branch, semester, section)')
             .order('created_at', { ascending: false });
 
         if (facultyId) query = query.eq('faculty_id', facultyId);
 
-        const { data, error } = await query;
-        if (error) throw error;
+        const [
+            { data: assignments, error: assignmentsError },
+            { data: faculty, error: facultyError },
+            { data: classes, error: classesError },
+            { data: subjects, error: subjectsError }
+        ] = await Promise.all([
+            query,
+            client.from('faculty_onboarding').select('id, full_name, email, department, designation, status').eq('status', 'approved').order('full_name', { ascending: true }),
+            client.from('classes').select('id, name, branch, semester, section').order('name', { ascending: true }),
+            client.from('subject_catalog').select('id, subject_code, subject_name, branch, semester, scheme, credits').order('subject_code', { ascending: true })
+        ]);
 
-        return ok({ assignments: data || [] });
+        if (assignmentsError) throw assignmentsError;
+        if (facultyError) throw facultyError;
+        if (classesError) throw classesError;
+        if (subjectsError) throw subjectsError;
+
+        return ok({
+            assignments: assignments || [],
+            faculty: faculty || [],
+            classes: classes || [],
+            subjects: subjects || []
+        });
     } catch (err) {
         console.error('[GET /api/admin/faculty-assignments]', err);
         return fail('Failed to load faculty assignments.', 'FACULTY_ASSIGNMENTS_ERROR', 500, { error: String(err?.message || err) });
