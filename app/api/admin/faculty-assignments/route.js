@@ -2,11 +2,35 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 
+import { fetchAllPaginated } from '../../../../lib/supabase-utils.js';
+
 export const dynamic = 'force-dynamic';
 
 function ok(data) { return NextResponse.json({ success: true, data }); }
 function fail(message, code, status = 400, details = {}) {
     return NextResponse.json({ success: false, error: { code, message, details } }, { status });
+}
+
+// In-memory cache for subject catalog (static reference data, changes rarely)
+let _subjectsCache = null;
+let _subjectsCacheTime = 0;
+const SUBJECTS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+async function getSubjectCatalog(client) {
+    const now = Date.now();
+    if (_subjectsCache && Array.isArray(_subjectsCache) && (now - _subjectsCacheTime) < SUBJECTS_CACHE_TTL) {
+        return _subjectsCache;
+    }
+    const subjects = await fetchAllPaginated(
+        'subject_catalog',
+        'id, subject_code, subject_name, branch, semester, scheme, credits',
+        client,
+        'subject_code',
+        true
+    );
+    _subjectsCache = subjects || [];
+    _subjectsCacheTime = Date.now();
+    return _subjectsCache;
 }
 
 /**
@@ -35,18 +59,17 @@ export async function GET(req) {
             { data: assignments, error: assignmentsError },
             { data: faculty, error: facultyError },
             { data: classes, error: classesError },
-            { data: subjects, error: subjectsError }
+            subjects
         ] = await Promise.all([
             query,
             client.from('faculty_onboarding').select('id, full_name, email, department, designation, status').eq('status', 'approved').order('full_name', { ascending: true }),
             client.from('classes').select('id, name, branch, semester, section').order('name', { ascending: true }),
-            client.from('subject_catalog').select('id, subject_code, subject_name, branch, semester, scheme, credits').order('subject_code', { ascending: true })
+            getSubjectCatalog(client)
         ]);
 
         if (assignmentsError) throw assignmentsError;
         if (facultyError) throw facultyError;
         if (classesError) throw classesError;
-        if (subjectsError) throw subjectsError;
 
         return ok({
             assignments: assignments || [],
