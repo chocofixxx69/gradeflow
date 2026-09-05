@@ -648,7 +648,7 @@ def _parse_branch(usn):
     code = usn[5:7].upper()
     mapping = {
         "CS": "Computer Science (CSE)", "IS": "Information Science (ISE)",
-        "EC": "Electronics & Comm (ECE)", "EE": "Electrical & Electronics (EEE)",
+        "EC": "Electronics & Communication (ECE)", "EE": "Electrical & Electronics (EEE)",
         "ME": "Mechanical Engineering", "CV": "Civil Engineering",
         "AI": "AI & Machine Learning (AIML)", "DS": "Data Science",
         "CB": "Comp. Science & Business", "AD": "AI & Data Science",

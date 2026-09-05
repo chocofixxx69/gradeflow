@@ -8,6 +8,7 @@ import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, R
 import { getGradeBadgeTone, unifyGrade, isFailedSubject, getGradeRank } from '../../lib/vtuGrades';
 import { calculateAcademicRecord } from '../../lib/vtuAcademicEngine';
 import { supabase } from '../../lib/supabase';
+import { LIVE } from '../../lib/api/live';
 import styles from './Dashboard.module.css';
 
 function StudentDashboardView({
@@ -596,8 +597,8 @@ function DashboardContent() {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [closeBacklogModal, showBacklogModal]);
 
-    const loadStudentData = useCallback(async (usn, session) => {
-        setLoading(true);
+    const loadStudentData = useCallback(async (usn, session, { silent = false } = {}) => {
+        if (!silent) setLoading(true);
         try {
             const data = await apiRequest('/api/student/dashboard', { headers: getStudentAuthHeaders(session) });
             const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
@@ -616,7 +617,7 @@ function DashboardContent() {
         } catch (err) {
             console.error('Failed to load student data:', err);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, []);
 
@@ -641,6 +642,34 @@ function DashboardContent() {
 
         verifyAndLoad();
     }, [loadStudentData, router]);
+
+    // ── Keep results current after a scrape lands, without a manual reload ──
+    useEffect(() => {
+        const refreshSilently = () => {
+            const stuSession = localStorage.getItem('student_session');
+            if (!stuSession) return;
+            try {
+                const parsed = JSON.parse(stuSession);
+                loadStudentData(parsed.usn.toUpperCase(), parsed, { silent: true });
+            } catch {
+                // Ignore — the initial-load effect already surfaces session errors.
+            }
+        };
+
+        const intervalId = setInterval(refreshSilently, LIVE.SLOW);
+
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') refreshSilently();
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('focus', refreshSilently);
+
+        return () => {
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('focus', refreshSilently);
+        };
+    }, [loadStudentData]);
 
     // ── PDF/Image Upload Handler with full validation ──
     const handlePdfUpload = async (e) => {

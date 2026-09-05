@@ -133,7 +133,7 @@ export async function GET(req) {
             'CI': 'AI & Machine Learning (CI)',
             'AIML': 'AI & Machine Learning (AIML)',
             'DS': 'Computer Science & Data Science (DS)',
-            'CD': 'Computer Science & Design / Data Science (CD)',
+            'CD': 'Data Science',
             'CV': 'Civil Engineering',
             'EC': 'Electronics & Communication Engineering',
             'EE': 'Electrical & Electronics Engineering',

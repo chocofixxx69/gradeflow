@@ -6,11 +6,12 @@ import { fetchAdminAnalytics } from '../../../lib/api/analytics';
 
 // The Overview tab's own hook (useAdminAnalytics) fetches this exact endpoint
 // with default ("all") filters, which serializes to the same unfiltered
-// request as the one below. To avoid firing both on first load of
-// /admin/analytics, this provider skips its own fetch while the Overview tab
-// is active and instead waits for it to hand over the class list via
+// request as the one below. To avoid firing both on first load of the
+// Overview tab (either at its own route or embedded inside the admin
+// Terminal's Analytics tab), this provider skips its own fetch while that
+// tab is active and instead waits for it to hand over the class list via
 // `registerClasses` once its fetch resolves.
-const OVERVIEW_PATH = '/admin/analytics';
+const OVERVIEW_PATHS = ['/admin/analytics', '/admin/terminal'];
 
 // Shared filter contract across every Result Analysis view — mirrors the
 // backend's parseFilters() in lib/analytics-data.js exactly.
@@ -36,7 +37,7 @@ export function AnalyticsFiltersProvider({ children }) {
     // Skipped on the Overview tab, since its own hook already fetches the
     // identical unfiltered payload and hands it over via `registerClasses`.
     useEffect(() => {
-        if (pathname === OVERVIEW_PATH || classesHydrated) return;
+        if (OVERVIEW_PATHS.includes(pathname) || classesHydrated) return;
         let cancelled = false;
         fetchAdminAnalytics({ filters: {} })
             .then(data => {

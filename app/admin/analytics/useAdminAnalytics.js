@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAdminAnalytics } from '../../../lib/api/analytics';
+import { LIVE } from '../../../lib/api/live';
 
 const INITIAL_STATE = {
     analytics: null,
@@ -125,8 +126,20 @@ export function useAdminAnalytics(filters) {
     useEffect(() => {
         loadOverview();
 
+        // Rollups only change when a scrape lands, so poll at LIVE.SLOW cadence
+        // and also catch up immediately when the tab regains focus.
+        const intervalId = setInterval(() => loadOverview({ refresh: true }), LIVE.SLOW);
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') loadOverview({ refresh: true });
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('focus', handleVisibility);
+
         return () => {
             abortRef.current?.abort();
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('focus', handleVisibility);
         };
     }, [loadOverview]);
 

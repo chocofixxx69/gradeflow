@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-    PieChart, Pie, Cell
+    PieChart, Pie, Cell, LabelList
 } from 'recharts';
 import { Button, EmptyState, Skeleton } from '../../../components/ui';
 import styles from './AdminAnalytics.module.css';
@@ -23,7 +23,7 @@ export function ChartSkeleton() {
     );
 }
 
-export function InsightPanel({ label, title, description, loading, error, isEmpty, onRetry, children }) {
+export function InsightPanel({ label, title, description, loading, error, isEmpty, onRetry, height = 240, children }) {
     return (
         <section className={styles.panel} aria-labelledby={`${title.replaceAll(' ', '-').toLowerCase()}-title`}>
             <div className={styles.panelHeader}>
@@ -55,7 +55,7 @@ export function InsightPanel({ label, title, description, loading, error, isEmpt
                         description="Add students to see this chart."
                     />
                 ) : (
-                    <div style={{ width: '100%', height: 240, paddingTop: 16 }}>
+                    <div style={{ width: '100%', height, paddingTop: 16 }}>
                         {children}
                     </div>
                 )}
@@ -219,15 +219,84 @@ export function BacklogDistributionChart({ analytics, loading, error, isEmpty, o
     );
 }
 
+export function getShortBranch(branch) {
+    if (!branch) return 'Unknown';
+    const b = String(branch).trim();
+
+    // 1. Extract acronym inside parentheses e.g. "Computer Science & Engineering (CSE)" -> "CSE"
+    const parenMatch = b.match(/\(([^)]+)\)/);
+    if (parenMatch) return parenMatch[1].trim();
+
+    const lower = b.toLowerCase();
+    if (lower.includes('civil')) return 'Civil';
+    if (lower.includes('data science') || lower.includes('data')) return 'Data Sci';
+    if (lower.includes('mech')) return 'Mech';
+    if (lower.includes('robot')) return 'Robotics';
+    if (lower.includes('ai') || lower.includes('artificial') || lower.includes('aiml')) return 'AIML';
+    if (lower.includes('design') || lower.includes('csd')) return 'CSD';
+    if (lower.includes('electronics') || lower.includes('comm') || lower.includes('ece')) return 'ECE';
+    if (lower.includes('electrical') || lower.includes('eee')) return 'EEE';
+    if (lower.includes('computer') || lower.includes('cse')) return 'CSE';
+
+    return b.length > 10 ? b.substring(0, 9) + '…' : b;
+}
+
+export const BranchTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+        const item = payload[0].payload;
+        return (
+            <div style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                boxShadow: '0 8px 18px -2px rgba(0, 0, 0, 0.2)',
+                fontSize: '13px',
+                color: 'var(--tx-main)',
+                fontWeight: 600,
+                maxWidth: '280px'
+            }}>
+                <div style={{ color: 'var(--tx-muted)', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {item.fullName || item.name}
+                </div>
+                <div style={{ color: 'var(--accent, #0ea5e9)', fontSize: '15px', fontWeight: 800 }}>
+                    {item.Students} {item.Students === 1 ? 'Student' : 'Students'}
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
+
 export function BranchPerformanceChart({ analytics, loading, error, isEmpty, onRetry }) {
     const data = useMemo(() => {
         const dist = analytics?.branch_distribution;
         if (!dist) return [];
-        return Object.entries(dist)
-            .map(([branch, count]) => ({ name: branch, Students: Number(count || 0) }))
-            .filter(row => row.Students > 0)
-            .sort((a, b) => b.Students - a.Students);
+
+        const grouped = new Map();
+        Object.entries(dist).forEach(([branch, count]) => {
+            const num = Number(count || 0);
+            if (num <= 0) return;
+            const code = getShortBranch(branch);
+            const existing = grouped.get(code);
+            if (existing) {
+                existing.Students += num;
+                if (branch.length > existing.fullName.length) {
+                    existing.fullName = branch;
+                }
+            } else {
+                grouped.set(code, {
+                    name: code,
+                    fullName: branch,
+                    Students: num
+                });
+            }
+        });
+
+        return Array.from(grouped.values()).sort((a, b) => b.Students - a.Students);
     }, [analytics]);
+
+    const chartHeight = Math.max(260, Math.min(400, data.length * 36));
 
     return (
         <InsightPanel
@@ -238,14 +307,29 @@ export function BranchPerformanceChart({ analytics, loading, error, isEmpty, onR
             error={error}
             isEmpty={isEmpty || data.length === 0}
             onRetry={onRetry}
+            height={chartHeight}
         >
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} layout="vertical">
+                <BarChart data={data} margin={{ top: 8, right: 35, left: 10, bottom: 4 }} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
                     <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--tx-muted)' }} />
-                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--tx-muted)' }} width={80} />
-                    <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: 'var(--surface-hover)' }} />
-                    <Bar dataKey="Students" fill="var(--accent)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                    <YAxis
+                        dataKey="name"
+                        type="category"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 12, fontWeight: 700, fill: 'var(--tx-main)' }}
+                        width={65}
+                    />
+                    <RechartsTooltip content={<BranchTooltip />} cursor={{ fill: 'var(--surface-hover)' }} />
+                    <Bar dataKey="Students" fill="var(--accent)" radius={[0, 4, 4, 0]} isAnimationActive={false} barSize={18}>
+                        <LabelList
+                            dataKey="Students"
+                            position="right"
+                            offset={8}
+                            style={{ fontSize: 11, fontWeight: 700, fill: 'var(--tx-muted)' }}
+                        />
+                    </Bar>
                 </BarChart>
             </ResponsiveContainer>
         </InsightPanel>

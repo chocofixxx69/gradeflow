@@ -1677,7 +1677,7 @@ function AdminPanelContent() {
                                         const pct = stats.students > 0 ? ((count / stats.students) * 100).toFixed(1) : 0;
                                         const code = branch.includes('Computer Science & Engineering') ? 'CSE'
                                             : branch.includes('AI & Machine Learning') ? 'AIML'
-                                            : branch.includes('Computer Science & Design') ? 'CSD'
+                                            : branch.includes('Data Science') ? 'DS'
                                             : branch.includes('Electronics & Communication') ? 'ECE'
                                             : branch.includes('Robotics') ? 'RAI'
                                             : branch.includes('Civil') ? 'CIVIL'
@@ -3130,6 +3130,12 @@ function AdminPanelContent() {
 
                 {tab === 'audit' && <AuditLogContent />}
 
+                {tab === 'analytics' && (
+                    <AnalyticsFiltersProvider>
+                        <AdminAnalyticsPage />
+                    </AnalyticsFiltersProvider>
+                )}
+
                 {tab === 'settings' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
                     <h1 style={c.pageTitle}>System Settings & Administration</h1>
@@ -3516,14 +3522,14 @@ function AdminPanelContent() {
                                     </button>
 
                                     <button
-                                        onClick={() => router.push('/admin/analytics')}
+                                        onClick={() => switchTab('analytics', { from: 'settings', title: 'Settings' })}
                                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s' }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                             <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--blue)' }}>analytics</span>
                                             <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)' }}>Institutional Analytics</span>
                                         </div>
-                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>open_in_new</span>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-dim)' }}>chevron_right</span>
                                     </button>
                                 </div>
                             </div>
