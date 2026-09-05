@@ -59,11 +59,14 @@ export default function AuthGuard({ children, role = 'any', facultyAllowed = fal
     const router = useRouter();
     const pathname = usePathname();
 
-    // Always resolve synchronously from localStorage — no loading state.
-    // localStorage is synchronous so this is instant on client. On SSR
-    // (typeof window === 'undefined') checkSessionSync returns 'loading'
-    // but Next.js won't render this on server since it's client-only.
-    const [authResult, setAuthResult] = useState(() => checkSessionSync(role, facultyAllowed));
+    // On SSR and initial client hydration, start with 'loading' so the initial
+    // client DOM matches SSR 100% (eliminates React error #418 & #423 hydration mismatch).
+    // On subsequent client-side navigations (appHasMountedOnce === true), resolve instantly
+    // from localStorage with zero loading flash!
+    const [authResult, setAuthResult] = useState(() => {
+        if (!appHasMountedOnce) return { state: 'loading', userType: null };
+        return checkSessionSync(role, facultyAllowed);
+    });
     const authState = authResult?.state;
     const userType = authResult?.userType;
 

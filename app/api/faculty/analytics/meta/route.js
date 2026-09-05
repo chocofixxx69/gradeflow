@@ -27,16 +27,14 @@ function fail(message, code = 'ERROR', status = 400) {
 
 // Fallback VTU branches if catalog is sparsely populated
 const DEFAULT_BRANCHES = [
-    { code: 'CS', label: 'Computer Science and Engineering', name: 'Computer Science and Engineering' },
-    { code: 'CI', label: 'Computer Science and Engineering (AI&ML)', name: 'Computer Science and Engineering (AI&ML)' },
-    { code: 'EC', label: 'Electronics and Communication Engineering', name: 'Electronics and Communication Engineering' },
-    { code: 'CD', label: 'Computer Science and Engineering (Data Science)', name: 'Computer Science and Engineering (Data Science)' },
+    { code: 'CS', label: 'Computer Science & Engineering', name: 'Computer Science & Engineering' },
+    { code: 'AI', label: 'AI & Machine Learning', name: 'AI & Machine Learning' },
+    { code: 'DS', label: 'Computer Science & Engineering (Data Science)', name: 'Computer Science & Engineering (Data Science)' },
+    { code: 'EC', label: 'Electronics & Communication Engineering', name: 'Electronics & Communication Engineering' },
+    { code: 'EE', label: 'Electrical & Electronics Engineering', name: 'Electrical & Electronics Engineering' },
     { code: 'ME', label: 'Mechanical Engineering', name: 'Mechanical Engineering' },
     { code: 'CV', label: 'Civil Engineering', name: 'Civil Engineering' },
-    { code: 'EE', label: 'Electrical and Electronics Engineering', name: 'Electrical and Electronics Engineering' },
-    { code: 'RI', label: 'Robotics and Artificial Intelligence', name: 'Robotics and Artificial Intelligence' },
-    { code: 'BA', label: 'Master of Business Administration (MBA)', name: 'Master of Business Administration (MBA)' },
-    { code: 'MC', label: 'Master of Computer Applications (MCA)', name: 'Master of Computer Applications (MCA)' },
+    { code: 'RI', label: 'Robotics & Artificial Intelligence', name: 'Robotics & Artificial Intelligence' },
 ];
 
 export async function GET(req) {
@@ -67,7 +65,7 @@ export async function GET(req) {
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
             fetchAllPaginated('subject_catalog', 'subject_code, subject_name, semester, branch, scheme, credits', supabaseAdmin),
-            supabaseAdmin.from('branches').select('code, label'),
+            supabaseAdmin.from('branches').select('code, label, is_active, sort_order').order('sort_order', { ascending: true }),
             fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry, name, semester' }),
             supabaseAdmin.from('subject_marks').select('*', { count: 'exact', head: true })
         ]);
@@ -126,14 +124,14 @@ export async function GET(req) {
 
         const batches = Array.from(batchSet).sort().reverse();
 
-        // 4. Branches list - merge real branches table and active student branches
+        // 4. Branches list - single source of truth from active database branches
         const branchLabels = {
             'CS': 'Computer Science & Engineering',
-            'AI': 'AI & Machine Learning (AIML)',
-            'CI': 'AI & Machine Learning (CI)',
-            'AIML': 'AI & Machine Learning (AIML)',
-            'DS': 'Computer Science & Data Science (DS)',
-            'CD': 'Data Science',
+            'AI': 'AI & Machine Learning',
+            'CI': 'AI & Machine Learning',
+            'AIML': 'AI & Machine Learning',
+            'DS': 'Computer Science & Engineering (Data Science)',
+            'CD': 'Computer Science & Engineering (Data Science)',
             'CV': 'Civil Engineering',
             'EC': 'Electronics & Communication Engineering',
             'EE': 'Electrical & Electronics Engineering',
@@ -143,32 +141,19 @@ export async function GET(req) {
 
         const branchMap = new Map();
         branchMap.set('ALL', { code: 'ALL', label: 'All Branches / Departments', name: 'All Branches / Departments' });
-        DEFAULT_BRANCHES.forEach(b => branchMap.set(b.code, { ...b, label: branchLabels[b.code] || b.label }));
-        if (metaBranches && Array.isArray(metaBranches)) {
-            metaBranches.forEach(b => {
+
+        // Filter for active branches in database (excludes inactive like BA, MC)
+        const activeDbBranches = (metaBranches || []).filter(b => b.is_active !== false);
+        if (activeDbBranches.length > 0) {
+            activeDbBranches.forEach(b => {
                 if (b.code) {
-                    const label = branchLabels[b.code] || b.label || b.code;
+                    const label = b.label || branchLabels[b.code] || b.code;
                     branchMap.set(b.code, { code: b.code, label, name: label });
                 }
             });
+        } else {
+            DEFAULT_BRANCHES.forEach(b => branchMap.set(b.code, { ...b, label: branchLabels[b.code] || b.label }));
         }
-        (rawStudents || []).forEach(s => {
-            const raw = (s.branch || '').trim();
-            if (raw) {
-                const code = raw === 'Computer Science (CSE)' ? 'CS' : raw;
-                if (!branchMap.has(code)) {
-                    const label = branchLabels[code] || raw;
-                    branchMap.set(code, { code, label, name: label });
-                }
-            }
-        });
-        (rawClasses || []).forEach(c => {
-            const raw = (c.branch || '').trim();
-            if (raw && !branchMap.has(raw)) {
-                const label = branchLabels[raw] || raw;
-                branchMap.set(raw, { code: raw, label, name: label });
-            }
-        });
 
         // Build dynamic cohort matrix & student counts directly from actual students in DB
         const cohortMatrix = {};

@@ -25,7 +25,7 @@ export async function GET() {
 
         // Fetch branches & faculty in parallel
         const [branchesResult, facultyResult] = await Promise.allSettled([
-            supabaseAdmin.from('branches').select('*').order('name', { ascending: true }),
+            supabaseAdmin.from('branches').select('code, label, is_active, sort_order').order('sort_order', { ascending: true }),
             supabaseAdmin
                 .from('faculty_onboarding')
                 .select('id, full_name, email, department')
@@ -33,16 +33,25 @@ export async function GET() {
                 .order('full_name', { ascending: true })
         ]);
 
-        const dbBranches = branchesResult.status === 'fulfilled' && branchesResult.value.data ? branchesResult.value.data : [];
+        const rawDbBranches = branchesResult.status === 'fulfilled' && branchesResult.value.data ? branchesResult.value.data : [];
+        const dbBranches = rawDbBranches
+            .filter(b => b.is_active !== false)
+            .map(b => ({
+                code: b.code,
+                name: b.label || b.code,
+                label: b.label || b.code,
+                sort_order: b.sort_order
+            }));
+
         const fallbackBranches = [
-            { code: 'CS', name: 'Computer Science & Engineering' },
-            { code: 'AI', name: 'Artificial Intelligence & Machine Learning' },
-            { code: 'DS', name: 'Data Science' },
-            { code: 'EC', name: 'Electronics & Communication Engineering' },
-            { code: 'EE', name: 'Electrical & Electronics Engineering' },
-            { code: 'ME', name: 'Mechanical Engineering' },
-            { code: 'CV', name: 'Civil Engineering' },
-            { code: 'RI', name: 'Robotics & Artificial Intelligence' }
+            { code: 'CS', name: 'Computer Science & Engineering', label: 'Computer Science & Engineering' },
+            { code: 'AI', name: 'AI & Machine Learning', label: 'AI & Machine Learning' },
+            { code: 'DS', name: 'Computer Science & Engineering (Data Science)', label: 'Computer Science & Engineering (Data Science)' },
+            { code: 'EC', name: 'Electronics & Communication Engineering', label: 'Electronics & Communication Engineering' },
+            { code: 'EE', name: 'Electrical & Electronics Engineering', label: 'Electrical & Electronics Engineering' },
+            { code: 'ME', name: 'Mechanical Engineering', label: 'Mechanical Engineering' },
+            { code: 'CV', name: 'Civil Engineering', label: 'Civil Engineering' },
+            { code: 'RI', name: 'Robotics & Artificial Intelligence', label: 'Robotics & Artificial Intelligence' }
         ];
 
         const branches = dbBranches.length > 0 ? dbBranches : fallbackBranches;

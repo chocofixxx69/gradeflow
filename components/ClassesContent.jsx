@@ -781,7 +781,7 @@ export function ClassesContent({ embedded = false }) {
             if (String(cls.semester) !== String(semesterFilter)) return false;
         }
         if (sectionFilter !== 'all') {
-            if ((cls.section || 'A').toUpperCase() !== sectionFilter.toUpperCase()) return false;
+            if (String(cls.section || 'A').toUpperCase() !== String(sectionFilter).toUpperCase()) return false;
         }
         return true;
     });
@@ -1788,7 +1788,7 @@ export function ClassesContent({ embedded = false }) {
                 description={`This permanently deletes ${selectedClass?.name || 'this class'} and its student roster. This cannot be undone.`}
                 busy={deletingClass}
                 onCancel={() => setConfirmingDeleteClass(false)}
-                onConfirm={() => deleteClass(selectedClass.id)}
+                onConfirm={() => selectedClass && deleteClass(selectedClass.id)}
             />
         </div>
     );

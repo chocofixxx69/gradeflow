@@ -199,8 +199,9 @@ function ExamResultsHubContent() {
     // Filtered lists
     const filteredSemesterStudents = useMemo(() => {
         return (semData.students || []).filter(s => {
-            if (statusFilter === 'passed' && !s.isPassed) return false;
-            if (statusFilter === 'failed' && s.isPassed) return false;
+            const isP = s.isPassed ?? (s.hasData && s.arrearsCount === 0);
+            if (statusFilter === 'passed' && !isP) return false;
+            if (statusFilter === 'failed' && isP) return false;
             if (!searchQuery) return true;
             const q = searchQuery.toLowerCase();
             return s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
@@ -269,11 +270,11 @@ function ExamResultsHubContent() {
                 const rows = filteredSemesterStudents.map(s => [
                     s.usn,
                     s.name,
-                    s.totalMarks ?? 0,
+                    s.totalMarks ?? s.totalScoreSum ?? 0,
                     typeof s.sgpa === 'number' ? s.sgpa.toFixed(2) : (s.sgpa ?? '—'),
-                    s.isPassed ? 'PASS' : 'FAIL',
-                    s.awardClass || '—',
-                    s.backlogCount ?? 0
+                    (s.isPassed ?? (s.hasData && s.arrearsCount === 0)) ? 'PASS' : 'FAIL',
+                    s.awardClass || (s.vtuClass === 'FCD' ? 'First Class Distinction' : s.vtuClass === 'FC' ? 'First Class' : s.vtuClass === 'SC' ? 'Second Class' : s.vtuClass === 'P' ? 'Pass Class' : s.vtuClass === 'F' ? 'Fail' : '—'),
+                    s.backlogCount ?? s.arrearsCount ?? 0
                 ]);
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 XLSX.utils.book_append_sheet(wb, ws, `Sem ${semester} Gazette`);
@@ -351,11 +352,11 @@ function ExamResultsHubContent() {
                 const tableBody = filteredSemesterStudents.map(s => [
                     s.usn,
                     s.name,
-                    s.totalMarks ?? 0,
+                    s.totalMarks ?? s.totalScoreSum ?? 0,
                     typeof s.sgpa === 'number' ? s.sgpa.toFixed(2) : (s.sgpa ?? '—'),
-                    s.isPassed ? 'PASS' : 'FAIL',
-                    s.awardClass || '—',
-                    s.backlogCount ?? 0
+                    (s.isPassed ?? (s.hasData && s.arrearsCount === 0)) ? 'PASS' : 'FAIL',
+                    s.awardClass || (s.vtuClass === 'FCD' ? 'First Class Distinction' : s.vtuClass === 'FC' ? 'First Class' : s.vtuClass === 'SC' ? 'Second Class' : s.vtuClass === 'P' ? 'Pass Class' : s.vtuClass === 'F' ? 'Fail' : '—'),
+                    s.backlogCount ?? s.arrearsCount ?? 0
                 ]);
 
                 autoTable(doc, {
@@ -560,10 +561,14 @@ function ExamResultsHubContent() {
                             label="Branch / Department"
                             value={branch}
                             onChange={e => setBranch(e.target.value)}
-                            options={[
-                                { value: 'ALL', label: 'All Branches (College-Wide)' },
-                                ...(meta.branches || []).map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))
-                            ]}
+                            options={
+                                (meta.branches && meta.branches.length > 0)
+                                    ? meta.branches.map(b => ({
+                                        value: b.code,
+                                        label: b.code === 'ALL' ? 'ALL - All Branches / Departments' : `${b.code} - ${b.label || b.name}`
+                                    }))
+                                    : [{ value: 'ALL', label: 'ALL - All Branches / Departments' }]
+                            }
                         />
 
                         <Select
@@ -616,7 +621,6 @@ function ExamResultsHubContent() {
                                     { value: 'Grade Upgraded', label: 'Grade Upgraded' },
                                     { value: 'Confirmed', label: 'Confirmed (No Change)' },
                                     { value: 'Marks Decreased', label: 'Marks Decreased' },
-                                    { value: 'Awaiting Original Mark', label: 'Awaiting Original Mark' },
                                 ]}
                             />
                         )}
@@ -709,25 +713,38 @@ function ExamResultsHubContent() {
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                                        {s.totalMarks}
+                                                        {s.totalMarks !== undefined && s.totalMarks !== null ? s.totalMarks : (s.totalScoreSum ?? '—')}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--primary)' }}>
-                                                        {s.sgpa.toFixed(2)}
+                                                        {typeof s.sgpa === 'number' ? s.sgpa.toFixed(2) : (s.sgpa ?? '—')}
                                                     </td>
                                                     <td style={{ padding: '14px 16px' }}>
-                                                        <span style={{
-                                                            padding: '4px 10px',
-                                                            borderRadius: '20px',
-                                                            fontSize: '11px',
-                                                            fontWeight: 800,
-                                                            background: s.isPassed ? 'rgba(34, 197, 94, 0.12)' : 'rgba(220, 38, 38, 0.12)',
-                                                            color: s.isPassed ? '#16A34A' : '#DC2626'
-                                                        }}>
-                                                            {s.isPassed ? 'PASSED' : 'FAILED'}
-                                                        </span>
+                                                        {s.hasData !== false ? (
+                                                            <span style={{
+                                                                padding: '4px 10px',
+                                                                borderRadius: '20px',
+                                                                fontSize: '11px',
+                                                                fontWeight: 800,
+                                                                background: (s.isPassed ?? (s.arrearsCount === 0)) ? 'rgba(34, 197, 94, 0.12)' : 'rgba(220, 38, 38, 0.12)',
+                                                                color: (s.isPassed ?? (s.arrearsCount === 0)) ? '#16A34A' : '#DC2626'
+                                                            }}>
+                                                                {(s.isPassed ?? (s.arrearsCount === 0)) ? 'PASSED' : 'FAILED'}
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{
+                                                                padding: '4px 10px',
+                                                                borderRadius: '20px',
+                                                                fontSize: '11px',
+                                                                fontWeight: 700,
+                                                                background: 'var(--surface-low)',
+                                                                color: 'var(--tx-muted)'
+                                                            }}>
+                                                                NOT APPEARED
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', color: 'var(--tx-muted)', fontSize: '12px' }}>
-                                                        {s.awardClass || 'Passing'}
+                                                        {s.awardClass || (s.vtuClass === 'FCD' ? 'First Class Distinction' : s.vtuClass === 'FC' ? 'First Class' : s.vtuClass === 'SC' ? 'Second Class' : s.vtuClass === 'P' ? 'Pass Class' : s.vtuClass === 'F' ? 'Fail' : '—')}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                                                         <Link href={`/faculty/students/${s.usn}`} style={{ textDecoration: 'none' }}>

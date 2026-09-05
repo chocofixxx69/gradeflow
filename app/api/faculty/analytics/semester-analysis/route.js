@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
+import { matchesBatch, isLateralEntry, canonicalBranchCode } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject, getGradePoint } from '@/lib/vtuGrades';
 
@@ -35,7 +35,7 @@ export async function GET(req) {
 
         const { searchParams } = new URL(req.url);
         const rawBranch = searchParams.get('branch') || '';
-        const branch = rawBranch.toUpperCase().trim();
+        const branch = canonicalBranchCode(rawBranch) || rawBranch.toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
         const batch = searchParams.get('batch') || '';
         const classId = searchParams.get('classId') || '';
@@ -296,24 +296,30 @@ export async function GET(req) {
 
             // VTU Class Award
             let vtuClass = '—';
+            let awardClass = '—';
             if (hasData) {
                 if (arrearsCount > 0) {
                     vtuClass = 'F';
+                    awardClass = 'Fail';
                     totalFailed++;
                     classCounts.F++;
                 } else {
                     totalPassed++;
                     if (sgpa >= 7.75) {
                         vtuClass = 'FCD';
+                        awardClass = 'First Class Distinction';
                         classCounts.FCD++;
                     } else if (sgpa >= 6.75) {
                         vtuClass = 'FC';
+                        awardClass = 'First Class';
                         classCounts.FC++;
                     } else if (sgpa >= 5.0) {
                         vtuClass = 'SC';
+                        awardClass = 'Second Class';
                         classCounts.SC++;
                     } else {
                         vtuClass = 'P';
+                        awardClass = 'Pass Class';
                         classCounts.P++;
                     }
                 }
@@ -336,14 +342,18 @@ export async function GET(req) {
                 section: usnToSectionMap.get(student.usn) || '—',
                 isLE: isLateralEntry(student.usn, student.lateral_entry),
                 hasData,
+                isPassed: Boolean(hasData && arrearsCount === 0),
                 totalRegisteredCr,
                 totalEarnedCi,
                 totalCrP,
                 totalScoreSum,
+                totalMarks: totalScoreSum,
                 sgpa,
                 percentage,
                 vtuClass,
+                awardClass,
                 arrearsCount,
+                backlogCount: arrearsCount,
                 backlogCredits,
                 subjectDetails
             });

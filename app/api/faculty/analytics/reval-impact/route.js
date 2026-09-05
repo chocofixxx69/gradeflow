@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
+import { matchesBatch, canonicalBranchCode } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 import { unstable_noStore as noStore } from 'next/cache';
@@ -114,8 +114,8 @@ export async function GET(req) {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        const { searchParams } = new URL(req.url);
-        const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
+        const rawBranch = searchParams.get('branch') || 'ALL';
+        const branch = rawBranch === 'ALL' ? 'ALL' : (canonicalBranchCode(rawBranch) || rawBranch.toUpperCase().trim());
         const semParam = (searchParams.get('semester') || 'ALL').toUpperCase().trim();
         const semester = (semParam === 'ALL' || !semParam) ? 'ALL' : parseInt(semParam, 10);
         const batch = searchParams.get('batch') || '';
@@ -194,59 +194,47 @@ export async function GET(req) {
         let awaitingOriginalCount = 0;
 
         bySubject.forEach((subjectAttempts, key) => {
-            subjectAttempts.forEach((attempt) => {
-                if (!attempt.isReval) return; // only reval attempts produce a delta row
+            // 1. Deduplicate revaluation attempts by exam cycle key
+            const revalsByCycle = new Map();
+            subjectAttempts.filter(a => a.isReval).forEach(a => {
+                const cycle = examCycleKey(a.exam_name);
+                const existing = revalsByCycle.get(cycle);
+                if (!existing) {
+                    revalsByCycle.set(cycle, a);
+                } else {
+                    const extPassed = (existing.grade === 'P' || existing.grade === 'PASS' || (Number(existing.external) >= 18 && Number(existing.total) >= 40));
+                    const aPassed = (a.grade === 'P' || a.grade === 'PASS' || (Number(a.external) >= 18 && Number(a.total) >= 40));
+                    if (!extPassed && aPassed) {
+                        revalsByCycle.set(cycle, a);
+                    } else if (new Date(a.announced_date || a.scraped_at || 0) > new Date(existing.announced_date || existing.scraped_at || 0)) {
+                        if (extPassed === aPassed) {
+                            revalsByCycle.set(cycle, a);
+                        }
+                    }
+                }
+            });
+
+            // 2. Deduplicate regular attempts by exam cycle key
+            const regularByCycle = new Map();
+            subjectAttempts.filter(a => !a.isReval).forEach(a => {
+                const cycle = examCycleKey(a.exam_name);
+                const existing = regularByCycle.get(cycle);
+                if (!existing || (new Date(a.announced_date || a.scraped_at || 0) > new Date(existing.announced_date || existing.scraped_at || 0))) {
+                    regularByCycle.set(cycle, a);
+                }
+            });
+
+            revalsByCycle.forEach((attempt, cycle) => {
                 const [usn] = key.split('|');
                 const stu = studentByUsn.get(usn);
+                const prior = regularByCycle.get(cycle);
 
-                // The regular attempt from the SAME exam cycle — the only real,
-                // reliable "before" value. Every real revaluation still shows up as
-                // its own row (confirmed: hiding these made ~34% of real submissions
-                // across the college invisible) — what changes is whether a delta can
-                // be computed at all. When no same-cycle regular attempt was ever
-                // captured, the row is shown with the pre-score honestly marked "not
-                // on file" rather than either fabricating a number or disappearing.
-                const cycle = examCycleKey(attempt.exam_name);
-                const prior = subjectAttempts.find(a => !a.isReval && examCycleKey(a.exam_name) === cycle);
+                // A revaluation delta requires a regular attempt baseline from the same exam cycle
+                if (!prior) return;
 
                 const revalExternal = attempt.external !== null && attempt.external !== undefined ? Number(attempt.external) : null;
                 const revalInternal = attempt.internal !== null && attempt.internal !== undefined ? Number(attempt.internal) : null;
                 const postScore = (attempt.total !== null && attempt.total !== undefined) ? Number(attempt.total) : ((revalExternal ?? 0) + (revalInternal ?? 0));
-
-                if (!prior) {
-                    awaitingOriginalCount++;
-                    deltaRoster.push({
-                        usn,
-                        name: stu?.name || usn,
-                        branch: stu?.branch || (usn.length >= 7 ? usn.substring(5, 7).toUpperCase() : '—'),
-                        section: usnToSectionMap.get(usn) || '—',
-                        semester: attempt.semester,
-                        subject_code: attempt.subject_code,
-                        subject_name: attempt.subject_name || attempt.subject_code,
-                        originalExternal: null,
-                        revalExternal,
-                        deltaMarks: null,
-                        originalInternal: null,
-                        revalInternal,
-                        originalTotal: null,
-                        revalTotal: postScore,
-                        preMarks: null,
-                        preGrade: null,
-                        postMarks: postScore,
-                        postGrade: attempt.grade || '—',
-                        delta: null,
-                        outcome: 'Awaiting Original Mark',
-                        isCleared: false,
-                        revalExam: attempt.exam_name || 'Reval',
-                        revalExamLabel: formatExamSession(attempt.exam_name),
-                        regularExam: null,
-                        regularExamLabel: null,
-                        appliedDate: attempt.announced_date ? new Date(attempt.announced_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : (attempt.scraped_at ? new Date(attempt.scraped_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'),
-                        regularDate: null,
-                        credits: attempt.credits || 3,
-                    });
-                    return;
-                }
 
                 const originalExternal = prior.external !== null && prior.external !== undefined ? Number(prior.external) : null;
                 const originalInternal = prior.internal !== null && prior.internal !== undefined ? Number(prior.internal) : null;
@@ -279,11 +267,6 @@ export async function GET(req) {
                     unchangedCount++;
                 }
 
-                // announced_date is the real VTU declaration date; scraped_at is only
-                // when our own scraper happened to visit the page — confirmed on live
-                // data these can differ by months, so announced_date must win whenever
-                // it's actually on file, with scraped_at only as a last-resort fallback
-                // for older rows scraped before this field existed.
                 const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
                 const formattedAppliedDate = formatDate(attempt.announced_date || attempt.scraped_at);
                 const formattedRegularDate = formatDate(prior.announced_date || prior.scraped_at);
@@ -362,12 +345,7 @@ export async function GET(req) {
         });
 
         const totalApplications = deltaRoster.length;
-        // Net pass rate gain is only meaningful over revals we could actually
-        // compute a real delta for — "awaiting original mark" rows have no
-        // delta to contribute either way, so they're excluded from this ratio's
-        // denominator (they're still fully counted in totalApplications).
-        const computedCount = totalApplications - awaitingOriginalCount;
-        const netPassRateGain = computedCount > 0 ? Number(((clearedCount / computedCount) * 100).toFixed(1)) : 0;
+        const netPassRateGain = totalApplications > 0 ? Number(((clearedCount / totalApplications) * 100).toFixed(1)) : 0;
 
         const payload = {
             summary: {
