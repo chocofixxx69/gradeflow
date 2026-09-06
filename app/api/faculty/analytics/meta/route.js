@@ -197,6 +197,7 @@ export async function GET(req) {
 
         // 5. Build Subject Directory: Primary source is REAL marks from subject_marks
         const subjectMap = new Map();
+        const activeTitlesBySem = new Map(); // sem -> Set of normalized titles with real marks
 
         (marksSubjects || []).forEach(m => {
             const code = (m.subject_code || '').toUpperCase().trim();
@@ -207,7 +208,7 @@ export async function GET(req) {
             const st = studentMap.get(m.usn);
             const cohort = getStudentAcademicBatch(m.usn, st?.lateral_entry);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
-            const b = extractBranchFromUsn(m.usn) || 'CS';
+            const b = canonicalBranchCode(st?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(st?.branch) || 'CS';
 
             if (!subjectMap.has(key)) {
                 subjectMap.set(key, {
@@ -222,7 +223,8 @@ export async function GET(req) {
                     studentCount: 0,
                     batches: [],
                     batchCounts: {},
-                    branchCounts: {}
+                    branchCounts: {},
+                    branchBatchCounts: {}
                 });
             }
 
@@ -233,18 +235,39 @@ export async function GET(req) {
             entry.batchCounts[batchYear] = (entry.batchCounts[batchYear] || 0) + 1;
             entry.branchCounts[b] = (entry.branchCounts[b] || 0) + 1;
 
+            if (!entry.branchBatchCounts) entry.branchBatchCounts = {};
+            if (!entry.branchBatchCounts[b]) entry.branchBatchCounts[b] = {};
+            entry.branchBatchCounts[b][batchYear] = (entry.branchBatchCounts[b][batchYear] || 0) + 1;
+
             if (m.subject_name && entry.name === code) {
                 entry.name = m.subject_name;
             }
+
+            // Record title for deduplication against catalog placeholders
+            if (!activeTitlesBySem.has(sem)) activeTitlesBySem.set(sem, new Set());
+            const cleanTitle = (entry.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (cleanTitle) activeTitlesBySem.get(sem).add(cleanTitle);
         });
 
-        // Complement with catalog subjects for curriculum reference
+        // Complement with catalog subjects only if they don't duplicate existing active subjects
         (catalogSubjects || []).forEach(s => {
             const code = (s.subject_code || '').toUpperCase().trim();
             if (!code) return;
             const sem = Number(s.semester) || 1;
-            const b = (s.branch || 'ALL').toUpperCase().trim();
+            const b = canonicalBranchCode(s.branch) || (s.branch || 'ALL').toUpperCase().trim();
             const key = `${code}|${sem}`;
+
+            // Check if there is already an active subject in this semester with an identical or duplicate title
+            const semActiveTitles = activeTitlesBySem.get(sem);
+            const cleanCatalogTitle = (s.subject_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const isDuplicateOfActive = semActiveTitles && cleanCatalogTitle && (
+                semActiveTitles.has(cleanCatalogTitle) ||
+                Array.from(semActiveTitles).some(t => t.length > 5 && (t.includes(cleanCatalogTitle) || cleanCatalogTitle.includes(t)))
+            );
+
+            if (isDuplicateOfActive) {
+                return; // Suppress duplicate catalog placeholder when real active subject already exists
+            }
 
             if (!subjectMap.has(key)) {
                 subjectMap.set(key, {
@@ -259,7 +282,8 @@ export async function GET(req) {
                     studentCount: 0,
                     batches: [],
                     batchCounts: {},
-                    branchCounts: {}
+                    branchCounts: {},
+                    branchBatchCounts: {}
                 });
             } else {
                 const entry = subjectMap.get(key);

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AuthGuard from '../../../../components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
-import { matchesBranch, getCleanBranchOptions } from '@/lib/semester-utils';
+import { matchesBranch, getCleanBranchOptions, canonicalBranchCode } from '@/lib/semester-utils';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
@@ -91,13 +91,16 @@ function SubjectAnalyticsContent() {
     }, []);
 
     // Filter available subjects based on selected branch and semester
-    // Prioritize subjects that have real student data, and compute their scope count
+    // Prioritize subjects that have real student data, and compute their branch-specific scope counts
     const availableSubjects = useMemo(() => {
+        const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
+        const normBranch = canonicalBranchCode(branch) || branch;
+
         const filtered = (meta.subjects || []).filter(s => {
             const matchesSem = !semester || Number(s.semester) === Number(semester);
             if (!matchesSem) return false;
 
-            if (!branch || branch === 'ALL' || branch === 'All Branches') return true;
+            if (isAllBranch) return true;
 
             if (s.branches && Array.isArray(s.branches)) {
                 return s.branches.some(b => matchesBranch(b, branch));
@@ -105,10 +108,37 @@ function SubjectAnalyticsContent() {
             return matchesBranch(s.branch || s.code, branch);
         });
 
-        // Sort: Active subjects in scope first, then by student count descending
-        return filtered.map(s => {
-            const batchCount = batch ? (s.batchCounts?.[batch] || 0) : (s.studentCount || 0);
-            const totalCount = s.studentCount || 0;
+        // If there are real active subjects with marks in this scope, ONLY show those active subjects!
+        // This eliminates duplicate phantom catalog placeholders (like 1BCS401, 1BCS402) that duplicate active courses.
+        const hasRealSubjects = filtered.some(s => s.hasRealData || (isAllBranch ? (s.studentCount > 0) : ((s.branchCounts?.[normBranch] || 0) > 0)));
+        const candidateSubjects = hasRealSubjects
+            ? filtered.filter(s => isAllBranch ? (s.hasRealData || s.studentCount > 0) : ((s.branchCounts?.[normBranch] || 0) > 0 || s.hasRealData))
+            : filtered;
+
+        // Deduplicate candidate subjects by code so no subject appears multiple times
+        const seenCodes = new Set();
+        const uniqueSubjects = [];
+        for (const s of candidateSubjects) {
+            if (!seenCodes.has(s.code)) {
+                seenCodes.add(s.code);
+                uniqueSubjects.push(s);
+            }
+        }
+
+        // Compute scope count and total count specific to the selected branch and batch
+        return uniqueSubjects.map(s => {
+            let batchCount = 0;
+            let totalCount = 0;
+
+            if (isAllBranch) {
+                batchCount = batch ? (s.batchCounts?.[batch] || 0) : (s.studentCount || 0);
+                totalCount = s.studentCount || 0;
+            } else {
+                const branchBatches = s.branchBatchCounts?.[normBranch] || {};
+                batchCount = batch ? (branchBatches[batch] || 0) : (s.branchCounts?.[normBranch] || 0);
+                totalCount = s.branchCounts?.[normBranch] || 0;
+            }
+
             return {
                 ...s,
                 scopeCount: batchCount,
@@ -120,7 +150,7 @@ function SubjectAnalyticsContent() {
             if (a.scopeCount === 0 && b.scopeCount > 0) return 1;
             if (a.scopeCount > 0 && b.scopeCount > 0) return b.scopeCount - a.scopeCount;
 
-            // Then by total historical student marks
+            // Then by total student marks
             if (a.totalCount > 0 && b.totalCount === 0) return -1;
             if (a.totalCount === 0 && b.totalCount > 0) return 1;
             if (a.totalCount > 0 && b.totalCount > 0) return b.totalCount - a.totalCount;
@@ -395,8 +425,12 @@ function SubjectAnalyticsContent() {
                                 options={availableSubjects.length > 0 
                                     ? availableSubjects.map(s => {
                                         let tag = '';
-                                        if (s.scopeCount > 0) tag = `★ ${s.code} - ${s.name} (${s.scopeCount} students)`;
-                                        else if (s.totalCount > 0) tag = `${s.code} - ${s.name} (${s.totalCount} in other batches)`;
+                                        const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
+                                        const normBranch = canonicalBranchCode(branch) || branch;
+                                        const branchTag = !isAllBranch ? ` ${normBranch}` : '';
+
+                                        if (s.scopeCount > 0) tag = `★ ${s.code} - ${s.name} (${s.scopeCount}${branchTag} students)`;
+                                        else if (s.totalCount > 0) tag = `${s.code} - ${s.name} (${s.totalCount}${branchTag} in other batches)`;
                                         else tag = `${s.code} - ${s.name}`;
                                         return {
                                             value: s.code,
@@ -413,12 +447,19 @@ function SubjectAnalyticsContent() {
                                 value={batch}
                                 onChange={e => setBatch(e.target.value)}
                                 options={[
-                                    { value: '', label: `All Batches ${analytics.totalMarksAcrossAllBatches ? `(${analytics.totalMarksAcrossAllBatches} Marks)` : ''}` },
+                                    {
+                                        value: '',
+                                        label: `All Batches ${analytics.totalMarksAcrossAllBatches ? `(${analytics.totalMarksAcrossAllBatches}${(!branch || branch === 'ALL' || branch === 'All Branches') ? '' : ` ${canonicalBranchCode(branch) || branch}`} Marks)` : ''}`
+                                    },
                                     ...meta.batches.map(b => {
-                                        const count = selectedSubjectMeta?.batchCounts?.[b] || 0;
+                                        const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
+                                        const normBranch = canonicalBranchCode(branch) || branch;
+                                        const count = isAllBranch
+                                            ? (selectedSubjectMeta?.batchCounts?.[b] || 0)
+                                            : (selectedSubjectMeta?.branchBatchCounts?.[normBranch]?.[b] || 0);
                                         return {
                                             value: b,
-                                            label: `${b.slice(-2)} Batch (${b})${count > 0 ? ` • ${count} students` : ''}`
+                                            label: `${b.slice(-2)} Batch (${b})${count > 0 ? ` • ${count}${!isAllBranch ? ` ${normBranch}` : ''} students` : ''}`
                                         };
                                     })
                                 ]}

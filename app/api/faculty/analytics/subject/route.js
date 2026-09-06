@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { fetchByChunks } from '@/lib/supabase-utils';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch, matchesBranch, getStudentAcademicBatch, extractBatchFromUsn, extractBranchFromUsn } from '@/lib/semester-utils';
+import { matchesBatch, matchesBranch, getStudentAcademicBatch, extractBatchFromUsn, extractBranchFromUsn, canonicalBranchCode } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -45,11 +45,12 @@ export async function GET(req) {
             .limit(1);
         const catData = catList?.[0] || null;
 
-        // 2. Fetch marks for this subject
+        // 2. Fetch marks for this subject (limit 10000 to prevent row truncation)
         let marksQuery = supabaseAdmin
             .from('subject_marks')
             .select('id, usn, semester, subject_code, subject_name, internal, external, total, grade, credits, passed')
-            .eq('subject_code', subjectCode);
+            .eq('subject_code', subjectCode)
+            .limit(10000);
 
         if (semester) {
             marksQuery = marksQuery.eq('semester', semester);
@@ -69,20 +70,40 @@ export async function GET(req) {
             (stData || []).forEach(s => studentMap.set(s.usn, s));
         }
 
-        // Compute global batch and branch distribution across all records for this subject (before applying current scope filters)
+        // Compute batch and branch distribution
+        // If a specific branch is selected, scope batchesAvailable and totalMarksAcrossAllBatches to THAT branch,
+        // while also computing global totals for full institutional context.
+        const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
         const batchPresence = {};
+        const globalBatchPresence = {};
         const branchPresence = {};
+        let inBranchMarksCount = 0;
+
         marks.forEach(m => {
             const student = studentMap.get(m.usn);
             const cohort = getStudentAcademicBatch(m.usn, student?.lateral_entry);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
-            const b = extractBranchFromUsn(m.usn) || 'CS';
+            const b = canonicalBranchCode(student?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(student?.branch) || 'CS';
 
-            batchPresence[batchYear] = (batchPresence[batchYear] || 0) + 1;
+            globalBatchPresence[batchYear] = (globalBatchPresence[batchYear] || 0) + 1;
             branchPresence[b] = (branchPresence[b] || 0) + 1;
+
+            const inRequestedBranch = isAllBranch || matchesBranch(student || m.usn, branch);
+            if (inRequestedBranch) {
+                inBranchMarksCount++;
+                batchPresence[batchYear] = (batchPresence[batchYear] || 0) + 1;
+            }
         });
 
         const batchesAvailable = Object.entries(batchPresence)
+            .map(([b, cnt]) => ({
+                batch: b,
+                count: cnt,
+                globalCount: globalBatchPresence[b] || cnt
+            }))
+            .sort((a, b) => b.batch.localeCompare(a.batch));
+
+        const globalBatchesAvailable = Object.entries(globalBatchPresence)
             .map(([b, cnt]) => ({ batch: b, count: cnt }))
             .sort((a, b) => b.batch.localeCompare(a.batch));
 
@@ -90,7 +111,8 @@ export async function GET(req) {
             .map(([b, cnt]) => ({ branch: b, count: cnt }))
             .sort((a, b) => b.count - a.count);
 
-        const totalMarksAcrossAllBatches = marks.length;
+        const totalMarksAcrossAllBatches = inBranchMarksCount;
+        const collegeWideTotalMarks = marks.length;
 
         // Apply filters
         let filteredMarks = marks.filter(m => {
@@ -292,8 +314,10 @@ export async function GET(req) {
             topPerformers,
             roster: studentRoster,
             batchesAvailable,
+            globalBatchesAvailable,
             branchesAvailable,
             totalMarksAcrossAllBatches,
+            collegeWideTotalMarks,
             filtersApplied: { subjectCode, branch, semester, batch }
         };
 

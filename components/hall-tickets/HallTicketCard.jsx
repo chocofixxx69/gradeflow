@@ -126,13 +126,19 @@ export default function HallTicketCard({
                     </div>
                 </div>
 
-                {/* 4. Student Details Row 2: Name */}
-                <div className="aitm-card-name-row" style={{ display: 'grid', gridTemplateColumns: '70px 1fr', borderBottom: '1.5px solid #000000', fontSize: '11.5px' }}>
+                {/* 4. Student Details Row 2: Name & Class / Section */}
+                <div className="aitm-card-name-row" style={{ display: 'grid', gridTemplateColumns: '70px 1fr 55px 140px', borderBottom: '1.5px solid #000000', fontSize: '11.5px' }}>
                     <div style={{ padding: '3.5px 6px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>
                         Name
                     </div>
-                    <div style={{ padding: '3.5px 8px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    <div style={{ padding: '3.5px 8px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.02em', borderRight: '1.5px solid #000000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {student.name}
+                    </div>
+                    <div style={{ padding: '3.5px 4px', fontWeight: '800', borderRight: '1.5px solid #000000', textAlign: 'center', fontSize: '10.5px' }}>
+                        Class/Sec
+                    </div>
+                    <div style={{ padding: '3.5px 8px', fontWeight: '800', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {student.section ? (student.class_name ? `${student.class_name} (${student.section})` : `Sec ${student.section}`) : (student.class_name || '—')}
                     </div>
                 </div>
 

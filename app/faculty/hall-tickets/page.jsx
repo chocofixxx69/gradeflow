@@ -108,10 +108,11 @@ export default function HallTicketsPage() {
 function HallTicketsContent() {
     const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [], cohortMatrix: {} });
 
-    // Scope Selection. Faculty can select a Department, Semester, and one or multiple Classes.
+    // Scope Selection. Faculty can select Department -> Batch -> Class -> Semester.
     const [selectedClassIds, setSelectedClassIds] = useState([]);
     const [branch, setBranch] = useState('CS');
-    const [semester, setSemester] = useState(6);
+    const [batch, setBatch] = useState('2023');
+    const [semester, setSemester] = useState(7);
 
     // Students Data
     const [selectedUsns, setSelectedUsns] = useState(new Set());
@@ -190,24 +191,28 @@ function HallTicketsContent() {
     const { data: classesData } = useLive('/api/classes', { interval: LIVE.NORMAL });
     const classes = useMemo(() => classesData?.classes || [], [classesData]);
 
-    // Available classes filtered to the chosen Department & Semester
-    const availableBranchSemClasses = useMemo(() => {
+    // Available classes filtered to the chosen Department & Batch
+    const availableBatchClasses = useMemo(() => {
         const normBranch = canonicalBranchCode(branch) || branch;
         return classes.filter(c => {
             const bMatch = matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch);
-            const sMatch = Number(c.semester) === Number(semester);
-            return bMatch && sMatch;
+            const batchMatch = !batch || batch === 'all' || matchesBatch(c.batch, batch) || (c.name && c.name.includes(batch));
+            return bMatch && batchMatch;
         });
-    }, [classes, branch, semester]);
+    }, [classes, branch, batch]);
 
     // 2. Roster. If specific class(es) are selected, query by class_ids; otherwise
-    // query by branch & semester directly.
+    // query by branch, batch & semester.
     const rosterQuery = useMemo(() => {
         if (selectedClassIds.length > 0) {
             return { class_ids: selectedClassIds.join(',') };
         }
-        return { branch, semester: String(semester) };
-    }, [selectedClassIds, branch, semester]);
+        const q = { branch, semester: String(semester) };
+        if (batch && batch !== 'all') {
+            q.batch = batch;
+        }
+        return q;
+    }, [selectedClassIds, branch, batch, semester]);
 
     const {
         data: rosterData,
@@ -262,19 +267,60 @@ function HallTicketsContent() {
         });
     }, [meta?.branches, meta?.cohortMatrix]);
 
+    // Dynamic batch options derived from live database metadata, classes, and cohort matrix
+    const batchOptions = useMemo(() => {
+        const normBranch = canonicalBranchCode(branch) || branch;
+        const batchSet = new Set();
+        (meta?.batches || []).forEach(b => batchSet.add(String(b)));
+        classes.filter(c => matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch)).forEach(c => {
+            if (c.batch) batchSet.add(String(c.batch));
+        });
+        const branchMatrix = meta?.cohortMatrix?.[normBranch] || meta?.cohortMatrix?.[branch];
+        if (branchMatrix?.batches) {
+            Object.keys(branchMatrix.batches).forEach(b => batchSet.add(String(b)));
+        }
+        if (batchSet.size === 0) {
+            batchSet.add('2023');
+            batchSet.add('2024');
+        }
+        const sorted = Array.from(batchSet).sort().reverse();
+        const opts = sorted.map(b => {
+            const count = branchMatrix?.batches?.[b]?.total ?? 0;
+            const classCount = classes
+                .filter(c => (matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch)) && (c.batch === b || (c.name && c.name.includes(b))))
+                .reduce((sum, c) => sum + (c.student_count || 0), 0);
+            const displayCount = count > 0 ? count : classCount;
+            const badge = displayCount > 0 ? ` · ${displayCount} stu` : '';
+            return {
+                value: b,
+                label: `${b.slice(-2)} Batch (${b})${badge}`,
+                studentCount: displayCount
+            };
+        });
+        return [
+            { value: 'all', label: 'All Batches', studentCount: 0 },
+            ...opts
+        ];
+    }, [meta?.batches, meta?.cohortMatrix, branch, classes]);
+
     // Dynamic semester options with live student counts per semester
     const semesterOptions = useMemo(() => {
         const matrix = meta?.cohortMatrix || {};
         const cBranch = canonicalBranchCode(branch) || branch;
         const branchCohort = matrix[cBranch] || matrix[branch] || null;
-        const branchSemCounts = branchCohort?.semesters || {};
+        const batchCohort = batch && batch !== 'all' ? branchCohort?.batches?.[batch] : null;
+        const semCounts = batchCohort?.semesters || branchCohort?.semesters || {};
 
         return [1, 2, 3, 4, 5, 6, 7, 8].map(s => {
-            const count = branchSemCounts[s] || 0;
+            const count = semCounts[s] || 0;
             const roman = ROMAN_SEMESTERS[s] || String(s);
-            // Also count enrolled students across active classes for this sem
+            // Also count enrolled students across active classes for this sem & batch
             const classCount = classes
-                .filter(c => (matchesBranch(c.branch, cBranch) || matchesBranch(c.branch_code, cBranch)) && Number(c.semester) === Number(s))
+                .filter(c => {
+                    const bMatch = matchesBranch(c.branch, cBranch) || matchesBranch(c.branch_code, cBranch);
+                    const batchMatch = !batch || batch === 'all' || matchesBatch(c.batch, batch) || (c.name && c.name.includes(batch));
+                    return bMatch && batchMatch && Number(c.semester) === Number(s);
+                })
                 .reduce((sum, c) => sum + (c.student_count || 0), 0);
             const displayCount = count > 0 ? count : classCount;
             const badge = displayCount > 0 ? ` · ${displayCount} stu` : '';
@@ -284,7 +330,7 @@ function HallTicketsContent() {
                 studentCount: displayCount
             };
         });
-    }, [meta?.cohortMatrix, branch, classes]);
+    }, [meta?.cohortMatrix, branch, batch, classes]);
 
     // Auto-fill Timetable dynamically from live syllabus / subject_catalog in DB
     const autoFillSyllabus = useCallback(async (targetBranch = branch, targetSem = semester) => {
@@ -365,26 +411,52 @@ function HallTicketsContent() {
         const s = Number(newSem);
         setSemester(s);
         autoFillSyllabus(branch, s);
-        // Reset selected classes when semester changes so they match the new semester
-        setSelectedClassIds([]);
     }, [branch, autoFillSyllabus]);
 
-    // Class selection handlers
+    // Explicit Batch change handler: updates batch, searches matching classes and auto-aligns semester
+    const handleBatchChange = useCallback((newBatch) => {
+        setBatch(newBatch);
+        setSelectedClassIds([]);
+        const normBranch = canonicalBranchCode(branch) || branch;
+        const matchingClasses = classes.filter(c => {
+            const bMatch = matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch);
+            const batchMatch = !newBatch || newBatch === 'all' || matchesBatch(c.batch, newBatch) || (c.name && c.name.includes(newBatch));
+            return bMatch && batchMatch;
+        });
+        if (matchingClasses.length > 0 && matchingClasses[0].semester) {
+            const newSem = Number(matchingClasses[0].semester);
+            setSemester(newSem);
+            autoFillSyllabus(branch, newSem);
+        }
+    }, [branch, classes, autoFillSyllabus]);
+
+    // Class selection handler: when a class is selected, auto-aligns target semester to the class semester
     const toggleClassSelection = useCallback((id) => {
         setSelectedClassIds(prev => {
-            if (prev.includes(id)) {
-                return prev.filter(cId => cId !== id);
-            } else {
-                return [...prev, id];
+            const isRemoving = prev.includes(id);
+            const next = isRemoving ? prev.filter(cId => cId !== id) : [...prev, id];
+            if (!isRemoving) {
+                const targetClass = classes.find(c => c.id === id);
+                if (targetClass?.semester && Number(targetClass.semester) !== Number(semester)) {
+                    const newSem = Number(targetClass.semester);
+                    setSemester(newSem);
+                    autoFillSyllabus(branch, newSem);
+                }
             }
+            return next;
         });
-    }, []);
+    }, [classes, semester, branch, autoFillSyllabus]);
 
-    const selectAllBranchSemClasses = useCallback(() => {
-        if (availableBranchSemClasses.length > 0) {
-            setSelectedClassIds(availableBranchSemClasses.map(c => c.id));
+    const selectAllBatchClasses = useCallback(() => {
+        if (availableBatchClasses.length > 0) {
+            setSelectedClassIds(availableBatchClasses.map(c => c.id));
+            if (availableBatchClasses[0]?.semester) {
+                const newSem = Number(availableBatchClasses[0].semester);
+                setSemester(newSem);
+                autoFillSyllabus(branch, newSem);
+            }
         }
-    }, [availableBranchSemClasses]);
+    }, [availableBatchClasses, branch, autoFillSyllabus]);
 
     const deselectAllClasses = useCallback(() => {
         setSelectedClassIds([]);
@@ -393,8 +465,8 @@ function HallTicketsContent() {
     // Explicit Branch change handler
     const handleBranchChange = useCallback((newBranch) => {
         setBranch(newBranch);
-        autoFillSyllabus(newBranch, semester);
         setSelectedClassIds([]);
+        autoFillSyllabus(newBranch, semester);
     }, [semester, autoFillSyllabus]);
 
     // Update Exam Title when Semester, Exam Type, or Month/Year changes
@@ -601,7 +673,7 @@ function HallTicketsContent() {
                 doc.setFontSize(9.2);
                 doc.text(student.usn, usnSplitX + 18, row1Y + 3.8);
 
-                // 5. Student Details Row 2: Name (5.2mm)
+                // 5. Student Details Row 2: Name & Class / Section (5.2mm)
                 const row2Y = row1Y + row1Height;
                 doc.line(marginX, row2Y + row2Height, marginX + contentWidth, row2Y + row2Height);
 
@@ -613,6 +685,20 @@ function HallTicketsContent() {
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.8);
                 doc.text((student.name || '').toUpperCase(), marginX + 20, row2Y + 3.8);
+
+                // Right side of Row 2: Class / Section (strictly aligned with USN box above)
+                doc.line(usnSplitX, row2Y, usnSplitX, row2Y + row2Height);
+                doc.setFont('times', 'bold');
+                doc.setFontSize(8);
+                doc.text('Class/Sec', usnSplitX + 1.5, row2Y + 3.8);
+                doc.line(usnSplitX + 16, row2Y, usnSplitX + 16, row2Y + row2Height);
+
+                doc.setFont('times', 'bold');
+                doc.setFontSize(8.2);
+                const classLabelPdf = student.section
+                    ? (student.class_name ? `${student.class_name} (${student.section})` : `Sec ${student.section}`)
+                    : (student.class_name || '—');
+                doc.text(classLabelPdf, usnSplitX + 18, row2Y + 3.8);
 
                 // 6. Timetable + Photo Grid (Snug Fit without empty gaps)
                 const tableY = row2Y + row2Height;
@@ -946,11 +1032,11 @@ function HallTicketsContent() {
                             </div>
                         </CardHeader>
                         <CardContent style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {/* Row 1: Department & Semester */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '14px' }}>
+                            {/* Row 1: Department, Batch & Semester (Cascading Hierarchy) */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: '14px' }}>
                                 <div>
                                     <Select
-                                        label="Department"
+                                        label="1. Department"
                                         value={branch}
                                         onChange={e => handleBranchChange(e.target.value)}
                                         options={branchOptions}
@@ -958,7 +1044,15 @@ function HallTicketsContent() {
                                 </div>
                                 <div>
                                     <Select
-                                        label="Semester"
+                                        label="2. Academic Batch"
+                                        value={batch}
+                                        onChange={e => handleBatchChange(e.target.value)}
+                                        options={batchOptions}
+                                    />
+                                </div>
+                                <div>
+                                    <Select
+                                        label="4. Target Semester"
                                         value={semester}
                                         onChange={e => handleSemesterChange(e.target.value)}
                                         options={semesterOptions}
@@ -970,14 +1064,14 @@ function HallTicketsContent() {
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                        Class / Section (Select One or Multiple)
+                                        3. Class / Section Scope (Select One or Multiple)
                                     </label>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                        {availableBranchSemClasses.length > 0 && (
+                                        {availableBatchClasses.length > 0 && (
                                             <>
                                                 <button
                                                     type="button"
-                                                    onClick={selectAllBranchSemClasses}
+                                                    onClick={selectAllBatchClasses}
                                                     style={{
                                                         background: 'none',
                                                         border: 'none',
@@ -988,7 +1082,7 @@ function HallTicketsContent() {
                                                         padding: '2px 4px'
                                                     }}
                                                 >
-                                                    Select All ({availableBranchSemClasses.length})
+                                                    Select All ({availableBatchClasses.length})
                                                 </button>
                                                 <span style={{ color: 'var(--border)' }}>•</span>
                                             </>
@@ -1006,12 +1100,12 @@ function HallTicketsContent() {
                                                 padding: '2px 4px'
                                             }}
                                         >
-                                            Entire Semester Cohort
+                                            Entire Batch Cohort
                                         </button>
                                     </div>
                                 </div>
 
-                                {availableBranchSemClasses.length === 0 ? (
+                                {availableBatchClasses.length === 0 ? (
                                     <div style={{
                                         padding: '12px 14px',
                                         borderRadius: '8px',
@@ -1024,10 +1118,10 @@ function HallTicketsContent() {
                                     }}>
                                         <div>
                                             <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
-                                                Entire {branch} Semester {semester} Cohort
+                                                Entire {branch} {batch !== 'all' ? `Batch ${batch}` : ''} Semester {semester} Cohort
                                             </div>
                                             <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
-                                                No specific class sections found for Sem {semester}. Pulling all {filteredStudents.length} students in this cohort.
+                                                No specific class sections configured for {branch} {batch !== 'all' ? `Batch ${batch}` : ''}. Pulling all {filteredStudents.length} students in this cohort.
                                             </div>
                                         </div>
                                         <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>
@@ -1036,7 +1130,7 @@ function HallTicketsContent() {
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        {availableBranchSemClasses.map(c => {
+                                        {availableBatchClasses.map(c => {
                                             const isSelected = selectedClassIds.includes(c.id);
                                             return (
                                                 <div
@@ -1062,11 +1156,31 @@ function HallTicketsContent() {
                                                             style={{ cursor: 'pointer', accentColor: 'var(--primary)' }}
                                                         />
                                                         <div>
-                                                            <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>
-                                                                {c.name} {c.section ? `· Section ${c.section}` : ''}
+                                                            <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span>{c.name}</span>
+                                                                {c.section && (
+                                                                    <span style={{
+                                                                        fontSize: '10px',
+                                                                        fontWeight: 800,
+                                                                        color: '#1D4ED8',
+                                                                        background: 'rgba(59, 130, 246, 0.15)',
+                                                                        padding: '1px 6px',
+                                                                        borderRadius: '6px'
+                                                                    }}>
+                                                                        Sec {c.section}
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
-                                                                Semester {c.semester} · {c.student_count ?? 0} students
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                <span>Semester {c.semester}</span>
+                                                                <span>•</span>
+                                                                <span>{c.student_count ?? 0} students</span>
+                                                                {c.batch && (
+                                                                    <>
+                                                                        <span>•</span>
+                                                                        <span>Batch {c.batch}</span>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1078,7 +1192,7 @@ function HallTicketsContent() {
                                                         padding: '2px 8px',
                                                         borderRadius: '12px'
                                                     }}>
-                                                        {isSelected ? '✓ Included' : '+ Select'}
+                                                        {isSelected ? '✓ Selected' : '+ Select'}
                                                     </span>
                                                 </div>
                                             );
@@ -1094,7 +1208,7 @@ function HallTicketsContent() {
                                         </>
                                     ) : (
                                         <>
-                                            Roster includes <strong>all students</strong> in {branch} Semester {semester} ({filteredStudents.length} students).
+                                            Roster includes <strong>all students</strong> in {branch} {batch !== 'all' ? `Batch ${batch}` : ''} Semester {semester} ({filteredStudents.length} students).
                                         </>
                                     )}
                                 </div>
@@ -1270,16 +1384,28 @@ function HallTicketsContent() {
                                                         style={{ cursor: 'pointer' }}
                                                     />
                                                     <div>
-                                                        <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
-                                                            {s.name}
+                                                        <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span>{s.name}</span>
+                                                            {s.section && (
+                                                                <span style={{
+                                                                    fontSize: '9.5px',
+                                                                    fontWeight: 800,
+                                                                    color: 'var(--primary)',
+                                                                    background: 'rgba(59, 130, 246, 0.12)',
+                                                                    padding: '1px 5px',
+                                                                    borderRadius: '6px'
+                                                                }}>
+                                                                    Sec {s.section}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>
-                                                            {s.usn}
+                                                            {s.usn} {s.class_name ? `· ${s.class_name}` : ''}
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 600 }}>
-                                                    {s.branch}
+                                                    {s.branch_code || s.branch}
                                                 </span>
                                             </div>
                                         );

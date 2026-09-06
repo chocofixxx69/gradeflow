@@ -44,6 +44,19 @@ export async function GET(req) {
 
             if (rErr) throw rErr;
 
+            // Fetch photo_urls for students in these classes
+            const studentIds = (roster || []).map(r => r.student_id).filter(Boolean);
+            const photoMap = new Map();
+            if (studentIds.length > 0) {
+                const { data: photoData } = await supabaseAdmin
+                    .from('students')
+                    .select('id, photo_url')
+                    .in('id', studentIds);
+                (photoData || []).forEach(p => {
+                    if (p.photo_url) photoMap.set(p.id, p.photo_url);
+                });
+            }
+
             const seenUsns = new Set();
             let students = [];
             for (const r of (roster || [])) {
@@ -63,6 +76,9 @@ export async function GET(req) {
                     class_id: r.class_id,
                     class_name: r.class_name,
                     section: r.section,
+                    batch: r.batch,
+                    academic_year: r.academic_year,
+                    photo_url: photoMap.get(r.student_id) || null,
                 });
             }
 
@@ -119,8 +135,7 @@ export async function GET(req) {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
         }
 
-        // The semester parameter was parsed but never applied, so a 6th-semester
-        // selection still returned students from every other semester.
+        // Apply semester filter
         if (semester) {
             students = students.filter(s => Number(s.semester) === Number(semester));
         }
@@ -130,6 +145,37 @@ export async function GET(req) {
                 (s.usn && s.usn.toLowerCase().includes(search)) ||
                 (s.name && s.name.toLowerCase().includes(search))
             );
+        }
+
+        // Enrich cohort students with any assigned class & section from class_roster
+        const enrolledStudentIds = students.map(s => s.id).filter(Boolean);
+        if (enrolledStudentIds.length > 0) {
+            try {
+                const { data: memberships } = await supabaseAdmin
+                    .from('class_roster')
+                    .select('student_id, class_id, class_name, section, batch')
+                    .in('student_id', enrolledStudentIds);
+
+                const memberMap = new Map();
+                (memberships || []).forEach(m => {
+                    if (m.student_id && !memberMap.has(m.student_id)) {
+                        memberMap.set(m.student_id, m);
+                    }
+                });
+
+                students = students.map(s => {
+                    const mem = memberMap.get(s.id);
+                    return {
+                        ...s,
+                        class_id: mem?.class_id || null,
+                        class_name: mem?.class_name || null,
+                        section: mem?.section || null,
+                        batch: mem?.batch || s.year || null,
+                    };
+                });
+            } catch (rErr) {
+                console.warn('Could not enrich cohort students with class info:', rErr);
+            }
         }
 
         // Sort by USN ascending (e.g. 2AB23CS001 ... 2AB23CS084 ... 2AB24CS400)
