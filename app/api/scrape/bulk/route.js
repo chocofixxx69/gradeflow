@@ -49,6 +49,7 @@ export async function POST(req) {
                     faculty_id: faculty_id || null,
                     status: 'queued',
                     scheme,
+                    target_url: base_url.trim(),
                     notes: `Bulk Trigger via URL: ${base_url}`
                 };
             });
