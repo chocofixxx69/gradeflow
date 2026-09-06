@@ -24,6 +24,28 @@
 *   **📱 Modern UI:** Premium "Natural Charcoal" theme with glassmorphism effects and full mobile responsiveness.
 *   **🛡️ Data Integrity:** Advanced logic to handle "Sticky USN" sessions and ensure every USN is treated as a clean, isolated record.
 
+## 📂 Repository Structure
+
+```
+gradeflow/
+├── app/                  # Next.js 14 App Router (pages & serverless API endpoints)
+├── backend/              # Python VTU scraping engine, Captcha solver, and worker
+├── components/           # Reusable UI component library and layouts
+├── database/             # PostgreSQL schema and versioned migrations
+├── docs/                 # Architecture specifications, deployment and scraper guides
+├── lib/                  # Grading calculations, PDF parser, and Supabase client
+├── public/               # Static college logos and icons
+└── scripts/              # Database setup, catalog verification, and password migrations
+```
+
+## 📚 Documentation
+
+Detailed guides and technical references are organized in the [`docs/`](docs/) directory:
+*   [**System Architecture & Tech Stack**](docs/ARCHITECTURE.md) — Framework overview, hybrid PDF bridge, and grading engine.
+*   [**Production Deployment Guide**](docs/DEPLOYMENT_GUIDE.md) — Vercel web app, Render Docker worker, and Supabase config.
+*   [**Scraper Engine & Runtime**](docs/SCRAPER_GUIDE.md) — Headless Playwright worker, neural Captcha solver, and queue integration.
+*   [**Competitor Gap Analysis**](docs/COMPETITOR_GAP_ANALYSIS.md) — Benchmarks and system advantages over alternatives.
+
 ## 👨‍💻 Developed & Maintained By
 
 The GradeFlow system is built and maintained with a focus on academic excellence and technical precision.

@@ -3,7 +3,8 @@ import json
 import os
 import re
 
-sys.path.append('backend')
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(ROOT_DIR, 'backend'))
 from scrape_syllabus import CATALOG_2022, CATALOG_2025
 
 branch_map = {
@@ -38,13 +39,14 @@ for b_key, sems in data_dict.items():
 
 parsed_json = json.dumps(data_dict, indent=4)
 
-with open('lib/vtuGrades.js', 'r', encoding='utf-8') as f:
+vtu_grades_path = os.path.join(ROOT_DIR, 'lib', 'vtuGrades.js')
+with open(vtu_grades_path, 'r', encoding='utf-8') as f:
     js_content = f.read()
 
 # Replace export const VTU_SUBJECT_DATA = {}; or an already filled version
 js_content = re.sub(r'export const VTU_SUBJECT_DATA\s*=\s*\{[\s\S]*?\};', f'export const VTU_SUBJECT_DATA = {parsed_json};', js_content, flags=re.DOTALL)
 
-with open('lib/vtuGrades.js', 'w', encoding='utf-8') as f:
+with open(vtu_grades_path, 'w', encoding='utf-8') as f:
     f.write(js_content)
 
 print('Successfully injected VTU_SUBJECT_DATA into vtuGrades.js')

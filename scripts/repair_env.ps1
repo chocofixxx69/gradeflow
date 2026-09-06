@@ -1,4 +1,8 @@
-Write-Host "Starting GradeFlow Environment Optimization..." -ForegroundColor Cyan
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $RepoRoot -or $RepoRoot -eq '') { $RepoRoot = (Get-Location).Path }
+Set-Location $RepoRoot
+
+Write-Host "Starting GradeFlow Environment Optimization at $RepoRoot..." -ForegroundColor Cyan
 
 Remove-Item -Path ".venv" -Recurse -Force -ErrorAction SilentlyContinue
 
