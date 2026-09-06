@@ -25,6 +25,7 @@ def main():
     parser.add_argument("-t", "--tabs", type=int, default=None, help="Number of concurrent browser tabs (default: all portals in burst mode)")
     parser.add_argument("--burst", action="store_true", default=True, help="Enable full burst mode (default: True)")
     parser.add_argument("--faculty-id", default=None, help="Faculty ID for custom portal configurations")
+    parser.add_argument("-u", "--url", default=None, help="Target a specific VTU portal URL (e.g. reval or backlog portal)")
 
     args = parser.parse_args()
 
@@ -37,14 +38,16 @@ def main():
         sys.exit(1)
 
     usn = usn.strip().upper()
-    print(f"[INFO] Starting Burst Scrape for {usn} (Scheme: {args.scheme or 'auto-detect'})...", file=sys.stderr)
+    target_info = f"URL: {args.url}" if args.url else f"Scheme: {args.scheme or 'auto-detect'}"
+    print(f"[INFO] Starting Scrape for {usn} ({target_info})...", file=sys.stderr)
 
     found = scrape_all_semesters(
         usn,
         faculty_id=args.faculty_id,
         scheme=args.scheme,
         burst=args.burst,
-        concurrency=args.tabs
+        concurrency=args.tabs,
+        target_url=args.url
     )
 
     if found:

@@ -29,8 +29,9 @@ def _process_single_job(job) -> bool:
     job_id = job["id"]
     faculty_id = job.get("faculty_id")
     job_scheme = job.get("scheme")
+    target_url = job.get("target_url")
 
-    print(f"\n{'─' * 50}\n  Processing: {usn} (Job {job_id[:8]}...)\n{'─' * 50}")
+    print(f"\n{'─' * 50}\n  Processing: {usn} (Job {job_id[:8]}...{f' -> Targeted URL: {target_url}' if target_url else ''})\n{'─' * 50}")
 
     # Mark as running
     supabase.table("scraper_jobs").update({
@@ -39,7 +40,7 @@ def _process_single_job(job) -> bool:
     }).eq("id", job_id).execute()
 
     try:
-        success = scrape_all_semesters(usn, faculty_id=faculty_id, scheme=job_scheme)
+        success = scrape_all_semesters(usn, faculty_id=faculty_id, scheme=job_scheme, target_url=target_url)
         final_status = "finished" if success else "no_result"
         supabase.table("scraper_jobs").update({
             "status": final_status,

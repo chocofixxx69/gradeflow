@@ -653,27 +653,32 @@ def _recalculate_remarks(usn):
     except Exception as e:
         print(f"      [WARNING] Remarks Error: {e}")
 
-async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None, default_name: str = None):
+async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None, default_name: str = None, target_url: str = None):
     usn = usn.strip().upper()
     target_scheme = str(scheme).strip() if scheme else deduce_scheme_from_usn(usn)
-    urls = get_vtu_urls(faculty_id, scheme=target_scheme)
-    if not urls:
-        print(f"\n[ENGINE] 0 active URLs for {target_scheme} Scheme. Skipping {usn}.", file=sys.stderr)
-        return False
 
-    adm_yr = None
-    m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', usn)
-    if m:
-        try: adm_yr = int(m.group(1))
-        except ValueError: pass
+    if target_url and target_url.strip():
+        urls = [target_url.strip()]
+        print(f"\n[ENGINE] Targeted Single-Portal Mode: Scraping {usn} ONLY at {target_url}...", file=sys.stderr, flush=True)
+    else:
+        urls = get_vtu_urls(faculty_id, scheme=target_scheme)
+        if not urls:
+            print(f"\n[ENGINE] 0 active URLs for {target_scheme} Scheme. Skipping {usn}.", file=sys.stderr)
+            return False
 
-    # Filter out portals held prior to admission year
-    if adm_yr == 24:
-        urls = [u for u in urls if not re.search(r'(?:23|cbcs24|RVcbcs24)/index\.php', u)]
-    elif adm_yr == 23:
-        urls = [u for u in urls if not re.search(r'(?:JFEcbcs23|JJEcbcs23|MakeUpEcbcs23)/index\.php', u)]
+        adm_yr = None
+        m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', usn)
+        if m:
+            try: adm_yr = int(m.group(1))
+            except ValueError: pass
 
-    print(f"\n[ENGINE] Scraping {usn} under {target_scheme} Scheme ({len(urls)} portals)...", file=sys.stderr, flush=True)
+        # Filter out portals held prior to admission year
+        if adm_yr == 24:
+            urls = [u for u in urls if not re.search(r'(?:23|cbcs24|RVcbcs24)/index\.php', u)]
+        elif adm_yr == 23:
+            urls = [u for u in urls if not re.search(r'(?:JFEcbcs23|JJEcbcs23|MakeUpEcbcs23)/index\.php', u)]
+
+        print(f"\n[ENGINE] Scraping {usn} under {target_scheme} Scheme ({len(urls)} portals)...", file=sys.stderr, flush=True)
 
     # Warmup EasyOCR in background thread if not already loaded
     threading.Thread(target=get_easyocr, daemon=True).start()
@@ -800,7 +805,7 @@ async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, bu
         print(f"[WARNING] {usn}: No results")
         return False
 
-def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None, default_name: str = None) -> bool:
+def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = True, concurrency: int = None, default_name: str = None, target_url: str = None) -> bool:
     """Universal synchronous wrapper for the async engine.
     Ensures safe execution in any thread, event loop, CLI, or server environment.
     """
@@ -815,11 +820,11 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(
                     asyncio.run,
-                    _async_scrape_all_semesters(usn, faculty_id, scheme, burst, concurrency, default_name)
+                    _async_scrape_all_semesters(usn, faculty_id, scheme, burst, concurrency, default_name, target_url=target_url)
                 ).result()
         else:
             return asyncio.run(
-                _async_scrape_all_semesters(usn, faculty_id, scheme, burst, concurrency, default_name)
+                _async_scrape_all_semesters(usn, faculty_id, scheme, burst, concurrency, default_name, target_url=target_url)
             )
     except Exception as e:
         print(f"[ENGINE FATAL] {usn}: {e}", file=sys.stderr, flush=True)
