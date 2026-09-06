@@ -670,7 +670,21 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                             </td>
                                             <td style={s.td}>
                                                 {cls ? (
-                                                    <span style={{ fontWeight: 700, color: 'var(--tx-main)' }}>{cls.name}</span>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: 'var(--tx-main)' }}>{cls.name}</div>
+                                                        <div style={{ display: 'flex', gap: '4px', marginTop: '2px', alignItems: 'center' }}>
+                                                            {cls.section && (
+                                                                <span style={{ fontSize: '10px', fontWeight: 800, color: '#1D4ED8', background: 'rgba(59, 130, 246, 0.12)', padding: '1px 5px', borderRadius: '4px' }}>
+                                                                    Sec {cls.section}
+                                                                </span>
+                                                            )}
+                                                            {cls.batch && (
+                                                                <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', background: 'rgba(16, 185, 129, 0.12)', padding: '1px 5px', borderRadius: '4px' }}>
+                                                                    {cls.batch} Batch
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 ) : (
                                                     <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontStyle: 'italic' }}>All Sections</span>
                                                 )}
@@ -879,7 +893,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                         <option value="">All Class Sections</option>
                                         {matchingClasses.map(c => (
                                             <option key={c.id} value={c.id}>
-                                                {c.name} {c.section ? `(Sec ${c.section})` : ''} · Sem {c.semester}
+                                                {c.name} {c.section ? `(Sec ${c.section})` : ''} {c.batch ? `· [${c.batch} Batch]` : ''} · Sem {c.semester}
                                             </option>
                                         ))}
                                     </select>

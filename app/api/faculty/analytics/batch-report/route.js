@@ -50,12 +50,19 @@ export async function GET(req) {
             { data: rawClasses },
             { data: rawClassStudents }
         ] = await Promise.all([
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section'),
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch'),
             supabaseAdmin.from('class_students').select('class_id, usn')
         ]);
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
         const usnToSectionMap = new Map();
-        (rawClassStudents || []).forEach(cs => {
+        const sortedClassStudents = [...(rawClassStudents || [])].sort((a, b) => {
+            const cA = classById.get(a.class_id);
+            const cB = classById.get(b.class_id);
+            const aScore = (cA && cA.batch === batch ? 2 : 0) + (cA && Number(cA.semester) <= upToSemester ? 1 : 0);
+            const bScore = (cB && cB.batch === batch ? 2 : 0) + (cB && Number(cB.semester) <= upToSemester ? 1 : 0);
+            return aScore - bScore;
+        });
+        sortedClassStudents.forEach(cs => {
             const c = classById.get(cs.class_id);
             if (c && c.section) {
                 usnToSectionMap.set(cs.usn, c.section.toUpperCase().trim());

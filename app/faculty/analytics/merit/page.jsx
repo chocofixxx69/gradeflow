@@ -107,6 +107,7 @@ function RankingsAndMeritContent() {
         const query = { branch };
         if (batch) query.batch = batch;
         if (semester && semester !== 'all') query.semester = semester;
+        if (section) query.section = section;
 
         const cached = getCachedApiData('/api/faculty/analytics/merit-list', query);
         if (cached) {
@@ -126,7 +127,7 @@ function RankingsAndMeritContent() {
         } finally {
             setMeritLoading(false);
         }
-    }, [branch, batch, semester]);
+    }, [branch, batch, semester, section]);
 
     // 3. Fetch Leaderboard
     const loadLeaderboard = useCallback(async () => {
@@ -144,6 +145,21 @@ function RankingsAndMeritContent() {
             setLeaderboardLoading(false);
         }
     }, [branch, section, viewSemester, subjectCode]);
+
+    // Dynamically derive available sections from classes, meta, and leaderboard
+    const availableSections = useMemo(() => {
+        const fromLeaderboard = leaderboardData?.availableSections || [];
+        const fromClasses = (meta?.classes || [])
+            .filter(c => !branch || c.branch === branch)
+            .map(c => (c.section || '').trim().toUpperCase())
+            .filter(Boolean);
+        const fromMeta = meta?.sections || [];
+        const combined = new Set([...fromLeaderboard, ...fromClasses, ...fromMeta]);
+        if (combined.size === 0) {
+            ['A', 'B', 'C', 'D'].forEach(s => combined.add(s));
+        }
+        return Array.from(combined).sort();
+    }, [leaderboardData?.availableSections, meta?.classes, meta?.sections, branch]);
 
     useEffect(() => {
         if (viewTab === 'merit') {
@@ -504,6 +520,16 @@ function RankingsAndMeritContent() {
                             options={(meta.batches || []).map(b => ({ value: b, label: `Batch ${b}` }))}
                         />
 
+                        <Select
+                            label="Section"
+                            value={section}
+                            onChange={e => setSection(e.target.value)}
+                            options={[
+                                { value: '', label: availableSections.length > 0 ? `All Sections (${availableSections.join(', ')})` : 'All Sections' },
+                                ...availableSections.map(s => ({ value: s, label: `Section ${s}` })),
+                            ]}
+                        />
+
                         {viewTab === 'merit' ? (
                             <Select
                                 label="Semester Scope"
@@ -516,15 +542,6 @@ function RankingsAndMeritContent() {
                             />
                         ) : (
                             <>
-                                <Select
-                                    label="Section"
-                                    value={section}
-                                    onChange={e => setSection(e.target.value)}
-                                    options={[
-                                        { value: '', label: `All Sections (${(leaderboardData?.availableSections || []).length || 0})` },
-                                        ...(leaderboardData?.availableSections || []).map(s => ({ value: s, label: `Section ${s}` })),
-                                    ]}
-                                />
                                 {(leaderboardScopeTab === 'semester' || leaderboardScopeTab === 'subject') && (
                                     <Select
                                         label="Semester"
@@ -685,6 +702,19 @@ function RankingsAndMeritContent() {
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
                                                             {s.name}
+                                                            {s.section && (
+                                                                <span style={{
+                                                                    fontSize: '10px',
+                                                                    fontWeight: 800,
+                                                                    color: '#1D4ED8',
+                                                                    background: 'rgba(59, 130, 246, 0.12)',
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '4px',
+                                                                    marginLeft: '8px'
+                                                                }}>
+                                                                    Sec {s.section}
+                                                                </span>
+                                                            )}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--tx-main)' }}>
                                                             {s.gpa.toFixed(2)}

@@ -22,6 +22,7 @@ const DEFAULT_FILTERS = {
     semester: 'all',
     classId: 'all',
     section: 'all',
+    batch: 'all',
 };
 
 const AnalyticsFiltersContext = createContext(null);
@@ -58,14 +59,20 @@ export function AnalyticsFiltersProvider({ children }) {
         const branches = new Set();
         const semesters = new Set();
         const sections = new Set();
+        const batches = new Set();
         const classOpts = [];
 
         classes.forEach(cls => {
             if (cls.branch && cls.branch !== '—') branches.add(cls.branch);
             if (cls.semester && cls.semester !== '—') semesters.add(String(cls.semester));
             if (cls.section) sections.add(cls.section);
+            if (cls.batch) batches.add(String(cls.batch));
             classOpts.push({ label: cls.name || 'Unnamed Class', value: cls.id });
         });
+
+        if (sections.size === 0) {
+            ['A', 'B', 'C', 'D'].forEach(s => sections.add(s));
+        }
 
         return {
             branch: [
@@ -83,6 +90,10 @@ export function AnalyticsFiltersProvider({ children }) {
             section: [
                 { label: 'All sections', value: 'all' },
                 ...Array.from(sections).sort().map(s => ({ label: s, value: s })),
+            ],
+            batch: [
+                { label: 'All batches', value: 'all' },
+                ...Array.from(batches).sort().reverse().map(b => ({ label: `${b} Batch`, value: b })),
             ],
         };
     }, [classes]);

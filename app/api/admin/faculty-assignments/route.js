@@ -50,7 +50,7 @@ export async function GET(req) {
         const client = getAdminClient();
         let query = client
             .from('faculty_subject_assignments')
-            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at, faculty_onboarding(id, full_name, email, department), classes(id, name, branch, semester, section)')
+            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at, faculty_onboarding(id, full_name, email, department), classes(id, name, branch, semester, section, batch)')
             .order('created_at', { ascending: false });
 
         if (facultyId) query = query.eq('faculty_id', facultyId);
@@ -63,7 +63,7 @@ export async function GET(req) {
         ] = await Promise.all([
             query,
             client.from('faculty_onboarding').select('id, full_name, email, department, designation, status').eq('status', 'approved').order('full_name', { ascending: true }),
-            client.from('classes').select('id, name, branch, semester, section').order('name', { ascending: true }),
+            client.from('classes').select('id, name, branch, semester, section, batch').order('name', { ascending: true }),
             getSubjectCatalog(client)
         ]);
 

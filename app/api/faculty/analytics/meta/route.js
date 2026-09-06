@@ -347,10 +347,18 @@ export async function GET(req) {
         });
         const semesters = Array.from(semSet).sort((a, b) => a - b);
 
+        // Dynamically compute institutional sections from classes with standard fallbacks
+        const sectionSet = new Set(['A', 'B', 'C', 'D']);
+        (rawClasses || []).forEach(c => {
+            if (c.section) sectionSet.add(String(c.section).trim().toUpperCase());
+        });
+        const sections = Array.from(sectionSet).sort();
+
         const payload = {
             batches,
             branches,
             semesters,
+            sections,
             subjects,
             classes: rawClasses || [],
             cohortMatrix,

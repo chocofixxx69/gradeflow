@@ -43,6 +43,7 @@ function StudentsDirectoryContent() {
     const [branch, setBranch] = useState('');
     const [semester, setSemester] = useState('all');
     const [batch, setBatch] = useState('');
+    const [section, setSection] = useState('all');
     const [status, setStatus] = useState('all');
     const [backlogsFilter, setBacklogsFilter] = useState('all');
     const [search, setSearch] = useState('');
@@ -68,7 +69,9 @@ function StudentsDirectoryContent() {
                     setMeta({
                         branches: validBranches,
                         batches: validBatches,
-                        semesters: res.semesters || [1, 2, 3, 4, 5, 6, 7, 8]
+                        semesters: res.semesters || [1, 2, 3, 4, 5, 6, 7, 8],
+                        classes: res.classes || [],
+                        sections: res.sections || ['A', 'B', 'C', 'D']
                     });
                 }
             } catch (err) {
@@ -78,6 +81,13 @@ function StudentsDirectoryContent() {
         loadMeta();
     }, []);
 
+    // Dynamically derive available sections from classes & metadata
+    const availableSections = useMemo(() => {
+        const fromClasses = (meta.classes || []).map(c => (c.section || '').toUpperCase().trim()).filter(Boolean);
+        const fromMeta = meta.sections || [];
+        return Array.from(new Set(['A', 'B', 'C', 'D', ...fromClasses, ...fromMeta])).sort();
+    }, [meta.classes, meta.sections]);
+
     // 2. Fetch paginated students
     const loadStudents = useCallback(async () => {
         setLoading(true);
@@ -86,6 +96,7 @@ function StudentsDirectoryContent() {
             if (branch) query.branch = branch;
             if (semester && semester !== 'all') query.semester = semester;
             if (batch) query.batch = batch;
+            if (section && section !== 'all') query.section = section;
             if (status !== 'all') query.status = status;
             if (backlogsFilter !== 'all') query.backlogsFilter = backlogsFilter;
             if (search) query.search = search;
@@ -100,7 +111,7 @@ function StudentsDirectoryContent() {
         } finally {
             setLoading(false);
         }
-    }, [page, limit, branch, semester, batch, status, backlogsFilter, search]);
+    }, [page, limit, branch, semester, batch, section, status, backlogsFilter, search]);
 
     useEffect(() => {
         loadStudents();
@@ -116,13 +127,14 @@ function StudentsDirectoryContent() {
     const handleExportExcel = async () => {
         const XLSX = await getXLSX();
         const wb = XLSX.utils.book_new();
-        const headers = ['#', 'USN', 'Name', 'Department', 'Semester', 'Batch', 'CGPA', 'Backlogs Count', 'Backlog Credits', 'Status'];
+        const headers = ['#', 'USN', 'Name', 'Department', 'Semester', 'Section', 'Batch', 'CGPA', 'Backlogs Count', 'Backlog Credits', 'Status'];
         const rows = (students || []).map((s, idx) => [
             (page - 1) * limit + idx + 1,
             s.usn,
             s.name,
             s.branch,
             s.semester,
+            s.section || '—',
             s.year || '—',
             s.cgpa !== null ? s.cgpa.toFixed(2) : '—',
             s.total_backlogs,
@@ -145,15 +157,16 @@ function StudentsDirectoryContent() {
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Total: ${pagination.total} Students | Department: ${branch || 'All'} | Semester: ${semester} | Batch: ${batch || 'All'} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
+        doc.text(`Total: ${pagination.total} Students | Department: ${branch || 'All'} | Semester: ${semester} | Section: ${section || 'All'} | Batch: ${batch || 'All'} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
-        const tableHead = [['#', 'USN', 'Student Name', 'Branch', 'Sem', 'CGPA', 'Backlog Status']];
+        const tableHead = [['#', 'USN', 'Student Name', 'Branch', 'Sem', 'Sec', 'CGPA', 'Backlog Status']];
         const tableBody = (students || []).map((s, idx) => [
             (page - 1) * limit + idx + 1,
             s.usn,
             s.name,
             s.branch,
             s.semester,
+            s.section || '—',
             s.cgpa !== null ? s.cgpa.toFixed(2) : '—',
             s.total_backlogs > 0 ? `${s.total_backlogs} Sub (${s.backlog_credits} Cr)` : 'Clear'
         ]);
@@ -242,6 +255,21 @@ function StudentsDirectoryContent() {
                         </div>
                         <div>
                             <Select
+                                label="Section"
+                                value={section}
+                                onChange={e => handleFilterChange(setSection, e.target.value)}
+                                options={[
+                                    { value: 'all', label: 'All Sections' },
+                                    ...availableSections.map(s => ({
+                                        value: s,
+                                        label: `Section ${s}`
+                                    })),
+                                    { value: 'UNASSIGNED', label: 'Unassigned (No Class)' }
+                                ]}
+                            />
+                        </div>
+                        <div>
+                            <Select
                                 label="Backlogs Status"
                                 value={backlogsFilter}
                                 onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
@@ -304,7 +332,7 @@ function StudentsDirectoryContent() {
                                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '140px' }}>USN</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left' }}>Student Name</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '140px' }}>Department</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'center', width: '90px' }}>Semester</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'center', width: '105px' }}>Sem & Sec</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'center', width: '90px' }}>CGPA</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '180px' }}>Backlogs</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'center', width: '110px' }}>Actions</th>
@@ -362,8 +390,17 @@ function StudentsDirectoryContent() {
                                             <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 600 }}>
                                                 {s.branch}
                                             </td>
-                                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700 }}>
-                                                Sem {s.semester}
+                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 700, color: 'var(--tx-main)' }}>Sem {s.semester}</div>
+                                                {s.section ? (
+                                                    <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 800 }}>
+                                                        Sec {s.section}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-dim)', fontSize: '10px', fontWeight: 600 }}>
+                                                        No Sec
+                                                    </span>
+                                                )}
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 900, color: s.cgpa >= 8.0 ? '#10B981' : s.cgpa >= 5.0 ? 'var(--primary)' : s.cgpa > 0 ? '#EF4444' : 'var(--tx-dim)' }}>
                                                 {s.cgpa !== null && s.cgpa > 0 ? s.cgpa.toFixed(2) : '—'}

@@ -28,17 +28,51 @@ export async function GET(req) {
             ? parseInt(searchParams.get('semester'), 10) 
             : null;
         const batch = searchParams.get('batch') || '';
+        const section = (searchParams.get('section') || 'all').trim().toUpperCase();
+        const classId = searchParams.get('classId') || '';
         const search = (searchParams.get('search') || '').trim().toLowerCase();
         const status = searchParams.get('status') || 'all'; // 'all' | 'active' | 'inactive'
         const backlogsFilter = searchParams.get('backlogsFilter') || 'all'; // 'all' | 'clear' | 'backlogs'
 
-        const cacheKey = `students_dir:${page}:${limit}:${branch}:${semester || 'all'}:${batch}:${search}:${status}:${backlogsFilter}`;
+        const cacheKey = `students_dir:${page}:${limit}:${branch}:${semester || 'all'}:${batch}:${section}:${classId}:${search}:${status}:${backlogsFilter}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Build dynamic query for students without arbitrary caps
+        // 1. Fetch classes & class_students for dynamic section resolution
+        const [
+            { data: rawClasses },
+            { data: rawClassStudents }
+        ] = await Promise.all([
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch'),
+            supabaseAdmin.from('class_students').select('class_id, usn')
+        ]);
+
+        const classById = new Map((rawClasses || []).map(c => [c.id, c]));
+        const usnToClassMap = new Map();
+        (rawClassStudents || []).forEach(cs => {
+            const c = classById.get(cs.class_id);
+            if (c) {
+                const existing = usnToClassMap.get(cs.usn);
+                if (!existing || (!existing.section && c.section)) {
+                    usnToClassMap.set(cs.usn, {
+                        classId: c.id,
+                        className: c.name,
+                        section: (c.section || '').toUpperCase().trim(),
+                        batch: c.batch,
+                        semester: c.semester,
+                        branch: c.branch
+                    });
+                }
+            }
+        });
+
+        const availableSections = Array.from(new Set(
+            (rawClasses || []).map(c => (c.section || '').toUpperCase().trim()).filter(Boolean)
+        )).sort();
+
+        // 2. Build dynamic query for students without arbitrary caps
         let allStudents = [];
         let from = 0;
         const pageSize = 1000;
@@ -68,13 +102,31 @@ export async function GET(req) {
 
         let students = allStudents;
 
-        // 2. Client-side filter for branch, batch & text search
+        // 3. Client-side filter for branch, batch, section & text search
         if (branch && branch !== 'ALL') {
             students = students.filter(s => matchesBranch(s, branch));
         }
 
         if (batch && batch !== 'all') {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        }
+
+        if (section && section !== 'ALL') {
+            if (section === 'UNASSIGNED') {
+                students = students.filter(s => !usnToClassMap.has(s.usn));
+            } else {
+                students = students.filter(s => {
+                    const info = usnToClassMap.get(s.usn);
+                    return info && info.section === section;
+                });
+            }
+        }
+
+        if (classId) {
+            students = students.filter(s => {
+                const info = usnToClassMap.get(s.usn);
+                return info && info.classId === classId;
+            });
         }
 
         if (search) {
@@ -85,7 +137,7 @@ export async function GET(req) {
             );
         }
 
-        // Helper function to enrich student records with live CGPA and backlogs
+        // Helper function to enrich student records with live CGPA, backlogs & section
         const enrichList = async (targetStudents) => {
             const usns = targetStudents.map(s => s.usn);
             if (usns.length === 0) return [];
@@ -146,6 +198,8 @@ export async function GET(req) {
                     if (totalCr > 0) cgpa = Number((totalPoints / totalCr).toFixed(2));
                 }
 
+                const classInfo = usnToClassMap.get(s.usn);
+
                 return {
                     id: s.id,
                     usn: s.usn,
@@ -158,6 +212,9 @@ export async function GET(req) {
                     is_inactive: Boolean(s.is_suspended),
                     is_suspended: Boolean(s.is_suspended),
                     lateral_entry: isLateralEntry(s.usn, s.lateral_entry),
+                    section: classInfo?.section || null,
+                    className: classInfo?.className || null,
+                    classId: classInfo?.classId || null,
                     cgpa,
                     total_backlogs: backlogInfo.totalBacklogs,
                     backlog_credits: backlogCredits,
@@ -192,6 +249,9 @@ export async function GET(req) {
                 page,
                 limit,
                 totalPages: Math.ceil(totalStudents / limit) || 1
+            },
+            meta: {
+                sections: availableSections
             }
         };
 

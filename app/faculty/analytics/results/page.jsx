@@ -69,6 +69,7 @@ function ExamResultsHubContent() {
         const relevantClasses = classes.filter(c => {
             if (branch && branch !== 'ALL' && norm(c.branch) !== norm(branch)) return false;
             if (viewTab !== 'batch' && semester && c.semester && Number(c.semester) !== Number(semester)) return false;
+            if (batch && batch !== 'ALL' && c.batch && c.batch !== batch) return false;
             return true;
         });
         const sectionSet = new Set(relevantClasses.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean));
@@ -77,8 +78,13 @@ function ExamResultsHubContent() {
                 if (c.section) sectionSet.add(c.section.trim().toUpperCase());
             });
         }
+        if (sectionSet.size === 0) {
+            sectionSet.add('A');
+            sectionSet.add('B');
+            sectionSet.add('C');
+        }
         return Array.from(sectionSet).sort();
-    }, [meta.classes, branch, semester, viewTab]);
+    }, [meta.classes, branch, semester, batch, viewTab]);
 
     // Tab 1: Semester Analysis States
     const [viewMode, setViewMode] = useState('credits'); // 'credits' | 'marks'

@@ -24,22 +24,50 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
+        const section = (searchParams.get('section') || '').toUpperCase().trim();
         const semester = searchParams.get('semester') && searchParams.get('semester') !== 'all'
             ? parseInt(searchParams.get('semester'), 10)
             : null;
 
-        const cacheKey = `merit_list:${branch}:${batch}:${semester || 'all'}`;
+        const cacheKey = `merit_list:${branch}:${batch}:${semester || 'all'}:${section || 'all'}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students dynamically for this branch without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
+        // 1. Fetch students, classes, and class_students dynamically
+        const [
+            rawStudents,
+            { data: rawClasses },
+            { data: rawClassStudents }
+        ] = await Promise.all([
+            fetchDynamicStudents(supabaseAdmin, { branch }),
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch'),
+            supabaseAdmin.from('class_students').select('class_id, usn')
+        ]);
+
+        const classById = new Map((rawClasses || []).map(c => [c.id, c]));
+        const usnToSectionMap = new Map();
+        const sortedClassStudents = [...(rawClassStudents || [])].sort((a, b) => {
+            const cA = classById.get(a.class_id);
+            const cB = classById.get(b.class_id);
+            const aScore = (cA && (!semester || Number(cA.semester) === Number(semester)) ? 2 : 0) + (cA && cA.batch === batch ? 1 : 0);
+            const bScore = (cB && (!semester || Number(cB.semester) === Number(semester)) ? 2 : 0) + (cB && cB.batch === batch ? 1 : 0);
+            return aScore - bScore;
+        });
+        sortedClassStudents.forEach(cs => {
+            const c = classById.get(cs.class_id);
+            if (c && c.section) {
+                usnToSectionMap.set(cs.usn, c.section.toUpperCase().trim());
+            }
+        });
 
         let students = rawStudents || [];
         if (batch) {
             students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        }
+        if (section && section !== 'ALL') {
+            students = students.filter(s => usnToSectionMap.get(s.usn) === section);
         }
 
         if (students.length === 0) {
@@ -101,6 +129,7 @@ export async function GET(req) {
                 usn: s.usn,
                 name: s.name || s.usn,
                 branch: s.branch,
+                section: usnToSectionMap.get(s.usn) || null,
                 isLE: Boolean(s.lateral_entry),
                 gpa: finalGpa,
                 totalMarks,
@@ -186,7 +215,8 @@ export async function GET(req) {
                 avgScore,
                 department: branch,
                 batch: batch || 'All Batches',
-                semester: semester ? `Semester ${semester}` : 'Overall Cumulative'
+                semester: semester ? `Semester ${semester}` : 'Overall Cumulative',
+                section: section && section !== 'ALL' ? `Section ${section}` : 'All Sections'
             },
             podium,
             rankedStudents

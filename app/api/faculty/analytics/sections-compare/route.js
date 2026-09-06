@@ -70,7 +70,7 @@ export async function GET(req) {
             { data: rawClassStudents },
             { data: rawFaculty }
         ] = await Promise.all([
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, faculty_id'),
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, faculty_id'),
             supabaseAdmin.from('class_students').select('class_id, usn'),
             supabaseAdmin.from('faculty_onboarding').select('id, full_name, email')
         ]);
@@ -79,27 +79,26 @@ export async function GET(req) {
         const facultyById = new Map((rawFaculty || []).map(f => [f.id, f]));
         const usnToSectionMap = new Map();
 
-        (rawClassStudents || []).forEach(cs => {
+        const sortedClassStudents = [...(rawClassStudents || [])].sort((a, b) => {
+            const cA = classById.get(a.class_id);
+            const cB = classById.get(b.class_id);
+            const aScore = (cA && Number(cA.semester) === semester ? 2 : 0) + (cA && cA.batch === batch ? 1 : 0);
+            const bScore = (cB && Number(cB.semester) === semester ? 2 : 0) + (cB && cB.batch === batch ? 1 : 0);
+            return aScore - bScore;
+        });
+
+        sortedClassStudents.forEach(cs => {
             const c = classById.get(cs.class_id);
             if (c && c.section) {
                 usnToSectionMap.set(cs.usn, c.section.toUpperCase());
             }
         });
 
-        // 4. Sections list — REAL sections only, ever. A "section" here always
-        // means a class actually created in Classes & Sections (app/faculty/classes)
-        // with students actually rostered into it via class_students. There used
-        // to be a fallback that invented 'A'/'B'/'C' buckets and evenly chunked
-        // every student without a real class assignment into them by array index
-        // — meaning "Section Topper" was just whichever student landed first in an
-        // arbitrary USN-sorted slice, not the actual top student of any real
-        // section. sectionMode ('2'/'3'/'4') now only controls how many of the
-        // real detected sections to show (capped), never invents ones that don't
-        // exist; students with no real class/section assignment are reported
-        // separately as unsectioned rather than silently folded into a fake one.
+        // 4. Sections list — REAL sections only, ever.
         const matchingClasses = (rawClasses || []).filter(c =>
             (c.semester ? Number(c.semester) === semester : true) &&
-            (branch === 'ALL' || matchesBranch(c.branch, branch))
+            (branch === 'ALL' || matchesBranch(c.branch, branch)) &&
+            (!batch || batch === 'ALL' || !c.batch || c.batch === batch)
         );
         const detectedSections = Array.from(new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean))).sort();
 

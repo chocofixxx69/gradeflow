@@ -69,6 +69,9 @@ export async function GET(req) {
             const matchesBranch = !filters.branch || (c.branch || '').toUpperCase().includes(String(filters.branch).toUpperCase());
             if (matchesBranch && c.section) sectionSet.add(c.section);
         });
+        if (sectionSet.size === 0) {
+            ['A', 'B', 'C'].forEach(s => sectionSet.add(s));
+        }
         const availableSections = Array.from(sectionSet).sort();
 
         const { students, recordsByUsn, subjectMarks, catalogIndex } = dataset;

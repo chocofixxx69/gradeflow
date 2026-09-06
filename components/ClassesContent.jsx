@@ -102,16 +102,55 @@ export function ClassesContent({ embedded = false }) {
     const [branchFilter, setBranchFilter] = useState('all');
     const [sectionFilter, setSectionFilter] = useState('all');
     const [semesterFilter, setSemesterFilter] = useState('all');
+    const [batchFilter, setBatchFilter] = useState('all');
+    const [nameIsManual, setNameIsManual] = useState(false);
+
+    const suggestClassName = (bCode, sem, sec, batchYear) => {
+        const b = bCode || 'CS';
+        const s = sem ? `Sem ${sem}` : '';
+        const sc = sec && sec !== 'General' ? `(Sec ${sec})` : (sec === 'General' ? '(General)' : '');
+        const bt = batchYear ? `${batchYear} Batch` : '';
+        return [b, s, sc, bt].filter(Boolean).join(' - ');
+    };
+
+    const handleNewClassChange = (patch) => {
+        setNewClass(prev => {
+            const updated = { ...prev, ...patch };
+            if (!nameIsManual || !updated.name?.trim()) {
+                updated.name = suggestClassName(updated.branch, updated.semester, updated.section, updated.batch);
+            }
+            return updated;
+        });
+    };
+
+    const openCreateClassModal = () => {
+        setNameIsManual(false);
+        const initBranch = branches[0]?.code || 'CS';
+        const initSem = 3;
+        const initSec = 'A';
+        const initBatch = '2023';
+        setNewClass({
+            name: suggestClassName(initBranch, initSem, initSec, initBatch),
+            branch: initBranch,
+            semester: initSem,
+            scheme: '2022',
+            section: initSec,
+            faculty_id: 'all',
+            academic_year: '2024-2025',
+            batch: initBatch
+        });
+        setShowCreate(true);
+    };
 
     const [newClass, setNewClass] = useState({
-        name: '',
+        name: 'CS - Sem 3 - (Sec A) - 2023 Batch',
         branch: 'CS',
         semester: 3,
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
         academic_year: '2024-2025',
-        batch: ''
+        batch: '2023'
     });
     const [addUsn, setAddUsn] = useState('');
     const [bulkUsns, setBulkUsns] = useState('');
@@ -381,6 +420,7 @@ export function ClassesContent({ embedded = false }) {
         const j = await r.json();
         if (j.success) {
             setShowCreate(false);
+            setNameIsManual(false);
             setNewClass({
                 name: '',
                 branch: 'CS',
@@ -389,7 +429,7 @@ export function ClassesContent({ embedded = false }) {
                 section: 'A',
                 faculty_id: 'all',
                 academic_year: '2024-2025',
-                batch: ''
+                batch: '2023'
             });
             setMsg('✓ Class created successfully. Visible to all faculty & administrators.');
             await logActivity(faculty, 'CLASS_CREATE', newClass.name);
@@ -764,14 +804,25 @@ export function ClassesContent({ embedded = false }) {
     const avgCgpa = withCgpa.length ? (withCgpa.reduce((s, st) => s + (st.cgpa || 0), 0) / withCgpa.length).toFixed(2) : '—';
     const classTopper = top10[0] || null;
 
+    const availableClassBatches = Array.from(new Set([
+        ...classes.map(c => c.batch).filter(Boolean),
+        '2026', '2025', '2024', '2023', '2022', '2021', '2020'
+    ])).sort().reverse();
+
+    const availableClassSections = Array.from(new Set([
+        'A', 'B', 'C', 'D', 'E', 'F', 'General',
+        ...classes.map(c => c.section).filter(Boolean).map(s => String(s).toUpperCase())
+    ])).sort();
+
     const displayedClasses = classes.filter(cls => {
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             const matchName = (cls.name || '').toLowerCase().includes(q);
             const matchBranch = (cls.branch || '').toLowerCase().includes(q);
             const matchSection = (cls.section || '').toLowerCase().includes(q);
+            const matchBatch = (cls.batch || '').toLowerCase().includes(q);
             const matchFaculty = (cls.faculty_name || '').toLowerCase().includes(q);
-            if (!matchName && !matchBranch && !matchSection && !matchFaculty) return false;
+            if (!matchName && !matchBranch && !matchSection && !matchBatch && !matchFaculty) return false;
         }
         if (facultyFilter !== 'all') {
             if (cls.faculty_id !== facultyFilter) return false;
@@ -782,8 +833,16 @@ export function ClassesContent({ embedded = false }) {
         if (semesterFilter !== 'all') {
             if (String(cls.semester) !== String(semesterFilter)) return false;
         }
+        if (batchFilter !== 'all') {
+            if (String(cls.batch || '') !== String(batchFilter)) return false;
+        }
         if (sectionFilter !== 'all') {
-            if (String(cls.section || 'A').toUpperCase() !== String(sectionFilter).toUpperCase()) return false;
+            const clsSec = String(cls.section || '').toUpperCase().trim();
+            if (sectionFilter === 'General') {
+                if (clsSec !== 'GENERAL' && clsSec !== '') return false;
+            } else if (clsSec !== String(sectionFilter).toUpperCase().trim()) {
+                return false;
+            }
         }
         return true;
     });
@@ -804,7 +863,7 @@ export function ClassesContent({ embedded = false }) {
                         <div>
                             <h1 style={S.title}>{selectedClass.name}</h1>
                             <p style={S.subtitle}>
-                                {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section} ` : ''}· {selectedClass.scheme} Scheme · 👨‍🏫 {selectedClass.faculty_name || 'All Faculty (Shared)'} · {students.length} students
+                                {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section} ` : ''}{selectedClass.batch ? `· ${selectedClass.batch} Batch ` : ''}· {selectedClass.scheme} Scheme · 👨‍🏫 {selectedClass.faculty_name || 'All Faculty (Shared)'} · {students.length} students
                             </p>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1015,8 +1074,8 @@ export function ClassesContent({ embedded = false }) {
                             <h1 style={S.title}>Classes & Sections</h1>
                             <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
                         </div>
-                        <button style={btn('primary')} onClick={() => setShowCreate(true)}>
-                            <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class
+                        <button style={btn('primary')} onClick={openCreateClassModal}>
+                            <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class & Section
                         </button>
                     </div>
 
@@ -1025,7 +1084,7 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ flex: '1 1 240px', position: 'relative' }}>
                             <input
                                 style={{ ...S.input, paddingLeft: '36px' }}
-                                placeholder="Search classes, sections, or faculty..."
+                                placeholder="Search classes, sections, batch, or faculty..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                             />
@@ -1055,9 +1114,16 @@ export function ClassesContent({ embedded = false }) {
                             ))}
                         </select>
 
+                        <select style={{ ...S.sel, width: 'auto', minWidth: '135px' }} value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
+                            <option value="all">All Batches</option>
+                            {availableClassBatches.map(b => (
+                                <option key={b} value={b}>{b} Batch</option>
+                            ))}
+                        </select>
+
                         <select style={{ ...S.sel, width: 'auto', minWidth: '135px' }} value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
                             <option value="all">All Sections</option>
-                            {['A', 'B', 'C', 'D', 'E', 'F'].map(sec => (
+                            {availableClassSections.map(sec => (
                                 <option key={sec} value={sec}>Section {sec}</option>
                             ))}
                         </select>
@@ -1122,13 +1188,18 @@ export function ClassesContent({ embedded = false }) {
                                     >
                                         <div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                     <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
                                                         Sem {cls.semester}
                                                     </span>
                                                     {cls.section && (
                                                         <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-main)', background: 'var(--surface-low)', padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--border)' }}>
                                                             Sec {cls.section}
+                                                        </span>
+                                                    )}
+                                                    {cls.batch && (
+                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', background: 'rgba(16, 185, 129, 0.1)', padding: '3px 9px', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                                                            {cls.batch} Batch
                                                         </span>
                                                     )}
                                                 </div>
@@ -1203,42 +1274,74 @@ export function ClassesContent({ embedded = false }) {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                             <div>
-                                <label style={S.label}>Class / Section Name *</label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                                    <label style={{ ...S.label, marginBottom: 0 }}>Class / Section Name *</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNameIsManual(false);
+                                            setNewClass(p => ({ ...p, name: suggestClassName(p.branch, p.semester, p.section, p.batch) }));
+                                        }}
+                                        style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: '2px 4px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>auto_fix_high</span> Suggest Standard Name
+                                    </button>
+                                </div>
                                 <input
                                     style={S.input}
-                                    placeholder="e.g. 6th Sem CSE - Section A"
+                                    placeholder="e.g. CSE - Sem 5 (Sec A) - 2023 Batch"
                                     value={newClass.name}
-                                    onChange={e => setNewClass(p => ({ ...p, name: e.target.value }))}
+                                    onChange={e => {
+                                        setNameIsManual(true);
+                                        setNewClass(p => ({ ...p, name: e.target.value }));
+                                    }}
                                     autoFocus
                                 />
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Branch</label>
-                                    <select style={S.sel} value={newClass.branch} onChange={e => setNewClass(p => ({ ...p, branch: e.target.value }))}>
+                                    <select style={S.sel} value={newClass.branch} onChange={e => handleNewClassChange({ branch: e.target.value })}>
                                         {branches.map(b => <option key={b.code} value={b.code}>{b.code} — {b.label || b.name || b.code}</option>)}
                                         {branches.length === 0 && <option value="CS">CSE — Computer Science</option>}
                                     </select>
                                 </div>
                                 <div>
                                     <label style={S.label}>Semester</label>
-                                    <select style={S.sel} value={newClass.semester} onChange={e => setNewClass(p => ({ ...p, semester: parseInt(e.target.value) }))}>
+                                    <select style={S.sel} value={newClass.semester} onChange={e => handleNewClassChange({ semester: parseInt(e.target.value) })}>
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
                                     </select>
                                 </div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div>
-                                    <label style={S.label}>Section</label>
-                                    <select style={S.sel} value={newClass.section} onChange={e => setNewClass(p => ({ ...p, section: e.target.value }))}>
-                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
-                                            <option key={sec} value={sec}>Section {sec}</option>
-                                        ))}
-                                    </select>
+                                    <label style={S.label}>Section *</label>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <select
+                                            style={{ ...S.sel, minWidth: '95px' }}
+                                            value={['A', 'B', 'C', 'D', 'E', 'F', 'General'].includes(newClass.section) ? newClass.section : 'custom'}
+                                            onChange={e => {
+                                                if (e.target.value !== 'custom') {
+                                                    handleNewClassChange({ section: e.target.value });
+                                                }
+                                            }}
+                                        >
+                                            {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
+                                                <option key={sec} value={sec}>Sec {sec}</option>
+                                            ))}
+                                            <option value="custom">Other…</option>
+                                        </select>
+                                        <input
+                                            style={{ ...S.input, flex: 1 }}
+                                            placeholder="Sec"
+                                            value={newClass.section}
+                                            onChange={e => handleNewClassChange({ section: e.target.value.toUpperCase() })}
+                                        />
+                                    </div>
                                 </div>
                                 <div>
                                     <label style={S.label}>Scheme</label>
-                                    <select style={S.sel} value={newClass.scheme} onChange={e => setNewClass(p => ({ ...p, scheme: e.target.value }))}>
+                                    <select style={S.sel} value={newClass.scheme} onChange={e => handleNewClassChange({ scheme: e.target.value })}>
                                         {schemes.map(s => <option key={s} value={s}>{s} Scheme</option>)}
                                     </select>
                                 </div>
@@ -1254,13 +1357,29 @@ export function ClassesContent({ embedded = false }) {
                                     />
                                 </div>
                                 <div>
-                                    <label style={S.label}>Batch</label>
-                                    <input
-                                        style={S.input}
-                                        placeholder="e.g. 2024"
-                                        value={newClass.batch}
-                                        onChange={e => setNewClass(p => ({ ...p, batch: e.target.value }))}
-                                    />
+                                    <label style={S.label}>Batch (Intake Year) *</label>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <select
+                                            style={{ ...S.sel, minWidth: '100px' }}
+                                            value={['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(newClass.batch) ? newClass.batch : 'custom'}
+                                            onChange={e => {
+                                                if (e.target.value !== 'custom') {
+                                                    handleNewClassChange({ batch: e.target.value });
+                                                }
+                                            }}
+                                        >
+                                            {['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map(b => (
+                                                <option key={b} value={b}>{b}</option>
+                                            ))}
+                                            <option value="custom">Other…</option>
+                                        </select>
+                                        <input
+                                            style={{ ...S.input, flex: 1 }}
+                                            placeholder="Batch"
+                                            value={newClass.batch}
+                                            onChange={e => handleNewClassChange({ batch: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                             <div>
@@ -1297,7 +1416,18 @@ export function ClassesContent({ embedded = false }) {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                             <div>
-                                <label style={S.label}>Class / Section Name *</label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                                    <label style={{ ...S.label, marginBottom: 0 }}>Class / Section Name *</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditClassForm(p => ({ ...p, name: suggestClassName(p.branch, p.semester, p.section, p.batch) }));
+                                        }}
+                                        style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: '2px 4px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>auto_fix_high</span> Suggest Standard Name
+                                    </button>
+                                </div>
                                 <input
                                     style={S.input}
                                     placeholder="e.g. 6th Sem CSE - Section A"
@@ -1323,12 +1453,29 @@ export function ClassesContent({ embedded = false }) {
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div>
-                                    <label style={S.label}>Section</label>
-                                    <select style={S.sel} value={editClassForm.section || 'A'} onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value }))}>
-                                        {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
-                                            <option key={sec} value={sec}>Section {sec}</option>
-                                        ))}
-                                    </select>
+                                    <label style={S.label}>Section *</label>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <select
+                                            style={{ ...S.sel, minWidth: '95px' }}
+                                            value={['A', 'B', 'C', 'D', 'E', 'F', 'General'].includes(editClassForm.section) ? editClassForm.section : 'custom'}
+                                            onChange={e => {
+                                                if (e.target.value !== 'custom') {
+                                                    setEditClassForm(p => ({ ...p, section: e.target.value }));
+                                                }
+                                            }}
+                                        >
+                                            {['A', 'B', 'C', 'D', 'E', 'F', 'General'].map(sec => (
+                                                <option key={sec} value={sec}>Sec {sec}</option>
+                                            ))}
+                                            <option value="custom">Other…</option>
+                                        </select>
+                                        <input
+                                            style={{ ...S.input, flex: 1 }}
+                                            placeholder="Sec"
+                                            value={editClassForm.section || ''}
+                                            onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value.toUpperCase() }))}
+                                        />
+                                    </div>
                                 </div>
                                 <div>
                                     <label style={S.label}>Scheme</label>
@@ -1348,13 +1495,29 @@ export function ClassesContent({ embedded = false }) {
                                     />
                                 </div>
                                 <div>
-                                    <label style={S.label}>Batch</label>
-                                    <input
-                                        style={S.input}
-                                        placeholder="e.g. 2024"
-                                        value={editClassForm.batch || ''}
-                                        onChange={e => setEditClassForm(p => ({ ...p, batch: e.target.value }))}
-                                    />
+                                    <label style={S.label}>Batch (Intake Year)</label>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <select
+                                            style={{ ...S.sel, minWidth: '100px' }}
+                                            value={['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(editClassForm.batch) ? editClassForm.batch : 'custom'}
+                                            onChange={e => {
+                                                if (e.target.value !== 'custom') {
+                                                    setEditClassForm(p => ({ ...p, batch: e.target.value }));
+                                                }
+                                            }}
+                                        >
+                                            {['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map(b => (
+                                                <option key={b} value={b}>{b}</option>
+                                            ))}
+                                            <option value="custom">Other…</option>
+                                        </select>
+                                        <input
+                                            style={{ ...S.input, flex: 1 }}
+                                            placeholder="Batch"
+                                            value={editClassForm.batch || ''}
+                                            onChange={e => setEditClassForm(p => ({ ...p, batch: e.target.value }))}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                             <div>
@@ -1494,7 +1657,7 @@ export function ClassesContent({ embedded = false }) {
                                     <option value="">-- Choose Destination Class / Section --</option>
                                     {classes.filter(c => c.id !== selectedClass?.id).map(c => (
                                         <option key={c.id} value={c.id}>
-                                            {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
+                                            {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} {c.batch ? `· ${c.batch} Batch` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
                                         </option>
                                     ))}
                                 </select>
