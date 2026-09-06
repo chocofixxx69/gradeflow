@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';

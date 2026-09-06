@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { fetchAllPaginated } from '../../../lib/supabase-utils';
 import { requireStaff } from '../../../lib/server-session';
 import { getAdminClient } from '../../../lib/analytics-data';
 
