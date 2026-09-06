@@ -81,7 +81,7 @@ export async function GET(req) {
 
         marks.forEach(m => {
             const student = studentMap.get(m.usn);
-            const cohort = getStudentAcademicBatch(m.usn, student?.lateral_entry);
+            const cohort = student ? getStudentAcademicBatch(student) : getStudentAcademicBatch(m.usn);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
             const b = canonicalBranchCode(student?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(student?.branch) || 'CS';
 

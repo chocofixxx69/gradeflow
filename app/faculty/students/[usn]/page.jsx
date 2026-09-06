@@ -28,10 +28,12 @@ function StudentRecordContent() {
     const [loading, setLoading] = useState(true);
     const [savingGuardian, setSavingGuardian] = useState(false);
     const [showGuardianModal, setShowGuardianModal] = useState(false);
+    const [showBatchModal, setShowBatchModal] = useState(false);
+    const [savingBatch, setSavingBatch] = useState(false);
     const [activeSemTab, setActiveSemTab] = useState(1);
 
     const [data, setData] = useState({
-        profile: { usn: '', name: '', branch: '', college: '', batch: '', semester: 1, email: '', phone: '', is_inactive: false },
+        profile: { usn: '', name: '', branch: '', college: '', batch: '', batch_label: '', is_batch_overridden: false, raw_usn_batch: '', semester: 1, email: '', phone: '', is_inactive: false },
         guardian: { parent_name: '', parent_phone: '', parent_email: '', guardian_relation: 'Parent' },
         kpis: { cgpa: 0, total_backlogs: 0, backlog_credits: 0, semesters_tracked: 0, credits_earned: 0, subjects_cleared: 0, subjects_failed: 0, best_sgpa: 0 },
         trend: [],
@@ -47,6 +49,12 @@ function StudentRecordContent() {
         guardian_relation: 'Parent'
     });
 
+    const [batchForm, setBatchForm] = useState({
+        year: '',
+        semester: 1,
+        reason: ''
+    });
+
     // 1. Fetch complete student dossier
     const loadStudentRecord = useCallback(async () => {
         if (!usn) return;
@@ -60,6 +68,11 @@ function StudentRecordContent() {
                     parent_phone: res.guardian?.parent_phone || '',
                     parent_email: res.guardian?.parent_email || '',
                     guardian_relation: res.guardian?.guardian_relation || 'Parent'
+                });
+                setBatchForm({
+                    year: res.profile?.batch || String(res.profile?.year || '2024'),
+                    semester: res.profile?.semester || 1,
+                    reason: ''
                 });
 
                 // Set initial active semester tab to latest available semester
@@ -100,7 +113,29 @@ function StudentRecordContent() {
         }
     };
 
-    // 3. Handle Status toggle (active / inactive)
+    // 3. Handle Academic Cohort Batch & Semester update
+    const handleSaveBatch = async (e) => {
+        e.preventDefault();
+        setSavingBatch(true);
+        try {
+            await apiRequest(`/api/faculty/students/${usn}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    year: batchForm.year,
+                    semester: Number(batchForm.semester),
+                    reason: batchForm.reason
+                })
+            });
+            setShowBatchModal(false);
+            await loadStudentRecord();
+        } catch (err) {
+            alert('Failed to update academic cohort batch: ' + (err.message || err));
+        } finally {
+            setSavingBatch(false);
+        }
+    };
+
+    // 4. Handle Status toggle (active / inactive)
     const handleToggleStatus = async () => {
         const nextState = !data.profile.is_inactive;
         const msg = nextState ? 'Deactivate this student account?' : 'Activate this student account?';
@@ -209,7 +244,7 @@ function StudentRecordContent() {
                         {(data.profile.name?.[0] || data.profile.usn?.[0] || '?').toUpperCase()}
                     </div>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
                             <h1 style={{ fontSize: '24px', fontWeight: 900, margin: 0, color: 'var(--tx-main)' }}>
                                 {data.profile.name}
                             </h1>
@@ -227,13 +262,18 @@ function StudentRecordContent() {
                                     Lateral Entry
                                 </span>
                             )}
+                            {data.profile.is_batch_overridden && (
+                                <span style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(245, 158, 11, 0.15)', color: '#D97706', fontSize: '11px', fontWeight: 800, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                    Cohort Reassigned: {data.profile.batch} Batch (Intake: 20{data.profile.raw_usn_batch})
+                                </span>
+                            )}
                         </div>
                         <div style={{ fontSize: '13px', color: 'var(--tx-muted)', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                             <span><strong>USN:</strong> <code style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--tx-main)' }}>{data.profile.usn}</code></span>
                             <span>•</span>
                             <span><strong>Dept:</strong> {data.profile.branch}</span>
                             <span>•</span>
-                            <span><strong>Batch:</strong> {data.profile.batch}</span>
+                            <span><strong>Batch:</strong> <strong style={{ color: data.profile.is_batch_overridden ? '#D97706' : 'inherit' }}>{data.profile.batch} Batch</strong></span>
                             <span>•</span>
                             <span><strong>Current Sem:</strong> Sem {data.profile.semester}</span>
                             <span>•</span>
@@ -243,6 +283,20 @@ function StudentRecordContent() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <Button
+                        onClick={() => {
+                            setBatchForm({
+                                year: data.profile.batch || String(data.profile.year || '2024'),
+                                semester: data.profile.semester || 1,
+                                reason: ''
+                            });
+                            setShowBatchModal(true);
+                        }}
+                        variant="secondary"
+                        iconStart="tune"
+                    >
+                        Manage Cohort & Batch
+                    </Button>
                     <Button onClick={handleDownloadTranscript} variant="secondary" iconStart="picture_as_pdf">
                         Transcript PDF
                     </Button>
@@ -574,6 +628,77 @@ function StudentRecordContent() {
                                 </Button>
                                 <Button type="submit" variant="primary" loading={savingGuardian} style={{ flex: 1 }}>
                                     Save Contact
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Academic Cohort & Batch Management Modal */}
+            {showBatchModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '520px', width: '100%', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span className="material-icons-round" style={{ fontSize: '20px' }}>tune</span>
+                            </div>
+                            <div>
+                                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Manage Academic Cohort & Batch</h2>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>Student: <strong>{data.profile.name}</strong> ({data.profile.usn})</div>
+                            </div>
+                        </div>
+
+                        <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', marginBottom: '16px', fontSize: '12.5px', color: 'var(--tx-muted)' }}>
+                            <div><strong>Original USN Intake Year:</strong> 20{data.profile.raw_usn_batch || (data.profile.usn.length >= 5 ? data.profile.usn.slice(3, 5) : '23')}</div>
+                            <div style={{ marginTop: '4px' }}><strong>Current Assigned Batch:</strong> <span style={{ color: 'var(--tx-main)', fontWeight: 700 }}>{data.profile.batch} Batch</span> {data.profile.is_batch_overridden && <span style={{ color: '#D97706', fontWeight: 700 }}>(Overridden)</span>}</div>
+                        </div>
+
+                        <form onSubmit={handleSaveBatch} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: 'var(--tx-main)' }}>
+                                    Assigned Academic Cohort Batch *
+                                </label>
+                                <Select
+                                    value={batchForm.year}
+                                    onChange={e => setBatchForm({ ...batchForm, year: e.target.value })}
+                                    options={[
+                                        { value: '2025', label: '2025 Batch (25)' },
+                                        { value: '2024', label: '2024 Batch (24) — Year-back / New intake' },
+                                        { value: '2023', label: '2023 Batch (23) — Default Regular' },
+                                        { value: '2022', label: '2022 Batch (22)' },
+                                        { value: '2021', label: '2021 Batch (21)' },
+                                    ]}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: 'var(--tx-main)' }}>
+                                    Current Semester
+                                </label>
+                                <Select
+                                    value={String(batchForm.semester)}
+                                    onChange={e => setBatchForm({ ...batchForm, semester: Number(e.target.value) })}
+                                    options={[1, 2, 3, 4, 5, 6, 7, 8].map(s => ({
+                                        value: String(s),
+                                        label: `Semester ${s}`
+                                    }))}
+                                />
+                            </div>
+
+                            <Input
+                                label="Reason for Batch Reassignment"
+                                placeholder="e.g. Year Back in 1st/2nd Semester, Admission transfer, etc."
+                                value={batchForm.reason}
+                                onChange={e => setBatchForm({ ...batchForm, reason: e.target.value })}
+                            />
+
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                                <Button type="button" variant="ghost" onClick={() => setShowBatchModal(false)} style={{ flex: 1 }}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" variant="primary" loading={savingBatch} style={{ flex: 1.5 }}>
+                                    Save & Sync Batch
                                 </Button>
                             </div>
                         </form>

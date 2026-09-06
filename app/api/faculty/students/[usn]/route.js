@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
-import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
+import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 import { fetchAllPaginated } from '@/lib/supabase-utils';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 
@@ -279,6 +279,8 @@ export async function GET(req, { params }) {
             count
         }));
 
+        const cohort = getStudentAcademicBatch(cleanUsn, student?.lateral_entry, student?.year);
+
         return ok({
             profile: {
                 id: student?.id || null,
@@ -286,7 +288,11 @@ export async function GET(req, { params }) {
                 name: student?.name || cleanUsn,
                 branch: student?.branch || 'Unassigned',
                 college: student?.college || 'AITM',
-                batch: student?.year ? String(student.year) : (cleanUsn.length >= 5 ? '20' + cleanUsn.slice(3, 5) : '—'),
+                batch: cohort?.fullYear || (student?.year ? String(student.year) : (cleanUsn.length >= 5 ? '20' + cleanUsn.slice(3, 5) : '—')),
+                batch_label: cohort?.label || `${student?.year || ''} Batch`,
+                is_batch_overridden: Boolean(cohort?.isOverridden),
+                raw_usn_batch: cohort?.rawUsnBatch || (cleanUsn.length >= 5 ? cleanUsn.slice(3, 5) : ''),
+                year: student?.year || (cohort?.fullYear ? Number(cohort.fullYear) : 2023),
                 semester: student?.semester || (sortedSemesters.length > 0 ? sortedSemesters[sortedSemesters.length - 1] : 1),
                 scheme: student?.scheme || '2022',
                 email: student?.email || '—',
@@ -343,10 +349,38 @@ export async function PUT(req, { params }) {
         if (body.guardian_relation !== undefined) updates.guardian_relation = body.guardian_relation?.trim() || null;
         if (body.is_inactive !== undefined) updates.is_suspended = Boolean(body.is_inactive);
         if (body.is_suspended !== undefined) updates.is_suspended = Boolean(body.is_suspended);
+        
+        if (body.year !== undefined) {
+            const cleanYr = String(body.year).replace(/[^0-9]/g, '');
+            if (cleanYr.length >= 2) {
+                updates.year = Number(cleanYr.length === 2 ? '20' + cleanYr : cleanYr);
+            }
+        }
+        if (body.batch !== undefined) {
+            const cleanYr = String(body.batch).replace(/[^0-9]/g, '');
+            if (cleanYr.length >= 2) {
+                updates.year = Number(cleanYr.length === 2 ? '20' + cleanYr : cleanYr);
+            }
+        }
+        if (body.semester !== undefined) {
+            const semNum = Number(body.semester);
+            if (semNum >= 1 && semNum <= 8) updates.semester = semNum;
+        }
+        if (body.lateral_entry !== undefined) {
+            updates.lateral_entry = Boolean(body.lateral_entry);
+        }
+        if (body.branch !== undefined && typeof body.branch === 'string' && body.branch.trim()) {
+            updates.branch = body.branch.trim();
+        }
+        if (body.name !== undefined && typeof body.name === 'string' && body.name.trim()) {
+            updates.name = body.name.trim();
+        }
 
         if (Object.keys(updates).length === 0) {
             return fail('No update fields provided.', 'NO_UPDATES', 400);
         }
+
+        updates.updated_at = new Date().toISOString();
 
         const { data: updated, error: updErr } = await supabaseAdmin
             .from('students')
@@ -356,8 +390,23 @@ export async function PUT(req, { params }) {
             .single();
 
         if (updErr) {
-            // If columns like parent_name don't exist yet, gracefully catch and return success
             console.warn('[PUT /api/faculty/students/[usn]] update notice:', updErr.message);
+        }
+
+        // Audit log in faculty_activity
+        try {
+            await supabaseAdmin.from('faculty_activity').insert({
+                faculty_id: session?.id || '00000000-0000-0000-0000-000000000000',
+                faculty_name: session?.name || session?.email || 'Staff Member',
+                target_usn: cleanUsn,
+                action_type: updates.year ? 'STUDENT_BATCH_REASSIGNED' : 'STUDENT_PROFILE_UPDATED',
+                details: updates.year 
+                    ? `Reassigned student ${cleanUsn} to Academic Batch ${updates.year}${body.reason ? ` (Reason: ${body.reason})` : ''}` 
+                    : `Updated profile details for student ${cleanUsn}`,
+                sync_status: 'SUCCESS'
+            });
+        } catch (e) {
+            // non-critical
         }
 
         return ok({

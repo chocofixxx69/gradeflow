@@ -43,7 +43,7 @@ export async function GET(req) {
         // Group students by academic cohort batch (accounting for lateral entry offset)
         const studentsByBatch = new Map();
         students.forEach(s => {
-            const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
+            const cohort = getStudentAcademicBatch(s);
             let bYear = cohort ? cohort.fullYear : (s.year ? String(s.year) : 'Unknown');
             const list = studentsByBatch.get(bYear) || [];
             list.push(s);

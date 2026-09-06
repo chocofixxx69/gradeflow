@@ -96,7 +96,7 @@ export async function GET(req) {
         // 3. Derive distinct batches dynamically from database students, marks, and classes
         const batchSet = new Set();
         (rawStudents || []).forEach(s => {
-            const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
+            const cohort = getStudentAcademicBatch(s);
             if (cohort) {
                 batchSet.add(cohort.fullYear);
             } else if (s.year) {
@@ -105,8 +105,9 @@ export async function GET(req) {
         });
 
         (marksSubjects || []).forEach(m => {
-            const parsed = extractBatchFromUsn(m.usn);
-            if (parsed) batchSet.add(parsed.fullYear);
+            const st = studentMap.get(m.usn);
+            const cohort = st ? getStudentAcademicBatch(st) : extractBatchFromUsn(m.usn);
+            if (cohort) batchSet.add(cohort.fullYear);
         });
 
         (rawClasses || []).forEach(c => {
@@ -140,20 +141,22 @@ export async function GET(req) {
         };
 
         const branchMap = new Map();
-        branchMap.set('ALL', { code: 'ALL', label: 'All Branches / Departments', name: 'All Branches / Departments' });
+        branchMap.set('ALL', {
+            code: 'ALL',
+            name: 'All Departments',
+            shortName: 'ALL'
+        });
 
-        // Filter for active branches in database (excludes inactive like BA, MC)
-        const activeDbBranches = (metaBranches || []).filter(b => b.is_active !== false);
-        if (activeDbBranches.length > 0) {
-            activeDbBranches.forEach(b => {
-                if (b.code) {
-                    const label = b.label || branchLabels[b.code] || b.code;
-                    branchMap.set(b.code, { code: b.code, label, name: label });
-                }
-            });
-        } else {
-            DEFAULT_BRANCHES.forEach(b => branchMap.set(b.code, { ...b, label: branchLabels[b.code] || b.label }));
-        }
+        (rawBranches || []).forEach(b => {
+            const code = canonicalBranchCode(b.code) || b.code;
+            if (!branchMap.has(code)) {
+                branchMap.set(code, {
+                    code,
+                    name: branchLabels[code] || b.name || `Department of ${code}`,
+                    shortName: code
+                });
+            }
+        });
 
         // Build dynamic cohort matrix & student counts directly from actual students in DB
         const cohortMatrix = {};
@@ -162,7 +165,7 @@ export async function GET(req) {
 
         (rawStudents || []).forEach(s => {
             const bCode = canonicalBranchCode(s.branch) || extractBranchFromUsn(s.usn) || 'CS';
-            const cohort = getStudentAcademicBatch(s.usn, s.lateral_entry);
+            const cohort = getStudentAcademicBatch(s);
             const batchYear = cohort?.fullYear || (s.year ? String(s.year) : '2023');
             const sem = Number(s.semester);
 
@@ -206,7 +209,7 @@ export async function GET(req) {
             const key = `${code}|${sem}`;
 
             const st = studentMap.get(m.usn);
-            const cohort = getStudentAcademicBatch(m.usn, st?.lateral_entry);
+            const cohort = st ? getStudentAcademicBatch(st) : getStudentAcademicBatch(m.usn);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
             const b = canonicalBranchCode(st?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(st?.branch) || 'CS';
 

@@ -66,7 +66,7 @@ const BRANCH_NAMES = {
 // after the regulars in their actual class), not the class's own admission
 // year. getStudentAcademicBatch already encodes that offset — reuse it
 // rather than re-deriving it here.
-function resolveCohortConfig(batchOrBranch, currentUsn, currentIsLateral = null) {
+function resolveCohortConfig(batchOrBranch, currentUsn, currentIsLateral = null, currentYear = null) {
     const usn = (currentUsn || '').toUpperCase().trim();
 
     let branchKey = (batchOrBranch || '').toUpperCase().trim();
@@ -85,8 +85,8 @@ function resolveCohortConfig(batchOrBranch, currentUsn, currentIsLateral = null)
         }
     }
 
-    // The caller's own TRUE academic cohort year — lateral-aware.
-    const ownCohort = getStudentAcademicBatch(usn, currentIsLateral);
+    // The caller's own TRUE academic cohort year — lateral & override aware.
+    const ownCohort = getStudentAcademicBatch(usn, currentIsLateral, currentYear);
 
     return {
         branch: branchKey,
@@ -109,19 +109,17 @@ async function getOrComputeCohortData(cohortConfig) {
     // 1. Fetch students for this cohort
     const { data: allStudents, error: stuErr } = await supabaseAdmin
         .from('students')
-        .select('id, usn, name, branch, scheme, semester, lateral_entry')
+        .select('id, usn, name, branch, scheme, semester, year, lateral_entry')
         .order('usn', { ascending: true });
 
     if (stuErr) throw stuErr;
 
     // Same branch AND the same real academic cohort year — matchesBatch
-    // already resolves a lateral student's USN year back to the class they
-    // actually sit with, so this naturally includes lateral joiners without
-    // pulling in the next year's own regular admits (see resolveCohortConfig).
+    // resolves year-backs, reassignments and lateral students accurately.
     const students = cohortConfig.cohortYear
         ? (allStudents || []).filter(s => {
             if (extractBranchFromUsn(s.usn) !== cohortConfig.branch) return false;
-            return matchesBatch(s.usn, cohortConfig.cohortYear, s.semester, s.lateral_entry);
+            return matchesBatch(s, cohortConfig.cohortYear);
         })
         : [];
 
@@ -406,10 +404,14 @@ export async function GET(req) {
         if (authError) return authError;
 
         const currentUsn = session.usn?.toUpperCase().trim();
-        const { searchParams } = new URL(req.url);
+        const { data: currentStudent } = await supabaseAdmin
+            .from('students')
+            .select('lateral_entry, year')
+            .eq('usn', currentUsn)
+            .maybeSingle();
 
         const requestedBatch = searchParams.get('batch');
-        const cohortConfig = resolveCohortConfig(requestedBatch, currentUsn);
+        const cohortConfig = resolveCohortConfig(requestedBatch, currentUsn, currentStudent?.lateral_entry, currentStudent?.year);
         const selectedSemParam = parseInt(searchParams.get('semester')) || null;
         const selectedSubjectParam = searchParams.get('subject_code') || null;
 

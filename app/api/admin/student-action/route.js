@@ -363,6 +363,73 @@ export async function POST(req) {
             });
         }
 
+        // 11. Update / Reassign Single Student Batch (Year-back / Admission fix)
+        if (action === 'update_student_batch') {
+            if (!usn) return NextResponse.json({ error: 'Student USN is required.' }, { status: 400 });
+            const cleanUsn = String(usn).toUpperCase().trim();
+            const rawYear = body?.year || body?.batch;
+            const cleanYr = String(rawYear || '').replace(/[^0-9]/g, '');
+            if (cleanYr.length < 2) {
+                return NextResponse.json({ error: 'A valid 4-digit or 2-digit batch year is required.' }, { status: 400 });
+            }
+            const targetYear = Number(cleanYr.length === 2 ? '20' + cleanYr : cleanYr);
+
+            const { error: updErr } = await supabaseAdmin
+                .from('students')
+                .update({ year: targetYear, updated_at: new Date().toISOString() })
+                .eq('usn', cleanUsn);
+
+            if (updErr) throw updErr;
+
+            // Log in faculty_activity
+            try {
+                await supabaseAdmin.from('faculty_activity').insert({
+                    faculty_id: session?.id || '00000000-0000-0000-0000-000000000000',
+                    faculty_name: session?.email || 'Administrator',
+                    target_usn: cleanUsn,
+                    action_type: 'STUDENT_BATCH_REASSIGNED',
+                    details: `Reassigned ${cleanUsn} to Batch ${targetYear}${reason ? `: ${reason}` : ''}`,
+                    sync_status: 'SUCCESS'
+                });
+            } catch (e) {
+                // non-critical
+            }
+
+            return NextResponse.json({
+                success: true,
+                year: targetYear,
+                message: `Student ${cleanUsn} has been successfully reassigned to ${targetYear} Batch.`
+            });
+        }
+
+        // 12. Bulk Reassign Batch for Multiple Students
+        if (action === 'bulk_reassign_batch') {
+            const targetUsns = Array.isArray(usns) ? usns.map(u => String(u).toUpperCase().trim()).filter(Boolean) : [];
+            if (targetUsns.length === 0) {
+                return NextResponse.json({ error: 'No USNs provided for batch reassignment.' }, { status: 400 });
+            }
+            const rawYear = body?.year || body?.batch;
+            const cleanYr = String(rawYear || '').replace(/[^0-9]/g, '');
+            if (cleanYr.length < 2) {
+                return NextResponse.json({ error: 'A valid batch year is required.' }, { status: 400 });
+            }
+            const targetYear = Number(cleanYr.length === 2 ? '20' + cleanYr : cleanYr);
+
+            const { error: updErr } = await supabaseAdmin
+                .from('students')
+                .update({ year: targetYear, updated_at: new Date().toISOString() })
+                .in('usn', targetUsns);
+
+            if (updErr) throw updErr;
+
+            return NextResponse.json({
+                success: true,
+                count: targetUsns.length,
+                year: targetYear,
+                message: `Successfully reassigned ${targetUsns.length} student(s) to ${targetYear} Batch.`
+            });
+        }
+
         return NextResponse.json({ error: 'Unknown action specified.' }, { status: 400 });
     } catch (err) {
         console.error('[POST /api/admin/student-action]', err);
