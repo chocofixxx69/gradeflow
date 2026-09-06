@@ -144,16 +144,37 @@ export async function GET(req) {
         branchMap.set('ALL', {
             code: 'ALL',
             name: 'All Departments',
+            label: 'All Departments',
             shortName: 'ALL'
         });
 
-        (rawBranches || []).forEach(b => {
+        const activeBranches = (metaBranches && metaBranches.length > 0)
+            ? metaBranches.filter(b => b.is_active !== false)
+            : DEFAULT_BRANCHES;
+
+        activeBranches.forEach(b => {
             const code = canonicalBranchCode(b.code) || b.code;
-            if (!branchMap.has(code)) {
+            if (code && !branchMap.has(code)) {
+                const label = branchLabels[code] || b.label || b.name || `Department of ${code}`;
                 branchMap.set(code, {
                     code,
-                    name: branchLabels[code] || b.name || `Department of ${code}`,
+                    name: label,
+                    label,
                     shortName: code
+                });
+            }
+        });
+
+        // Ensure branches present in actual students are present as well
+        (rawStudents || []).forEach(s => {
+            const bCode = canonicalBranchCode(s.branch) || canonicalBranchCode(extractBranchFromUsn(s.usn));
+            if (bCode && !branchMap.has(bCode)) {
+                const label = branchLabels[bCode] || `Department of ${bCode}`;
+                branchMap.set(bCode, {
+                    code: bCode,
+                    name: label,
+                    label,
+                    shortName: bCode
                 });
             }
         });

@@ -8,6 +8,7 @@ import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
+import { getCleanBranchOptions } from '@/lib/semester-utils';
 
 export default function FacultyStudentsDirectoryPage() {
     return (
@@ -17,9 +18,26 @@ export default function FacultyStudentsDirectoryPage() {
     );
 }
 
+const DEFAULT_BRANCH_OPTIONS = [
+    { code: 'CS', label: 'Computer Science & Engineering', name: 'Computer Science & Engineering' },
+    { code: 'DS', label: 'Computer Science & Engineering (Data Science)', name: 'Computer Science & Engineering (Data Science)' },
+    { code: 'AI', label: 'AI & Machine Learning', name: 'AI & Machine Learning' },
+    { code: 'EC', label: 'Electronics & Communication Engineering', name: 'Electronics & Communication Engineering' },
+    { code: 'EE', label: 'Electrical & Electronics Engineering', name: 'Electrical & Electronics Engineering' },
+    { code: 'ME', label: 'Mechanical Engineering', name: 'Mechanical Engineering' },
+    { code: 'CV', label: 'Civil Engineering', name: 'Civil Engineering' },
+    { code: 'RI', label: 'Robotics & Artificial Intelligence', name: 'Robotics & Artificial Intelligence' }
+];
+
+const DEFAULT_BATCH_OPTIONS = ['2025', '2024', '2023', '2022', '2021'];
+
 function StudentsDirectoryContent() {
     const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8] });
+    const [meta, setMeta] = useState({
+        branches: DEFAULT_BRANCH_OPTIONS,
+        batches: DEFAULT_BATCH_OPTIONS,
+        semesters: [1, 2, 3, 4, 5, 6, 7, 8]
+    });
 
     // Filters
     const [branch, setBranch] = useState('');
@@ -41,7 +59,17 @@ function StudentsDirectoryContent() {
             try {
                 const res = await apiRequest('/api/faculty/analytics/meta');
                 if (res) {
-                    setMeta(res);
+                    const validBranches = res.branches && res.branches.filter(b => b.code !== 'ALL').length > 0 
+                        ? res.branches 
+                        : DEFAULT_BRANCH_OPTIONS;
+                    const validBatches = res.batches && res.batches.length > 0 
+                        ? res.batches 
+                        : DEFAULT_BATCH_OPTIONS;
+                    setMeta({
+                        branches: validBranches,
+                        batches: validBatches,
+                        semesters: res.semesters || [1, 2, 3, 4, 5, 6, 7, 8]
+                    });
                 }
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -178,7 +206,10 @@ function StudentsDirectoryContent() {
                                 label="Department"
                                 value={branch}
                                 onChange={e => handleFilterChange(setBranch, e.target.value)}
-                                options={[{ value: '', label: 'All Departments' }, ...meta.branches.filter(b => b.code !== 'ALL').map(b => ({ value: b.code, label: `${b.code} - ${b.label || b.name}` }))]}
+                                options={getCleanBranchOptions(meta.branches).map(b => ({
+                                    value: b.value === 'ALL' ? '' : b.value,
+                                    label: b.value === 'ALL' ? 'All Departments' : b.label
+                                }))}
                             />
                         </div>
                         <div>
@@ -186,7 +217,13 @@ function StudentsDirectoryContent() {
                                 label="Semester"
                                 value={semester}
                                 onChange={e => handleFilterChange(setSemester, e.target.value)}
-                                options={[{ value: 'all', label: 'All Semesters' }, ...meta.semesters.map(s => ({ value: s, label: `Semester ${s}` }))]}
+                                options={[
+                                    { value: 'all', label: 'All Semesters' },
+                                    ...(meta.semesters && meta.semesters.length > 0 ? meta.semesters : [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({
+                                        value: s,
+                                        label: `Semester ${s}`
+                                    }))
+                                ]}
                             />
                         </div>
                         <div>
@@ -194,7 +231,13 @@ function StudentsDirectoryContent() {
                                 label="Batch"
                                 value={batch}
                                 onChange={e => handleFilterChange(setBatch, e.target.value)}
-                                options={[{ value: '', label: 'All Batches' }, ...meta.batches.map(b => ({ value: b, label: `${b.slice(-2)} Batch (${b})` }))]}
+                                options={[
+                                    { value: '', label: 'All Batches' },
+                                    ...(meta.batches && meta.batches.length > 0 ? meta.batches : DEFAULT_BATCH_OPTIONS).map(b => ({
+                                        value: b,
+                                        label: `${b.slice(-2)} Batch (${b})`
+                                    }))
+                                ]}
                             />
                         </div>
                         <div>
