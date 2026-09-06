@@ -40,6 +40,11 @@ function FacultyDashboardView({
     assignedSubjects = [],
     assignedLoading = false,
     assignedClasses = [],
+    availablePortals = [],
+    selectedPortalUrl = 'ALL',
+    setSelectedPortalUrl,
+    customPortalUrl = '',
+    setCustomPortalUrl,
 }) {
     const percentage = Math.max(0, (cgpa - 0.75) * 10);
     const messageTone = (() => {
@@ -147,9 +152,54 @@ function FacultyDashboardView({
                         onClick={() => scraping ? stopScraping?.() : fetchFromVTU?.()}
                         disabled={!usn && !scraping}
                     >
-                        {scraping ? 'Stop' : 'Fetch VTU'}
+                        {scraping ? 'Stop' : selectedPortalUrl === 'ALL' ? 'Fetch VTU' : 'Fetch Portal'}
                     </Button>
                 </Inline>
+
+                {/* Targeted Portal Selector for Fast Reval/Backlog Verification */}
+                <div className={styles.targetPortalBar}>
+                    <div className={styles.targetPortalLabel}>
+                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>tune</span>
+                        <span>Target Portal:</span>
+                    </div>
+                    <select
+                        className={styles.targetPortalSelect}
+                        value={selectedPortalUrl}
+                        onChange={(event) => setSelectedPortalUrl?.(event.target.value)}
+                        disabled={scraping}
+                        aria-label="Select VTU Portal to Scrape"
+                    >
+                        <option value="ALL">⚡ All Portals (Deep Full Scan)</option>
+                        {availablePortals.length > 0 && (
+                            <optgroup label="Active VTU Exam & Reval Portals">
+                                {availablePortals.map((p, idx) => (
+                                    <option key={p.id || p.url || idx} value={p.url}>
+                                        🎯 {p.exam_name || p.url}
+                                    </option>
+                                ))}
+                            </optgroup>
+                        )}
+                        <option value="CUSTOM">🔗 Custom Result Portal URL...</option>
+                    </select>
+
+                    {selectedPortalUrl === 'CUSTOM' && (
+                        <input
+                            type="url"
+                            className={styles.customUrlInput}
+                            placeholder="Paste VTU URL (e.g. https://results.vtu.ac.in/RVcbcs24/index.php)"
+                            value={customPortalUrl}
+                            onChange={(event) => setCustomPortalUrl?.(event.target.value)}
+                            disabled={scraping}
+                            aria-label="Custom VTU Result URL"
+                        />
+                    )}
+
+                    {selectedPortalUrl !== 'ALL' && (
+                        <span className={styles.fastPill} title="Direct single-portal execution avoids scanning other URLs">
+                            🚀 3-5s Fast Mode
+                        </span>
+                    )}
+                </div>
 
                 {scrapeProgress && (
                     <div className={`${styles.notice} ${styles.noticeInfo}`}>
@@ -582,6 +632,9 @@ function FacultyDashboardContent() {
     const [assignedSubjects, setAssignedSubjects] = useState([]);
     const [assignedClasses, setAssignedClasses] = useState([]);
     const [assignedLoading, setAssignedLoading] = useState(true);
+    const [availablePortals, setAvailablePortals] = useState([]);
+    const [selectedPortalUrl, setSelectedPortalUrl] = useState('ALL');
+    const [customPortalUrl, setCustomPortalUrl] = useState('');
     // The scrape job currently being watched: { id, usn, startedAt } or null.
     const [scrapeJob, setScrapeJob] = useState(null);
     const backlogDialogRef = useRef(null);
@@ -652,6 +705,26 @@ function FacultyDashboardContent() {
             setFaculty(JSON.parse(session));
         }
     }, []);
+
+    // Load active VTU examination & revaluation portals for targeted quick-scrape
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const facId = faculty?.id;
+                const endpoint = facId ? `/api/vtu-urls?faculty_id=${facId}&scheme=2022` : '/api/vtu-urls?scheme=2022';
+                const res = await fetch(endpoint);
+                const json = await res.json();
+                if (!cancelled && json.success && Array.isArray(json.urls)) {
+                    const active = json.urls.filter(u => u.is_active);
+                    setAvailablePortals(active);
+                }
+            } catch (err) {
+                console.error('Failed to load active portals for selector:', err);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [faculty?.id]);
     // What this faculty member is actually assigned to teach (set by an admin at
     // Admin -> Faculty Assignments) — sourced from the real faculty_subject_assignments
     // table via the server session, never guessed from which classes/students they
@@ -793,11 +866,32 @@ function FacultyDashboardContent() {
         const admissionYear = parseInt(cleanUSN.substring(3, 5), 10) || 22;
         const targetScheme = student?.scheme || (admissionYear >= 25 ? '2025' : '2022');
 
+        // Resolve single-portal target URL if selected
+        let finalTargetUrl = null;
+        if (selectedPortalUrl === 'CUSTOM') {
+            const trimmedCustom = customPortalUrl.trim();
+            if (!trimmedCustom || !trimmedCustom.toLowerCase().includes('vtu.ac.in')) {
+                setMessage('Please enter a valid results.vtu.ac.in URL for custom portal scan.');
+                return;
+            }
+            finalTargetUrl = trimmedCustom;
+        } else if (selectedPortalUrl !== 'ALL') {
+            finalTargetUrl = selectedPortalUrl;
+        }
+
         // Stop any existing polling before starting a new one
         stopScraping(true);
 
         setScraping(true);
-        setScrapeProgress(`Initializing ${targetScheme} Scheme deep scan for ${cleanUSN}...`);
+        const portalLabel = finalTargetUrl
+            ? (availablePortals.find(p => p.url === finalTargetUrl)?.exam_name || 'Targeted Portal')
+            : `${targetScheme} Scheme`;
+
+        setScrapeProgress(
+            finalTargetUrl
+                ? `Initializing targeted scan for ${cleanUSN} via ${portalLabel}...`
+                : `Initializing ${targetScheme} Scheme deep scan for ${cleanUSN}...`
+        );
         setMessage('');
 
         try {
@@ -809,12 +903,13 @@ function FacultyDashboardContent() {
                     role: 'faculty',
                     force: true,
                     faculty_id: faculty?.id,
-                    scheme: targetScheme
+                    scheme: targetScheme,
+                    target_url: finalTargetUrl
                 }),
             });
             const json = await res.json();
 
-            if (json.status === 'cached' && !forceDeep) {
+            if (json.status === 'cached' && !forceDeep && !finalTargetUrl) {
                 setMessage('Results already present in database (Cache Hit).');
                 setScraping(false);
                 setScrapeProgress('');
@@ -825,7 +920,10 @@ function FacultyDashboardContent() {
             if (json.jobId || json.status === 'queued') {
                 const jobId = json.jobId;
                 const activeScheme = json.scheme || targetScheme;
-                setScrapeProgress(`Job ${jobId?.substring(0, 6)} queued. Scanning ${activeScheme} Scheme portals for ${cleanUSN}...`);
+                const queueMsg = finalTargetUrl
+                    ? `Job ${jobId?.substring(0, 6)} queued. Scanning ${portalLabel} for ${cleanUSN} (estimated 3–5s)...`
+                    : `Job ${jobId?.substring(0, 6)} queued. Scanning ${activeScheme} Scheme portals for ${cleanUSN}...`;
+                setScrapeProgress(queueMsg);
 
                 // Hand the job to the live subscription below. It polls
                 // /api/scrape/status every LIVE.FAST ms and reacts to the
@@ -942,6 +1040,11 @@ function FacultyDashboardContent() {
             assignedSubjects={assignedSubjects}
             assignedLoading={assignedLoading}
             assignedClasses={assignedClasses}
+            availablePortals={availablePortals}
+            selectedPortalUrl={selectedPortalUrl}
+            setSelectedPortalUrl={setSelectedPortalUrl}
+            customPortalUrl={customPortalUrl}
+            setCustomPortalUrl={setCustomPortalUrl}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}
