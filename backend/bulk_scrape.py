@@ -77,8 +77,8 @@ def main() -> None:
         help="Number of students to scrape simultaneously in burst mode (default: 3 for peak throughput without server throttling)."
     )
     parser.add_argument(
-        "--tabs", "-t", dest="tabs", type=int, default=1,
-        help="Number of concurrent portal tabs per student (default: 1 in bulk mode to ensure ultra-stable multi-student concurrency)."
+        "--tabs", "-t", dest="tabs", type=int, default=None,
+        help="Number of concurrent portal tabs per student (default: auto-tuned 4 tabs on CPU, 8 tabs on GPU)."
     )
     parser.add_argument(
         "-b", "--branch", dest="branch", type=str, default=None,
