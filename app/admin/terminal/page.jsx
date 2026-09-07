@@ -8,6 +8,7 @@ import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
 import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
 import { FacultyAssignmentsContent } from '../../../components/FacultyAssignmentsContent';
+import { FacultyActivityContent } from '../../../components/FacultyActivityContent';
 import { ConfirmDialog } from '../../../components/ui';
 import AdminAnalyticsPage from '../analytics/page.jsx';
 import { AnalyticsFiltersProvider } from '../analytics/AnalyticsFiltersContext';
@@ -28,6 +29,29 @@ const TAB_METADATA = {
     analytics: { label: 'Institutional Analytics', icon: 'analytics', shortLabel: 'Analytics' },
     settings: { label: 'Institutional Settings & Security', icon: 'settings', shortLabel: 'Settings' },
 };
+
+const ACTION_COLORS = {
+    VIEW_RECORD: ['var(--blue-bg)', 'var(--blue)'],
+    MARKS_UPLOAD: ['var(--green-bg)', 'var(--green)'],
+    CIE_GRADE_EDIT: ['var(--amber-bg)', 'var(--amber)'],
+    SCRAPE: ['var(--amber-bg)', 'var(--amber)'],
+    FETCH: ['var(--blue-bg)', 'var(--blue)'],
+    CLASS_CREATE: ['var(--green-bg)', 'var(--green)'],
+    CLASS_ADD_STUDENT: ['var(--green-bg)', 'var(--green)'],
+    CLASS_BULK_IMPORT: ['var(--green-bg)', 'var(--green)'],
+    CLASS_FETCH_VTU: ['var(--blue-bg)', 'var(--blue)'],
+    CLASS_REMOVE_STUDENT: ['var(--amber-bg)', 'var(--amber)'],
+    CLASS_DELETE: ['var(--red-bg)', 'var(--red)'],
+    DELETE_STUDENT: ['var(--red-bg)', 'var(--red)'],
+    URL_TOGGLE: ['var(--surface-low)', 'var(--tx-muted)'],
+    FACULTY_LOGIN: ['rgba(16, 185, 129, 0.12)', '#059669'],
+    HALL_TICKET_GENERATE: ['rgba(139, 92, 246, 0.12)', '#7c3aed'],
+    EXPORT_MERIT_LIST: ['rgba(234, 88, 12, 0.12)', '#ea580c'],
+};
+
+function getActionColor(t) {
+    return ACTION_COLORS[t] || ['var(--surface-low)', 'var(--tx-muted)'];
+}
 
 function AdminPanelContent() {
     const router = useRouter();
@@ -70,9 +94,6 @@ function AdminPanelContent() {
     const [students, setStudents] = useState([]);
     const [requests, setRequests] = useState([]);
     const [activityLogs, setActivityLogs] = useState([]);
-    const [activitySearch, setActivitySearch] = useState('');
-    const [activityTypeFilter, setActivityTypeFilter] = useState('all');
-    const [activityDateFilter, setActivityDateFilter] = useState('all');
     const [stats, setStats] = useState({ students: 0, pending: 0, faculty: 0, totalMarks: 0, activityToday: 0 });
     const [vtuStats, setVtuStats] = useState({ totalExams: 0, totalMarks: 0, avgSgpa: 0, distinctionCount: 0, firstClassCount: 0, secondClassCount: 0, remedialCount: 0, distinctionPct: 0, firstClassPct: 0, secondClassPct: 0, remedialPct: 0 });
     const [openTicketsCount, setOpenTicketsCount] = useState(0);
@@ -1341,65 +1362,6 @@ function AdminPanelContent() {
         { id: 'analytics', label: 'Institutional Analytics', icon: 'analytics' },
         { id: 'settings', label: 'Settings', icon: 'settings_suggest' },
     ];
-
-    // ── Activity helpers ──────────────────────────────────────
-    const ACTION_COLORS = {
-        SCRAPE: ['var(--blue-bg)','var(--blue)'], FETCH: ['var(--blue-bg)','var(--blue)'],
-        CLASS_CREATE: ['var(--green-bg)','var(--green)'], CLASS_ADD_STUDENT: ['var(--green-bg)','var(--green)'],
-        CLASS_BULK_IMPORT: ['var(--green-bg)','var(--green)'], CLASS_FETCH_VTU: ['var(--blue-bg)','var(--blue)'],
-        CLASS_REMOVE_STUDENT: ['var(--amber-bg)','var(--amber)'], CLASS_DELETE: ['var(--red-bg)','var(--red)'],
-        DELETE_STUDENT: ['var(--red-bg)','var(--red)'], URL_TOGGLE: ['var(--surface-low)','var(--tx-muted)'],
-    };
-    const getActionColor = (t) => ACTION_COLORS[t] || ['var(--surface-low)','var(--tx-muted)'];
-
-    const filteredActivity = activityLogs.filter(l => {
-        const searchMatch = !activitySearch ||
-            (l.faculty_name||'').toLowerCase().includes(activitySearch.toLowerCase()) ||
-            (l.target_usn||'').toLowerCase().includes(activitySearch.toLowerCase()) ||
-            (l.action_type||'').toLowerCase().includes(activitySearch.toLowerCase());
-        const typeMatch = activityTypeFilter === 'all' || l.action_type === activityTypeFilter;
-        let dateMatch = true;
-        if (activityDateFilter === 'today') {
-            const todayStr = new Date().toISOString().slice(0,10);
-            dateMatch = (l.created_at||'').startsWith(todayStr);
-        } else if (activityDateFilter === '7d') {
-            const cutoff = new Date(Date.now() - 7*24*60*60*1000).toISOString();
-            dateMatch = (l.created_at||'') >= cutoff;
-        }
-        return searchMatch && typeMatch && dateMatch;
-    });
-    const uniqueTypes = [...new Set(activityLogs.map(l => l.action_type).filter(Boolean))];
-    const activeFacultyCount = useMemo(() => new Set(activityLogs.map(l => l.faculty_name || l._faculty?.full_name).filter(Boolean)).size, [activityLogs]);
-    const successRate = useMemo(() => activityLogs.length > 0 ? Math.round((activityLogs.filter(l => (l.sync_status || 'SUCCESS') === 'SUCCESS').length / activityLogs.length) * 100) : 100, [activityLogs]);
-
-    const handleExportFacultyCSV = () => {
-        if (!filteredActivity.length) {
-            alert('No faculty activity records to export.');
-            return;
-        }
-        const headers = ['Timestamp', 'Faculty Name', 'Faculty Email', 'Department', 'Action Type', 'Target USN / Details', 'Sync Status'];
-        const rows = filteredActivity.map(l => {
-            const fac = l._faculty || {};
-            return [
-                `"${l.created_at || ''}"`,
-                `"${(l.faculty_name || fac.full_name || 'Faculty').replace(/"/g, '""')}"`,
-                `"${fac.email || ''}"`,
-                `"${fac.department || ''}"`,
-                `"${l.action_type || ''}"`,
-                `"${(l.target_usn || l.details || '').replace(/"/g, '""')}"`,
-                `"${l.sync_status || 'SUCCESS'}"`
-            ];
-        });
-        const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `faculty_activity_log_${new Date().toISOString().slice(0, 10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     // Group marks by semester for drawer
     const groupedMarks = {};
@@ -3005,176 +2967,18 @@ function AdminPanelContent() {
                     </div>
                 </>}
 
-                {tab === 'activity' && <>
-                    <div style={c.pageLabel}>Faculty Academic Operations</div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-                        <div>
-                            <h1 style={{ ...c.pageTitle, marginBottom: '4px' }}>Faculty Activity Log</h1>
-                            <p style={{ margin: 0, fontSize: '13px', color: 'var(--tx-muted)' }}>
-                                Real-time pedagogical audit trail of faculty marks uploads, attendance entries, student profile lookups, and class roster syncs.
-                            </p>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <button
-                                style={{ ...c.actionBtn(false), display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                onClick={handleExportFacultyCSV}
-                                title="Download faculty activity report as CSV"
-                            >
-                                <span className="material-icons-round" style={{ fontSize: '16px' }}>file_download</span>
-                                Export CSV
-                            </button>
-                            <button style={c.actionBtn(false)} onClick={loadData}>
-                                <span className="material-icons-round" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>refresh</span>
-                                Refresh
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* KPI Stat Overview Cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Total Actions Logged</div>
-                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--tx-main)', marginTop: '2px' }}>{filteredActivity.length}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>All recorded faculty interactions</div>
-                        </div>
-
-                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Actions Today</div>
-                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', marginTop: '2px' }}>{stats.activityToday || 0}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>Activity in current 24h window</div>
-                        </div>
-
-                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Active Faculty</div>
-                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>{activeFacultyCount}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>Contributing instructors</div>
-                        </div>
-
-                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>Sync Success Rate</div>
-                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#047857', marginTop: '2px' }}>{successRate}%</div>
-                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>Operational sync health</div>
-                        </div>
-                    </div>
-
-                    {/* Filters */}
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
-                        <input
-                            style={{ ...c.searchInput, flex: 1, minWidth: '200px' }}
-                            placeholder="Search faculty, USN, action..."
-                            value={activitySearch}
-                            onChange={e => setActivitySearch(e.target.value)}
-                        />
-                        <select
-                            style={{ ...c.searchInput, width: 'auto', minWidth: '150px', flex: '1 1 150px', cursor: 'pointer' }}
-                            value={activityTypeFilter}
-                            onChange={e => setActivityTypeFilter(e.target.value)}
-                        >
-                            <option value="all">All Actions</option>
-                            {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <select
-                            style={{ ...c.searchInput, width: 'auto', minWidth: '150px', flex: '1 1 150px', cursor: 'pointer' }}
-                            value={activityDateFilter}
-                            onChange={e => setActivityDateFilter(e.target.value)}
-                        >
-                            <option value="all">All Time</option>
-                            <option value="today">Today</option>
-                            <option value="7d">Last 7 Days</option>
-                        </select>
-                        {(activitySearch || activityTypeFilter !== 'all' || activityDateFilter !== 'all') && (
-                            <button
-                                style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '12px' }}
-                                onClick={() => {
-                                    setActivitySearch('');
-                                    setActivityTypeFilter('all');
-                                    setActivityDateFilter('all');
-                                }}
-                            >
-                                ✕ Reset
-                            </button>
-                        )}
-                    </div>
-
-                    <div style={c.tableWrap}>
-                        <div style={c.tableHead}>
-                            <div style={c.tableTitle}>Faculty Pedagogical Action Records</div>
-                            <div style={{ fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 600 }}>{filteredActivity.length} records</div>
-                        </div>
-                        {!isMobile ? (
-                            <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr>{['Timestamp', 'Faculty', 'Dept', 'Action', 'Target / Detail', 'Status'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
-                                </thead>
-                                <tbody>
-                                    {filteredActivity.map((log, i) => {
-                                        const [bg, col] = getActionColor(log.action_type);
-                                        const ts = log.created_at ? new Date(log.created_at) : null;
-                                        const facultyInfo = log._faculty || {};
-                                        return (
-                                            <tr key={log.id || i} onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                                <td style={{ ...c.td, fontSize: '11px', color: 'var(--tx-dim)', whiteSpace: 'nowrap' }}>
-                                                    {ts ? ts.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
-                                                    <div style={{ fontSize: '10px', marginTop: '2px' }}>{ts ? ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                                                </td>
-                                                <td style={c.td}>
-                                                    <div style={{ fontWeight: 800, fontSize: '13px' }}>{log.faculty_name || facultyInfo.full_name || 'Faculty'}</div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>{facultyInfo.email || ''}</div>
-                                                </td>
-                                                <td style={{ ...c.td, fontSize: '12px', color: 'var(--tx-muted)' }}>{facultyInfo.department || '—'}</td>
-                                                <td style={c.td}>
-                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: col }}>
-                                                        {log.action_type || 'ACTION'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {log.target_usn || '—'}
-                                                </td>
-                                                <td style={c.td}>
-                                                    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: log.sync_status === 'SUCCESS' ? 'var(--green-bg)' : 'var(--red-bg)', color: log.sync_status === 'SUCCESS' ? 'var(--green)' : 'var(--red)' }}>
-                                                        {log.sync_status || 'OK'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                    {filteredActivity.length === 0 && (
-                                        <tr><td colSpan="6" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No activity logs match your filters.</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-                                {filteredActivity.map((log, i) => {
-                                    const [bg, col] = getActionColor(log.action_type);
-                                    const ts = log.created_at ? new Date(log.created_at) : null;
-                                    const facultyInfo = log._faculty || {};
-                                    return (
-                                        <div key={log.id || i} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: col }}>
-                                                    {log.action_type || 'ACTION'}
-                                                </span>
-                                                <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>
-                                                    {ts ? ts.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + ts.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                                                </span>
-                                            </div>
-                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
-                                                {log.faculty_name || facultyInfo.full_name || 'Faculty Member'}
-                                            </div>
-                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', wordBreak: 'break-word' }}>
-                                                {log.details || log.target_usn || '—'}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                                {filteredActivity.length === 0 && (
-                                    <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>No activity records found.</div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </>}
+                {tab === 'activity' && (
+                    <FacultyActivityContent
+                        activityLogs={activityLogs}
+                        students={students}
+                        facultyList={requests}
+                        classesList={classesList}
+                        onInspectStudent={openStudent}
+                        onInspectFaculty={(fac) => setSelectedFaculty(fac)}
+                        onRefresh={loadData}
+                        isMobile={isMobile}
+                    />
+                )}
 
                 {tab === 'classes' && <ClassesContent embedded={true} />}
 

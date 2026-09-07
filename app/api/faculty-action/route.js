@@ -8,19 +8,26 @@ export async function POST(req) {
         if (authError) return authError;
 
         const body = await req.json();
-        const { action, usn, data } = body;
+        const { action, usn, data, reason, context_module, method, details, metadata } = body;
 
-        // 1. Log action in Supabase 'faculty_activity' — attributed to the
-        // authenticated session, never a client-supplied id. faculty_name comes
-        // from the signed session token (set at login from faculty_onboarding.full_name,
-        // see app/api/auth/login/route.js) — never a hardcoded placeholder, so the
-        // admin Activity Log shows who actually performed the action.
+        // Extract client network and device fingerprint
+        const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || '127.0.0.1';
+        const userAgent = req.headers.get('user-agent') || 'Interactive Web Client';
+
+        // 1. Log action in Supabase 'faculty_activity' with full 5W1H governance context
         await supabase.from('faculty_activity').insert({
             faculty_id: session.sub,
             faculty_name: session.name || session.email || 'Unknown',
-            target_usn: usn,
-            action_type: action,
-            sync_status: 'SUCCESS'
+            target_usn: usn || null,
+            action_type: action || 'VIEW_RECORD',
+            sync_status: 'SUCCESS',
+            context_module: context_module || 'Faculty Portal',
+            reason: reason || null,
+            method: method || 'Web UI',
+            details: details || null,
+            metadata: metadata || data || {},
+            ip_address: ipAddress,
+            user_agent: userAgent,
         });
 
         // 2. If action is 'sync_to_sheets', trigger n8n webhook

@@ -115,7 +115,7 @@ async function loginAdmin({ email, password, systemToken }) {
     );
 }
 
-async function loginFaculty({ email, password }) {
+async function loginFaculty({ email, password }, req = null) {
     const normalizedEmail = String(email || '').toLowerCase();
 
     const supabase = getSupabaseAdmin();
@@ -160,6 +160,38 @@ async function loginFaculty({ email, password }) {
 
     if (!passwordMatches) {
         return failureResponse('The password you entered is incorrect.', 401);
+    }
+
+    // Record last login in faculty_onboarding & audit trail in faculty_activity
+    try {
+        const clientIp = req ? getClientIp(req) : '127.0.0.1';
+        const clientUa = req?.headers?.get ? (req.headers.get('user-agent') || 'Browser Client') : 'Browser Client';
+        const nowIso = new Date().toISOString();
+
+        await supabase.from('faculty_onboarding').update({
+            last_login_at: nowIso,
+            last_login_ip: clientIp,
+        }).eq('id', faculty.id);
+
+        await supabase.from('faculty_activity').insert({
+            faculty_id: faculty.id,
+            faculty_name: faculty.full_name,
+            action_type: 'FACULTY_LOGIN',
+            sync_status: 'SUCCESS',
+            context_module: 'Faculty Portal > Authentication Gateway',
+            reason: 'Authorized institutional faculty login session established.',
+            method: 'Secure Credentials / Access Key Login',
+            details: `${faculty.full_name} (${faculty.department}) established session from IP ${clientIp}.`,
+            ip_address: clientIp,
+            user_agent: clientUa,
+            metadata: {
+                department: faculty.department,
+                email: faculty.email,
+                login_at: nowIso,
+            }
+        });
+    } catch (auditErr) {
+        console.warn('[loginFaculty] audit record notice:', auditErr?.message);
     }
 
     const localSession = {
@@ -252,7 +284,7 @@ export async function POST(req) {
         }
 
         if (body?.role === 'faculty') {
-            return await loginFaculty(body);
+            return await loginFaculty(body, req);
         }
 
         if (body?.role === 'student' || body?.usn) {
