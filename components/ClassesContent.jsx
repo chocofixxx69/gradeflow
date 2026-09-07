@@ -172,6 +172,8 @@ export function ClassesContent({ embedded = false }) {
     const [exportType, setExportType] = useState('consolidated');
     const [facultyMap, setFacultyMap] = useState({});
     const [classSubjects, setClassSubjects] = useState([]);
+    const [subjectTeachers, setSubjectTeachers] = useState([]);
+    const [subjectTeachersLoading, setSubjectTeachersLoading] = useState(false);
     const fileRef = useRef(null);
 
     useEffect(() => {
@@ -386,7 +388,36 @@ export function ClassesContent({ embedded = false }) {
         setSemToppers(fullSem);
     };
 
-    const selectClass = cls => { setSelectedClass(cls); setMsg(''); setEditingName(false); fetchClassStudents(cls); };
+    // Who teaches what in this specific class — resolved the same way the
+    // Consolidated Report does (faculty_subject_assignments, class-scoped rows
+    // preferred over class-agnostic ones), so this always matches what shows
+    // up on the exported report for this class.
+    const loadSubjectTeachers = useCallback(async (cls) => {
+        if (!cls) { setSubjectTeachers([]); return; }
+        setSubjectTeachersLoading(true);
+        try {
+            const res = await fetch(`/api/admin/analytics/subjects?branch=${encodeURIComponent(cls.branch || '')}&semester=${cls.semester || ''}&classId=${cls.id}`, { credentials: 'include' });
+            const json = await res.json();
+            if (json.success) {
+                setSubjectTeachers((json.data?.subjects || []).filter(s => s.faculty && s.faculty !== 'Unassigned'));
+            } else {
+                setSubjectTeachers([]);
+            }
+        } catch (e) {
+            console.error('Failed to load subject teachers for class:', e);
+            setSubjectTeachers([]);
+        } finally {
+            setSubjectTeachersLoading(false);
+        }
+    }, []);
+
+    const selectClass = cls => {
+        setSelectedClass(cls);
+        setMsg('');
+        setEditingName(false);
+        fetchClassStudents(cls);
+        loadSubjectTeachers(cls);
+    };
 
     const createClass = async () => {
         if (!newClass.name.trim()) { setMsg('Class name required.'); return; }
@@ -865,6 +896,21 @@ export function ClassesContent({ embedded = false }) {
                             <p style={S.subtitle}>
                                 {selectedClass.branch} · Sem {selectedClass.semester} {selectedClass.section ? `· Sec ${selectedClass.section} ` : ''}{selectedClass.batch ? `· ${selectedClass.batch} Batch ` : ''}· {selectedClass.scheme} Scheme · 👨‍🏫 {selectedClass.faculty_name || 'All Faculty (Shared)'} · {students.length} students
                             </p>
+                            {!subjectTeachersLoading && subjectTeachers.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+                                    {subjectTeachers.map(s => (
+                                        <div
+                                            key={s.subject_code}
+                                            title={s.subject_name}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px' }}
+                                        >
+                                            <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>{s.subject_code}</span>
+                                            <span style={{ color: 'var(--tx-dim)' }}>·</span>
+                                            <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{s.faculty}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(selectedClass)}>

@@ -1,13 +1,31 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiRequest } from '../../../lib/api/client';
 import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
-import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput } from '../../../components/ui';
+import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, Select } from '../../../components/ui';
+import { createFacultyAssignment, deleteFacultyAssignment } from '../../../lib/api/admin-management';
 import styles from './FacultyDashboard.module.css';
+
+// Same canonical branch list used across the app (see app/api/faculty/analytics/meta/route.js).
+const BRANCH_OPTIONS = [
+    { value: 'CS', label: 'Computer Science & Engineering (CS)' },
+    { value: 'AI', label: 'AI & Machine Learning (AI)' },
+    { value: 'DS', label: 'CSE (Data Science) (DS)' },
+    { value: 'EC', label: 'Electronics & Communication (EC)' },
+    { value: 'EE', label: 'Electrical & Electronics (EE)' },
+    { value: 'ME', label: 'Mechanical Engineering (ME)' },
+    { value: 'CV', label: 'Civil Engineering (CV)' },
+    { value: 'RI', label: 'Robotics & AI (RI)' },
+];
+const SEMESTER_OPTIONS = Array.from({ length: 8 }, (_, i) => ({ value: String(i + 1), label: `Semester ${i + 1}` }));
+const SCHEME_OPTIONS = [
+    { value: '2022', label: '2022 Scheme' },
+    { value: '2025', label: '2025 Scheme' },
+];
 
 function FacultyDashboardView({
     backlogs = [],
@@ -45,6 +63,17 @@ function FacultyDashboardView({
     setSelectedPortalUrl,
     customPortalUrl = '',
     setCustomPortalUrl,
+    addSubjectOpen = false,
+    setAddSubjectOpen,
+    addSubjectForm,
+    setAddSubjectForm,
+    subjectOptions = [],
+    subjectOptionsLoading = false,
+    addSubjectSaving = false,
+    addSubjectError = '',
+    handleAddSubject,
+    handleRemoveAssignment,
+    removingAssignmentId = null,
 }) {
     const percentage = Math.max(0, (cgpa - 0.75) * 10);
     const messageTone = (() => {
@@ -540,17 +569,83 @@ function FacultyDashboardView({
                     <div>
                         <div className={styles.eyebrow}>Teaching Load</div>
                         <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects &amp; Classes</h2>
-                        <p className={styles.meta}>Your current semester teaching roster and assignments.</p>
+                        <p className={styles.meta}>Your current semester teaching roster and assignments. An admin can assign you a subject, or you can add one yourself below.</p>
                     </div>
+                    <Button
+                        variant={addSubjectOpen ? 'ghost' : 'secondary'}
+                        iconStart={addSubjectOpen ? 'close' : 'add'}
+                        onClick={() => setAddSubjectOpen?.(!addSubjectOpen)}
+                    >
+                        {addSubjectOpen ? 'Cancel' : 'Add Subject'}
+                    </Button>
                 </div>
+
+                {addSubjectOpen && (
+                    <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                        {addSubjectError && (
+                            <div style={{ marginBottom: '12px', fontSize: '12px', fontWeight: 700, color: 'var(--red, #e02424)' }}>
+                                {addSubjectError}
+                            </div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', alignItems: 'end' }}>
+                            <Select
+                                label="Branch"
+                                options={BRANCH_OPTIONS}
+                                value={addSubjectForm?.branch || ''}
+                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, branch: e.target.value, subject_code: '' }))}
+                            />
+                            <Select
+                                label="Semester"
+                                options={SEMESTER_OPTIONS}
+                                placeholder="Select"
+                                value={addSubjectForm?.semester || ''}
+                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, semester: e.target.value, subject_code: '' }))}
+                            />
+                            <Select
+                                label="Scheme"
+                                options={SCHEME_OPTIONS}
+                                value={addSubjectForm?.scheme || '2022'}
+                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, scheme: e.target.value, subject_code: '' }))}
+                            />
+                            <Select
+                                label="Subject"
+                                options={subjectOptions.map(s => ({ value: s.code, label: `${s.code} — ${s.name}` }))}
+                                placeholder={subjectOptionsLoading ? 'Loading…' : (subjectOptions.length ? 'Select a subject' : 'No subjects found')}
+                                value={addSubjectForm?.subject_code || ''}
+                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, subject_code: e.target.value }))}
+                                disabled={subjectOptionsLoading || subjectOptions.length === 0}
+                            />
+                            <Select
+                                label="Class"
+                                options={assignedClasses.map(c => ({ value: c.id, label: `${c.name} (${c.branch} · S${c.semester} · ${c.section})` }))}
+                                placeholder={assignedClasses.length ? 'All my classes' : 'No classes assigned yet'}
+                                value={addSubjectForm?.class_id || ''}
+                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, class_id: e.target.value }))}
+                                disabled={assignedClasses.length === 0}
+                                helperText={assignedClasses.length ? 'Leave blank to teach this subject across all your classes.' : undefined}
+                            />
+                            <Button
+                                variant="primary"
+                                onClick={handleAddSubject}
+                                loading={addSubjectSaving}
+                                disabled={addSubjectSaving || !addSubjectForm?.subject_code || !addSubjectForm?.semester}
+                            >
+                                Add to My Load
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
                 {assignedLoading ? (
                     <LoadingState density="compact" label="Loading your assignments" />
                 ) : (assignedSubjects.length === 0 && assignedClasses.length === 0) ? (
-                    <EmptyState
-                        icon="assignment_ind"
-                        title="No Subjects Assigned Yet"
-                        description="An administrator hasn't linked you to any subjects yet. Once they do, they'll appear here automatically."
-                    />
+                    !addSubjectOpen && (
+                        <EmptyState
+                            icon="assignment_ind"
+                            title="No Subjects Assigned Yet"
+                            description="An administrator hasn't linked you to any subjects yet — or add one yourself with the button above."
+                        />
+                    )
                 ) : (
                     <>
                         {assignedClasses.length > 0 && (
@@ -571,12 +666,36 @@ function FacultyDashboardView({
                         )}
                         <div className={styles.assignedGrid}>
                             {assignedSubjects.map((a) => (
-                                <div key={a.id} className={styles.assignedCard}>
+                                <div key={a.id} className={styles.assignedCard} style={{ position: 'relative' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemoveAssignment?.(a.id)}
+                                        disabled={removingAssignmentId === a.id}
+                                        aria-label={`Remove ${a.subject_code} from my teaching load`}
+                                        title="Remove from my teaching load"
+                                        style={{
+                                            position: 'absolute', top: '8px', right: '8px',
+                                            width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            background: 'transparent', border: 'none', borderRadius: '6px', cursor: 'pointer',
+                                            color: 'var(--tx-dim)', opacity: removingAssignmentId === a.id ? 0.5 : 1
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                    </button>
                                     <div className={styles.assignedCode}>{a.subject_code}</div>
                                     <div className={styles.assignedName}>{a.subject_catalog?.subject_name || 'Subject name unavailable'}</div>
                                     <div className={styles.assignedMeta}>
                                         {a.branch || '—'} · Sem {a.semester ?? '—'} · Scheme {a.scheme || '—'}{a.subject_catalog?.credits ? ` · ${a.subject_catalog.credits} Cr` : ''}
                                     </div>
+                                    {a.class_id && (() => {
+                                        const cls = assignedClasses.find(c => c.id === a.class_id);
+                                        return (
+                                            <div style={{ marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-bg, rgba(37,99,235,0.08))', borderRadius: '6px', padding: '3px 8px' }}>
+                                                <span className="material-icons-round" style={{ fontSize: '13px' }}>school</span>
+                                                {cls ? cls.name : 'Specific class'}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             ))}
                         </div>
@@ -635,6 +754,15 @@ function FacultyDashboardContent() {
     const [availablePortals, setAvailablePortals] = useState([]);
     const [selectedPortalUrl, setSelectedPortalUrl] = useState('ALL');
     const [customPortalUrl, setCustomPortalUrl] = useState('');
+    // Self-service "add my own subject" — same faculty_subject_assignments
+    // table and endpoint the admin panel writes to, just scoped to self.
+    const [addSubjectOpen, setAddSubjectOpen] = useState(false);
+    const [addSubjectForm, setAddSubjectForm] = useState({ branch: 'CS', semester: '', scheme: '2022', subject_code: '', class_id: '' });
+    const [subjectOptions, setSubjectOptions] = useState([]);
+    const [subjectOptionsLoading, setSubjectOptionsLoading] = useState(false);
+    const [addSubjectSaving, setAddSubjectSaving] = useState(false);
+    const [addSubjectError, setAddSubjectError] = useState('');
+    const [removingAssignmentId, setRemovingAssignmentId] = useState(null);
     // The scrape job currently being watched: { id, usn, startedAt } or null.
     const [scrapeJob, setScrapeJob] = useState(null);
     const backlogDialogRef = useRef(null);
@@ -725,32 +853,91 @@ function FacultyDashboardContent() {
         })();
         return () => { cancelled = true; };
     }, [faculty?.id]);
-    // What this faculty member is actually assigned to teach (set by an admin at
-    // Admin -> Faculty Assignments) — sourced from the real faculty_subject_assignments
-    // table via the server session, never guessed from which classes/students they
-    // happen to have browsed.
+    // What this faculty member is actually assigned to teach — sourced from
+    // the real faculty_subject_assignments table via the server session,
+    // never guessed from which classes/students they happen to have browsed.
+    // Rows can come from either an admin (Admin -> Faculty Assignments) or
+    // the faculty member themself (Add Subject below) — same table, same
+    // endpoint, so nothing ever needs reconciling between the two.
+    const loadAssignments = useCallback(async () => {
+        setAssignedLoading(true);
+        try {
+            const data = await apiRequest('/api/faculty/dashboard');
+            setAssignedSubjects(data?.assignedSubjects || []);
+            setAssignedClasses(data?.assignedClasses || []);
+        } catch (err) {
+            console.error('Failed to load assigned subjects:', err);
+            setAssignedSubjects([]);
+            setAssignedClasses([]);
+        } finally {
+            setAssignedLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
+        loadAssignments();
+    }, [loadAssignments]);
+
+    // Populate the subject picker for whichever branch/semester/scheme is
+    // currently selected in the "Add Subject" form.
+    useEffect(() => {
+        if (!addSubjectOpen || !addSubjectForm.semester) {
+            setSubjectOptions([]);
+            return;
+        }
         let cancelled = false;
         (async () => {
-            setAssignedLoading(true);
+            setSubjectOptionsLoading(true);
             try {
-                const data = await apiRequest('/api/faculty/dashboard');
-                if (!cancelled) {
-                    setAssignedSubjects(data?.assignedSubjects || []);
-                    setAssignedClasses(data?.assignedClasses || []);
-                }
+                const res = await fetch(`/api/subjects?branch=${addSubjectForm.branch}&semester=${addSubjectForm.semester}&scheme=${addSubjectForm.scheme}`, { credentials: 'include' });
+                const json = await res.json();
+                if (!cancelled) setSubjectOptions(json?.subjects || []);
             } catch (err) {
-                console.error('Failed to load assigned subjects:', err);
-                if (!cancelled) {
-                    setAssignedSubjects([]);
-                    setAssignedClasses([]);
-                }
+                console.error('Failed to load subject catalog:', err);
+                if (!cancelled) setSubjectOptions([]);
             } finally {
-                if (!cancelled) setAssignedLoading(false);
+                if (!cancelled) setSubjectOptionsLoading(false);
             }
         })();
         return () => { cancelled = true; };
-    }, []);
+    }, [addSubjectOpen, addSubjectForm.branch, addSubjectForm.semester, addSubjectForm.scheme]);
+
+    const handleAddSubject = async () => {
+        if (!addSubjectForm.subject_code || !addSubjectForm.semester) return;
+        setAddSubjectSaving(true);
+        setAddSubjectError('');
+        try {
+            // faculty_id is intentionally omitted — the API defaults it to the
+            // caller's own session for a faculty role, so this can never assign
+            // (or misattribute) a subject to anyone but the logged-in faculty.
+            await createFacultyAssignment({
+                subject_code: addSubjectForm.subject_code,
+                branch: addSubjectForm.branch,
+                semester: parseInt(addSubjectForm.semester, 10),
+                scheme: addSubjectForm.scheme,
+                class_id: addSubjectForm.class_id || undefined,
+            });
+            setAddSubjectForm(prev => ({ ...prev, subject_code: '', class_id: '' }));
+            setAddSubjectOpen(false);
+            await loadAssignments();
+        } catch (err) {
+            setAddSubjectError(err?.message || 'Failed to add this subject to your teaching load.');
+        } finally {
+            setAddSubjectSaving(false);
+        }
+    };
+
+    const handleRemoveAssignment = async (id) => {
+        setRemovingAssignmentId(id);
+        try {
+            await deleteFacultyAssignment(id);
+            await loadAssignments();
+        } catch (err) {
+            console.error('Failed to remove assignment:', err);
+        } finally {
+            setRemovingAssignmentId(null);
+        }
+    };
     useEffect(() => {
         if (!showBacklogModal) return;
 
@@ -1045,6 +1232,17 @@ function FacultyDashboardContent() {
             setSelectedPortalUrl={setSelectedPortalUrl}
             customPortalUrl={customPortalUrl}
             setCustomPortalUrl={setCustomPortalUrl}
+            addSubjectOpen={addSubjectOpen}
+            setAddSubjectOpen={setAddSubjectOpen}
+            addSubjectForm={addSubjectForm}
+            setAddSubjectForm={setAddSubjectForm}
+            subjectOptions={subjectOptions}
+            subjectOptionsLoading={subjectOptionsLoading}
+            addSubjectSaving={addSubjectSaving}
+            addSubjectError={addSubjectError}
+            handleAddSubject={handleAddSubject}
+            handleRemoveAssignment={handleRemoveAssignment}
+            removingAssignmentId={removingAssignmentId}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}

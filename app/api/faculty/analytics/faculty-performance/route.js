@@ -26,36 +26,34 @@ export async function GET(req) {
         const semesterFilter = searchParams.get('semester') && searchParams.get('semester') !== 'all' 
             ? parseInt(searchParams.get('semester'), 10) 
             : null;
+        const classFilter = (searchParams.get('classId') || '').trim();
 
-        const cacheKey = `fac_perf:${branchFilter}:${semesterFilter || 'all'}`;
+        const cacheKey = `fac_perf:${branchFilter}:${semesterFilter || 'all'}:${classFilter || 'all'}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch faculty members
-        // "Assigned subjects" comes ONLY from faculty_subject_assignments — the real,
-        // admin-managed faculty-to-subject link (app/admin/faculty-assignments). There
-        // used to be a fallback here that invented assignments from `classes.faculty_id`
-        // (any class a faculty happens to own → first 4 catalog subjects for that class's
-        // semester/branch, regardless of who actually teaches them). Since faculty access
-        // is deliberately flat/broad in this app — any faculty can open any class — that
-        // fallback attributed nearly the entire catalog to whoever had browsed the most
-        // classes. A faculty with no real assignment row must show zero subjects, not a
-        // guess; the UI already renders "No subjects assigned" for that case.
+        // 1. Fetch faculty members, subject assignments with class info, catalog, and classes
         const [
             { data: rawFaculty },
             { data: rawAssignments },
-            { data: rawSubjects }
+            { data: rawSubjects },
+            { data: rawClasses }
         ] = await Promise.all([
-            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department, status'),
-            supabaseAdmin.from('faculty_subject_assignments').select('*'),
-            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, credits')
+            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department, status, designation').order('full_name', { ascending: true }),
+            supabaseAdmin.from('faculty_subject_assignments').select('*, classes(id, name, branch, semester, section, batch)'),
+            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, credits'),
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, class_students(count)').order('name', { ascending: true })
         ]);
 
         const facultyList = rawFaculty || [];
         const assignments = rawAssignments || [];
         const catalogSubjects = rawSubjects || [];
+        const classesList = (rawClasses || []).map(c => ({
+            ...c,
+            student_count: c.class_students?.[0]?.count ?? 0
+        }));
 
         const catalogMap = new Map();
         catalogSubjects.forEach(s => catalogMap.set(s.subject_code.toUpperCase(), s));
@@ -67,6 +65,20 @@ export async function GET(req) {
             list.push(a);
             assignmentsByFaculty.set(a.faculty_id, list);
         });
+
+        // Fetch students enrolled in assigned classes for accurate class-level attribution
+        const assignedClassIds = Array.from(new Set(assignments.map(a => a.class_id).filter(Boolean)));
+        const classStudentsMap = new Map();
+        if (assignedClassIds.length > 0) {
+            const { data: rawClassStudents } = await supabaseAdmin
+                .from('class_students')
+                .select('class_id, usn')
+                .in('class_id', assignedClassIds);
+            (rawClassStudents || []).forEach(cs => {
+                if (!classStudentsMap.has(cs.class_id)) classStudentsMap.set(cs.class_id, new Set());
+                classStudentsMap.get(cs.class_id).add((cs.usn || '').toUpperCase().trim());
+            });
+        }
 
         // 2. Fetch subject marks for all assigned subjects
         const allAssignedCodes = Array.from(new Set(assignments.map(a => a.subject_code.toUpperCase())));
@@ -101,12 +113,16 @@ export async function GET(req) {
 
             const facAssignments = assignmentsByFaculty.get(fac.id) || [];
             
-            // Filter by semester if active
-            const filteredAssignments = semesterFilter 
-                ? facAssignments.filter(a => Number(a.semester) === semesterFilter)
-                : facAssignments;
+            // Filter by semester and class if active
+            let filteredAssignments = facAssignments;
+            if (semesterFilter) {
+                filteredAssignments = filteredAssignments.filter(a => Number(a.semester) === semesterFilter);
+            }
+            if (classFilter && classFilter !== 'all') {
+                filteredAssignments = filteredAssignments.filter(a => a.class_id === classFilter);
+            }
 
-            if (facAssignments.length === 0 && branchFilter) return;
+            if (facAssignments.length === 0 && (branchFilter || classFilter)) return;
 
             let totalAppeared = 0;
             let totalPassed = 0;
@@ -119,12 +135,19 @@ export async function GET(req) {
             filteredAssignments.forEach(assign => {
                 const code = (assign.subject_code || '').toUpperCase();
                 const catInfo = catalogMap.get(code);
-                const subMarks = marksBySubject.get(code) || [];
+                let subMarks = marksBySubject.get(code) || [];
+
+                // If this subject is specifically assigned to a class section, scope to that class's students
+                if (assign.class_id && classStudentsMap.has(assign.class_id)) {
+                    const validUsns = classStudentsMap.get(assign.class_id);
+                    subMarks = subMarks.filter(m => validUsns.has((m.usn || '').toUpperCase().trim()));
+                }
 
                 let subAppeared = subMarks.length;
                 let subPassed = 0;
                 let subFailed = 0;
                 let subScoreSum = 0;
+                const subFailedStudents = [];
 
                 subMarks.forEach(m => {
                     const isFail = isFailedSubject(m);
@@ -137,6 +160,15 @@ export async function GET(req) {
                         subFailed++;
                         totalFailed++;
                         gradeCounts.F++;
+                        if (m.usn) {
+                            subFailedStudents.push({
+                                usn: m.usn,
+                                internal: m.internal,
+                                external: m.external,
+                                total: m.total,
+                                grade: m.grade || 'F'
+                            });
+                        }
                     } else {
                         subPassed++;
                         totalPassed++;
@@ -153,15 +185,21 @@ export async function GET(req) {
                 totalAppeared += subAppeared;
 
                 subjectBreakdowns.push({
+                    assignment_id: assign.id,
                     subject_code: code,
                     subject_name: assign.subject_name || catInfo?.subject_name || code,
                     semester: assign.semester || catInfo?.semester || 1,
                     branch: assign.branch || catInfo?.branch || fac.department || '—',
+                    class_id: assign.class_id || null,
+                    class_name: assign.classes?.name || null,
+                    class_section: assign.classes?.section || null,
+                    class_batch: assign.classes?.batch || null,
                     appeared: subAppeared,
                     passed: subPassed,
                     failed: subFailed,
                     pass_rate: pct(subPassed, subAppeared),
-                    avg_score: subAppeared > 0 ? Number((subScoreSum / subAppeared).toFixed(1)) : 0
+                    avg_score: subAppeared > 0 ? Number((subScoreSum / subAppeared).toFixed(1)) : 0,
+                    failed_students: subFailedStudents
                 });
             });
 
@@ -190,7 +228,10 @@ export async function GET(req) {
 
         const payload = {
             faculty: performanceList,
-            totalFaculty: performanceList.length
+            totalFaculty: performanceList.length,
+            classes: classesList,
+            currentFacultyId: session?.sub || session?.user?.id || null,
+            currentUserRole: session?.role || 'faculty'
         };
 
         setCached(cacheKey, payload, 30_000);

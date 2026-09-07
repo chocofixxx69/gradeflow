@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '../../../../../lib/server-session';
+import { requireStaff } from '../../../../../lib/server-session';
 import { getAdminClient } from '../../../../../lib/analytics-data';
 
 export const dynamic = 'force-dynamic';
@@ -12,17 +12,33 @@ function fail(message, code, status = 400, details = {}) {
 /**
  * DELETE /api/admin/faculty-assignments/:id
  * Removes a faculty↔subject assignment.
- * Auth: admin only.
+ * Auth: admin or assigned faculty.
  */
 export async function DELETE(req, { params }) {
     try {
-        const { error: authError } = requireAdmin(req);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { id } = params;
         if (!id) return fail('id is required.', 'VALIDATION_ERROR', 400);
 
         const client = getAdminClient();
+
+        // If faculty, verify ownership
+        if (session?.role === 'faculty') {
+            const { data: assignment, error: fetchErr } = await client
+                .from('faculty_subject_assignments')
+                .select('faculty_id')
+                .eq('id', id)
+                .maybeSingle();
+            if (fetchErr) throw fetchErr;
+            if (!assignment) return fail('Assignment not found.', 'NOT_FOUND', 404);
+            const myFacultyId = session?.sub || session?.user?.id;
+            if (assignment.faculty_id !== myFacultyId) {
+                return fail('Faculty members can only remove their own subject assignments.', 'FORBIDDEN', 403);
+            }
+        }
+
         const { error } = await client.from('faculty_subject_assignments').delete().eq('id', id);
         if (error) throw error;
 

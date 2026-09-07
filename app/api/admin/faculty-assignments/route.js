@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '../../../../lib/server-session';
+import { requireAdmin, requireStaff } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 
 import { fetchAllPaginated } from '../../../../lib/supabase-utils.js';
@@ -37,11 +37,11 @@ async function getSubjectCatalog(client) {
  * GET /api/admin/faculty-assignments
  * Lists faculty↔subject assignments, joined with faculty name and class info
  * for display. Optional filter: ?facultyId=<uuid>
- * Auth: admin only.
+ * Auth: staff (admin or faculty).
  */
 export async function GET(req) {
     try {
-        const { error: authError } = requireAdmin(req);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
@@ -90,15 +90,26 @@ export async function GET(req) {
  * Duplicate prevention: a pre-check plus a DB-level unique index
  * (idx_fsa_unique_assignment, see supabase/migrations) both reject the same
  * faculty+subject+branch+semester+scheme+class combination being assigned twice.
- * Auth: admin only.
+ * Auth: staff (admin can assign anyone, faculty can self-assign).
  */
 export async function POST(req) {
     try {
-        const { error: authError } = requireAdmin(req);
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
         const body = await req.json().catch(() => ({}));
-        const facultyId = typeof body.faculty_id === 'string' ? body.faculty_id.trim() : '';
+        let facultyId = typeof body.faculty_id === 'string' ? body.faculty_id.trim() : '';
+
+        // If faculty user, ensure they can only assign to themselves
+        if (session?.role === 'faculty') {
+            const myFacultyId = session?.sub || session?.user?.id;
+            if (!facultyId) {
+                facultyId = myFacultyId;
+            } else if (facultyId !== myFacultyId) {
+                return fail('Faculty members can only assign subjects to their own profile.', 'FORBIDDEN', 403);
+            }
+        }
+
         const subjectCode = typeof body.subject_code === 'string' ? body.subject_code.trim() : '';
         const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : null;
         const scheme = typeof body.scheme === 'string' && body.scheme.trim() ? body.scheme.trim() : null;
@@ -161,5 +172,50 @@ export async function POST(req) {
     } catch (err) {
         console.error('[POST /api/admin/faculty-assignments]', err);
         return fail('Failed to create faculty assignment.', 'FACULTY_ASSIGNMENTS_ERROR', 500, { error: String(err?.message || err) });
+    }
+}
+
+/**
+ * DELETE /api/admin/faculty-assignments
+ * Removes a faculty↔subject assignment. Body: { id }
+ * Auth: admin can delete any row; faculty can only delete their own
+ * (e.g. undoing a subject they self-assigned from their dashboard).
+ */
+export async function DELETE(req) {
+    try {
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
+        if (authError) return authError;
+
+        const body = await req.json().catch(() => ({}));
+        const id = typeof body.id === 'string' ? body.id.trim() : '';
+        if (!id) return fail('id is required.', 'VALIDATION_ERROR', 400);
+
+        const client = getAdminClient();
+
+        if (session?.role === 'faculty') {
+            const myFacultyId = session?.sub || session?.user?.id;
+            const { data: existing, error: lookupError } = await client
+                .from('faculty_subject_assignments')
+                .select('faculty_id')
+                .eq('id', id)
+                .maybeSingle();
+            if (lookupError) throw lookupError;
+            if (!existing) return fail('Assignment not found.', 'NOT_FOUND', 404);
+            if (existing.faculty_id !== myFacultyId) {
+                return fail('Faculty members can only remove their own assignments.', 'FORBIDDEN', 403);
+            }
+        }
+
+        const { error } = await client
+            .from('faculty_subject_assignments')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        return ok({ id });
+    } catch (err) {
+        console.error('[DELETE /api/admin/faculty-assignments]', err);
+        return fail('Failed to delete faculty assignment.', 'FACULTY_ASSIGNMENTS_ERROR', 500, { error: String(err?.message || err) });
     }
 }

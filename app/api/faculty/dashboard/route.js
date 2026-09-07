@@ -98,6 +98,17 @@ export async function GET(req) {
         }
 
         const facultyId = session.sub || session.id;
+        const isUuid = typeof facultyId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId);
+
+        let classesQuery = supabaseAdmin.from('classes').select('*');
+        let assignmentsQuery = supabaseAdmin.from('faculty_subject_assignments').select('*');
+        let activityQuery = supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(20);
+
+        if (isUuid) {
+            classesQuery = classesQuery.eq('faculty_id', facultyId);
+            assignmentsQuery = assignmentsQuery.eq('faculty_id', facultyId);
+            activityQuery = activityQuery.eq('faculty_id', facultyId);
+        }
 
         const [
             { data: assignedClasses },
@@ -105,14 +116,9 @@ export async function GET(req) {
             { data: recentActivity },
             { count: studentCount }
         ] = await Promise.all([
-            supabaseAdmin.from('classes').select('*').eq('faculty_id', facultyId),
-            // The real, admin-managed link (app/admin/faculty-assignments) is
-            // faculty_subject_assignments — a since-removed table named just
-            // `faculty_assignments` used to be queried here instead, so this KPI
-            // (and the dashboard's subject list) silently showed zero for every
-            // faculty member regardless of what admins actually assigned.
-            supabaseAdmin.from('faculty_subject_assignments').select('*').eq('faculty_id', facultyId),
-            supabaseAdmin.from('faculty_activity').select('*').eq('faculty_id', facultyId).order('created_at', { ascending: false }).limit(20),
+            classesQuery,
+            assignmentsQuery,
+            activityQuery,
             supabaseAdmin.from('students').select('id', { count: 'exact', head: true })
         ]);
 

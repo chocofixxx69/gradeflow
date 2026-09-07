@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 import HallTicketSheet from '@/components/hall-tickets/HallTicketSheet';
+import TimetableEditor from '@/components/hall-tickets/TimetableEditor';
 import { getJsPDF } from '@/lib/lazy-export-libs';
 import { recordFacultyAction } from '@/lib/api/faculty-action';
 

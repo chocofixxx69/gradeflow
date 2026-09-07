@@ -62,7 +62,7 @@ export async function GET(req) {
             const branch = mode(marks.map(m => studentByUsn[m.usn]?.branch).filter(Boolean));
             const scheme = mode(marks.map(m => studentByUsn[m.usn]?.scheme).filter(Boolean));
 
-            const assignment = findFacultyAssignment(dataset.facultyAssignments, { subjectCode: code, branch, semester, scheme });
+            const assignment = findFacultyAssignment(dataset.facultyAssignments, { subjectCode: code, branch, semester, scheme, classId: filters.classId });
             const facultyName = assignment ? (dataset.facultyById[assignment.faculty_id]?.full_name || 'Unassigned') : 'Unassigned';
 
             const catalogEntry = dataset.lookupSubjectCatalog({ code, branch, semester, scheme });
