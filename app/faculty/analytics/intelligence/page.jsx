@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
@@ -108,6 +108,12 @@ function InstitutionalIntelligenceContent() {
     const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
     const [subjectSearch, setSubjectSearch] = useState('');
     const [subjectFilterMode, setSubjectFilterMode] = useState('all'); // 'all' | 'delta' | 'fails'
+    const [classPickerOpen, setClassPickerOpen] = useState(false);
+    const [selectedPickerClassId, setSelectedPickerClassId] = useState('');
+    const [classRosterStudents, setClassRosterStudents] = useState([]);
+    const [rosterSearch, setRosterSearch] = useState('');
+    const [isLoadingRoster, setIsLoadingRoster] = useState(false);
+    const searchContainerRef = useRef(null);
 
     // Synchronize filters
     useEffect(() => {
@@ -233,14 +239,25 @@ function InstitutionalIntelligenceContent() {
 
     // USN list management for comparator
     const handleAddUsn = (usnToAdd) => {
-        const clean = (usnToAdd || usnInput).trim().toUpperCase();
+        let clean = (usnToAdd || usnInput).trim();
         if (!clean) return;
-        if (usnList.includes(clean)) return;
+
+        // If user typed a search query that matches dropdown results and isn't a 10-char USN, use the first match
+        if (!usnToAdd && studentSearchResults.length > 0 && clean.length >= 2 && !/^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/i.test(clean)) {
+            clean = studentSearchResults[0].usn;
+        }
+
+        clean = clean.toUpperCase();
+        if (usnList.includes(clean)) {
+            setUsnInput('');
+            setSearchDropdownOpen(false);
+            return;
+        }
         if (usnList.length >= 6) {
             alert('You can compare a maximum of 6 students simultaneously.');
             return;
         }
-        setUsnList(prev => [...prev, clean]);
+        setUsnList(prev => [...prev, clean].slice(0, 6));
         setUsnInput('');
         setSearchDropdownOpen(false);
     };
@@ -251,6 +268,47 @@ function InstitutionalIntelligenceContent() {
     };
 
     const handleRemoveUsn = (u) => setUsnList(prev => prev.filter(x => x !== u));
+
+    // Click outside search dropdown listener
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+                setSearchDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Load roster when class is picked in Class Picker
+    const loadClassRoster = useCallback(async (cId) => {
+        if (!cId) return;
+        setIsLoadingRoster(true);
+        try {
+            const res = await apiRequest('/api/faculty/students', {
+                query: { classId: cId, limit: 100, fresh: '1' }
+            });
+            if (res?.students) {
+                setClassRosterStudents(res.students);
+            }
+        } catch (err) {
+            console.error('Failed to load class roster:', err);
+        } finally {
+            setIsLoadingRoster(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (classPickerOpen) {
+            const defaultClassId = selectedPickerClassId || classReport?.classes?.[0]?.id || '';
+            if (defaultClassId && defaultClassId !== selectedPickerClassId) {
+                setSelectedPickerClassId(defaultClassId);
+            }
+            if (defaultClassId) {
+                loadClassRoster(defaultClassId);
+            }
+        }
+    }, [classPickerOpen, selectedPickerClassId, classReport?.classes, loadClassRoster]);
 
     // Debounced live student search by name or USN
     useEffect(() => {
@@ -288,8 +346,10 @@ function InstitutionalIntelligenceContent() {
         setComparatorLoading(true);
         try {
             const query = {
-                limit: 3,
-                branch: branch === 'ALL' ? '' : branch
+                branch: branch === 'ALL' ? '' : branch,
+                batch: batch === 'ALL' ? '' : batch,
+                page: 1,
+                limit: 50
             };
             if (type === 'top3') {
                 query.backlogsFilter = 'clear';
@@ -298,7 +358,16 @@ function InstitutionalIntelligenceContent() {
             }
             const res = await apiRequest('/api/faculty/students', { query });
             if (res?.students?.length > 0) {
-                setUsnList(res.students.map(s => s.usn));
+                let candidates = [...res.students];
+                if (type === 'top3') {
+                    // Sort descending by CGPA to get real top rankers
+                    candidates.sort((a, b) => (b.cgpa || 0) - (a.cgpa || 0));
+                } else if (type === 'remedial') {
+                    // Sort by highest backlogs first, then lowest CGPA
+                    candidates.sort((a, b) => (b.total_backlogs || 0) - (a.total_backlogs || 0) || (a.cgpa || 0) - (b.cgpa || 0));
+                }
+                const top3 = candidates.slice(0, 3).map(s => s.usn);
+                setUsnList(top3);
             }
         } catch (err) {
             console.error('Failed to load preset students:', err);
@@ -1514,6 +1583,29 @@ function InstitutionalIntelligenceContent() {
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                     <button
                                         type="button"
+                                        onClick={() => {
+                                            if (!classReport?.classes?.length) loadClassesData();
+                                            setClassPickerOpen(true);
+                                        }}
+                                        style={{
+                                            background: 'rgba(99, 102, 241, 0.1)',
+                                            color: 'var(--primary)',
+                                            border: '1px solid rgba(99, 102, 241, 0.3)',
+                                            borderRadius: '8px',
+                                            padding: '6px 12px',
+                                            fontSize: '12px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>groups</span>
+                                        📋 Pick from Class Roster
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => handleLoadPreset('top3')}
                                         disabled={comparatorLoading}
                                         style={{
@@ -1580,7 +1672,7 @@ function InstitutionalIntelligenceContent() {
                             </div>
 
                             {/* Live Search Input with Suggestions Dropdown */}
-                            <div style={{ position: 'relative' }}>
+                            <div ref={searchContainerRef} style={{ position: 'relative' }}>
                                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                     <div style={{ position: 'relative', flex: 1 }}>
                                         <span className="material-icons-round" style={{
@@ -1662,7 +1754,8 @@ function InstitutionalIntelligenceContent() {
                                             return (
                                                 <div
                                                     key={stu.usn}
-                                                    onClick={() => {
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
                                                         if (!isSelected) handleSelectStudent(stu);
                                                     }}
                                                     style={{
@@ -1844,11 +1937,38 @@ function InstitutionalIntelligenceContent() {
                                         <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>warning_amber</span>
                                         Diagnose Remedial Students
                                     </Button>
+                                    <Button onClick={() => {
+                                        if (!classReport?.classes?.length) loadClassesData();
+                                        setClassPickerOpen(true);
+                                    }} variant="secondary">
+                                        <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>groups</span>
+                                        Browse Class Sections
+                                    </Button>
                                 </div>
                             </CardContent>
                         </Card>
                     ) : (
                         <>
+                            {/* Loading Indicator when comparator is fetching */}
+                            {comparatorLoading && (
+                                <div style={{
+                                    background: 'rgba(99, 102, 241, 0.08)',
+                                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                                    borderRadius: '10px',
+                                    padding: '12px 18px',
+                                    marginBottom: '20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    color: 'var(--primary)'
+                                }}>
+                                    <span className="material-icons-round gf-spin" style={{ fontSize: '20px' }}>sync</span>
+                                    <span style={{ fontWeight: 800, fontSize: '13px' }}>
+                                        Crunching comparative trajectories & subject grade matrices...
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Executive Head-to-Head Scorecards Grid */}
                             <div style={{ marginBottom: '24px' }}>
                                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
@@ -2083,7 +2203,7 @@ function InstitutionalIntelligenceContent() {
                                                 />
                                                 <YAxis
                                                     domain={[0, 10]}
-                                                    ticks={[0, 2, 4, 6, 6.75, 7.75, 10]}
+                                                    ticks={[0, 2, 4, 6, 8, 10]}
                                                     tick={{ fontSize: 11, fill: 'var(--tx-muted)' }}
                                                 />
                                                 <Tooltip
@@ -2157,6 +2277,7 @@ function InstitutionalIntelligenceContent() {
                                                         name={u}
                                                         stroke={LINE_COLORS[i % LINE_COLORS.length]}
                                                         strokeWidth={3}
+                                                        connectNulls={true}
                                                         dot={{ r: 5, fill: LINE_COLORS[i % LINE_COLORS.length] }}
                                                         activeDot={{ r: 7 }}
                                                     />
@@ -2401,6 +2522,233 @@ function InstitutionalIntelligenceContent() {
                                 </Card>
                             )}
                         </>
+                    )}
+                    {/* Class Roster Picker Modal */}
+                    {classPickerOpen && (
+                        <div style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: 'rgba(0, 0, 0, 0.65)',
+                            backdropFilter: 'blur(4px)',
+                            zIndex: 1000,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '20px'
+                        }}>
+                            <div style={{
+                                background: 'var(--surface)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '16px',
+                                width: '100%',
+                                maxWidth: '680px',
+                                maxHeight: '85vh',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+                                overflow: 'hidden'
+                            }}>
+                                {/* Modal Header */}
+                                <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontWeight: 900, fontSize: '16px', color: 'var(--tx-main)' }}>
+                                            Pick Students from Class Roster
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                            Select a class section and click students to compare. (Selected: {usnList.length} / 6)
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setClassPickerOpen(false)}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', fontSize: '22px', lineHeight: 1 }}
+                                    >
+                                        &times;
+                                    </button>
+                                </div>
+
+                                {/* Modal Controls: Class Selector & Search */}
+                                <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                    <div style={{ flex: '1', minWidth: '220px' }}>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                            Target Class Section
+                                        </label>
+                                        <select
+                                            value={selectedPickerClassId}
+                                            onChange={e => {
+                                                setSelectedPickerClassId(e.target.value);
+                                                loadClassRoster(e.target.value);
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '9px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface)',
+                                                color: 'var(--tx-main)',
+                                                fontSize: '13px',
+                                                fontWeight: 700,
+                                                outline: 'none'
+                                            }}
+                                        >
+                                            {(classReport?.classes || []).map(c => (
+                                                <option key={c.id} value={c.id}>
+                                                    {c.name} {c.section ? `(Sec ${c.section})` : ''} • Sem {c.semester} • Batch {c.batch}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div style={{ flex: '1', minWidth: '200px' }}>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                            Search Students
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="Filter by name or USN..."
+                                            value={rosterSearch}
+                                            onChange={e => setRosterSearch(e.target.value)}
+                                            style={{
+                                                width: '100%',
+                                                padding: '9px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface)',
+                                                color: 'var(--tx-main)',
+                                                fontSize: '13px',
+                                                outline: 'none'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Modal Body: Roster Grid */}
+                                <div style={{ padding: '16px 24px', overflowY: 'auto', flex: '1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {isLoadingRoster ? (
+                                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                            <span className="material-icons-round gf-spin" style={{ fontSize: '28px', color: 'var(--primary)', marginBottom: '8px' }}>sync</span>
+                                            <div style={{ fontSize: '13px', fontWeight: 700 }}>Loading class roster...</div>
+                                        </div>
+                                    ) : classRosterStudents.length === 0 ? (
+                                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--tx-main)' }}>No students found in this class</div>
+                                            <div style={{ fontSize: '12px' }}>Try selecting another class section above.</div>
+                                        </div>
+                                    ) : (
+                                        classRosterStudents
+                                            .filter(s => {
+                                                if (!rosterSearch.trim()) return true;
+                                                const q = rosterSearch.toLowerCase().trim();
+                                                return (s.name || '').toLowerCase().includes(q) || (s.usn || '').toLowerCase().includes(q);
+                                            })
+                                            .map(stu => {
+                                                const isAdded = usnList.includes(stu.usn);
+                                                return (
+                                                    <div
+                                                        key={stu.usn}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '10px 14px',
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${isAdded ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: isAdded ? 'rgba(99, 102, 241, 0.06)' : 'var(--surface-low)',
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            <div style={{
+                                                                width: '34px',
+                                                                height: '34px',
+                                                                borderRadius: '50%',
+                                                                background: isAdded ? 'var(--primary)' : 'var(--border)',
+                                                                color: isAdded ? '#FFFFFF' : 'var(--tx-muted)',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontWeight: 800,
+                                                                fontSize: '12px'
+                                                            }}>
+                                                                {(stu.name || stu.usn).slice(0, 2).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                                    {stu.name || stu.usn}
+                                                                </div>
+                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
+                                                                    {stu.usn} {stu.section ? `• Sec ${stu.section}` : ''}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                            {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
+                                                                <span style={{
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(99, 102, 241, 0.12)',
+                                                                    color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
+                                                                }}>
+                                                                    {stu.cgpa.toFixed(2)} CGPA
+                                                                </span>
+                                                            )}
+                                                            {stu.total_backlogs > 0 && (
+                                                                <span style={{
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: 'rgba(239, 68, 68, 0.12)',
+                                                                    color: '#DC2626'
+                                                                }}>
+                                                                    {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (isAdded) {
+                                                                        handleRemoveUsn(stu.usn);
+                                                                    } else {
+                                                                        handleAddUsn(stu.usn);
+                                                                    }
+                                                                }}
+                                                                style={{
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: '6px',
+                                                                    border: 'none',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer',
+                                                                    background: isAdded ? 'rgba(239, 68, 68, 0.1)' : 'var(--primary)',
+                                                                    color: isAdded ? '#DC2626' : '#FFFFFF',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                {isAdded ? 'Remove' : '+ Compare'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                    )}
+                                </div>
+
+                                {/* Modal Footer */}
+                                <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                        {usnList.length} of 6 students in comparison cohort
+                                    </span>
+                                    <Button variant="primary" onClick={() => setClassPickerOpen(false)}>
+                                        Done
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </>
             )}
