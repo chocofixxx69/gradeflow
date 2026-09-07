@@ -524,8 +524,16 @@ export default function TimetableEditor({
                                         </select>
                                     </td>
                                     <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
+                                        {/* Combobox, not a select: the list gives
+                                            type-to-filter over the catalog, while the
+                                            field stays a normal text input so the
+                                            cursor can be placed and the code edited
+                                            by hand - needed for elective variants
+                                            like BCS613B that the catalog only holds
+                                            generically as BXX613X. */}
                                         <input
                                             type="text"
+                                            list="tt-subject-codes"
                                             value={row.subjectCode}
                                             placeholder="BCS601"
                                             onChange={(e) => handleCodeChange(idx, e.target.value)}
@@ -534,7 +542,9 @@ export default function TimetableEditor({
                                                 minWidth: '85px',
                                                 padding: '5px 8px',
                                                 borderRadius: '6px',
-                                                border: '1px solid var(--border)',
+                                                border: `1px solid ${
+                                                    !row.subjectCode || lookup(row.subjectCode) ? 'var(--border)' : '#B45309'
+                                                }`,
                                                 background: 'var(--surface)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '12px',
@@ -542,13 +552,31 @@ export default function TimetableEditor({
                                                 fontFamily: 'monospace'
                                             }}
                                         />
+                                        {row.subjectCode && (
+                                            <div style={{
+                                                marginTop: '3px',
+                                                fontSize: '9.5px',
+                                                lineHeight: 1.3,
+                                                color: lookup(row.subjectCode) ? 'var(--tx-muted)' : '#B45309'
+                                            }}>
+                                                {lookup(row.subjectCode)
+                                                    ? lookup(row.subjectCode).name
+                                                    : 'Not in this class’s catalog'}
+                                            </div>
+                                        )}
                                     </td>
                                     <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
+                                        {/* Also accepts a full subject name from the
+                                            list - picking one sets the code and
+                                            collapses this field to the abbreviation
+                                            the ticket prints. Still free text, so a
+                                            custom short name can be typed over it. */}
                                         <input
                                             type="text"
+                                            list="tt-subject-names"
                                             value={row.subjectName}
                                             placeholder="CC"
-                                            onChange={(e) => handleUpdateRow(idx, 'subjectName', e.target.value)}
+                                            onChange={(e) => handleShortChange(idx, e.target.value)}
                                             style={{
                                                 width: '100%',
                                                 minWidth: '70px',
@@ -586,6 +614,21 @@ export default function TimetableEditor({
                         })}
                     </tbody>
                 </table>
+
+                {/* Shared option lists backing the two comboboxes above. Rendered
+                    once rather than per row - the browser matches on both the
+                    option value and its text, so typing "machine" finds BCS602
+                    and typing "BCS" narrows by code. */}
+                <datalist id="tt-subject-codes">
+                    {options.map(o => (
+                        <option key={`c-${o.code}`} value={o.code}>{o.name}</option>
+                    ))}
+                </datalist>
+                <datalist id="tt-subject-names">
+                    {options.map(o => (
+                        <option key={`n-${o.code}`} value={o.name}>{o.code}</option>
+                    ))}
+                </datalist>
             </div>
         </div>
     );
