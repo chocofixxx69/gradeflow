@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
-import { ResponsiveContainer, BarChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ComposedChart, LineChart } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ComposedChart, LineChart, ReferenceLine } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
@@ -103,6 +103,11 @@ function InstitutionalIntelligenceContent() {
         trajectory: [],
         subjectComparison: []
     });
+    const [studentSearchResults, setStudentSearchResults] = useState([]);
+    const [isSearchingStudents, setIsSearchingStudents] = useState(false);
+    const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+    const [subjectSearch, setSubjectSearch] = useState('');
+    const [subjectFilterMode, setSubjectFilterMode] = useState('all'); // 'all' | 'delta' | 'fails'
 
     // Synchronize filters
     useEffect(() => {
@@ -231,12 +236,199 @@ function InstitutionalIntelligenceContent() {
         const clean = (usnToAdd || usnInput).trim().toUpperCase();
         if (!clean) return;
         if (usnList.includes(clean)) return;
-        if (usnList.length >= 6) return;
+        if (usnList.length >= 6) {
+            alert('You can compare a maximum of 6 students simultaneously.');
+            return;
+        }
         setUsnList(prev => [...prev, clean]);
         setUsnInput('');
+        setSearchDropdownOpen(false);
+    };
+
+    const handleSelectStudent = (stu) => {
+        if (!stu || !stu.usn) return;
+        handleAddUsn(stu.usn);
     };
 
     const handleRemoveUsn = (u) => setUsnList(prev => prev.filter(x => x !== u));
+
+    // Debounced live student search by name or USN
+    useEffect(() => {
+        const q = usnInput.trim();
+        if (!q || q.length < 2) {
+            setStudentSearchResults([]);
+            setSearchDropdownOpen(false);
+            return;
+        }
+        let active = true;
+        const timer = setTimeout(async () => {
+            setIsSearchingStudents(true);
+            try {
+                const res = await apiRequest('/api/faculty/students', {
+                    query: { search: q, limit: 6 }
+                });
+                if (active && res?.students) {
+                    setStudentSearchResults(res.students);
+                    setSearchDropdownOpen(true);
+                }
+            } catch (err) {
+                console.error('Failed to search students for comparator:', err);
+            } finally {
+                if (active) setIsSearchingStudents(false);
+            }
+        }, 250);
+        return () => {
+            active = false;
+            clearTimeout(timer);
+        };
+    }, [usnInput]);
+
+    // Quick cohort presets (Top 3 Rankers vs Remedial At-Risk)
+    const handleLoadPreset = async (type) => {
+        setComparatorLoading(true);
+        try {
+            const query = {
+                limit: 3,
+                branch: branch === 'ALL' ? '' : branch
+            };
+            if (type === 'top3') {
+                query.backlogsFilter = 'clear';
+            } else if (type === 'remedial') {
+                query.backlogsFilter = 'backlogs';
+            }
+            const res = await apiRequest('/api/faculty/students', { query });
+            if (res?.students?.length > 0) {
+                setUsnList(res.students.map(s => s.usn));
+            }
+        } catch (err) {
+            console.error('Failed to load preset students:', err);
+        } finally {
+            setComparatorLoading(false);
+        }
+    };
+
+    // Quick map of student metadata
+    const studentMap = useMemo(() => {
+        const map = new Map();
+        (comparatorData?.students || []).forEach(s => {
+            map.set(s.usn, s);
+        });
+        return map;
+    }, [comparatorData?.students]);
+
+    // Student performance details (trajectory trend, best sem, deltas)
+    const studentStats = useMemo(() => {
+        const stats = {};
+        const trajectory = comparatorData?.trajectory || [];
+        usnList.forEach(usn => {
+            const stu = studentMap.get(usn) || {};
+            const points = trajectory.filter(p => typeof p[usn] === 'number' && p[usn] > 0);
+            let trend = 'steady';
+            let delta = 0;
+            let bestSem = '—';
+            let bestSGPA = 0;
+            if (points.length >= 2) {
+                const last = points[points.length - 1][usn];
+                const prev = points[points.length - 2][usn];
+                delta = Number((last - prev).toFixed(2));
+                if (delta > 0.05) trend = 'rising';
+                else if (delta < -0.05) trend = 'declining';
+            }
+            points.forEach(p => {
+                if (p[usn] > bestSGPA) {
+                    bestSGPA = p[usn];
+                    bestSem = typeof p.semester === 'string' ? p.semester : `Sem ${p.semester}`;
+                }
+            });
+
+            stats[usn] = {
+                ...stu,
+                trend,
+                delta,
+                bestSem,
+                bestSGPA: Number(bestSGPA.toFixed(2)),
+                evalCount: points.length
+            };
+        });
+        return stats;
+    }, [usnList, comparatorData?.trajectory, studentMap]);
+
+    // Executive comparative synthesis / AI insights
+    const comparativeInsights = useMemo(() => {
+        const students = comparatorData?.students || [];
+        if (students.length === 0) return null;
+
+        const validStudents = students.filter(s => typeof s.cgpa === 'number' && s.cgpa > 0);
+        if (validStudents.length === 0) return null;
+
+        const sortedByCGPA = [...validStudents].sort((a, b) => (b.cgpa || 0) - (a.cgpa || 0));
+        const leader = sortedByCGPA[0];
+
+        // Trajectory Improver
+        let bestImprover = null;
+        let maxJump = -999;
+        const trajectory = comparatorData?.trajectory || [];
+        usnList.forEach(usn => {
+            const points = trajectory.filter(p => typeof p[usn] === 'number' && p[usn] > 0);
+            if (points.length >= 2) {
+                const jump = points[points.length - 1][usn] - points[0][usn];
+                if (jump > maxJump) {
+                    maxJump = jump;
+                    bestImprover = { student: studentMap.get(usn), jump: Number(jump.toFixed(2)) };
+                }
+            }
+        });
+
+        // Hardest subject
+        const subjects = comparatorData?.subjectComparison || [];
+        let lowestAvgSub = null;
+        let lowestAvg = 999;
+        subjects.forEach(sub => {
+            const marks = Object.values(sub.students || {}).filter(m => m && typeof m.total === 'number');
+            if (marks.length >= 2) {
+                const avg = marks.reduce((sum, m) => sum + m.total, 0) / marks.length;
+                if (avg < lowestAvg) {
+                    lowestAvg = avg;
+                    lowestAvgSub = { ...sub, avg: Number(avg.toFixed(1)) };
+                }
+            }
+        });
+
+        const studentsWithBacklogs = students.filter(s => (s.failed || 0) > 0);
+
+        return {
+            leader,
+            improver: maxJump > 0 ? bestImprover : null,
+            bottleneckSubject: lowestAvgSub,
+            backlogCount: studentsWithBacklogs.length,
+            backlogStudents: studentsWithBacklogs
+        };
+    }, [comparatorData, usnList, studentMap]);
+
+    // Filtered subjects for table
+    const filteredSubjectComparison = useMemo(() => {
+        const list = comparatorData?.subjectComparison || [];
+        return list.filter(sub => {
+            if (subjectSearch.trim()) {
+                const q = subjectSearch.toLowerCase().trim();
+                const matchesCode = (sub.code || '').toLowerCase().includes(q);
+                const matchesName = (sub.name || '').toLowerCase().includes(q);
+                if (!matchesCode && !matchesName) return false;
+            }
+            if (subjectFilterMode === 'delta') {
+                const totals = Object.values(sub.students || {})
+                    .filter(m => m && typeof m.total === 'number')
+                    .map(m => m.total);
+                if (totals.length < 2) return false;
+                const gap = Math.max(...totals) - Math.min(...totals);
+                return gap >= 15;
+            }
+            if (subjectFilterMode === 'fails') {
+                return Object.values(sub.students || {}).some(m => m && m.isFail);
+            }
+            return true;
+        });
+    }, [comparatorData?.subjectComparison, subjectSearch, subjectFilterMode]);
 
     // ── Manual Refresh ──
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -337,14 +529,31 @@ function InstitutionalIntelligenceContent() {
                     alert('No student comparison data available to export.');
                     return;
                 }
-                const headers = ['Semester', ...usnList];
+                const headers = ['Semester', ...usnList.map(u => (studentMap.get(u)?.name ? `${studentMap.get(u).name} (${u})` : u))];
                 const rows = tList.map(row => [
-                    `Sem ${row.semester}`,
+                    typeof row.semester === 'string' && row.semester.startsWith('Sem') ? row.semester : `Sem ${row.semester}`,
                     ...usnList.map(u => (typeof row[u] === 'number' ? row[u].toFixed(2) : (row[u] ?? '—')))
                 ]);
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                XLSX.utils.book_append_sheet(wb, ws, 'Student Comparison');
-                XLSX.writeFile(wb, `Student_Comparison_${branch}.xlsx`);
+                XLSX.utils.book_append_sheet(wb, ws, 'Trajectory Benchmarks');
+
+                // Subject-by-Subject Sheet
+                if ((comparatorData?.subjectComparison || []).length > 0) {
+                    const subHeaders = ['Subject Code', 'Subject Title', 'Credits', ...usnList.map(u => `${studentMap.get(u)?.name || u} (Grade/Total)`)];
+                    const subRows = (comparatorData.subjectComparison || []).map(sub => [
+                        sub.code,
+                        sub.name,
+                        sub.credits,
+                        ...usnList.map(u => {
+                            const m = sub.students?.[u];
+                            return m ? `${m.grade} (${m.total}/100)` : '—';
+                        })
+                    ]);
+                    const wsSub = XLSX.utils.aoa_to_sheet([subHeaders, ...subRows]);
+                    XLSX.utils.book_append_sheet(wb, wsSub, 'Subject Breakdown');
+                }
+
+                XLSX.writeFile(wb, `Student_Comparison_Report.xlsx`);
             }
         } catch (err) {
             console.error('Export Excel error:', err);
@@ -480,9 +689,9 @@ function InstitutionalIntelligenceContent() {
                 doc.setFont('helvetica', 'normal');
                 doc.text(`Comparing: ${usnList.join(', ')} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
-                const tableHead = [['Semester', ...usnList]];
+                const tableHead = [['Semester', ...usnList.map(u => (studentMap.get(u)?.name ? `${studentMap.get(u).name} (${u})` : u))]];
                 const tableBody = tList.map(row => [
-                    `Sem ${row.semester}`,
+                    typeof row.semester === 'string' && row.semester.startsWith('Sem') ? row.semester : `Sem ${row.semester}`,
                     ...usnList.map(u => (typeof row[u] === 'number' ? row[u].toFixed(2) : (row[u] ?? '—')))
                 ]);
 
@@ -495,7 +704,7 @@ function InstitutionalIntelligenceContent() {
                     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] }
                 });
 
-                doc.save(`Student_Comparison_${branch}.pdf`);
+                doc.save(`Student_Comparison_Report.pdf`);
             }
         } catch (err) {
             console.error('Export PDF error:', err);
@@ -1290,75 +1499,908 @@ function InstitutionalIntelligenceContent() {
             {/* TAB 3: STUDENT HEAD-TO-HEAD COMPARATOR */}
             {viewTab === 'compare' && (
                 <>
-                    <Card style={{ marginBottom: '24px' }}>
-                        <CardContent style={{ padding: '16px 20px' }}>
-                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                                <div style={{ flex: '1', minWidth: '240px' }}>
-                                    <Input
-                                        label="Add Student to Comparator"
-                                        placeholder="Enter USN (e.g. 2AB23CS043)..."
-                                        value={usnInput}
-                                        onChange={e => setUsnInput(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleAddUsn()}
-                                    />
+                    {/* Search & Selector Card */}
+                    <Card style={{ marginBottom: '24px', position: 'relative' }}>
+                        <CardContent style={{ padding: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                                <div>
+                                    <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--tx-main)' }}>
+                                        Student Head-to-Head Comparison Roster
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                        Search students by Name or USN (max 6 students), or load benchmark cohorts with one click.
+                                    </div>
                                 </div>
-                                <Button onClick={() => handleAddUsn()} variant="primary">
-                                    Add USN
-                                </Button>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleLoadPreset('top3')}
+                                        disabled={comparatorLoading}
+                                        style={{
+                                            background: 'rgba(16, 185, 129, 0.1)',
+                                            color: '#16A34A',
+                                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                                            borderRadius: '8px',
+                                            padding: '6px 12px',
+                                            fontSize: '12px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>military_tech</span>
+                                        ⭐ Top 3 Rankers
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleLoadPreset('remedial')}
+                                        disabled={comparatorLoading}
+                                        style={{
+                                            background: 'rgba(239, 68, 68, 0.1)',
+                                            color: '#DC2626',
+                                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            borderRadius: '8px',
+                                            padding: '6px 12px',
+                                            fontSize: '12px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>warning_amber</span>
+                                        ⚠️ Remedial / At-Risk
+                                    </button>
+                                    {usnList.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setUsnList([])}
+                                            style={{
+                                                background: 'var(--surface-low)',
+                                                color: 'var(--tx-muted)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: '8px',
+                                                padding: '6px 12px',
+                                                fontSize: '12px',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '5px'
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>clear_all</span>
+                                            Clear All
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
-                            {usnList.length > 0 && (
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-                                    {usnList.map((u, i) => (
-                                        <div key={u} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)', border: `1px solid ${LINE_COLORS[i % LINE_COLORS.length]}`, borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 700 }}>
-                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: LINE_COLORS[i % LINE_COLORS.length] }} />
-                                            <span>{u}</span>
-                                            <span onClick={() => handleRemoveUsn(u)} style={{ cursor: 'pointer', marginLeft: '4px', opacity: 0.7 }}>&times;</span>
+                            {/* Live Search Input with Suggestions Dropdown */}
+                            <div style={{ position: 'relative' }}>
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <div style={{ position: 'relative', flex: 1 }}>
+                                        <span className="material-icons-round" style={{
+                                            position: 'absolute',
+                                            left: '12px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            color: 'var(--tx-muted)',
+                                            fontSize: '18px',
+                                            pointerEvents: 'none'
+                                        }}>
+                                            person_search
+                                        </span>
+                                        <input
+                                            type="text"
+                                            placeholder="Type Student Name or USN (e.g. Ainan, 2AB23CS061)..."
+                                            value={usnInput}
+                                            onChange={e => setUsnInput(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    handleAddUsn();
+                                                }
+                                            }}
+                                            onFocus={() => {
+                                                if (studentSearchResults.length > 0) setSearchDropdownOpen(true);
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '11px 14px 11px 38px',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface-low)',
+                                                color: 'var(--tx-main)',
+                                                fontSize: '13px',
+                                                outline: 'none',
+                                                transition: 'border-color 0.15s ease'
+                                            }}
+                                        />
+                                        {isSearchingStudents && (
+                                            <span className="material-icons-round gf-spin" style={{
+                                                position: 'absolute',
+                                                right: '12px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                color: 'var(--primary)',
+                                                fontSize: '18px'
+                                            }}>
+                                                sync
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Button onClick={() => handleAddUsn()} variant="primary" style={{ padding: '10px 18px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>add</span>
+                                        Add USN
+                                    </Button>
+                                </div>
+
+                                {/* Floating Autocomplete Dropdown */}
+                                {searchDropdownOpen && studentSearchResults.length > 0 && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: 'calc(100% + 6px)',
+                                        left: 0,
+                                        right: 0,
+                                        background: 'var(--surface)',
+                                        border: '1px solid var(--border)',
+                                        boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+                                        borderRadius: '10px',
+                                        zIndex: 50,
+                                        maxHeight: '280px',
+                                        overflowY: 'auto',
+                                        padding: '6px'
+                                    }}>
+                                        <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                            Matching Students
                                         </div>
-                                    ))}
+                                        {studentSearchResults.map(stu => {
+                                            const isSelected = usnList.includes(stu.usn);
+                                            return (
+                                                <div
+                                                    key={stu.usn}
+                                                    onClick={() => {
+                                                        if (!isSelected) handleSelectStudent(stu);
+                                                    }}
+                                                    style={{
+                                                        padding: '10px 12px',
+                                                        borderRadius: '8px',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        cursor: isSelected ? 'default' : 'pointer',
+                                                        background: isSelected ? 'var(--surface-low)' : 'transparent',
+                                                        opacity: isSelected ? 0.6 : 1,
+                                                        transition: 'background 0.15s ease'
+                                                    }}
+                                                    onMouseEnter={e => {
+                                                        if (!isSelected) e.currentTarget.style.background = 'var(--surface-low)';
+                                                    }}
+                                                    onMouseLeave={e => {
+                                                        if (!isSelected) e.currentTarget.style.background = 'transparent';
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <div style={{
+                                                            width: '32px',
+                                                            height: '32px',
+                                                            borderRadius: '50%',
+                                                            background: 'var(--primary-low)',
+                                                            color: 'var(--primary)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontWeight: 800,
+                                                            fontSize: '12px'
+                                                        }}>
+                                                            {(stu.name || stu.usn).slice(0, 2).toUpperCase()}
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                                {stu.name || stu.usn}
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                                {stu.usn} • {stu.branch || 'CSE'} {stu.section ? `(Sec ${stu.section})` : ''} • Sem {stu.semester || '6'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
+                                                            <span style={{
+                                                                fontSize: '11px',
+                                                                fontWeight: 800,
+                                                                padding: '3px 8px',
+                                                                borderRadius: '6px',
+                                                                background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
+                                                                color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
+                                                            }}>
+                                                                {stu.cgpa.toFixed(2)} CGPA
+                                                            </span>
+                                                        )}
+                                                        {stu.total_backlogs > 0 && (
+                                                            <span style={{
+                                                                fontSize: '11px',
+                                                                fontWeight: 800,
+                                                                padding: '3px 8px',
+                                                                borderRadius: '6px',
+                                                                background: 'rgba(239, 68, 68, 0.1)',
+                                                                color: '#DC2626'
+                                                            }}>
+                                                                {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
+                                                            </span>
+                                                        )}
+                                                        <span style={{
+                                                            fontSize: '12px',
+                                                            fontWeight: 700,
+                                                            color: isSelected ? 'var(--tx-dim)' : 'var(--primary)'
+                                                        }}>
+                                                            {isSelected ? 'Added ✓' : '+ Add'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Active Student Ribbon Chips */}
+                            {usnList.length > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                        {usnList.map((u, i) => {
+                                            const stu = studentMap.get(u);
+                                            const color = LINE_COLORS[i % LINE_COLORS.length];
+                                            return (
+                                                <div
+                                                    key={u}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        background: 'var(--surface-low)',
+                                                        border: `1.5px solid ${color}`,
+                                                        borderRadius: '8px',
+                                                        padding: '6px 12px',
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                                    <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                        {stu?.name || u}
+                                                    </span>
+                                                    {stu?.name && (
+                                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
+                                                            ({u})
+                                                        </span>
+                                                    )}
+                                                    {stu?.cgpa && (
+                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: color, marginLeft: '2px' }}>
+                                                            {stu.cgpa.toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveUsn(u)}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            cursor: 'pointer',
+                                                            color: 'var(--tx-muted)',
+                                                            fontSize: '16px',
+                                                            lineHeight: 1,
+                                                            padding: 0,
+                                                            marginLeft: '4px'
+                                                        }}
+                                                        title="Remove student"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-muted)' }}>
+                                        {usnList.length} of 6 students selected
+                                    </div>
                                 </div>
                             )}
                         </CardContent>
                     </Card>
 
+                    {/* Zero State if No Students Added */}
                     {usnList.length === 0 ? (
                         <Card>
-                            <CardContent style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                                <span className="material-icons-round" style={{ fontSize: '48px', opacity: 0.5, marginBottom: '12px' }}>compare_arrows</span>
-                                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '4px' }}>No Students Selected for Comparison</div>
-                                <div style={{ fontSize: '13px' }}>Add up to 6 USNs in the box above to generate head-to-head academic trajectories.</div>
-                            </CardContent>
-                        </Card>
-                    ) : (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Academic Trajectory Comparison (SGPA Progression)</CardTitle>
-                            </CardHeader>
-                            <CardContent style={{ padding: '20px' }}>
-                                <div style={{ height: '340px', width: '100%' }}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={comparatorData?.trajectory || []}>
-                                            <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                                            <XAxis dataKey="semester" tickFormatter={s => `Sem ${s}`} />
-                                            <YAxis domain={[0, 10]} />
-                                            <Tooltip />
-                                            <Legend />
-                                            {usnList.map((u, i) => (
-                                                <Line
-                                                    key={u}
-                                                    type="monotone"
-                                                    dataKey={u}
-                                                    name={u}
-                                                    stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                                                    strokeWidth={3}
-                                                    dot={{ r: 5 }}
-                                                />
-                                            ))}
-                                        </LineChart>
-                                    </ResponsiveContainer>
+                            <CardContent style={{ padding: '60px 24px', textAlign: 'center' }}>
+                                <div style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    borderRadius: '50%',
+                                    background: 'var(--surface-low)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginBottom: '16px'
+                                }}>
+                                    <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--primary)' }}>
+                                        compare_arrows
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '6px' }}>
+                                    No Students Selected for Head-to-Head Comparison
+                                </div>
+                                <div style={{ fontSize: '13px', color: 'var(--tx-muted)', maxWidth: '520px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+                                    Compare individual academic trajectories, SGPA momentum, credit progression, and subject-level performance matrices side-by-side.
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                    <Button onClick={() => handleLoadPreset('top3')} variant="primary">
+                                        <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>military_tech</span>
+                                        Compare Top 3 Rankers
+                                    </Button>
+                                    <Button onClick={() => handleLoadPreset('remedial')} variant="secondary">
+                                        <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>warning_amber</span>
+                                        Diagnose Remedial Students
+                                    </Button>
                                 </div>
                             </CardContent>
                         </Card>
+                    ) : (
+                        <>
+                            {/* Executive Head-to-Head Scorecards Grid */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
+                                    Head-to-Head Scorecards
+                                </div>
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 260px), 1fr))`,
+                                    gap: '16px'
+                                }}>
+                                    {usnList.map((u, i) => {
+                                        const stu = studentMap.get(u);
+                                        const stats = studentStats[u] || {};
+                                        const color = LINE_COLORS[i % LINE_COLORS.length];
+                                        const cgpa = typeof stu?.cgpa === 'number' ? stu.cgpa : null;
+
+                                        let classTag = { label: 'Not Graded', color: 'var(--tx-muted)', bg: 'var(--surface-low)' };
+                                        if (cgpa !== null) {
+                                            if (cgpa >= 7.75) classTag = { label: 'Distinction (≥7.75)', color: '#16A34A', bg: 'rgba(22, 163, 74, 0.1)' };
+                                            else if (cgpa >= 6.75) classTag = { label: 'First Class', color: 'var(--primary)', bg: 'rgba(99, 102, 241, 0.1)' };
+                                            else if (cgpa >= 5.00) classTag = { label: 'Second Class', color: '#D97706', bg: 'rgba(217, 119, 6, 0.1)' };
+                                            else classTag = { label: 'At-Risk (<5.00)', color: '#DC2626', bg: 'rgba(220, 38, 38, 0.1)' };
+                                        }
+
+                                        return (
+                                            <Card key={u} style={{
+                                                position: 'relative',
+                                                overflow: 'hidden',
+                                                border: `1.5px solid ${color}40`,
+                                                boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+                                            }}>
+                                                {/* Top Accent Strip */}
+                                                <div style={{ height: '5px', background: color, width: '100%' }} />
+
+                                                <CardContent style={{ padding: '18px' }}>
+                                                    {/* Header: Avatar, Name, USN */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                                                        <div style={{
+                                                            width: '40px',
+                                                            height: '40px',
+                                                            borderRadius: '50%',
+                                                            background: `${color}20`,
+                                                            color: color,
+                                                            border: `2px solid ${color}`,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontWeight: 900,
+                                                            fontSize: '14px',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            {(stu?.name || u).slice(0, 2).toUpperCase()}
+                                                        </div>
+                                                        <div style={{ overflow: 'hidden' }}>
+                                                            <div style={{ fontWeight: 900, fontSize: '14px', color: 'var(--tx-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {stu?.name || u}
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
+                                                                {u} • {stu?.branch || 'CSE'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* CGPA Primary Metric */}
+                                                    <div style={{
+                                                        background: 'var(--surface-low)',
+                                                        borderRadius: '10px',
+                                                        padding: '12px',
+                                                        marginBottom: '14px',
+                                                        border: '1px solid var(--border)'
+                                                    }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                            <div>
+                                                                <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                                    Cumulative CGPA
+                                                                </div>
+                                                                <div style={{ fontSize: '26px', fontWeight: 900, color: color, lineHeight: 1.1, marginTop: '2px' }}>
+                                                                    {cgpa !== null ? cgpa.toFixed(2) : '—'}
+                                                                </div>
+                                                            </div>
+                                                            {/* Trend Pill */}
+                                                            {stats.trend && (
+                                                                <div style={{
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    padding: '4px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: stats.trend === 'rising' ? 'rgba(16, 185, 129, 0.12)' : stats.trend === 'declining' ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface)',
+                                                                    color: stats.trend === 'rising' ? '#16A34A' : stats.trend === 'declining' ? '#DC2626' : 'var(--tx-muted)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '3px'
+                                                                }}>
+                                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>
+                                                                        {stats.trend === 'rising' ? 'trending_up' : stats.trend === 'declining' ? 'trending_down' : 'trending_flat'}
+                                                                    </span>
+                                                                    {stats.delta > 0 ? `+${stats.delta}` : stats.delta < 0 ? `${stats.delta}` : 'Steady'}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div style={{
+                                                            marginTop: '6px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 700,
+                                                            color: classTag.color
+                                                        }}>
+                                                            {classTag.label}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Key Stat Rows */}
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px' }}>
+                                                        <div style={{ background: 'var(--surface-low)', padding: '8px 10px', borderRadius: '6px' }}>
+                                                            <div style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Pass Rate</div>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: (stu?.passRate ?? 0) >= 70 ? '#16A34A' : '#DC2626', marginTop: '2px' }}>
+                                                                {typeof stu?.passRate === 'number' ? `${stu.passRate}%` : '—'}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ background: 'var(--surface-low)', padding: '8px 10px', borderRadius: '6px' }}>
+                                                            <div style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Active Backlogs</div>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: (stu?.failed || 0) > 0 ? '#DC2626' : '#16A34A', marginTop: '2px' }}>
+                                                                {(stu?.failed || 0) > 0 ? `${stu.failed} Backlogs` : '0 (Clear)'}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ background: 'var(--surface-low)', padding: '8px 10px', borderRadius: '6px' }}>
+                                                            <div style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Total Credits</div>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginTop: '2px' }}>
+                                                                {stu?.totalCredits ?? '—'} cr
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ background: 'var(--surface-low)', padding: '8px 10px', borderRadius: '6px' }}>
+                                                            <div style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Peak SGPA</div>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--primary)', marginTop: '2px' }}>
+                                                                {stats.bestSGPA > 0 ? `${stats.bestSGPA} (${stats.bestSem})` : '—'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Comparative Insights AI Banner */}
+                            {comparativeInsights && (
+                                <Card style={{ marginBottom: '24px', background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface-low) 100%)', border: '1px solid var(--border)' }}>
+                                    <CardContent style={{ padding: '18px 20px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>insights</span>
+                                            <span style={{ fontWeight: 900, fontSize: '14px', color: 'var(--tx-main)' }}>
+                                                Comparative Intelligence Takeaways
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '14px' }}>
+                                            <div style={{ borderLeft: '3px solid #16A34A', paddingLeft: '10px' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Cohort Academic Leader</div>
+                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginTop: '2px' }}>
+                                                    {comparativeInsights.leader?.name || '—'}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: '#16A34A', fontWeight: 700 }}>
+                                                    {comparativeInsights.leader?.cgpa?.toFixed(2)} CGPA • {comparativeInsights.leader?.passRate}% Pass
+                                                </div>
+                                            </div>
+
+                                            {comparativeInsights.improver && (
+                                                <div style={{ borderLeft: '3px solid #6366F1', paddingLeft: '10px' }}>
+                                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Steepest Momentum</div>
+                                                    <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginTop: '2px' }}>
+                                                        {comparativeInsights.improver.student?.name || '—'}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 700 }}>
+                                                        +{comparativeInsights.improver.jump} SGPA gain across evaluated semesters
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {comparativeInsights.bottleneckSubject && (
+                                                <div style={{ borderLeft: '3px solid #F59E0B', paddingLeft: '10px' }}>
+                                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Shared Bottleneck Course</div>
+                                                    <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginTop: '2px' }}>
+                                                        {comparativeInsights.bottleneckSubject.code}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: '#D97706', fontWeight: 700 }}>
+                                                        Lowest cohort mean: {comparativeInsights.bottleneckSubject.avg}/100
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div style={{ borderLeft: `3px solid ${comparativeInsights.backlogCount > 0 ? '#DC2626' : '#16A34A'}`, paddingLeft: '10px' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Remedial Priority</div>
+                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginTop: '2px' }}>
+                                                    {comparativeInsights.backlogCount > 0
+                                                        ? `${comparativeInsights.backlogCount} student${comparativeInsights.backlogCount > 1 ? 's' : ''} with backlogs`
+                                                        : '100% All Clear'
+                                                    }
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: comparativeInsights.backlogCount > 0 ? '#DC2626' : '#16A34A', fontWeight: 700 }}>
+                                                    {comparativeInsights.backlogCount > 0
+                                                        ? 'Schedule special coaching on failed subjects'
+                                                        : 'Cohort in good academic standing'
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Academic Trajectory Comparison Chart (Cleaned & Enhanced) */}
+                            <Card style={{ marginBottom: '24px' }}>
+                                <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                    <div>
+                                        <CardTitle>Academic Trajectory Comparison (SGPA Progression)</CardTitle>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                            Semester-over-semester progression benchmarked against VTU Distinction (7.75) and First Class (6.75) thresholds.
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent style={{ padding: '20px' }}>
+                                    <div style={{ height: '360px', width: '100%' }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart
+                                                data={comparatorData?.trajectory || []}
+                                                margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
+                                            >
+                                                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                <XAxis
+                                                    dataKey="semester"
+                                                    tickFormatter={s => (typeof s === 'string' && s.startsWith('Sem') ? s : `Sem ${s}`)}
+                                                    tick={{ fontSize: 12, fill: 'var(--tx-muted)', fontWeight: 600 }}
+                                                />
+                                                <YAxis
+                                                    domain={[0, 10]}
+                                                    ticks={[0, 2, 4, 6, 6.75, 7.75, 10]}
+                                                    tick={{ fontSize: 11, fill: 'var(--tx-muted)' }}
+                                                />
+                                                <Tooltip
+                                                    content={({ active, payload, label }) => {
+                                                        if (!active || !payload || !payload.length) return null;
+                                                        const sorted = [...payload].sort((a, b) => (b.value || 0) - (a.value || 0));
+                                                        return (
+                                                            <div style={{
+                                                                background: 'var(--surface)',
+                                                                border: '1px solid var(--border)',
+                                                                boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                                                borderRadius: '10px',
+                                                                padding: '12px 16px',
+                                                                minWidth: '220px'
+                                                            }}>
+                                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                                                                    {label} SGPA Benchmark
+                                                                </div>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                    {sorted.map((item, idx) => {
+                                                                        const stu = studentMap.get(item.dataKey);
+                                                                        const isTop = idx === 0 && sorted.length > 1 && item.value > 0;
+                                                                        return (
+                                                                            <div key={item.dataKey} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', gap: '12px' }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                                                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                                                                                    <span style={{ fontWeight: 700, color: 'var(--tx-main)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '140px' }}>
+                                                                                        {stu?.name || item.dataKey}
+                                                                                    </span>
+                                                                                    {isTop && <span title="Highest this semester" style={{ fontSize: '11px' }}>⭐</span>}
+                                                                                </div>
+                                                                                <span style={{ fontWeight: 900, color: item.color, fontFamily: 'monospace', fontSize: '13px' }}>
+                                                                                    {typeof item.value === 'number' ? item.value.toFixed(2) : '—'}
+                                                                                </span>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }}
+                                                />
+                                                <Legend
+                                                    formatter={(value) => {
+                                                        const stu = studentMap.get(value);
+                                                        return stu?.name ? `${stu.name} (${value})` : value;
+                                                    }}
+                                                />
+
+                                                {/* Milestone Reference Lines */}
+                                                <ReferenceLine
+                                                    y={7.75}
+                                                    stroke="#10B981"
+                                                    strokeDasharray="4 4"
+                                                    strokeWidth={1.5}
+                                                    label={{ value: 'Distinction (7.75)', position: 'insideTopLeft', fill: '#10B981', fontSize: 11, fontWeight: 700 }}
+                                                />
+                                                <ReferenceLine
+                                                    y={6.75}
+                                                    stroke="#6366F1"
+                                                    strokeDasharray="4 4"
+                                                    strokeWidth={1.5}
+                                                    label={{ value: 'First Class (6.75)', position: 'insideTopLeft', fill: '#6366F1', fontSize: 11, fontWeight: 700 }}
+                                                />
+
+                                                {usnList.map((u, i) => (
+                                                    <Line
+                                                        key={u}
+                                                        type="monotone"
+                                                        dataKey={u}
+                                                        name={u}
+                                                        stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                                                        strokeWidth={3}
+                                                        dot={{ r: 5, fill: LINE_COLORS[i % LINE_COLORS.length] }}
+                                                        activeDot={{ r: 7 }}
+                                                    />
+                                                ))}
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Subject-by-Subject Head-to-Head Comparison Matrix */}
+                            {(comparatorData?.subjectComparison || []).length > 0 && (
+                                <Card style={{ marginBottom: '24px' }}>
+                                    <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                        <div>
+                                            <CardTitle>Subject-by-Subject Head-to-Head Matrix</CardTitle>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                Granular evaluation comparing scores, letter grades, and internal vs external splits across all completed courses.
+                                            </div>
+                                        </div>
+
+                                        {/* Filters for Subjects */}
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                            <input
+                                                type="text"
+                                                placeholder="Filter by subject code or title..."
+                                                value={subjectSearch}
+                                                onChange={e => setSubjectSearch(e.target.value)}
+                                                style={{
+                                                    padding: '7px 12px',
+                                                    borderRadius: '6px',
+                                                    border: '1px solid var(--border)',
+                                                    background: 'var(--surface-low)',
+                                                    color: 'var(--tx-main)',
+                                                    fontSize: '12px',
+                                                    outline: 'none',
+                                                    width: '200px'
+                                                }}
+                                            />
+                                            <div style={{ display: 'flex', gap: '4px', background: 'var(--surface-low)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSubjectFilterMode('all')}
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        background: subjectFilterMode === 'all' ? 'var(--primary)' : 'transparent',
+                                                        color: subjectFilterMode === 'all' ? '#FFFFFF' : 'var(--tx-muted)'
+                                                    }}
+                                                >
+                                                    All ({comparatorData.subjectComparison.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSubjectFilterMode('delta')}
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        background: subjectFilterMode === 'delta' ? 'var(--primary)' : 'transparent',
+                                                        color: subjectFilterMode === 'delta' ? '#FFFFFF' : 'var(--tx-muted)'
+                                                    }}
+                                                >
+                                                    High Spread (Δ ≥ 15)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSubjectFilterMode('fails')}
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        background: subjectFilterMode === 'fails' ? '#DC2626' : 'transparent',
+                                                        color: subjectFilterMode === 'fails' ? '#FFFFFF' : 'var(--tx-muted)'
+                                                    }}
+                                                >
+                                                    Arrears / Fails
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent style={{ padding: 0 }}>
+                                        <div style={{ overflowX: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                                                <thead>
+                                                    <tr style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', color: 'var(--tx-dim)', textTransform: 'uppercase', fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em' }}>
+                                                        <th style={{ padding: '12px 16px', minWidth: '220px' }}>Course Code &amp; Title</th>
+                                                        {usnList.map((u, i) => {
+                                                            const color = LINE_COLORS[i % LINE_COLORS.length];
+                                                            const stu = studentMap.get(u);
+                                                            return (
+                                                                <th key={u} style={{ padding: '12px 16px', textAlign: 'center', minWidth: '140px' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: color }} />
+                                                                        <span style={{ color: 'var(--tx-main)', fontWeight: 800 }}>{stu?.name || u}</span>
+                                                                    </div>
+                                                                    <div style={{ fontSize: '10px', color: 'var(--tx-muted)', textTransform: 'none', fontFamily: 'monospace' }}>
+                                                                        {u}
+                                                                    </div>
+                                                                </th>
+                                                            );
+                                                        })}
+                                                        <th style={{ padding: '12px 16px', textAlign: 'center', minWidth: '130px' }}>Top Performer</th>
+                                                        <th style={{ padding: '12px 16px', textAlign: 'center', minWidth: '90px' }}>Score Spread</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {filteredSubjectComparison.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={usnList.length + 3} style={{ padding: '36px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                                No subjects match the selected filter.
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                        filteredSubjectComparison.map(sub => {
+                                                            // Calculate highest score in this subject
+                                                            let topScore = -1;
+                                                            let topUsn = null;
+                                                            let lowestScore = 999;
+                                                            const validScores = [];
+
+                                                            usnList.forEach(u => {
+                                                                const m = sub.students?.[u];
+                                                                if (m && typeof m.total === 'number') {
+                                                                    validScores.push(m.total);
+                                                                    if (m.total > topScore) {
+                                                                        topScore = m.total;
+                                                                        topUsn = u;
+                                                                    }
+                                                                    if (m.total < lowestScore) {
+                                                                        lowestScore = m.total;
+                                                                    }
+                                                                }
+                                                            });
+
+                                                            const deltaGap = validScores.length >= 2 ? (topScore - lowestScore) : null;
+                                                            const topStudent = topUsn ? studentMap.get(topUsn) : null;
+
+                                                            return (
+                                                                <tr key={sub.code} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                                    <td style={{ padding: '14px 16px' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <span style={{ fontWeight: 800, color: 'var(--tx-main)', fontSize: '13px' }}>{sub.code}</span>
+                                                                            <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-dim)' }}>
+                                                                                {sub.credits} Cr
+                                                                            </span>
+                                                                        </div>
+                                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                                            {sub.name}
+                                                                        </div>
+                                                                    </td>
+
+                                                                    {usnList.map((u, i) => {
+                                                                        const m = sub.students?.[u];
+                                                                        if (!m) {
+                                                                            return (
+                                                                                <td key={u} style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                                                                    —
+                                                                                </td>
+                                                                            );
+                                                                        }
+
+                                                                        const isTop = m.total === topScore && topScore > 0 && validScores.length > 1;
+                                                                        const g = (m.grade || '').toUpperCase();
+                                                                        let badgeBg = 'rgba(99, 102, 241, 0.1)';
+                                                                        let badgeColor = 'var(--primary)';
+
+                                                                        if (m.isFail || g === 'F') {
+                                                                            badgeBg = 'rgba(239, 68, 68, 0.15)';
+                                                                            badgeColor = '#DC2626';
+                                                                        } else if (['O', 'S', 'A+'].includes(g)) {
+                                                                            badgeBg = 'rgba(16, 185, 129, 0.15)';
+                                                                            badgeColor = '#16A34A';
+                                                                        } else if (['B', 'C'].includes(g)) {
+                                                                            badgeBg = 'rgba(245, 158, 11, 0.15)';
+                                                                            badgeColor = '#D97706';
+                                                                        }
+
+                                                                        return (
+                                                                            <td key={u} style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                                                    <span style={{
+                                                                                        fontWeight: 900,
+                                                                                        fontSize: '11px',
+                                                                                        padding: '2px 7px',
+                                                                                        borderRadius: '5px',
+                                                                                        background: badgeBg,
+                                                                                        color: badgeColor
+                                                                                    }}>
+                                                                                        {g || '—'}
+                                                                                    </span>
+                                                                                    <span style={{ fontWeight: 800, fontSize: '13px', color: m.isFail ? '#DC2626' : 'var(--tx-main)' }}>
+                                                                                        {m.total}
+                                                                                    </span>
+                                                                                    {isTop && <span title="Highest in subject" style={{ fontSize: '12px' }}>👑</span>}
+                                                                                </div>
+                                                                                <div style={{ fontSize: '10px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                                                                    IA: {m.internal ?? '—'} • EA: {m.external ?? '—'}
+                                                                                </div>
+                                                                            </td>
+                                                                        );
+                                                                    })}
+
+                                                                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                                                        {topStudent ? (
+                                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 800, color: '#16A34A' }}>
+                                                                                <span>{topStudent.name || topUsn}</span>
+                                                                                <span style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>({topScore})</span>
+                                                                            </div>
+                                                                        ) : '—'}
+                                                                    </td>
+
+                                                                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                                                        {deltaGap !== null ? (
+                                                                            <span style={{
+                                                                                fontSize: '12px',
+                                                                                fontWeight: 800,
+                                                                                color: deltaGap >= 15 ? '#DC2626' : 'var(--tx-muted)'
+                                                                            }}>
+                                                                                Δ {deltaGap} pts
+                                                                            </span>
+                                                                        ) : '—'}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </>
                     )}
                 </>
             )}
