@@ -9,6 +9,7 @@ import { AuditLogContent } from '../../../components/AuditLogContent';
 import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
 import { FacultyAssignmentsContent } from '../../../components/FacultyAssignmentsContent';
 import { FacultyActivityContent } from '../../../components/FacultyActivityContent';
+import { AdminVtuUrlsContent } from '../../../components/AdminVtuUrlsContent';
 import { ConfirmDialog } from '../../../components/ui';
 import AdminAnalyticsPage from '../analytics/page.jsx';
 import { AnalyticsFiltersProvider } from '../analytics/AnalyticsFiltersContext';
@@ -22,6 +23,7 @@ const TAB_METADATA = {
     classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
     assignments: { label: 'Faculty Subject Assignments & Mapping', icon: 'assignment_ind', shortLabel: 'Subject Assignments' },
     requests: { label: 'Faculty Access & Credentials', icon: 'verified_user', shortLabel: 'Faculty Access' },
+    vtuUrls: { label: 'VTU Result Portal Configuration', icon: 'link', shortLabel: 'VTU URLs' },
     support: { label: 'Institutional Support Tickets', icon: 'support_agent', shortLabel: 'Support' },
     activity: { label: 'Faculty Pedagogical & Activity Log', icon: 'history', shortLabel: 'Activity Log' },
     audit: { label: 'System Health & Security Audit', icon: 'security', shortLabel: 'System Audit' },
@@ -1356,6 +1358,7 @@ function AdminPanelContent() {
         { id: 'classes', label: 'Classes', icon: 'groups' },
         { id: 'assignments', label: 'Subject Assignments', icon: 'assignment_ind' },
         { id: 'requests', label: 'Faculty Access', icon: 'verified_user' },
+        { id: 'vtuUrls', label: 'VTU Result URLs', icon: 'link' },
         { id: 'support', label: 'Support & Issues', icon: 'support_agent' },
         { id: 'activity', label: 'Activity Log', icon: 'history' },
         { id: 'audit', label: 'System Audit', icon: 'security' },
@@ -2985,6 +2988,8 @@ function AdminPanelContent() {
                 {tab === 'assignments' && <FacultyAssignmentsContent embedded={true} />}
 
                 {tab === 'support' && <SupportTicketsContent onStatsUpdate={(s) => setOpenTicketsCount(s?.open || 0)} />}
+
+                {tab === 'vtuUrls' && <AdminVtuUrlsContent embedded={true} />}
 
                 {tab === 'audit' && <AuditLogContent />}
 

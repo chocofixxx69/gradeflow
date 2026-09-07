@@ -293,6 +293,27 @@ export async function PUT(req) {
             return NextResponse.json({ success: true, message: `All ${targetScheme} Scheme default portals restored and enabled.` });
         }
 
+        // Action: Sync institutional master portals to all approved faculty accounts
+        if (action === 'sync_all_faculty') {
+            if (session.role !== 'admin') {
+                return NextResponse.json({ error: 'Only administrators can synchronize institutional portals.' }, { status: 403 });
+            }
+            const { data: allFac } = await supabase.from('faculty_onboarding').select('id');
+            const { data: sourceUrls } = await supabase.from('faculty_vtu_urls').select('url, exam_name, sort_order, is_active, scheme').eq('faculty_id', faculty_id);
+
+            if (allFac && allFac.length > 0 && sourceUrls && sourceUrls.length > 0) {
+                for (const f of allFac) {
+                    if (f.id === faculty_id) continue;
+                    const cloned = sourceUrls.map(u => ({ ...u, faculty_id: f.id }));
+                    await supabase.from('faculty_vtu_urls').upsert(cloned, { onConflict: 'faculty_id,url,scheme' });
+                }
+            }
+            return NextResponse.json({
+                success: true,
+                message: `Successfully synchronized VTU portals across all ${allFac?.length || 0} faculty accounts in the institution.`
+            });
+        }
+
         let query = supabase
             .from('faculty_vtu_urls')
             .update({ is_active })
