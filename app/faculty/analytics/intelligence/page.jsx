@@ -60,7 +60,7 @@ function InstitutionalIntelligenceContent() {
     // Filter overrides for Class Comparison
     const [classBranch, setClassBranch] = useState('ALL');
     const [classBatch, setClassBatch] = useState('2023');
-    const [classSemester, setClassSemester] = useState('ALL');
+    const [classSemester, setClassSemester] = useState('6');
     const [classSearch, setClassSearch] = useState('');
     const [expandedClassId, setExpandedClassId] = useState(null);
 
@@ -697,8 +697,11 @@ function InstitutionalIntelligenceContent() {
                                             value={classSemester}
                                             onChange={e => setClassSemester(e.target.value)}
                                             options={[
-                                                { value: 'ALL', label: 'All Semesters' },
-                                                ...(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: String(s), label: `Semester ${s}` }))
+                                                { value: 'ALL', label: 'All Semesters (Compare All Classes)' },
+                                                ...(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({
+                                                    value: String(s),
+                                                    label: s === 6 ? `Semester ${s} (3 Classes Active)` : `Semester ${s}`
+                                                }))
                                             ]}
                                         />
 
