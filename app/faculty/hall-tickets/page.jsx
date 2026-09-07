@@ -9,8 +9,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 import HallTicketSheet from '@/components/hall-tickets/HallTicketSheet';
-import TimetableEditor from '@/components/hall-tickets/TimetableEditor';
 import { getJsPDF } from '@/lib/lazy-export-libs';
+import { recordFacultyAction } from '@/lib/api/faculty-action';
 
 // Standard default timetable by semester for CS stream
 const DEFAULT_TIMETABLES = {
@@ -540,6 +540,22 @@ function HallTicketsContent() {
 
     // ── Direct Browser Print ──
     const handlePrint = () => {
+        try {
+            const count = selectedStudentsList.length;
+            recordFacultyAction(null, 'HALL_TICKET_GENERATE', selectedStudentsList[0]?.usn || null, {
+                module: 'Faculty Portal > Examination Operations > Hall Tickets (Print)',
+                reason: `Physical examination hall tickets print dispatched for ${branch} Sem ${semester}`,
+                details: `Dispatched browser print command for ${count} verified hall tickets (${branch} Semester ${semester}). Exam: "${examTitle}".`,
+                data: {
+                    branch,
+                    semester,
+                    studentCount: count,
+                    examTitle,
+                    action: 'PRINT',
+                    classes: activeClasses.map(c => c.name || c.class_name).filter(Boolean),
+                }
+            });
+        } catch { /* ignored */ }
         window.print();
     };
 
@@ -769,7 +785,26 @@ function HallTicketsContent() {
             });
         });
 
-        doc.save(`AITM_Hall_Tickets_${branch}_Sem${semester}.pdf`);
+        const filename = `AITM_Hall_Tickets_${branch}_Sem${semester}.pdf`;
+        doc.save(filename);
+
+        try {
+            const count = selectedStudentsList.length;
+            recordFacultyAction(null, 'HALL_TICKET_GENERATE', selectedStudentsList[0]?.usn || null, {
+                module: 'Faculty Portal > Examination Operations > Hall Tickets',
+                reason: `VTU SEE Hall Ticket Issuance & PDF Generation for ${branch} Sem ${semester}`,
+                details: `Generated official VTU examination hall tickets PDF for ${count} students (${branch} Semester ${semester}). Exam: "${examTitle}". File: ${filename}.`,
+                data: {
+                    branch,
+                    semester,
+                    studentCount: count,
+                    examTitle,
+                    filename,
+                    classes: activeClasses.map(c => c.name || c.class_name).filter(Boolean),
+                    sampleUsns: selectedStudentsList.map(s => s.usn).slice(0, 15),
+                }
+            });
+        } catch { /* ignored */ }
     };
 
     return (

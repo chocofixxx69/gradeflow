@@ -43,15 +43,47 @@ export function FacultyActivityContent({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitSuccess, setSubmitSuccess] = useState('');
 
+    // ── Real-Time Data & Live Polling ──────────────────────────
+    const [currentLogs, setCurrentLogs] = useState(activityLogs || []);
+    const [currentFaculty, setCurrentFaculty] = useState(facultyList || []);
+    const [liveSync, setLiveSync] = useState(true);
+    const [lastSyncTime, setLastSyncTime] = useState(Date.now());
+
+    useEffect(() => {
+        if (activityLogs) setCurrentLogs(activityLogs);
+    }, [activityLogs]);
+
+    useEffect(() => {
+        if (facultyList) setCurrentFaculty(facultyList);
+    }, [facultyList]);
+
+    // Live real-time polling every 8 seconds
+    useEffect(() => {
+        if (!liveSync) return;
+        const intervalId = setInterval(async () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            try {
+                const res = await fetch('/api/admin/faculty-activity?limit=300');
+                const json = await res.json();
+                if (json?.success) {
+                    if (json.activity && json.activity.length > 0) setCurrentLogs(json.activity);
+                    if (json.faculty && json.faculty.length > 0) setCurrentFaculty(json.faculty);
+                    setLastSyncTime(Date.now());
+                }
+            } catch { /* ignored */ }
+        }, 8000);
+        return () => clearInterval(intervalId);
+    }, [liveSync]);
+
     // ── Build Fast Lookup Maps ─────────────────────────────────
     const facultyMap = useMemo(() => {
         const map = new Map();
-        (facultyList || []).forEach(f => {
+        (currentFaculty || []).forEach(f => {
             if (f.id) map.set(f.id, f);
             if (f.email) map.set(f.email.toLowerCase(), f);
         });
         return map;
-    }, [facultyList]);
+    }, [currentFaculty]);
 
     const studentMap = useMemo(() => {
         const map = new Map();
@@ -63,12 +95,12 @@ export function FacultyActivityContent({
 
     // ── Enrich Logs ────────────────────────────────────────────
     const enrichedLogs = useMemo(() => {
-        return (activityLogs || []).map(log => enrichActivityRecord(log, facultyMap, studentMap));
-    }, [activityLogs, facultyMap, studentMap]);
+        return (currentLogs || []).map(log => enrichActivityRecord(log, facultyMap, studentMap));
+    }, [currentLogs, facultyMap, studentMap]);
 
     // ── Faculty Login & Presence Status ────────────────────────
     const facultyPresenceList = useMemo(() => {
-        return (facultyList || []).map(f => {
+        return (currentFaculty || []).map(f => {
             // Find all logs for this faculty
             const facultyLogs = enrichedLogs.filter(l =>
                 l.faculty_id === f.id ||
@@ -96,14 +128,24 @@ export function FacultyActivityContent({
 
             if (latestTimestamp) {
                 const diffMs = Date.now() - new Date(latestTimestamp).getTime();
-                if (diffMs <= 24 * 60 * 60 * 1000) {
-                    status = 'today';
-                    statusLabel = 'Active Today';
+                if (diffMs <= 20 * 60 * 1000) {
+                    status = 'online';
+                    statusLabel = 'Online Now';
                     dotColor = '#10b981';
-                } else if (diffMs <= 7 * 24 * 60 * 60 * 1000) {
+                } else if (diffMs <= 60 * 60 * 1000) {
                     status = 'recent';
-                    statusLabel = 'Active This Week';
+                    const mins = Math.max(1, Math.round(diffMs / 60000));
+                    statusLabel = `Active ${mins}m ago`;
+                    dotColor = '#3b82f6';
+                } else if (diffMs <= 24 * 60 * 60 * 1000) {
+                    status = 'today';
+                    const timeStr = new Date(latestTimestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    statusLabel = `Active at ${timeStr}`;
                     dotColor = '#f59e0b';
+                } else {
+                    status = 'offline';
+                    statusLabel = 'Offline';
+                    dotColor = '#9ca3af';
                 }
             }
 
@@ -120,7 +162,8 @@ export function FacultyActivityContent({
                 dotColor,
             };
         });
-    }, [facultyList, enrichedLogs]);
+    }, [currentFaculty, enrichedLogs]);
+
 
     // ── Distinct Departments with Counts ───────────────────────
     const departmentStats = useMemo(() => {
@@ -192,8 +235,17 @@ export function FacultyActivityContent({
             }
 
             // Category filter
-            if (selectedCategory !== 'all' && record.what?.category?.id !== selectedCategory) {
-                return false;
+            if (selectedCategory !== 'all') {
+                if (selectedCategory === 'HALL_TICKET') {
+                    const isHt = record.action_type === 'HALL_TICKET_GENERATE' ||
+                        record.action_type === 'HALL_TICKET_BATCH_EXPORT' ||
+                        record.what?.code === 'HALL_TICKET_GENERATE' ||
+                        record.what?.code === 'HALL_TICKET_BATCH_EXPORT' ||
+                        record.what?.category?.id === 'EXAM_GOVERNANCE';
+                    if (!isHt) return false;
+                } else if (record.what?.category?.id !== selectedCategory) {
+                    return false;
+                }
             }
 
             // Time filter
@@ -273,6 +325,13 @@ export function FacultyActivityContent({
         setIsRefreshing(true);
         setRefreshSuccess(false);
         try {
+            const res = await fetch('/api/admin/faculty-activity?limit=300');
+            const json = await res.json();
+            if (json?.success) {
+                if (json.activity && json.activity.length > 0) setCurrentLogs(json.activity);
+                if (json.faculty && json.faculty.length > 0) setCurrentFaculty(json.faculty);
+                setLastSyncTime(Date.now());
+            }
             if (onRefresh) {
                 await onRefresh();
             }
@@ -284,6 +343,7 @@ export function FacultyActivityContent({
             setIsRefreshing(false);
         }
     };
+
 
     // ── Robust CSV Export ──────────────────────────────────────
     const handleExportCSV = () => {
@@ -404,7 +464,17 @@ export function FacultyActivityContent({
     };
 
     // Active counts
-    const activeTodayCount = facultyPresenceList.filter(f => f.status === 'today').length;
+    const onlineNowCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'online').length, [facultyPresenceList]);
+    const activeTodayCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'today' || f.status === 'online' || f.status === 'recent').length, [facultyPresenceList]);
+    const offlineCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'offline').length, [facultyPresenceList]);
+    const hallTicketsCount = useMemo(() => enrichedLogs.filter(l =>
+        l.action_type === 'HALL_TICKET_GENERATE' ||
+        l.action_type === 'HALL_TICKET_BATCH_EXPORT' ||
+        l.what?.code === 'HALL_TICKET_GENERATE' ||
+        l.what?.code === 'HALL_TICKET_BATCH_EXPORT' ||
+        l.what?.category?.id === 'EXAM_GOVERNANCE'
+    ).length, [enrichedLogs]);
+
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', minWidth: 0 }}>
@@ -514,27 +584,103 @@ export function FacultyActivityContent({
                 flexDirection: 'column',
                 gap: '10px',
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>sensors</span>
                         <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                            Faculty Login & Status
+                            Faculty Real-Time Presence & Status
                         </span>
+                        
+                        {/* Real-Time Status Badges */}
+                        <span style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            padding: '3px 9px',
+                            borderRadius: '12px',
+                            background: onlineNowCount > 0 ? 'rgba(16, 185, 129, 0.15)' : 'var(--surface-low)',
+                            color: onlineNowCount > 0 ? '#059669' : 'var(--tx-dim)',
+                            border: onlineNowCount > 0 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid var(--border)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                        }}>
+                            <span style={{
+                                width: '7px',
+                                height: '7px',
+                                borderRadius: '50%',
+                                background: onlineNowCount > 0 ? '#10b981' : '#9ca3af',
+                                boxShadow: onlineNowCount > 0 ? '0 0 0 2px rgba(16, 185, 129, 0.4)' : 'none',
+                            }} />
+                            {onlineNowCount} Online Now
+                        </span>
+
                         <span style={{
                             fontSize: '11px',
                             fontWeight: 700,
-                            padding: '2px 8px',
+                            padding: '3px 9px',
                             borderRadius: '12px',
-                            background: activeTodayCount > 0 ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
-                            color: activeTodayCount > 0 ? '#059669' : 'var(--tx-dim)',
+                            background: activeTodayCount > 0 ? 'rgba(59, 130, 246, 0.1)' : 'var(--surface-low)',
+                            color: activeTodayCount > 0 ? 'var(--primary)' : 'var(--tx-dim)',
+                            border: '1px solid var(--border)',
                         }}>
                             {activeTodayCount} Active Today
                         </span>
+
+                        {hallTicketsCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedCategory(selectedCategory === 'HALL_TICKET' ? 'all' : 'HALL_TICKET')}
+                                style={{
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    padding: '3px 9px',
+                                    borderRadius: '12px',
+                                    background: selectedCategory === 'HALL_TICKET' ? '#7c3aed' : 'rgba(139, 92, 246, 0.12)',
+                                    color: selectedCategory === 'HALL_TICKET' ? '#ffffff' : '#7c3aed',
+                                    border: '1px solid rgba(139, 92, 246, 0.35)',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                title="Click to filter activities to Hall Ticket Generation"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '13px' }}>confirmation_number</span>
+                                {hallTicketsCount} Hall Tickets Issued {selectedCategory === 'HALL_TICKET' ? '✕' : ''}
+                            </button>
+                        )}
                     </div>
 
-                    <span style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
-                        Click a faculty member to view only their activities
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Live Feed Heartbeat & Pause/Resume Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setLiveSync(prev => !prev)}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                background: liveSync ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-low)',
+                                border: liveSync ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border)',
+                                color: liveSync ? '#059669' : 'var(--tx-muted)',
+                                borderRadius: '6px',
+                                padding: '4px 10px',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                            }}
+                            title={liveSync ? 'Live real-time feed polling every 8s. Click to pause.' : 'Live feed paused. Click to resume auto-polling.'}
+                        >
+                            <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: liveSync ? '#10b981' : '#9ca3af',
+                            }} />
+                            {liveSync ? 'LIVE FEED (8s)' : 'PAUSED'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Faculty Quick Cards Grid */}
@@ -591,13 +737,14 @@ export function FacultyActivityContent({
                                         </div>
                                         <span style={{
                                             position: 'absolute',
-                                            bottom: '-1px',
-                                            right: '-1px',
-                                            width: '8px',
-                                            height: '8px',
+                                            bottom: '-2px',
+                                            right: '-2px',
+                                            width: '9px',
+                                            height: '9px',
                                             borderRadius: '50%',
                                             background: faculty.dotColor,
-                                            border: '1.5px solid var(--surface)',
+                                            border: '2px solid var(--surface)',
+                                            boxShadow: faculty.status === 'online' ? '0 0 0 2px rgba(16, 185, 129, 0.4)' : 'none',
                                         }} />
                                     </div>
 
@@ -616,12 +763,20 @@ export function FacultyActivityContent({
                                             }}>
                                                 {dept.code}
                                             </span>
-                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {faculty.statusLabel}
+                                            <span style={{
+                                                fontSize: '10px',
+                                                fontWeight: faculty.status === 'online' ? 800 : 500,
+                                                color: faculty.status === 'online' ? '#10b981' : 'var(--tx-dim)',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis'
+                                            }}>
+                                                {faculty.status === 'online' ? '🟢 Online Now' : faculty.statusLabel}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
+
 
                                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                     <span style={{
@@ -811,9 +966,11 @@ export function FacultyActivityContent({
                     }}
                 >
                     <option value="all">All Action Types</option>
+                    <option value="HALL_TICKET">🎟️ Hall Tickets Generated ({hallTicketsCount})</option>
                     {Object.values(ACTION_CATEGORIES).map(c => (
                         <option key={c.id} value={c.id}>{c.shortLabel}</option>
                     ))}
+
                 </select>
 
                 {/* Time Period Dropdown */}
@@ -1023,10 +1180,59 @@ export function FacultyActivityContent({
 
                                             {/* Action & Student */}
                                             <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
-                                                <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--tx-main)' }}>
-                                                    {record.what?.title}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                                                    <span style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
+                                                        {(record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT')
+                                                            ? 'VTU SEE Hall Tickets Issued & Verified'
+                                                            : (record.what?.title || record.action_type)}
+                                                    </span>
+                                                    {(record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT' || record.what?.code === 'HALL_TICKET_GENERATE') && (
+                                                        <span style={{
+                                                            fontSize: '10px',
+                                                            fontWeight: 900,
+                                                            padding: '2px 7px',
+                                                            borderRadius: '5px',
+                                                            background: 'rgba(139, 92, 246, 0.15)',
+                                                            color: '#7c3aed',
+                                                            border: '1px solid rgba(139, 92, 246, 0.35)',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                            letterSpacing: '0.02em',
+                                                        }}>
+                                                            <span className="material-icons-round" style={{ fontSize: '12px' }}>confirmation_number</span>
+                                                            HALL TICKET
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                {record.target?.usn && (
+
+                                                {/* Hall ticket specific student cohort pill */}
+                                                {(record.metadata?.studentCount || record.metadata?.branch || record.metadata?.semester) && (
+                                                    <div style={{ marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                                        <span style={{
+                                                            fontSize: '11px',
+                                                            fontWeight: 800,
+                                                            color: '#6d28d9',
+                                                            background: 'rgba(124, 58, 237, 0.08)',
+                                                            padding: '1px 6px',
+                                                            borderRadius: '4px',
+                                                            border: '1px solid rgba(124, 58, 237, 0.2)',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                        }}>
+                                                            <span className="material-icons-round" style={{ fontSize: '12px' }}>school</span>
+                                                            {record.metadata.branch || 'Cohort'} Sem {record.metadata.semester || ''} • {record.metadata.studentCount} Students
+                                                        </span>
+                                                        {record.metadata?.filename && (
+                                                            <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontFamily: 'monospace' }}>
+                                                                {record.metadata.filename}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {record.target?.usn && !record.metadata?.studentCount && (
                                                     <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <span
                                                             onClick={(e) => handleCopyUsn(record.target.usn, e)}
@@ -1053,6 +1259,7 @@ export function FacultyActivityContent({
                                                     </div>
                                                 )}
                                             </td>
+
 
                                             {/* Details / Reason */}
                                             <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
@@ -1214,10 +1421,47 @@ export function FacultyActivityContent({
 
                                 {/* Action Title & Target */}
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--tx-main)' }}>
-                                        {record.what?.title}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                                        <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                            {(record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT')
+                                                ? 'VTU SEE Hall Tickets Issued'
+                                                : (record.what?.title || record.action_type)}
+                                        </span>
+                                        {(record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT' || record.what?.code === 'HALL_TICKET_GENERATE') && (
+                                            <span style={{
+                                                fontSize: '10px',
+                                                fontWeight: 900,
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                background: 'rgba(139, 92, 246, 0.15)',
+                                                color: '#7c3aed',
+                                                border: '1px solid rgba(139, 92, 246, 0.35)',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                            }}>
+                                                🎟️ HALL TICKET
+                                            </span>
+                                        )}
                                     </div>
-                                    {record.target?.usn && (
+
+                                    {(record.metadata?.studentCount || record.metadata?.branch || record.metadata?.semester) && (
+                                        <div style={{ marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                            <span style={{
+                                                fontSize: '11px',
+                                                fontWeight: 800,
+                                                color: '#6d28d9',
+                                                background: 'rgba(124, 58, 237, 0.08)',
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                border: '1px solid rgba(124, 58, 237, 0.2)',
+                                            }}>
+                                                🎓 {record.metadata.branch || 'Cohort'} Sem {record.metadata.semester || ''} ({record.metadata.studentCount} Students)
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {record.target?.usn && !record.metadata?.studentCount && (
                                         <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{
                                                 fontFamily: 'monospace',
@@ -1238,6 +1482,7 @@ export function FacultyActivityContent({
                                         </div>
                                     )}
                                 </div>
+
 
                                 {/* Reason / Note */}
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', lineHeight: '1.4' }}>

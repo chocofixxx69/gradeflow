@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '../../../../lib/server-session';
+import { requireStaff, requireAdmin } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 
 export async function POST(req) {
@@ -64,6 +64,38 @@ export async function POST(req) {
         });
     } catch (err) {
         console.error('[POST /api/admin/faculty-activity] Exception:', err);
+        return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
+    }
+}
+
+export async function GET(req) {
+    try {
+        const { session, error: authError } = requireStaff(req, ['admin', 'faculty']);
+        if (authError) return authError;
+
+
+        const { searchParams } = new URL(req.url);
+        const limit = Math.min(parseInt(searchParams.get('limit') || '300', 10), 1000);
+
+        const supabaseAdmin = getAdminClient();
+        const [
+            { data: activity, error: aErr },
+            { data: faculty, error: fErr }
+        ] = await Promise.all([
+            supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(limit),
+            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department, designation, employee_id, status, last_login_at, last_login_ip'),
+        ]);
+
+        if (aErr) throw aErr;
+
+        return NextResponse.json({
+            success: true,
+            activity: activity || [],
+            faculty: faculty || [],
+            timestamp: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('[GET /api/admin/faculty-activity] Exception:', err);
         return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
     }
 }
