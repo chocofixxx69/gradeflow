@@ -54,22 +54,27 @@ const FALLBACK_2025_URLS = [
     { exam_name: "Jul 25 Special/Makeup Reval", url: "https://results.vtu.ac.in/RVSplJulcbcs25/index.php" },
 ];
 
-// PG (MBA/MCA) fallback portals. VTU's exam-session landing pages route every
+// MBA / MCA fallback portals. VTU's exam-session landing pages route every
 // program's "click here" button — B.E, M.Tech, PG[DIS], B.Sc, B.Arch, BBA/BCA,
 // etc. — to this exact same set of USN+captcha lookup forms; there is no
-// separate MBA/MCA-specific portal. So this list intentionally mirrors the
-// 2025 Scheme URLs. NOT YET CONFIRMED end-to-end with a real MBA/MCA USN —
-// treat results from these as provisional until verified against one.
-const FALLBACK_PG_URLS = [
-    { exam_name: "Dec 25/Jan 26 Regular (PG)", url: "https://results.vtu.ac.in/D25J26Ecbcs/index.php" },
-    { exam_name: "Dec 25/Jan 26 Revaluation (PG)", url: "https://results.vtu.ac.in/D25J26RVcbcs/index.php" },
-    { exam_name: "May/June 2026 Regular (PG)", url: "https://results.vtu.ac.in/MJ26cbcs/index.php" },
-    { exam_name: "May/June 2026 Revaluation (PG)", url: "https://results.vtu.ac.in/MJ26rvcbcs/index.php" },
-    { exam_name: "Jun/Jul 25 Regular (PG)", url: "https://results.vtu.ac.in/JJEcbcs25/index.php" },
-    { exam_name: "Jun/Jul 25 Reval (PG)", url: "https://results.vtu.ac.in/JJRVcbcs25/index.php" },
-    { exam_name: "Dec 24/Jan 25 Regular (PG)", url: "https://results.vtu.ac.in/DJcbcs25/index.php" },
-    { exam_name: "Dec 24/Jan 25 Reval (PG)", url: "https://results.vtu.ac.in/DJRVcbcs25/index.php" },
+// separate MBA-specific or MCA-specific portal. So both lists intentionally
+// mirror the 2025 Scheme URLs, just tagged under their own scheme so MBA and
+// MCA portals can be enabled/disabled independently of each other. NOT YET
+// CONFIRMED end-to-end with a real MBA/MCA USN — treat results from these as
+// provisional until verified against one.
+const FALLBACK_PG_SHARED_URLS = [
+    { exam_name: "Dec 25/Jan 26 Regular", url: "https://results.vtu.ac.in/D25J26Ecbcs/index.php" },
+    { exam_name: "Dec 25/Jan 26 Revaluation", url: "https://results.vtu.ac.in/D25J26RVcbcs/index.php" },
+    { exam_name: "May/June 2026 Regular", url: "https://results.vtu.ac.in/MJ26cbcs/index.php" },
+    { exam_name: "May/June 2026 Revaluation", url: "https://results.vtu.ac.in/MJ26rvcbcs/index.php" },
+    { exam_name: "Jun/Jul 25 Regular", url: "https://results.vtu.ac.in/JJEcbcs25/index.php" },
+    { exam_name: "Jun/Jul 25 Reval", url: "https://results.vtu.ac.in/JJRVcbcs25/index.php" },
+    { exam_name: "Dec 24/Jan 25 Regular", url: "https://results.vtu.ac.in/DJcbcs25/index.php" },
+    { exam_name: "Dec 24/Jan 25 Reval", url: "https://results.vtu.ac.in/DJRVcbcs25/index.php" },
 ];
+
+const FALLBACK_MBA_URLS = FALLBACK_PG_SHARED_URLS.map(u => ({ ...u, exam_name: `${u.exam_name} (MBA)` }));
+const FALLBACK_MCA_URLS = FALLBACK_PG_SHARED_URLS.map(u => ({ ...u, exam_name: `${u.exam_name} (MCA)` }));
 
 // Helper to seed URLs for a specific scheme
 async function autoSeedScheme(faculty_id, targetScheme) {
@@ -89,10 +94,12 @@ async function autoSeedScheme(faculty_id, targetScheme) {
                 });
             }
             if (!seedSource.length) seedSource = FALLBACK_2025_URLS;
-        } else if (targetScheme === 'pg') {
-            // No dedicated vtu_urls_pg_scheme table — these portals are the
-            // same shared forms as 2025 Scheme (see FALLBACK_PG_URLS comment).
-            seedSource = FALLBACK_PG_URLS;
+        } else if (targetScheme === 'mba') {
+            // No dedicated vtu_urls_mba_scheme table — these portals are the
+            // same shared forms as 2025 Scheme (see FALLBACK_PG_SHARED_URLS comment).
+            seedSource = FALLBACK_MBA_URLS;
+        } else if (targetScheme === 'mca') {
+            seedSource = FALLBACK_MCA_URLS;
         } else {
             const { data: db2022 } = await supabase
                 .from('vtu_urls_2022_scheme')
@@ -178,7 +185,8 @@ export async function GET(req) {
         const counts = {
             '2022': { total: 0, active: 0 },
             '2025': { total: 0, active: 0 },
-            'pg': { total: 0, active: 0 }
+            'mba': { total: 0, active: 0 },
+            'mca': { total: 0, active: 0 }
         };
 
         (allFacUrls || []).forEach(r => {

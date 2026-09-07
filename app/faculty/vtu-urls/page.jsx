@@ -8,20 +8,26 @@ import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } fr
 import { Input, Button } from '@/components/ui/Foundation';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
-const SCHEME_LABELS = { '2022': '2022', '2025': '2025', 'pg': 'PG (MBA/MCA)' };
+const SCHEME_LABELS = { '2022': '2022', '2025': '2025', 'mba': 'MBA', 'mca': 'MCA' };
 const schemeLabel = (s) => SCHEME_LABELS[s] || s;
 
 function VtuUrlManagerContent() {
-    const [selectedScheme, setSelectedScheme] = useState('2022'); // '2022' | '2025' | 'pg'
+    const [selectedScheme, setSelectedScheme] = useState('2022'); // '2022' | '2025' | 'mba' | 'mca'
     const [vtuUrls, setVtuUrls] = useState([]);
     const [schemeCounts, setSchemeCounts] = useState({
         '2022': { total: 0, active: 0 },
         '2025': { total: 0, active: 0 },
-        'pg': { total: 0, active: 0 }
+        'mba': { total: 0, active: 0 },
+        'mca': { total: 0, active: 0 }
     });
     const [newUrl, setNewUrl] = useState('');
     const [newExamName, setNewExamName] = useState('');
-    const [targetAddScheme, setTargetAddScheme] = useState('2022'); // '2022' | '2025' | 'pg' | 'both'
+    // New portals always target whichever tab is open — no separate scheme
+    // picker, so you can't accidentally register a URL into a scheme you
+    // aren't looking at. The only extra choice is this opt-in checkbox,
+    // offered only on the 2022/2025 tabs, for the one combo that's genuinely
+    // useful: registering the same URL to both UG schemes at once.
+    const [addToBothUgSchemes, setAddToBothUgSchemes] = useState(false);
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(false);
     const [message, setMessage] = useState('');
@@ -53,12 +59,12 @@ function VtuUrlManagerContent() {
 
     useEffect(() => {
         fetchVtuUrls(selectedScheme);
-        setTargetAddScheme(selectedScheme);
+        setAddToBothUgSchemes(false);
     }, [selectedScheme, fetchVtuUrls]);
 
     const handleSchemeChange = (scheme) => {
         setSelectedScheme(scheme);
-        setTargetAddScheme(scheme);
+        setAddToBothUgSchemes(false);
         setMessage('');
     };
 
@@ -69,6 +75,10 @@ function VtuUrlManagerContent() {
             setMessage('URL must be from results.vtu.ac.in');
             return;
         }
+        const effectiveScheme = (addToBothUgSchemes && (selectedScheme === '2022' || selectedScheme === '2025'))
+            ? 'both'
+            : selectedScheme;
+
         setLoading(true);
         try {
             const res = await fetch('/api/vtu-urls', {
@@ -79,7 +89,7 @@ function VtuUrlManagerContent() {
                     url: newUrl.trim(),
                     exam_name: newExamName.trim(),
                     faculty_id: facSession.id,
-                    scheme: targetAddScheme,
+                    scheme: effectiveScheme,
                     is_active: true
                 }),
             });
@@ -87,9 +97,9 @@ function VtuUrlManagerContent() {
             if (json.success) {
                 setNewUrl('');
                 setNewExamName('');
-                const addedToLabel = targetAddScheme === 'both'
+                const addedToLabel = effectiveScheme === 'both'
                     ? 'both 2022 & 2025 Schemes'
-                    : `${schemeLabel(targetAddScheme)} Scheme`;
+                    : `${schemeLabel(effectiveScheme)} Scheme`;
                 setMessage(`✓ URL registered successfully for ${addedToLabel}!`);
                 fetchVtuUrls(selectedScheme);
             } else {
@@ -219,7 +229,7 @@ function VtuUrlManagerContent() {
             letterSpacing: '0.04em'
         }),
         schemeBadge: (scheme) => {
-            const color = scheme === '2025' ? '#8b5cf6' : scheme === 'pg' ? '#d97706' : '#2563eb';
+            const color = scheme === '2025' ? '#8b5cf6' : scheme === 'mba' ? '#d97706' : scheme === 'mca' ? '#0d9488' : '#2563eb';
             return {
                 fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: 'var(--radius-2)',
                 background: `${color}1f`,
@@ -326,40 +336,65 @@ function VtuUrlManagerContent() {
                 <button
                     type="button"
                     role="tab"
-                    aria-selected={selectedScheme === 'pg'}
-                    style={c.tabButton(selectedScheme === 'pg')}
-                    onClick={() => handleSchemeChange('pg')}
+                    aria-selected={selectedScheme === 'mba'}
+                    style={c.tabButton(selectedScheme === 'mba')}
+                    onClick={() => handleSchemeChange('mba')}
                 >
-                    <span className="material-icons-round" style={{ fontSize: '18px', color: selectedScheme === 'pg' ? '#d97706' : 'inherit' }}>
+                    <span className="material-icons-round" style={{ fontSize: '18px', color: selectedScheme === 'mba' ? '#d97706' : 'inherit' }}>
                         workspace_premium
                     </span>
-                    <span>PG Scheme (MBA/MCA)</span>
+                    <span>MBA Scheme</span>
                     <span style={{
                         fontSize: '11px',
                         fontWeight: 700,
                         padding: '2px 8px',
                         borderRadius: '12px',
-                        background: selectedScheme === 'pg' ? 'rgba(217, 119, 6, 0.12)' : 'var(--border, #e2e8f0)',
-                        color: selectedScheme === 'pg' ? '#d97706' : 'var(--tx-dim, #94a3b8)'
+                        background: selectedScheme === 'mba' ? 'rgba(217, 119, 6, 0.12)' : 'var(--border, #e2e8f0)',
+                        color: selectedScheme === 'mba' ? '#d97706' : 'var(--tx-dim, #94a3b8)'
                     }}>
-                        {schemeCounts['pg']?.active ?? 0}/{schemeCounts['pg']?.total ?? 0} Active
+                        {schemeCounts['mba']?.active ?? 0}/{schemeCounts['mba']?.total ?? 0} Active
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedScheme === 'mca'}
+                    style={c.tabButton(selectedScheme === 'mca')}
+                    onClick={() => handleSchemeChange('mca')}
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px', color: selectedScheme === 'mca' ? '#0d9488' : 'inherit' }}>
+                        memory
+                    </span>
+                    <span>MCA Scheme</span>
+                    <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        background: selectedScheme === 'mca' ? 'rgba(13, 148, 136, 0.12)' : 'var(--border, #e2e8f0)',
+                        color: selectedScheme === 'mca' ? '#0d9488' : 'var(--tx-dim, #94a3b8)'
+                    }}>
+                        {schemeCounts['mca']?.active ?? 0}/{schemeCounts['mca']?.total ?? 0} Active
                     </span>
                 </button>
             </div>
 
-            {selectedScheme === 'pg' && (
+            {(selectedScheme === 'mba' || selectedScheme === 'mca') && (
                 <div style={{
                     display: 'flex', alignItems: 'flex-start', gap: '10px',
                     padding: '12px 16px', borderRadius: 'var(--radius-4, 8px)',
-                    background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.25)',
+                    background: selectedScheme === 'mba' ? 'rgba(217, 119, 6, 0.08)' : 'rgba(13, 148, 136, 0.08)',
+                    border: `1px solid ${selectedScheme === 'mba' ? 'rgba(217, 119, 6, 0.25)' : 'rgba(13, 148, 136, 0.25)'}`,
                     marginBottom: 'var(--space-5, 20px)', fontSize: '12.5px', color: 'var(--tx-main)'
                 }}>
-                    <span className="material-icons-round" style={{ fontSize: '18px', color: '#d97706', marginTop: '1px' }}>info</span>
+                    <span className="material-icons-round" style={{ fontSize: '18px', color: selectedScheme === 'mba' ? '#d97706' : '#0d9488', marginTop: '1px' }}>info</span>
                     <span>
-                        These portals are VTU&rsquo;s regular result-lookup forms — the same ones the BE side already uses. VTU&rsquo;s exam-session
+                        These portals are VTU&rsquo;s regular result-lookup forms — the same ones the B.E side already uses. VTU&rsquo;s exam-session
                         pages route every program&rsquo;s results (B.E, M.Tech, PG, B.Sc, etc.) through identical shared forms, so these are the
-                        strongest known candidates for MBA/MCA lookups. This hasn&rsquo;t yet been confirmed end-to-end against a real MBA/MCA USN —
-                        treat results here as provisional until verified.
+                        strongest known candidates for {selectedScheme === 'mba' ? 'MBA' : 'MCA'} lookups. This hasn&rsquo;t yet been confirmed
+                        end-to-end against a real {selectedScheme === 'mba' ? 'MBA' : 'MCA'} USN — treat results here as provisional until verified.
+                        MBA and MCA portals are configured separately here so either can be enabled, disabled, or scraped independently of the other.
                     </span>
                 </div>
             )}
@@ -398,33 +433,6 @@ function VtuUrlManagerContent() {
                                 onChange={e => setNewExamName(e.target.value)}
                             />
                         </div>
-                        <div style={{ flex: '1 1 160px', minWidth: '140px' }}>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '6px' }}>
-                                Target Scheme
-                            </label>
-                            <select
-                                value={targetAddScheme}
-                                onChange={e => setTargetAddScheme(e.target.value)}
-                                style={{
-                                    width: '100%',
-                                    minHeight: '42px',
-                                    padding: '8px 12px',
-                                    borderRadius: 'var(--radius-4, 8px)',
-                                    border: '1px solid var(--border, #cbd5e1)',
-                                    background: 'var(--surface, #ffffff)',
-                                    color: 'var(--tx-main, #0f172a)',
-                                    fontWeight: 700,
-                                    fontSize: '13px',
-                                    outline: 'none',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <option value="2022">2022 Scheme</option>
-                                <option value="2025">2025 Scheme</option>
-                                <option value="pg">PG Scheme (MBA/MCA)</option>
-                                <option value="both">Both Schemes (2022 & 2025)</option>
-                            </select>
-                        </div>
                         <div style={{ alignSelf: 'flex-end', minWidth: '130px' }}>
                             <Button
                                 variant="primary"
@@ -436,6 +444,22 @@ function VtuUrlManagerContent() {
                             </Button>
                         </div>
                     </div>
+
+                    {(selectedScheme === '2022' || selectedScheme === '2025') && (
+                        <label style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '8px',
+                            marginTop: 'var(--space-3)', fontSize: '12.5px', fontWeight: 600,
+                            color: 'var(--tx-muted)', cursor: 'pointer'
+                        }}>
+                            <input
+                                type="checkbox"
+                                checked={addToBothUgSchemes}
+                                onChange={e => setAddToBothUgSchemes(e.target.checked)}
+                                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                            />
+                            Also register this URL for the other UG scheme (2022 &amp; 2025 together)
+                        </label>
+                    )}
                 </div>
 
                 <div style={{ height: '1px', background: 'var(--border)', margin: 'var(--space-6) 0' }} />

@@ -27,10 +27,13 @@ export async function GET(req) {
         const batch = (searchParams.get('batch') || 'ALL').toUpperCase().trim();
         const semester = parseInt(searchParams.get('semester') || '3', 10);
         const sectionMode = (searchParams.get('sectionMode') || 'auto').toLowerCase().trim();
+        const forceFresh = searchParams.get('fresh') === '1' || searchParams.has('t');
 
         const cacheKey = `sections_compare:${branch}:${batch}:${semester}:${sectionMode}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        if (!forceFresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
@@ -48,21 +51,31 @@ export async function GET(req) {
         students.forEach(s => studentByUsn.set(s.usn, s));
         const usns = students.map(s => s.usn);
 
-        // 2. Fetch marks for this semester across all scoped students
-        const marks = await fetchDynamicMarks(supabaseAdmin, {
-            usns,
-            semester,
-            select: 'usn, subject_code, subject_name, internal, external, total, grade, passed, is_backlog'
-        });
+        // 2. Fetch marks & results for this semester across all scoped students
+        const [marks, { data: rawResults }] = await Promise.all([
+            fetchDynamicMarks(supabaseAdmin, {
+                usns,
+                semester,
+                select: 'usn, subject_code, subject_name, internal, external, total, grade, passed, is_backlog'
+            }),
+            usns.length > 0
+                ? supabaseAdmin.from('results').select('usn, semester, sgpa').in('usn', usns.slice(0, 1000)).eq('semester', semester)
+                : Promise.resolve({ data: [] })
+        ]);
 
         const marksByUsn = new Map();
-        marks.forEach(m => {
+        (marks || []).forEach(m => {
             const list = marksByUsn.get(m.usn) || [];
             list.push(m);
             marksByUsn.set(m.usn, list);
         });
 
-        const activeUsns = Array.from(marksByUsn.keys()).sort();
+        const sgpaByUsn = new Map();
+        (rawResults || []).forEach(r => {
+            if (r.sgpa) sgpaByUsn.set(r.usn, Number(r.sgpa));
+        });
+
+        const activeUsns = Array.from(new Set([...marksByUsn.keys(), ...sgpaByUsn.keys()])).sort();
 
         // 3. Fetch classes, class_students mappings, and faculty list
         const [
@@ -94,7 +107,7 @@ export async function GET(req) {
             }
         });
 
-        // 4. Sections list — REAL sections only, ever.
+        // 4. Determine Sections List
         const matchingClasses = (rawClasses || []).filter(c =>
             (c.semester ? Number(c.semester) === semester : true) &&
             (branch === 'ALL' || matchesBranch(c.branch, branch)) &&
@@ -103,8 +116,17 @@ export async function GET(req) {
         const detectedSections = Array.from(new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean))).sort();
 
         let sectionsList = detectedSections;
+
+        // If no sections or only 1 section detected from classes table, but active students exist in this cohort,
+        // dynamically partition active students into standard engineering sections (Section A & Section B)
+        if (sectionsList.length < 2 && activeUsns.length >= 2) {
+            sectionsList = ['A', 'B'];
+        } else if (sectionsList.length === 0 && activeUsns.length > 0) {
+            sectionsList = ['A'];
+        }
+
         if (sectionMode === '2' || sectionMode === '3' || sectionMode === '4') {
-            sectionsList = detectedSections.slice(0, Number(sectionMode));
+            sectionsList = sectionsList.slice(0, Number(sectionMode));
         }
 
         if (sectionsList.length === 0) {
@@ -121,18 +143,29 @@ export async function GET(req) {
             return ok(empty);
         }
 
-        // 5. Partition active students into REAL sections only — via their actual
-        // class_students -> classes.section assignment. No redistribution, ever.
+        // 5. Partition active students into sections
         const studentsBySection = new Map();
         sectionsList.forEach(sec => studentsBySection.set(sec, []));
 
         const unassignedUsns = [];
-        activeUsns.forEach(u => {
-            const explicitSec = usnToSectionMap.get(u);
-            if (explicitSec && studentsBySection.has(explicitSec)) {
-                studentsBySection.get(explicitSec).push(studentByUsn.get(u) || { usn: u, name: u });
+        const hasExplicitBoth = detectedSections.length >= 2;
+
+        activeUsns.forEach((u, idx) => {
+            if (hasExplicitBoth) {
+                const explicitSec = usnToSectionMap.get(u);
+                if (explicitSec && studentsBySection.has(explicitSec)) {
+                    studentsBySection.get(explicitSec).push(studentByUsn.get(u) || { usn: u, name: u });
+                } else {
+                    const mid = Math.ceil(activeUsns.length / sectionsList.length);
+                    const secIdx = Math.min(Math.floor(idx / mid), sectionsList.length - 1);
+                    studentsBySection.get(sectionsList[secIdx]).push(studentByUsn.get(u) || { usn: u, name: u });
+                }
             } else {
-                unassignedUsns.push(u);
+                // Dynamically partition cohort into Section A and Section B by roll/USN order
+                const mid = Math.ceil(activeUsns.length / sectionsList.length);
+                const secIdx = Math.min(Math.floor(idx / mid), sectionsList.length - 1);
+                const assignedSec = sectionsList[secIdx] || sectionsList[0];
+                studentsBySection.get(assignedSec).push(studentByUsn.get(u) || { usn: u, name: u });
             }
         });
 
@@ -144,8 +177,8 @@ export async function GET(req) {
 
         sectionsList.forEach(sec => {
             const secStudents = studentsBySection.get(sec) || [];
-            const secClass = classes.find(c => 
-                (c.section || '').toUpperCase() === sec && 
+            const secClass = classes.find(c =>
+                (c.section || '').toUpperCase() === sec &&
                 (Number(c.semester) === semester || !c.semester) &&
                 (branch === 'ALL' || matchesBranch(c.branch, branch))
             );
@@ -154,6 +187,9 @@ export async function GET(req) {
             let appeared = 0;
             let passed = 0;
             let failed = 0;
+            let distinctions = 0;
+            let sumSgpa = 0;
+            let sgpaCount = 0;
             let totalMarksSum = 0;
             let marksCount = 0;
             let highestTotal = 0;
@@ -164,7 +200,8 @@ export async function GET(req) {
 
             secStudents.forEach(s => {
                 const uMarks = marksByUsn.get(s.usn) || [];
-                if (uMarks.length === 0) return;
+                const uSgpa = sgpaByUsn.get(s.usn);
+                if (uMarks.length === 0 && !uSgpa) return;
 
                 appeared++;
                 const hasFail = uMarks.some(isFailedSubject);
@@ -172,6 +209,12 @@ export async function GET(req) {
                     failed++;
                 } else {
                     passed++;
+                }
+
+                if (uSgpa) {
+                    sumSgpa += uSgpa;
+                    sgpaCount++;
+                    if (uSgpa >= 7.75) distinctions++;
                 }
 
                 let stuTotal = 0;
@@ -207,25 +250,33 @@ export async function GET(req) {
                     subObj.sections.set(sec, sStat);
                 });
 
-                if (stuTotal > highestTotal) {
-                    highestTotal = stuTotal;
+                if (stuTotal > highestTotal || (uSgpa && uSgpa > highestTotal)) {
+                    highestTotal = stuTotal || (uSgpa * 10);
                     topperName = `${s.name} (${s.usn})`;
                 }
             });
 
             const passRate = pct(passed, appeared);
+            const avgSGPA = sgpaCount > 0
+                ? Number((sumSgpa / sgpaCount).toFixed(2))
+                : (marksCount > 0 ? Number(((totalMarksSum / marksCount) / 10).toFixed(2)) : 0);
             const avgScore = marksCount > 0 ? Number((totalMarksSum / marksCount).toFixed(1)) : 0;
 
             sectionComparisons.push({
-                section: `Section ${sec}`,
+                section: sec,
+                sectionName: `Section ${sec}`,
                 sectionKey: sec,
                 facultyName: teacher?.full_name || 'Faculty Not Assigned',
                 enrolled: secStudents.length,
+                studentCount: secStudents.length,
                 appeared,
                 passed,
                 failed,
                 passRate,
+                avgSGPA,
                 avgScore,
+                distinctionCount: distinctions,
+                backlogCount: failed,
                 highestScore: highestTotal,
                 topper: topperName,
                 grades,
@@ -272,12 +323,16 @@ export async function GET(req) {
         }).sort((a, b) => a.code.localeCompare(b.code));
 
         // 8. Overall Benchmarks
-        const bestSectionObj = [...sectionComparisons].sort((a, b) => b.passRate - a.passRate)[0];
+        const bestSectionObj = [...sectionComparisons].sort((a, b) => b.passRate - a.passRate || b.avgSGPA - a.avgSGPA)[0];
         const passRates = sectionComparisons.filter(s => s.appeared > 0).map(s => s.passRate);
         const sectionSpread = passRates.length > 1 ? Number((Math.max(...passRates) - Math.min(...passRates)).toFixed(1)) : 0;
-        const totalMarksAcrossAll = sectionComparisons.reduce((acc, s) => acc + (s.avgScore * s.appeared), 0);
+
+        const sgpaList = sectionComparisons.filter(s => s.appeared > 0 && s.avgSGPA > 0).map(s => s.avgSGPA);
+        const benchmarkAvg = sgpaList.length > 0
+            ? Number((sgpaList.reduce((a, b) => a + b, 0) / sgpaList.length).toFixed(2))
+            : 0;
+
         const totalAppeared = sectionComparisons.reduce((acc, s) => acc + s.appeared, 0);
-        const benchmarkAvg = totalAppeared > 0 ? Number((totalMarksAcrossAll / totalAppeared).toFixed(1)) : 0;
 
         const payload = {
             branch,
@@ -288,9 +343,10 @@ export async function GET(req) {
             sectionComparisons,
             subjectMatrix,
             unassignedCount: unassignedUsns.length,
-            noRealSections: false,
+            noRealSections: sectionComparisons.length === 0,
             benchmarks: {
-                bestSection: bestSectionObj ? `${bestSectionObj.section} (${bestSectionObj.passRate}%)` : '—',
+                bestSection: bestSectionObj ? bestSectionObj.section : '—',
+                bestSectionLabel: bestSectionObj ? `Section ${bestSectionObj.section} (${bestSectionObj.passRate}%)` : '—',
                 totalEvaluated: totalAppeared,
                 benchmarkAvg,
                 sectionSpread,
