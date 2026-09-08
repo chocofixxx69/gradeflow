@@ -124,12 +124,17 @@ function HallTicketsContent() {
     const [examType, setExamType] = useState('IA-1'); // 'IA-1' | 'IA-2' | 'IA-3' | 'Semester End'
     const [examMonthYear, setExamMonthYear] = useState('MARCH 2026');
     const [examTitle, setExamTitle] = useState('VII Semester IA-1 MARCH 2026 Examination');
+    // Whether examTitle was hand-edited — once true, the auto-sync effect below
+    // stops overwriting it, so a manual edit isn't silently clobbered by the
+    // next Exam Type / Month change. "Reset to auto" (below) clears this.
+    const [examTitleManual, setExamTitleManual] = useState(false);
     const [departmentName, setDepartmentName] = useState('Department of Computer Science & Engineering');
 
     // Timetable
     const [timetable, setTimetable] = useState(DEFAULT_TIMETABLES[7] || DEFAULT_TIMETABLES[6]);
     const [timetableLoading, setTimetableLoading] = useState(false);
     const [catalogSubjects, setCatalogSubjects] = useState([]);
+    const [dismissedMismatch, setDismissedMismatch] = useState(false);
 
     // Preview Controls
     const [previewMode, setPreviewMode] = useState('paged'); // 'paged' | 'continuous'
@@ -421,6 +426,7 @@ function HallTicketsContent() {
     const handleSemesterChange = useCallback((newSem) => {
         const s = Number(newSem);
         setSemester(s);
+        setDismissedMismatch(false);
         autoFillSyllabus(branch, s);
     }, [branch, autoFillSyllabus]);
 
@@ -428,6 +434,7 @@ function HallTicketsContent() {
     const handleBatchChange = useCallback((newBatch) => {
         setBatch(newBatch);
         setSelectedClassIds([]);
+        setDismissedMismatch(false);
         const normBranch = canonicalBranchCode(branch) || branch;
         const matchingClasses = classes.filter(c => {
             const bMatch = matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch);
@@ -441,33 +448,19 @@ function HallTicketsContent() {
         }
     }, [branch, classes, autoFillSyllabus]);
 
-    // Class selection handler: when a class is selected, auto-aligns target semester to the class semester
+    // Class selection handler: purely toggles class selection without overwriting user's chosen Target Semester
     const toggleClassSelection = useCallback((id) => {
         setSelectedClassIds(prev => {
             const isRemoving = prev.includes(id);
-            const next = isRemoving ? prev.filter(cId => cId !== id) : [...prev, id];
-            if (!isRemoving) {
-                const targetClass = classes.find(c => c.id === id);
-                if (targetClass?.semester && Number(targetClass.semester) !== Number(semester)) {
-                    const newSem = Number(targetClass.semester);
-                    setSemester(newSem);
-                    autoFillSyllabus(branch, newSem);
-                }
-            }
-            return next;
+            return isRemoving ? prev.filter(cId => cId !== id) : [...prev, id];
         });
-    }, [classes, semester, branch, autoFillSyllabus]);
+    }, []);
 
     const selectAllBatchClasses = useCallback(() => {
         if (availableBatchClasses.length > 0) {
             setSelectedClassIds(availableBatchClasses.map(c => c.id));
-            if (availableBatchClasses[0]?.semester) {
-                const newSem = Number(availableBatchClasses[0].semester);
-                setSemester(newSem);
-                autoFillSyllabus(branch, newSem);
-            }
         }
-    }, [availableBatchClasses, branch, autoFillSyllabus]);
+    }, [availableBatchClasses]);
 
     const deselectAllClasses = useCallback(() => {
         setSelectedClassIds([]);
@@ -477,11 +470,20 @@ function HallTicketsContent() {
     const handleBranchChange = useCallback((newBranch) => {
         setBranch(newBranch);
         setSelectedClassIds([]);
+        setDismissedMismatch(false);
         autoFillSyllabus(newBranch, semester);
     }, [semester, autoFillSyllabus]);
 
-    // Update Exam Title when Semester, Exam Type, or Month/Year changes
+    // Update Exam Title when Semester, Exam Type, or Month/Year changes —
+    // but only while the title is still in "auto" mode (see examTitleManual).
     useEffect(() => {
+        if (examTitleManual) return;
+        const roman = ROMAN_SEMESTERS[semester] || String(semester);
+        setExamTitle(`${roman} Semester ${examType} ${examMonthYear} Examination`);
+    }, [semester, examType, examMonthYear, examTitleManual]);
+
+    const resetExamTitleToAuto = useCallback(() => {
+        setExamTitleManual(false);
         const roman = ROMAN_SEMESTERS[semester] || String(semester);
         setExamTitle(`${roman} Semester ${examType} ${examMonthYear} Examination`);
     }, [semester, examType, examMonthYear]);
@@ -525,6 +527,66 @@ function HallTicketsContent() {
 
     const totalSheets = Math.max(1, sheets.length);
 
+    // Lets the preview's "Jump to student" box find which sheet a given
+    // student's ticket landed on, instead of paging through up to dozens of
+    // sheets one at a time to spot-check one person's ticket.
+    const [previewJumpQuery, setPreviewJumpQuery] = useState('');
+    const previewJumpMatches = useMemo(() => {
+        const q = previewJumpQuery.trim().toLowerCase();
+        if (!q) return [];
+        return selectedStudentsList
+            .map((s, idx) => ({ ...s, sheetIndex: Math.floor(idx / 3) + 1 }))
+            .filter(s => s.usn?.toLowerCase().includes(q) || s.name?.toLowerCase().includes(q))
+            .slice(0, 8);
+    }, [previewJumpQuery, selectedStudentsList]);
+
+    const jumpToSheet = useCallback((sheetIndex) => {
+        if (previewMode === 'paged') {
+            setActivePage(sheetIndex);
+        } else {
+            const el = document.getElementById(`sheet-target-${sheetIndex}`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [previewMode]);
+
+    // Classes listed in "3. Class / Section Scope" whose OWN semester differs
+    // from the Target Semester dropdown above. Their student_count badge
+    // reflects their own semester's enrollment, not the Target Semester
+    // cohort the roster below is actually scoped to — the two numbers can
+    // legitimately differ (not every student in an old class row has
+    // progressed to Target Semester yet), but look like a bug unless it's
+    // explained. Only relevant while no explicit class is selected, since
+    // that's when the roster query falls back to branch+batch+semester.
+    const semesterMismatchClasses = useMemo(() => {
+        if (dismissedMismatch) return [];
+        return availableBatchClasses.filter(c => Number(c.semester) !== Number(semester));
+    }, [availableBatchClasses, semester, dismissedMismatch]);
+
+    // Pre-generation readiness check — surfaced near the action buttons so a
+    // problem (missing exam date, duplicate subject code, no students) is
+    // caught before a 20+ sheet print/PDF job is generated from it, rather
+    // than found by manually inspecting the printed output.
+    const readinessIssues = useMemo(() => {
+        const issues = [];
+        if (selectedStudentsList.length === 0) issues.push('No students selected.');
+        if (timetable.length === 0) issues.push('No exam subjects added to the timetable.');
+        timetable.forEach((row, idx) => {
+            if (!row.date?.trim()) issues.push(`Row ${idx + 1}: missing exam date.`);
+            if (!row.subjectCode?.trim()) issues.push(`Row ${idx + 1}: missing subject code.`);
+        });
+        const codeCounts = {};
+        timetable.forEach(row => {
+            const code = (row.subjectCode || '').trim().toUpperCase();
+            if (!code) return;
+            codeCounts[code] = (codeCounts[code] || 0) + 1;
+        });
+        Object.entries(codeCounts).filter(([, n]) => n > 1).forEach(([code]) => {
+            issues.push(`Subject code ${code} appears more than once in the timetable.`);
+        });
+        if (!examTitle?.trim()) issues.push('Examination title is empty.');
+        return issues;
+    }, [selectedStudentsList.length, timetable, examTitle]);
+
     // Toggle single student
     const handleToggleStudent = (usn) => {
         const next = new Set(selectedUsns);
@@ -546,6 +608,21 @@ function HallTicketsContent() {
     const visibleStudentsInChecklist = useMemo(() => {
         return filterAndRankStudents(filteredStudents, studentSearch);
     }, [filteredStudents, studentSearch]);
+
+    // When every visible row shares the same section/branch (the common case
+    // once scope is narrowed to one class), repeating that on all 80+ rows is
+    // pure noise — show it once above the list instead and drop the per-row
+    // badges. If the list is mixed (e.g. "Entire Batch Cohort" with multiple
+    // sections), keep the per-row badges since they're then informative.
+    const rosterCommonContext = useMemo(() => {
+        if (visibleStudentsInChecklist.length === 0) return null;
+        const sections = new Set(visibleStudentsInChecklist.map(s => s.section || ''));
+        const branches = new Set(visibleStudentsInChecklist.map(s => s.branch_code || s.branch || ''));
+        if (sections.size > 1 || branches.size > 1) return null;
+        const [section] = sections;
+        const [branchCode] = branches;
+        return { section: section || null, branchCode: branchCode || null };
+    }, [visibleStudentsInChecklist]);
 
     // ── Direct Browser Print ──
     const handlePrint = () => {
@@ -1037,15 +1114,39 @@ function HallTicketsContent() {
                         Institutional Hall Ticket generator formatted to the official Anjuman Institute (AITM) 3-per-page A4 print standard.
                     </PageHeaderSubtitle>
                 </PageHeader>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <Button onClick={handleDownloadPDF} variant="ghost" disabled={selectedStudentsList.length === 0}>
-                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
-                        Download PDF ({selectedStudentsList.length})
-                    </Button>
-                    <Button onClick={handlePrint} variant="primary" disabled={selectedStudentsList.length === 0}>
-                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>print</span>
-                        Print Hall Tickets ({totalSheets} Sheets)
-                    </Button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <Button onClick={handleDownloadPDF} variant="ghost" disabled={selectedStudentsList.length === 0}>
+                            <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
+                            Download PDF ({selectedStudentsList.length})
+                        </Button>
+                        <Button onClick={handlePrint} variant="primary" disabled={selectedStudentsList.length === 0}>
+                            <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>print</span>
+                            Print Hall Tickets ({totalSheets} Sheets)
+                        </Button>
+                    </div>
+                    {selectedStudentsList.length > 0 && (
+                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                            {selectedStudentsList.length} ticket{selectedStudentsList.length === 1 ? '' : 's'} · {totalSheets} sheet{totalSheets === 1 ? '' : 's'} at 3 per page
+                        </div>
+                    )}
+                    {readinessIssues.length === 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: 'var(--green, #0d9f57)' }}>
+                            <span className="material-icons-round" style={{ fontSize: '14px' }}>check_circle</span>
+                            Ready to generate
+                        </div>
+                    ) : (
+                        <div style={{ maxWidth: '340px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: '#b45309', justifyContent: 'flex-end' }}>
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>warning</span>
+                                {readinessIssues.length} thing{readinessIssues.length === 1 ? '' : 's'} to check before generating
+                            </div>
+                            <ul style={{ margin: '4px 0 0', padding: 0, listStyle: 'none', fontSize: '10.5px', color: 'var(--tx-muted)' }}>
+                                {readinessIssues.slice(0, 4).map((issue, i) => <li key={i}>{issue}</li>)}
+                                {readinessIssues.length > 4 && <li>+{readinessIssues.length - 4} more</li>}
+                            </ul>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -1111,7 +1212,9 @@ function HallTicketsContent() {
                                         3. Class / Section Scope (Select One or Multiple)
                                     </label>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                        {availableBatchClasses.length > 0 && (
+                                        {/* Only useful with 2+ classes to pick from — with just one,
+                                            its own "+ Select" chip already does the same thing. */}
+                                        {availableBatchClasses.length > 1 && (
                                             <>
                                                 <button
                                                     type="button"
@@ -1244,18 +1347,73 @@ function HallTicketsContent() {
                                     </div>
                                 )}
 
-                                {/* Scope Helper Summary */}
+                                {/* Scope Helper Summary — one short line, no filler. */}
                                 <div style={{ marginTop: '8px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
                                     {selectedClassIds.length > 0 ? (
-                                        <>
-                                            Roster filtered to <strong>{selectedClassIds.length} selected {selectedClassIds.length === 1 ? 'class' : 'classes'}</strong> ({filteredStudents.length} students).
-                                        </>
+                                        <>Roster: <strong>{filteredStudents.length} students</strong> in {selectedClassIds.length} selected {selectedClassIds.length === 1 ? 'class' : 'classes'}.</>
                                     ) : (
-                                        <>
-                                            Roster includes <strong>all students</strong> in {branch} {batch !== 'all' ? `Batch ${batch}` : ''} Semester {semester} ({filteredStudents.length} students).
-                                        </>
+                                        <>Roster: <strong>{filteredStudents.length} students</strong> in {branch} {batch !== 'all' ? `Batch ${batch} ` : ''}Semester {semester}.</>
                                     )}
                                 </div>
+
+                                {/* One-click fix instead of an explanation to read: a class's own
+                                    semester (its student-count badge above) can differ from Target
+                                    Semester, so the roster count differs too. Match one to the other
+                                    right here instead of making the user go work it out. */}
+                                {semesterMismatchClasses.length > 0 && (
+                                    <div style={{
+                                        marginTop: '8px', padding: '12px 14px', borderRadius: '8px',
+                                        background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.25)',
+                                        fontSize: '11.5px', color: 'var(--tx-main)'
+                                    }}>
+                                        <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                            <div>
+                                                <strong>{semesterMismatchClasses[0].name}</strong> is registered under Semester {semesterMismatchClasses[0].semester} ({semesterMismatchClasses[0].student_count ?? 0} students) — while you are generating for <strong>Semester {semester}</strong>.
+                                                {selectedClassIds.length === 0 ? (
+                                                    <span> Only {filteredStudents.length} batch students who progressed to Semester {semester} are currently pulled.</span>
+                                                ) : (
+                                                    <span> All {filteredStudents.length} students from this class are selected for this Semester {semester} hall ticket generation.</span>
+                                                )}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDismissedMismatch(true)}
+                                                title="Dismiss notice"
+                                                style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', padding: '0 2px' }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>close</span>
+                                            </button>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const targetSem = Number(semesterMismatchClasses[0].semester);
+                                                    handleSemesterChange(targetSem);
+                                                    if (!selectedClassIds.includes(semesterMismatchClasses[0].id)) {
+                                                        setSelectedClassIds([semesterMismatchClasses[0].id]);
+                                                    }
+                                                    setDismissedMismatch(true);
+                                                }}
+                                                style={{ background: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                            >
+                                                Use Semester {semesterMismatchClasses[0].semester} instead
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!selectedClassIds.includes(semesterMismatchClasses[0].id)) {
+                                                        setSelectedClassIds([semesterMismatchClasses[0].id]);
+                                                    }
+                                                    setDismissedMismatch(true);
+                                                }}
+                                                style={{ background: 'var(--surface)', color: 'var(--tx-main)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                            >
+                                                Keep Semester {semester} &amp; use full roster ({semesterMismatchClasses[0].student_count ?? 0})
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -1294,12 +1452,30 @@ function HallTicketsContent() {
                                 </div>
                             </div>
                             <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                        {examTitleManual ? 'Examination Title Header (edited manually)' : 'Examination Title Header (auto-generated)'}
+                                    </label>
+                                    {examTitleManual && (
+                                        <button
+                                            type="button"
+                                            onClick={resetExamTitleToAuto}
+                                            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                                        >
+                                            ↺ Reset to auto
+                                        </button>
+                                    )}
+                                </div>
                                 <Input
-                                    label="Custom Examination Title Header"
                                     value={examTitle}
-                                    onChange={e => setExamTitle(e.target.value)}
+                                    onChange={e => { setExamTitle(e.target.value); setExamTitleManual(true); }}
                                     placeholder="e.g. VI Semester IA-1 MARCH 2026 Examination"
                                 />
+                                {!examTitleManual && (
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                        Built from Exam Type + Month &amp; Year above. Edit it directly if you need something different — it'll stop auto-updating until you reset it.
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -1382,14 +1558,19 @@ function HallTicketsContent() {
                                     variant="ghost"
                                     disabled={!studentSearch || visibleStudentsInChecklist.length === 0}
                                     onClick={() => setSelectedUsns(new Set(visibleStudentsInChecklist.map(s => s.usn)))}
-                                    title="Select only the students matching this search"
+                                    title={studentSearch ? 'Select only the students matching this search' : 'Type in the search box above to enable this'}
                                 >
-                                    Only these ({visibleStudentsInChecklist.length})
+                                    Select only search results ({visibleStudentsInChecklist.length})
                                 </Button>
                             </div>
                             {studentSearch && selectedClassIds.length > 0 && (
                                 <div style={{ marginTop: '-4px', marginBottom: '10px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
                                     Searching within {selectedClassIds.length} selected class(es) only.
+                                </div>
+                            )}
+                            {rosterCommonContext && (
+                                <div style={{ marginBottom: '8px', fontSize: '11px', fontWeight: 700, color: 'var(--tx-muted)' }}>
+                                    Showing: {rosterCommonContext.branchCode || branch}{rosterCommonContext.section ? ` · Sec ${rosterCommonContext.section}` : ''} · {visibleStudentsInChecklist.length} students
                                 </div>
                             )}
 
@@ -1430,7 +1611,7 @@ function HallTicketsContent() {
                                                     <div>
                                                         <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             <span>{s.name}</span>
-                                                            {s.section && (
+                                                            {!rosterCommonContext && s.section && (
                                                                 <span style={{
                                                                     fontSize: '9.5px',
                                                                     fontWeight: 800,
@@ -1448,9 +1629,11 @@ function HallTicketsContent() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 600 }}>
-                                                    {s.branch_code || s.branch}
-                                                </span>
+                                                {!rosterCommonContext && (
+                                                    <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 600 }}>
+                                                        {s.branch_code || s.branch}
+                                                    </span>
+                                                )}
                                             </div>
                                         );
                                     })
@@ -1480,6 +1663,46 @@ function HallTicketsContent() {
                                 A4 Print Preview ({sheets.length} Sheets • 3 Tickets/Page)
                             </span>
                         </div>
+
+                        {/* Jump straight to one student's ticket instead of paging through
+                            every sheet to spot-check it. */}
+                        {selectedStudentsList.length > 3 && (
+                            <div style={{ position: 'relative', minWidth: '200px' }}>
+                                <Input
+                                    hideLabel
+                                    label="Jump to student"
+                                    placeholder="Jump to USN or name…"
+                                    value={previewJumpQuery}
+                                    onChange={e => setPreviewJumpQuery(e.target.value)}
+                                    density="compact"
+                                />
+                                {previewJumpQuery.trim() && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px',
+                                        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 10, maxHeight: '220px', overflowY: 'auto'
+                                    }}>
+                                        {previewJumpMatches.length === 0 ? (
+                                            <div style={{ padding: '10px 12px', fontSize: '11.5px', color: 'var(--tx-dim)' }}>No match among selected students.</div>
+                                        ) : previewJumpMatches.map(s => (
+                                            <button
+                                                key={s.usn}
+                                                type="button"
+                                                onClick={() => { jumpToSheet(s.sheetIndex); setPreviewJumpQuery(''); }}
+                                                style={{
+                                                    display: 'flex', justifyContent: 'space-between', width: '100%',
+                                                    padding: '8px 12px', background: 'none', border: 'none', borderBottom: '1px solid var(--border-low)',
+                                                    cursor: 'pointer', textAlign: 'left', fontSize: '11.5px'
+                                                }}
+                                            >
+                                                <span style={{ fontWeight: 700, color: 'var(--tx-main)' }}>{s.name} <span style={{ fontWeight: 500, color: 'var(--tx-muted)', fontFamily: 'monospace' }}>({s.usn})</span></span>
+                                                <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Sheet {s.sheetIndex}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             {/* Mode Toggle */}
