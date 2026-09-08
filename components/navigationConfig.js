@@ -19,6 +19,7 @@ export const NAV_CONFIG = {
     { key: 'complianceHub', label: 'Risk & Compliance', href: '/faculty/analytics/compliance', icon: 'fact_check', group: 'Academic Analytics' },
     { key: 'intelligenceHub', label: 'Comparative Intelligence', href: '/faculty/analytics/intelligence', icon: 'insights', group: 'Academic Analytics' },
     { key: 'reports', label: 'Department Reports', href: '/faculty/reports', icon: 'analytics', group: 'Academic Analytics' },
+    { key: 'dataHealth', label: 'Data Health', href: '/faculty/data-health', icon: 'verified', group: 'Academic Analytics' },
 
     // Teaching & Curriculum
     { key: 'subjectAnalytics', label: 'Subject Analytics', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Curriculum' },
@@ -93,6 +94,7 @@ export const ROUTE_LABELS = {
   '/faculty/students': 'Students Directory',
   '/faculty/subjects': 'Subjects Catalog',
   '/faculty/reports': 'Department Reports',
+  '/faculty/data-health': 'Institutional Data Health',
   '/faculty/analytics/results': 'Exam & Result Sheets Hub',
   '/faculty/analytics/merit': 'Rankings & Merit Center',
   '/faculty/analytics/compliance': 'Academic Risk & Compliance Center',
