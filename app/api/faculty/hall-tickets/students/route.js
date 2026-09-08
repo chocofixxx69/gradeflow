@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { matchesBatch, matchesBranch } from '@/lib/semester-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,10 +84,7 @@ export async function GET(req) {
             }
 
             if (search) {
-                students = students.filter(s =>
-                    (s.usn && s.usn.toLowerCase().includes(search)) ||
-                    (s.name && s.name.toLowerCase().includes(search))
-                );
+                students = filterAndRankStudents(students, search);
             }
 
             students.sort((a, b) => (a.usn || '').localeCompare(b.usn || ''));
@@ -141,10 +139,7 @@ export async function GET(req) {
         }
 
         if (search) {
-            students = students.filter(s =>
-                (s.usn && s.usn.toLowerCase().includes(search)) ||
-                (s.name && s.name.toLowerCase().includes(search))
-            );
+            students = filterAndRankStudents(students, search);
         }
 
         // Enrich cohort students with any assigned class & section from class_roster

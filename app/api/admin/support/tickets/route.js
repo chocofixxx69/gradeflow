@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/server-session';
 import { getAdminClient } from '../../../../../lib/analytics-data';
 import { generateFormulaPassword, hashStudentPassword } from '../../../../../lib/student-auth';
+import { filterAndRank } from '../../../../../lib/search-utils';
 import bcrypt from 'bcryptjs';
 
 const supabaseAdmin = getAdminClient();
@@ -54,14 +55,16 @@ export async function GET(req) {
 
         let filtered = tickets || [];
         if (search) {
-            filtered = filtered.filter(t =>
-                (t.ticket_number || '').toLowerCase().includes(search) ||
-                (t.user_identifier || '').toLowerCase().includes(search) ||
-                (t.user_name || '').toLowerCase().includes(search) ||
-                (t.subject || '').toLowerCase().includes(search) ||
-                (t.description || '').toLowerCase().includes(search) ||
-                (t.admin_notes || '').toLowerCase().includes(search)
-            );
+            filtered = filterAndRank(filtered, search, [
+                'ticket_number',
+                'user_identifier',
+                'user_name',
+                'user_email',
+                'subject',
+                'description',
+                'admin_notes',
+                'issue_type'
+            ]);
         }
 
         // Fetch all tickets summary for stats

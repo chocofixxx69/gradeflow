@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 import { logServerAudit } from '../../../../lib/server-audit';
+import { filterAndRank } from '../../../../lib/search-utils';
 
 const supabaseAdmin = getAdminClient();
 
@@ -102,13 +103,13 @@ export async function GET(req) {
             filteredLogs = filteredLogs.filter(l => (l.details?.severity || 'INFO').toUpperCase() === severityFilter.toUpperCase());
         }
         if (search) {
-            filteredLogs = filteredLogs.filter(l => {
-                const actionText = (l.action || '').toLowerCase();
-                const actorText = (l.details?.actor || '').toLowerCase();
-                const descText = (l.details?.description || '').toLowerCase();
-                const entityText = (l.details?.entity_id || '').toLowerCase();
-                return actionText.includes(search) || actorText.includes(search) || descText.includes(search) || entityText.includes(search);
-            });
+            filteredLogs = filterAndRank(filteredLogs, search, [
+                'action',
+                l => l.details?.actor,
+                l => l.details?.description,
+                l => l.details?.entity_id,
+                l => l.details?.actor_role
+            ]);
         }
 
         // 5. Build System Health & Engine Diagnostics

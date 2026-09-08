@@ -4,6 +4,7 @@ import { getAdminClient, computeBacklogs, weightedCGPA, fetchDynamicMarks } from
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,11 +131,16 @@ export async function GET(req) {
         }
 
         if (search) {
-            students = students.filter(s => 
-                (s.usn && s.usn.toLowerCase().includes(search)) ||
-                (s.name && s.name.toLowerCase().includes(search)) ||
-                (s.email && s.email.toLowerCase().includes(search))
-            );
+            // Attach section and class info for multi-field search evaluation
+            const searchableStudents = students.map(s => {
+                const info = usnToClassMap.get(s.usn);
+                return {
+                    ...s,
+                    section: info?.section || '',
+                    className: info?.className || ''
+                };
+            });
+            students = filterAndRankStudents(searchableStudents, search);
         }
 
         // Helper function to enrich student records with live CGPA, backlogs & section

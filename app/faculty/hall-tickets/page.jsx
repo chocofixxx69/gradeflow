@@ -5,6 +5,7 @@ import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
 import { useLive, LIVE } from '@/lib/api/live';
 import { matchesBranch, matchesBatch, canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
@@ -286,11 +287,18 @@ function HallTicketsContent() {
         }
         const sorted = Array.from(batchSet).sort().reverse();
         const opts = sorted.map(b => {
-            const count = branchMatrix?.batches?.[b]?.total ?? 0;
+            // classCount comes from actual class rosters (class_students membership) —
+            // the same source the "Student Roster" list below is built from, so it can
+            // never disagree with what the generator actually pulls in. The cohort
+            // matrix's count is only an admission-year estimate derived from every
+            // row in the students table (independent of class enrollment), so it can
+            // drift from reality (transfers, graduated students, missing rosters) —
+            // used only as a fallback when a batch has no classes configured yet.
             const classCount = classes
                 .filter(c => (matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch)) && (c.batch === b || (c.name && c.name.includes(b))))
                 .reduce((sum, c) => sum + (c.student_count || 0), 0);
-            const displayCount = count > 0 ? count : classCount;
+            const count = branchMatrix?.batches?.[b]?.total ?? 0;
+            const displayCount = classCount > 0 ? classCount : count;
             const badge = displayCount > 0 ? ` · ${displayCount} stu` : '';
             return {
                 value: b,
@@ -315,7 +323,9 @@ function HallTicketsContent() {
         return [1, 2, 3, 4, 5, 6, 7, 8].map(s => {
             const count = semCounts[s] || 0;
             const roman = ROMAN_SEMESTERS[s] || String(s);
-            // Also count enrolled students across active classes for this sem & batch
+            // Enrolled students across actual classes for this sem & batch — the real
+            // roster source (see batchOptions above for why this outranks the cohort
+            // matrix estimate).
             const classCount = classes
                 .filter(c => {
                     const bMatch = matchesBranch(c.branch, cBranch) || matchesBranch(c.branch_code, cBranch);
@@ -323,7 +333,7 @@ function HallTicketsContent() {
                     return bMatch && batchMatch && Number(c.semester) === Number(s);
                 })
                 .reduce((sum, c) => sum + (c.student_count || 0), 0);
-            const displayCount = count > 0 ? count : classCount;
+            const displayCount = classCount > 0 ? classCount : count;
             const badge = displayCount > 0 ? ` · ${displayCount} stu` : '';
             return {
                 value: s,
@@ -534,9 +544,7 @@ function HallTicketsContent() {
 
     // Filtered students in the checklist search
     const visibleStudentsInChecklist = useMemo(() => {
-        if (!studentSearch) return filteredStudents;
-        const q = studentSearch.toLowerCase().trim();
-        return filteredStudents.filter(s => s.usn.toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q));
+        return filterAndRankStudents(filteredStudents, studentSearch);
     }, [filteredStudents, studentSearch]);
 
     // ── Direct Browser Print ──

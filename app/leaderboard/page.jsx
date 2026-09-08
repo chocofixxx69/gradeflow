@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 import { exportLeaderboardPDF, exportLeaderboardCSV } from '../../lib/export-utils';
+import { filterAndRankStudents } from '../../lib/search-utils';
 import AuthGuard from '../../components/AuthGuard';
 
 export default function LeaderboardPage() {
@@ -84,8 +85,7 @@ export default function LeaderboardPage() {
         if (entryFilter === 'regular') res = res.filter(s => !s.isLateral);
         if (entryFilter === 'lateral') res = res.filter(s => s.isLateral);
         if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            res = res.filter(s => s.name?.toLowerCase().includes(q) || s.usn?.toLowerCase().includes(q));
+            res = filterAndRankStudents(res, searchQuery);
         }
         return res;
     };

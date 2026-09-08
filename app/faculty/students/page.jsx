@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
@@ -46,13 +46,54 @@ function StudentsDirectoryContent() {
     const [section, setSection] = useState('all');
     const [status, setStatus] = useState('all');
     const [backlogsFilter, setBacklogsFilter] = useState('all');
-    const [search, setSearch] = useState('');
+    
+    // Search states (immediate input vs debounced search term)
+    const [searchInput, setSearchInput] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [isDebouncing, setIsDebouncing] = useState(false);
+    
     const [page, setPage] = useState(1);
     const limit = 25;
+
+    // Request tracking to eliminate race conditions
+    const activeRequestIdRef = useRef(0);
+    const abortControllerRef = useRef(null);
 
     // Data
     const [students, setStudents] = useState([]);
     const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 25, totalPages: 1 });
+
+    // Debounce search input by 300ms
+    useEffect(() => {
+        const trimmed = searchInput.trim();
+        if (trimmed === debouncedSearch) {
+            setIsDebouncing(false);
+            return;
+        }
+
+        setIsDebouncing(true);
+        const timer = setTimeout(() => {
+            setDebouncedSearch(trimmed);
+            setPage(1);
+            setIsDebouncing(false);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [searchInput, debouncedSearch]);
+
+    const triggerSearchImmediately = (val) => {
+        const trimmed = (val !== undefined ? val : searchInput).trim();
+        setDebouncedSearch(trimmed);
+        setPage(1);
+        setIsDebouncing(false);
+    };
+
+    const handleClearSearch = () => {
+        setSearchInput('');
+        setDebouncedSearch('');
+        setPage(1);
+        setIsDebouncing(false);
+    };
 
     // 1. Fetch metadata on mount
     useEffect(() => {
@@ -88,9 +129,18 @@ function StudentsDirectoryContent() {
         return Array.from(new Set(['A', 'B', 'C', 'D', ...fromClasses, ...fromMeta])).sort();
     }, [meta.classes, meta.sections]);
 
-    // 2. Fetch paginated students
+    // 2. Fetch paginated students with strict sequencing & cancellation
     const loadStudents = useCallback(async () => {
+        // Abort previous in-flight fetch
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        const currentReqId = ++activeRequestIdRef.current;
         setLoading(true);
+
         try {
             const query = { page, limit };
             if (branch) query.branch = branch;
@@ -99,19 +149,31 @@ function StudentsDirectoryContent() {
             if (section && section !== 'all') query.section = section;
             if (status !== 'all') query.status = status;
             if (backlogsFilter !== 'all') query.backlogsFilter = backlogsFilter;
-            if (search) query.search = search;
+            if (debouncedSearch) query.search = debouncedSearch;
 
-            const res = await apiRequest('/api/faculty/students', { query });
-            if (res) {
+            const res = await apiRequest('/api/faculty/students', {
+                query,
+                signal: controller.signal
+            });
+
+            // Discard response if a newer request was dispatched in the meantime
+            if (currentReqId === activeRequestIdRef.current && res) {
                 setStudents(res.students || []);
                 setPagination(res.pagination || { total: 0, page: 1, limit: 25, totalPages: 1 });
             }
         } catch (err) {
-            console.error('Failed to load students:', err);
+            if (err?.name === 'AbortError' || controller.signal.aborted) {
+                return;
+            }
+            if (currentReqId === activeRequestIdRef.current) {
+                console.error('Failed to load students:', err);
+            }
         } finally {
-            setLoading(false);
+            if (currentReqId === activeRequestIdRef.current) {
+                setLoading(false);
+            }
         }
-    }, [page, limit, branch, semester, batch, section, status, backlogsFilter, search]);
+    }, [page, limit, branch, semester, batch, section, status, backlogsFilter, debouncedSearch]);
 
     useEffect(() => {
         loadStudents();
@@ -280,13 +342,49 @@ function StudentsDirectoryContent() {
                                 ]}
                             />
                         </div>
-                        <div>
+                        <div style={{ position: 'relative' }}>
                             <Input
                                 label="Search"
-                                placeholder="USN, Name or Email..."
-                                value={search}
-                                onChange={e => handleFilterChange(setSearch, e.target.value)}
+                                placeholder="USN, Name, Email, Phone..."
+                                value={searchInput}
+                                onChange={e => setSearchInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        triggerSearchImmediately(e.target.value);
+                                    }
+                                }}
                             />
+                            <div style={{ position: 'absolute', right: '10px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 2 }}>
+                                {isDebouncing && (
+                                    <span
+                                        className="material-icons-round"
+                                        style={{ fontSize: '16px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}
+                                        title="Searching..."
+                                    >
+                                        sync
+                                    </span>
+                                )}
+                                {searchInput && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearSearch}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            color: 'var(--tx-dim)',
+                                            padding: '2px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            borderRadius: '50%',
+                                        }}
+                                        title="Clear search"
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </CardContent>
@@ -295,7 +393,9 @@ function StudentsDirectoryContent() {
             {/* Student Count / Status Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
-                    Found <strong>{pagination.total}</strong> students matching filters
+                    Found <strong>{loading ? '…' : pagination.total}</strong> student{pagination.total === 1 ? '' : 's'}
+                    {debouncedSearch ? <span> matching &ldquo;<strong style={{ color: 'var(--tx-main)' }}>{debouncedSearch}</strong>&rdquo;</span> : ' matching filters'}
+                    {loading && <span style={{ marginLeft: '6px', fontSize: '12px', color: 'var(--primary)' }}>(Updating…)</span>}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Button

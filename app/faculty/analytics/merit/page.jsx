@@ -13,6 +13,7 @@ import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { fetchLeaderboard } from '@/lib/api/analytics';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 
 export default function RankingsAndMeritPage() {
     return (
@@ -175,11 +176,7 @@ function RankingsAndMeritContent() {
 
     // Filtered students for Merit List
     const filteredMeritStudents = useMemo(() => {
-        return (meritReport.rankedStudents || []).filter(s => {
-            if (!searchQuery) return true;
-            const q = searchQuery.toLowerCase();
-            return s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
-        });
+        return filterAndRankStudents(meritReport.rankedStudents || [], searchQuery);
     }, [meritReport.rankedStudents, searchQuery]);
 
     // Filtered rows for Leaderboard
@@ -189,9 +186,7 @@ function RankingsAndMeritContent() {
             : leaderboardScopeTab === 'semester'
                 ? (leaderboardData?.allSemestersLeaderboard?.[viewSemester || leaderboardData?.targetSemester] || [])
                 : (leaderboardData?.subjectLeaderboard || []);
-        if (!searchQuery) return base;
-        const q = searchQuery.toLowerCase();
-        return base.filter(r => r.name?.toLowerCase().includes(q) || r.usn?.toLowerCase().includes(q));
+        return filterAndRankStudents(base, searchQuery);
     }, [leaderboardData, leaderboardScopeTab, viewSemester, searchQuery]);
 
     const leaderboardTop3 = useMemo(() => {

@@ -9,6 +9,7 @@ export {
     LoadingState,
     ResponsiveGrid,
     SearchInput,
+    SearchableSelect,
     Select,
     Skeleton,
     Stack,

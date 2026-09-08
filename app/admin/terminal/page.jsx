@@ -16,6 +16,7 @@ import { AnalyticsFiltersProvider } from '../analytics/AnalyticsFiltersContext';
 import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { supabase } from '../../../lib/supabase';
+import { scoreStudentMatch, filterAndRank } from '../../../lib/search-utils';
 
 const TAB_METADATA = {
     overview: { label: 'Institutional Overview', icon: 'dashboard', shortLabel: 'Overview' },
@@ -1076,9 +1077,9 @@ function AdminPanelContent() {
 
     // Base scoped students matching search, branch, semester, and batch
     const baseScopedStudents = useMemo(() => {
-        const q = (search || '').toLowerCase().trim();
+        const q = (search || '').trim();
         return students.filter(s => {
-            const matchSearch = !q || (s.usn || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
+            const matchSearch = !q || scoreStudentMatch(s, q) > 0;
             if (!matchSearch) return false;
 
             if (studentBranchFilter !== 'all') {
@@ -1107,6 +1108,7 @@ function AdminPanelContent() {
     }), [baseScopedStudents]);
 
     const filtered = useMemo(() => {
+        const q = (search || '').trim();
         return baseScopedStudents.filter(s => {
             if (studentStatusFilter === 'active') {
                 if (!s.activated_at || s.is_suspended) return false;
@@ -1117,6 +1119,12 @@ function AdminPanelContent() {
             }
             return true;
         }).sort((a, b) => {
+            // When user has an active search query, rank by relevance score first
+            if (q && sortField === 'usn') {
+                const scoreDiff = scoreStudentMatch(b, q) - scoreStudentMatch(a, q);
+                if (scoreDiff !== 0) return scoreDiff;
+            }
+
             let cmp = 0;
             if (sortField === 'name') {
                 const valA = (a.name || a.usn || '').toLowerCase();
@@ -1141,7 +1149,7 @@ function AdminPanelContent() {
             }
             return sortDirection === 'asc' ? cmp : -cmp;
         });
-    }, [baseScopedStudents, studentStatusFilter, sortField, sortDirection]);
+    }, [baseScopedStudents, studentStatusFilter, sortField, sortDirection, search]);
 
     // ── Faculty Scope & Filtering ────────────────────────────
     const availableFacultyDepts = useMemo(() => {
@@ -1151,22 +1159,14 @@ function AdminPanelContent() {
     }, [requests]);
 
     const baseScopedFaculty = useMemo(() => {
-        const q = (facultySearch || '').toLowerCase().trim();
-        return requests.filter(r => {
-            const matchSearch = !q ||
-                (r.full_name || '').toLowerCase().includes(q) ||
-                (r.email || '').toLowerCase().includes(q) ||
-                (r.department || '').toLowerCase().includes(q) ||
-                (r.employee_id || '').toLowerCase().includes(q) ||
-                (r.designation || '').toLowerCase().includes(q);
-            if (!matchSearch) return false;
-
-            if (facultyDeptFilter !== 'all') {
-                if ((r.department || '').toLowerCase() !== facultyDeptFilter.toLowerCase()) return false;
-            }
-
-            return true;
-        });
+        let list = requests;
+        if (facultyDeptFilter !== 'all') {
+            list = list.filter(r => (r.department || '').toLowerCase() === facultyDeptFilter.toLowerCase());
+        }
+        if (facultySearch?.trim()) {
+            return filterAndRank(list, facultySearch, ['full_name', 'email', 'department', 'employee_id', 'designation']);
+        }
+        return list;
     }, [requests, facultySearch, facultyDeptFilter]);
 
     const statusCountsFaculty = useMemo(() => ({

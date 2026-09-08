@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
+import { filterAndRank, filterAndRankStudents } from '../lib/search-utils';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
 import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF, exportConsolidatedReportCSV } from '../lib/export-utils';
@@ -98,6 +99,7 @@ export function ClassesContent({ embedded = false }) {
     const [newUrlInput, setNewUrlInput] = useState({ url: '', exam_name: '' });
     const [facultyList, setFacultyList] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [rosterSearch, setRosterSearch] = useState('');
     const [facultyFilter, setFacultyFilter] = useState('all');
     const [branchFilter, setBranchFilter] = useState('all');
     const [sectionFilter, setSectionFilter] = useState('all');
@@ -414,6 +416,7 @@ export function ClassesContent({ embedded = false }) {
     const selectClass = cls => {
         setSelectedClass(cls);
         setMsg('');
+        setRosterSearch('');
         setEditingName(false);
         fetchClassStudents(cls);
         loadSubjectTeachers(cls);
@@ -821,14 +824,19 @@ export function ClassesContent({ embedded = false }) {
         }
     };
 
-    const removeStudent = async usn => {
-        if (!confirm(`Remove ${usn} from this class?`)) return;
+    const removeStudent = async (usn, studentName = '') => {
+        const displayName = studentName ? `${studentName} (${usn})` : usn;
+        if (!confirm(`Remove ${displayName} from ${selectedClass?.name || 'this class'} roster?`)) return;
         await fetch('/api/class-students', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ class_id: selectedClass.id, usn }) });
         logActivity('CLASS_REMOVE_STUDENT', usn);
         setStudents(p => p.filter(s => s.usn !== usn)); fetchClasses();
     };
 
-    const filteredStudents = students;
+    const filteredStudents = useMemo(() => {
+        if (!rosterSearch.trim()) return students;
+        return filterAndRankStudents(students, rosterSearch);
+    }, [students, rosterSearch]);
+
     const top10 = [...students].filter(s => s.cgpa !== null).sort((a, b) => b.cgpa - a.cgpa).slice(0, 10);
     const totalBacklogs = students.reduce((s, st) => s + (st.total_backlogs || 0), 0);
     const withCgpa = students.filter(s => s.cgpa !== null);
@@ -845,38 +853,28 @@ export function ClassesContent({ embedded = false }) {
         ...classes.map(c => c.section).filter(Boolean).map(s => String(s).toUpperCase())
     ])).sort();
 
-    const displayedClasses = classes.filter(cls => {
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            const matchName = (cls.name || '').toLowerCase().includes(q);
-            const matchBranch = (cls.branch || '').toLowerCase().includes(q);
-            const matchSection = (cls.section || '').toLowerCase().includes(q);
-            const matchBatch = (cls.batch || '').toLowerCase().includes(q);
-            const matchFaculty = (cls.faculty_name || '').toLowerCase().includes(q);
-            if (!matchName && !matchBranch && !matchSection && !matchBatch && !matchFaculty) return false;
-        }
-        if (facultyFilter !== 'all') {
-            if (cls.faculty_id !== facultyFilter) return false;
-        }
-        if (branchFilter !== 'all') {
-            if (cls.branch !== branchFilter) return false;
-        }
-        if (semesterFilter !== 'all') {
-            if (String(cls.semester) !== String(semesterFilter)) return false;
-        }
-        if (batchFilter !== 'all') {
-            if (String(cls.batch || '') !== String(batchFilter)) return false;
-        }
-        if (sectionFilter !== 'all') {
-            const clsSec = String(cls.section || '').toUpperCase().trim();
-            if (sectionFilter === 'General') {
-                if (clsSec !== 'GENERAL' && clsSec !== '') return false;
-            } else if (clsSec !== String(sectionFilter).toUpperCase().trim()) {
-                return false;
+    const displayedClasses = useMemo(() => {
+        const base = classes.filter(cls => {
+            if (facultyFilter !== 'all' && cls.faculty_id !== facultyFilter) return false;
+            if (branchFilter !== 'all' && cls.branch !== branchFilter) return false;
+            if (semesterFilter !== 'all' && String(cls.semester) !== String(semesterFilter)) return false;
+            if (batchFilter !== 'all' && String(cls.batch || '') !== String(batchFilter)) return false;
+            if (sectionFilter !== 'all') {
+                const clsSec = String(cls.section || '').toUpperCase().trim();
+                if (sectionFilter === 'General') {
+                    if (clsSec !== 'GENERAL' && clsSec !== '') return false;
+                } else if (clsSec !== String(sectionFilter).toUpperCase().trim()) {
+                    return false;
+                }
             }
+            return true;
+        });
+
+        if (searchQuery.trim()) {
+            return filterAndRank(base, searchQuery, ['name', 'branch', 'section', 'batch', 'faculty_name', 'scheme', 'academic_year']);
         }
-        return true;
-    });
+        return base;
+    }, [classes, facultyFilter, branchFilter, semesterFilter, batchFilter, sectionFilter, searchQuery]);
 
     return (
         <div style={S.page} className="gf-fade-up">
@@ -936,6 +934,25 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                             <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <div style={{ position: 'relative', width: '200px' }}>
+                                    <input
+                                        type="text"
+                                        placeholder="Search USN, name..."
+                                        value={rosterSearch}
+                                        onChange={e => setRosterSearch(e.target.value)}
+                                        style={{ ...S.input, padding: '6px 28px 6px 30px', fontSize: '12px', height: '32px', borderRadius: '8px' }}
+                                    />
+                                    <span className="material-icons-round" style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: 'var(--tx-dim)', pointerEvents: 'none' }}>search</span>
+                                    {rosterSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setRosterSearch('')}
+                                            style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--tx-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                        </button>
+                                    )}
+                                </div>
                                 <select
                                     value={semFilter}
                                     onChange={e => setSemFilter(e.target.value)}
@@ -1036,20 +1053,22 @@ export function ClassesContent({ embedded = false }) {
                                                                 )}
                                                             </td>
                                                             <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                                                     <button
                                                                         title="Transfer student to another class"
                                                                         onClick={(e) => openSingleStudentTransfer(s, e)}
-                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '2px' }}
+                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '3px' }}
                                                                     >
                                                                         <span className="material-icons-round" style={{ fontSize: '15px' }}>swap_horiz</span> Transfer
                                                                     </button>
                                                                     <button
-                                                                        title="Remove student from class"
-                                                                        onClick={() => removeStudent(s.usn)}
-                                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
+                                                                        title={`Remove ${s.name ? `${s.name} ` : ''}(${s.usn}) from this class`}
+                                                                        onClick={() => removeStudent(s.usn, s.name)}
+                                                                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'; }}
+                                                                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.05)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)'; }}
+                                                                        style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '6px', cursor: 'pointer', color: 'var(--red, #ef4444)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '3px', transition: 'all 0.15s ease' }}
                                                                     >
-                                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>remove_circle_outline</span>
+                                                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>person_remove</span> Remove
                                                                     </button>
                                                                 </div>
                                                             </td>
@@ -1091,16 +1110,20 @@ export function ClassesContent({ embedded = false }) {
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             <button
                                                                 title="Transfer student"
                                                                 onClick={(e) => openSingleStudentTransfer(s, e)}
-                                                                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', padding: '6px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}
+                                                                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', padding: '6px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}
                                                             >
                                                                 <span className="material-icons-round" style={{ fontSize: '15px' }}>swap_horiz</span> Transfer
                                                             </button>
-                                                            <button title="Remove" onClick={() => removeStudent(s.usn)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '36px', minHeight: '36px', flexShrink: 0 }}>
-                                                                <span className="material-icons-round" style={{ fontSize: '20px' }}>remove_circle_outline</span>
+                                                            <button
+                                                                title={`Remove ${s.name ? `${s.name} ` : ''}(${s.usn}) from this class`}
+                                                                onClick={() => removeStudent(s.usn, s.name)}
+                                                                style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '6px', cursor: 'pointer', color: 'var(--red, #ef4444)', padding: '6px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>person_remove</span> Remove
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1129,7 +1152,7 @@ export function ClassesContent({ embedded = false }) {
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
                         <div style={{ flex: '1 1 240px', position: 'relative' }}>
                             <input
-                                style={{ ...S.input, paddingLeft: '36px' }}
+                                style={{ ...S.input, paddingLeft: '36px', paddingRight: searchQuery ? '36px' : '14px' }}
                                 placeholder="Search classes, sections, batch, or faculty..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
@@ -1137,6 +1160,15 @@ export function ClassesContent({ embedded = false }) {
                             <span className="material-icons-round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--tx-dim)', fontSize: '18px', pointerEvents: 'none' }}>
                                 search
                             </span>
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchQuery('')}
+                                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--tx-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                </button>
+                            )}
                         </div>
 
                         <select style={{ ...S.sel, width: 'auto', minWidth: '175px' }} value={facultyFilter} onChange={e => setFacultyFilter(e.target.value)}>
@@ -1369,6 +1401,8 @@ export function ClassesContent({ embedded = false }) {
                                             onChange={e => {
                                                 if (e.target.value !== 'custom') {
                                                     handleNewClassChange({ section: e.target.value });
+                                                } else {
+                                                    handleNewClassChange({ section: '' });
                                                 }
                                             }}
                                         >
@@ -1377,12 +1411,15 @@ export function ClassesContent({ embedded = false }) {
                                             ))}
                                             <option value="custom">Other…</option>
                                         </select>
-                                        <input
-                                            style={{ ...S.input, flex: 1 }}
-                                            placeholder="Sec"
-                                            value={newClass.section}
-                                            onChange={e => handleNewClassChange({ section: e.target.value.toUpperCase() })}
-                                        />
+                                        {!['A', 'B', 'C', 'D', 'E', 'F', 'General'].includes(newClass.section) && (
+                                            <input
+                                                style={{ ...S.input, flex: 1 }}
+                                                placeholder="Sec"
+                                                autoFocus
+                                                value={newClass.section}
+                                                onChange={e => handleNewClassChange({ section: e.target.value.toUpperCase() })}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                                 <div>
@@ -1411,6 +1448,8 @@ export function ClassesContent({ embedded = false }) {
                                             onChange={e => {
                                                 if (e.target.value !== 'custom') {
                                                     handleNewClassChange({ batch: e.target.value });
+                                                } else {
+                                                    handleNewClassChange({ batch: '' });
                                                 }
                                             }}
                                         >
@@ -1419,12 +1458,15 @@ export function ClassesContent({ embedded = false }) {
                                             ))}
                                             <option value="custom">Other…</option>
                                         </select>
-                                        <input
-                                            style={{ ...S.input, flex: 1 }}
-                                            placeholder="Batch"
-                                            value={newClass.batch}
-                                            onChange={e => handleNewClassChange({ batch: e.target.value })}
-                                        />
+                                        {!['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(newClass.batch) && (
+                                            <input
+                                                style={{ ...S.input, flex: 1 }}
+                                                placeholder="Batch"
+                                                autoFocus
+                                                value={newClass.batch}
+                                                onChange={e => handleNewClassChange({ batch: e.target.value })}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1507,6 +1549,8 @@ export function ClassesContent({ embedded = false }) {
                                             onChange={e => {
                                                 if (e.target.value !== 'custom') {
                                                     setEditClassForm(p => ({ ...p, section: e.target.value }));
+                                                } else {
+                                                    setEditClassForm(p => ({ ...p, section: '' }));
                                                 }
                                             }}
                                         >
@@ -1515,12 +1559,15 @@ export function ClassesContent({ embedded = false }) {
                                             ))}
                                             <option value="custom">Other…</option>
                                         </select>
-                                        <input
-                                            style={{ ...S.input, flex: 1 }}
-                                            placeholder="Sec"
-                                            value={editClassForm.section || ''}
-                                            onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value.toUpperCase() }))}
-                                        />
+                                        {!['A', 'B', 'C', 'D', 'E', 'F', 'General'].includes(editClassForm.section) && (
+                                            <input
+                                                style={{ ...S.input, flex: 1 }}
+                                                placeholder="Sec"
+                                                autoFocus
+                                                value={editClassForm.section || ''}
+                                                onChange={e => setEditClassForm(p => ({ ...p, section: e.target.value.toUpperCase() }))}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                                 <div>
@@ -1549,6 +1596,8 @@ export function ClassesContent({ embedded = false }) {
                                             onChange={e => {
                                                 if (e.target.value !== 'custom') {
                                                     setEditClassForm(p => ({ ...p, batch: e.target.value }));
+                                                } else {
+                                                    setEditClassForm(p => ({ ...p, batch: '' }));
                                                 }
                                             }}
                                         >
@@ -1557,12 +1606,15 @@ export function ClassesContent({ embedded = false }) {
                                             ))}
                                             <option value="custom">Other…</option>
                                         </select>
-                                        <input
-                                            style={{ ...S.input, flex: 1 }}
-                                            placeholder="Batch"
-                                            value={editClassForm.batch || ''}
-                                            onChange={e => setEditClassForm(p => ({ ...p, batch: e.target.value }))}
-                                        />
+                                        {!['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(editClassForm.batch) && (
+                                            <input
+                                                style={{ ...S.input, flex: 1 }}
+                                                placeholder="Batch"
+                                                autoFocus
+                                                value={editClassForm.batch || ''}
+                                                onChange={e => setEditClassForm(p => ({ ...p, batch: e.target.value }))}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -10,6 +10,7 @@ import {
     normalizeDepartment,
 } from '../lib/pedagogical-audit';
 import { apiRequest } from '../lib/api/client';
+import { filterAndRank } from '../lib/search-utils';
 
 export function FacultyActivityContent({
     activityLogs = [],
@@ -201,24 +202,7 @@ export function FacultyActivityContent({
 
     // ── Filtered Records ───────────────────────────────────────
     const filteredRecords = useMemo(() => {
-        return enrichedLogs.filter(record => {
-            // Search query
-            if (search.trim()) {
-                const q = search.toLowerCase();
-                const matchesWho = (record.who?.name || '').toLowerCase().includes(q) ||
-                    (record.who?.email || '').toLowerCase().includes(q) ||
-                    (record.who?.department || '').toLowerCase().includes(q);
-                const matchesWhat = (record.what?.title || '').toLowerCase().includes(q) ||
-                    (record.what?.code || '').toLowerCase().includes(q);
-                const matchesTarget = (record.target?.usn || '').toLowerCase().includes(q) ||
-                    (record.target?.studentName || '').toLowerCase().includes(q);
-                const matchesReason = (record.why?.reason || '').toLowerCase().includes(q);
-
-                if (!matchesWho && !matchesWhat && !matchesTarget && !matchesReason) {
-                    return false;
-                }
-            }
-
+        let list = enrichedLogs.filter(record => {
             // Department filter
             if (selectedDepartment !== 'all') {
                 const normSelected = normalizeDepartment(selectedDepartment);
@@ -266,6 +250,22 @@ export function FacultyActivityContent({
 
             return true;
         });
+
+        if (search.trim()) {
+            list = filterAndRank(list, search, [
+                r => r.who?.name,
+                r => r.who?.email,
+                r => r.who?.department,
+                r => r.what?.title,
+                r => r.what?.code,
+                r => r.target?.usn,
+                r => r.target?.studentName,
+                r => r.why?.reason,
+                r => r.where?.client
+            ]);
+        }
+
+        return list;
     }, [enrichedLogs, search, selectedDepartment, selectedFacultyId, selectedCategory, selectedTimeFilter]);
 
     // ── Active Filters Check ───────────────────────────────────

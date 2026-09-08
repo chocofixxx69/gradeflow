@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AuthGuard from '../../../../components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
-import { matchesBranch, getCleanBranchOptions, canonicalBranchCode } from '@/lib/semester-utils';
+import { getCleanBranchOptions, matchesBranch, canonicalBranchCode } from '@/lib/semester-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
@@ -234,8 +235,7 @@ function SubjectAnalyticsContent() {
 
         // Search Query
         if (searchQuery) {
-            const q = searchQuery.toLowerCase().trim();
-            list = list.filter(s => s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
+            list = filterAndRankStudents(list, searchQuery);
         }
 
         // Sorting

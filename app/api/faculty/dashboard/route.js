@@ -4,6 +4,7 @@ import { getAdminClient } from '../../../../lib/analytics-data';
 import { calculateAcademicRecord } from '../../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../../lib/subjectCreditResolver';
 import { isLateralEntry } from '../../../../lib/semester-utils';
+import { cleanAlphanumeric } from '../../../../lib/search-utils';
 
 const supabaseAdmin = getAdminClient();
 
@@ -32,7 +33,7 @@ export async function GET(req) {
 
         // If faculty searches for a specific student USN
         if (searchUsn) {
-            const cleanUSN = searchUsn.toUpperCase().trim();
+            const cleanUSN = cleanAlphanumeric(searchUsn).toUpperCase();
             const [
                 { data: studentProfile },
                 { data: resultMarks },

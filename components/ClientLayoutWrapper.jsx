@@ -41,7 +41,7 @@ function Footer() {
                     boxShadow: 'var(--shadow-sm)'
                 }}>
                     <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                        Engineered by
+                        Developed by
                     </span>
                     <a
                         href="https://ainanai.vercel.app/"

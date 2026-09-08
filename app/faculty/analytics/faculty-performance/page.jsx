@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input, Badge, ConfirmDialog } from '@/components/ui';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
+import { filterAndRank } from '@/lib/search-utils';
 
 export default function FacultyPerformancePage() {
     return (
@@ -363,17 +364,12 @@ function FacultyPerformanceContent() {
 
         // Text search query
         if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase().trim();
-            list = list.filter(f =>
-                (f.faculty_name || '').toLowerCase().includes(q) ||
-                (f.email || '').toLowerCase().includes(q) ||
-                (f.department || '').toLowerCase().includes(q) ||
-                f.subjects.some(s =>
-                    (s.subject_code || '').toLowerCase().includes(q) ||
-                    (s.subject_name || '').toLowerCase().includes(q) ||
-                    (s.class_name || '').toLowerCase().includes(q)
-                )
-            );
+            list = filterAndRank(list, searchQuery, [
+                'faculty_name',
+                'email',
+                'department',
+                f => (f.subjects || []).map(s => `${s.subject_code || ''} ${s.subject_name || ''} ${s.class_name || ''}`).join(' ')
+            ]);
         }
 
         return list;

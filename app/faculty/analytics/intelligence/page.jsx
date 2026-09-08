@@ -13,6 +13,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { filterAndRankStudents, filterAndRank, matchesGeneric } from '@/lib/search-utils';
 
 export default function InstitutionalIntelligencePage() {
     return (
@@ -228,13 +229,7 @@ function InstitutionalIntelligenceContent() {
     const filteredClassesList = useMemo(() => {
         const list = classReport?.classes || [];
         if (!classSearch.trim()) return list;
-        const q = classSearch.toLowerCase().trim();
-        return list.filter(c =>
-            c.name.toLowerCase().includes(q) ||
-            c.branch.toLowerCase().includes(q) ||
-            c.facultyName.toLowerCase().includes(q) ||
-            (c.section && c.section.toLowerCase().includes(q))
-        );
+        return filterAndRank(list, classSearch, ['name', 'branch', 'facultyName', 'section', 'academicYear', 'scheme']);
     }, [classReport, classSearch]);
 
     // USN list management for comparator
@@ -476,27 +471,24 @@ function InstitutionalIntelligenceContent() {
 
     // Filtered subjects for table
     const filteredSubjectComparison = useMemo(() => {
-        const list = comparatorData?.subjectComparison || [];
-        return list.filter(sub => {
-            if (subjectSearch.trim()) {
-                const q = subjectSearch.toLowerCase().trim();
-                const matchesCode = (sub.code || '').toLowerCase().includes(q);
-                const matchesName = (sub.name || '').toLowerCase().includes(q);
-                if (!matchesCode && !matchesName) return false;
-            }
-            if (subjectFilterMode === 'delta') {
+        let list = comparatorData?.subjectComparison || [];
+        if (subjectFilterMode === 'delta') {
+            list = list.filter(sub => {
                 const totals = Object.values(sub.students || {})
                     .filter(m => m && typeof m.total === 'number')
                     .map(m => m.total);
                 if (totals.length < 2) return false;
                 const gap = Math.max(...totals) - Math.min(...totals);
                 return gap >= 15;
-            }
-            if (subjectFilterMode === 'fails') {
-                return Object.values(sub.students || {}).some(m => m && m.isFail);
-            }
-            return true;
-        });
+            });
+        } else if (subjectFilterMode === 'fails') {
+            list = list.filter(sub => Object.values(sub.students || {}).some(m => m && m.isFail));
+        }
+
+        if (subjectSearch.trim()) {
+            list = filterAndRank(list, subjectSearch, ['code', 'name']);
+        }
+        return list;
     }, [comparatorData?.subjectComparison, subjectSearch, subjectFilterMode]);
 
     // ── Manual Refresh ──
@@ -2637,12 +2629,7 @@ function InstitutionalIntelligenceContent() {
                                             <div style={{ fontSize: '12px' }}>Try selecting another class section above.</div>
                                         </div>
                                     ) : (
-                                        classRosterStudents
-                                            .filter(s => {
-                                                if (!rosterSearch.trim()) return true;
-                                                const q = rosterSearch.toLowerCase().trim();
-                                                return (s.name || '').toLowerCase().includes(q) || (s.usn || '').toLowerCase().includes(q);
-                                            })
+                                        filterAndRankStudents(classRosterStudents, rosterSearch)
                                             .map(stu => {
                                                 const isAdded = usnList.includes(stu.usn);
                                                 return (
