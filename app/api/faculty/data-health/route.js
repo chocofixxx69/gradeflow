@@ -5,6 +5,7 @@ import { readTable, invalidateTableCache, SELECTS } from '@/lib/table-cache';
 import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 import { validateDataset } from '@/lib/data-validation';
 import { configureBranchRegistry, buildBatchRegistry } from '@/lib/vtu-identity';
+import { loadStudentRecords } from '@/lib/student-record';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,13 +43,17 @@ async function buildReport(supabaseAdmin) {
             fetchCatalogIndex(supabaseAdmin).catch(() => null)
         ]);
 
+    // The canonical records, so the sweep can compare them against what the derived
+    // tables claim rather than trusting either side.
+    const studentRecords = await loadStudentRecords(supabaseAdmin);
+
     // The branches table is the department authority; seed the resolver from it
     // before anything resolves a branch code.
     configureBranchRegistry(branches);
 
     const report = validateDataset({
         students, marks, results, remarks, classes, classStudents,
-        catalog, examSessions, catalogIndex
+        catalog, examSessions, catalogIndex, studentRecords
     });
 
     // Semesters each student has evidence for, so the batch registry can report a
