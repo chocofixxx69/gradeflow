@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getAdminClient, computeBacklogs, weightedCGPA, invalidateAnalyticsCache } from '@/lib/analytics-data';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
-import { fetchAllPaginated } from '@/lib/supabase-utils';
+import { readTable, SELECTS } from '@/lib/table-cache';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 
 export const dynamic = 'force-dynamic';
@@ -112,11 +112,15 @@ export async function GET(req, { params }) {
         const studentBranch = normalizeBranch(student?.branch, cleanUsn) ||
             canonicalBranchCode(extractBranchFromUsn(cleanUsn)) || 'CS';
 
-        // 2. Fetch subject marks, academic remarks, results, AND subject_catalog in parallel
+        // 2. Fetch subject marks, academic remarks and the subject catalog in parallel.
+        //
+        // The standalone `results` query that used to sit here was never read - the
+        // exam name each mark needs already comes through the `results(exam_name)`
+        // join below, and every SGPA on this page is computed from the marks - so it
+        // was a per-page round trip for nothing.
         const [
             { data: rawMarks },
             { data: rawRemarks },
-            { data: rawResults },
             catalogRows
         ] = await Promise.all([
             supabaseAdmin
@@ -130,16 +134,7 @@ export async function GET(req, { params }) {
                 .select('*')
                 .eq('student_usn', cleanUsn)
                 .order('semester', { ascending: true }),
-            supabaseAdmin
-                .from('results')
-                .select('*')
-                .eq('usn', cleanUsn),
-            // Fetch catalog for this branch (and ALL branch) to enable semester inference
-            fetchAllPaginated(
-                'subject_catalog',
-                'subject_code, semester, branch, scheme, credits',
-                supabaseAdmin
-            )
+            readTable(supabaseAdmin, 'subject_catalog', SELECTS.subject_catalog)
         ]);
 
         const marks = rawMarks || [];
@@ -408,6 +403,10 @@ export async function PUT(req, { params }) {
         } catch (e) {
             // non-critical
         }
+
+        // Every analytics page reads a cached copy of the warehouse; a student
+        // mutation has to drop it or the change stays invisible for a minute.
+        invalidateAnalyticsCache();
 
         return ok({
             message: 'Student record updated successfully.',

@@ -1,51 +1,93 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
-import { getCleanBranchOptions } from '@/lib/semester-utils';
 
 export default function FacultyStudentsDirectoryPage() {
     return (
         <AuthGuard role="faculty">
-            <StudentsDirectoryContent />
+            <Suspense fallback={null}>
+                <StudentsDirectoryContent />
+            </Suspense>
         </AuthGuard>
     );
 }
 
-const DEFAULT_BRANCH_OPTIONS = [
-    { code: 'CS', label: 'Computer Science & Engineering', name: 'Computer Science & Engineering' },
-    { code: 'DS', label: 'Computer Science & Engineering (Data Science)', name: 'Computer Science & Engineering (Data Science)' },
-    { code: 'AI', label: 'AI & Machine Learning', name: 'AI & Machine Learning' },
-    { code: 'EC', label: 'Electronics & Communication Engineering', name: 'Electronics & Communication Engineering' },
-    { code: 'EE', label: 'Electrical & Electronics Engineering', name: 'Electrical & Electronics Engineering' },
-    { code: 'ME', label: 'Mechanical Engineering', name: 'Mechanical Engineering' },
-    { code: 'CV', label: 'Civil Engineering', name: 'Civil Engineering' },
-    { code: 'RI', label: 'Robotics & Artificial Intelligence', name: 'Robotics & Artificial Intelligence' }
-];
+const EMPTY_FACETS = {
+    branches: [],
+    batches: [],
+    semesters: [],
+    sections: [],
+    statuses: [],
+    entries: [],
+    total: 0
+};
 
-const DEFAULT_BATCH_OPTIONS = ['2025', '2024', '2023', '2022', '2021'];
+/**
+ * Per-row data-quality badges. The API attaches a `flags` array to every student
+ * explaining why a figure on that row might not be solid — a stale standing column,
+ * a semester with no records, a semester published across several exam rounds. The
+ * row shows the number rather than hiding it, and says what is uncertain about it.
+ */
+const FLAG_TONE = {
+    USN_INVALID: '#EF4444',
+    SGPA_CONFLICT: '#EF4444',
+    CREDIT_UNRESOLVED: '#EF4444',
+    STANDING_BEHIND: '#F59E0B',
+    SEMESTER_GAP: '#F59E0B',
+    YEAR_MISMATCH: '#F59E0B',
+    LATERAL_FLAG: '#F59E0B',
+    MULTI_ATTEMPT: '#3B82F6'
+};
+
+/**
+ * Builds a dropdown's options from the live facet counts.
+ *
+ * Nothing here is hardcoded: an option exists only when the database actually
+ * holds students behind it, given every OTHER filter currently applied. The one
+ * exception is the value already selected — it stays in the list (annotated with
+ * its real count, including 0) so the control never silently jumps to a different
+ * cohort underneath the user.
+ */
+function facetOptions(facets, selected, { allValue, allLabel }) {
+    const total = facets.reduce((sum, f) => sum + f.count, 0);
+    const options = [{ value: allValue, label: `${allLabel} (${total})` }];
+
+    let selectedSeen = false;
+    facets.forEach(f => {
+        if (String(f.value) === String(selected)) selectedSeen = true;
+        options.push({ value: f.value, label: `${f.label} · ${f.count}` });
+    });
+
+    const hasSelection = selected !== allValue && selected !== '' && selected !== null && selected !== undefined;
+    if (hasSelection && !selectedSeen) {
+        options.push({ value: selected, label: `${selected} · 0` });
+    }
+
+    return options;
+}
 
 function StudentsDirectoryContent() {
     const [loading, setLoading] = useState(true);
-    const [meta, setMeta] = useState({
-        branches: DEFAULT_BRANCH_OPTIONS,
-        batches: DEFAULT_BATCH_OPTIONS,
-        semesters: [1, 2, 3, 4, 5, 6, 7, 8]
-    });
+    const [error, setError] = useState(null);
 
     // Filters
     const [branch, setBranch] = useState('');
     const [semester, setSemester] = useState('all');
+    const [semesterMode, setSemesterMode] = useState('records');
     const [batch, setBatch] = useState('');
     const [section, setSection] = useState('all');
     const [status, setStatus] = useState('all');
+    const [entry, setEntry] = useState('all');
     const [backlogsFilter, setBacklogsFilter] = useState('all');
+    const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
     const limit = 25;
@@ -53,94 +95,174 @@ function StudentsDirectoryContent() {
     // Data
     const [students, setStudents] = useState([]);
     const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 25, totalPages: 1 });
+    const [facets, setFacets] = useState(EMPTY_FACETS);
+    const [blockingFilters, setBlockingFilters] = useState([]);
+    const [directoryTotal, setDirectoryTotal] = useState(0);
+    const [quality, setQuality] = useState({ flagged: 0, byCode: {} });
+    const [showFlagged, setShowFlagged] = useState(false);
 
-    // 1. Fetch metadata on mount
+    // Deep links from Data Health ("23 batch / CS" chips) land here pre-filtered.
+    const searchParams = useSearchParams();
+    const appliedDeepLink = useRef(false);
     useEffect(() => {
-        async function loadMeta() {
-            try {
-                const res = await apiRequest('/api/faculty/analytics/meta');
-                if (res) {
-                    const validBranches = res.branches && res.branches.filter(b => b.code !== 'ALL').length > 0 
-                        ? res.branches 
-                        : DEFAULT_BRANCH_OPTIONS;
-                    const validBatches = res.batches && res.batches.length > 0 
-                        ? res.batches 
-                        : DEFAULT_BATCH_OPTIONS;
-                    setMeta({
-                        branches: validBranches,
-                        batches: validBatches,
-                        semesters: res.semesters || [1, 2, 3, 4, 5, 6, 7, 8],
-                        classes: res.classes || [],
-                        sections: res.sections || ['A', 'B', 'C', 'D']
-                    });
-                }
-            } catch (err) {
-                console.error('Failed to load meta:', err);
-            }
-        }
-        loadMeta();
-    }, []);
+        if (appliedDeepLink.current || !searchParams) return;
+        appliedDeepLink.current = true;
+        const b = searchParams.get('batch');
+        const br = searchParams.get('branch');
+        const sem = searchParams.get('semester');
+        const sec = searchParams.get('section');
+        const ent = searchParams.get('entry');
+        if (b) setBatch(b);
+        if (br) setBranch(br.toUpperCase());
+        if (sem) setSemester(sem);
+        if (sec) setSection(sec.toUpperCase());
+        if (ent) setEntry(ent);
+    }, [searchParams]);
 
-    // Dynamically derive available sections from classes & metadata
-    const availableSections = useMemo(() => {
-        const fromClasses = (meta.classes || []).map(c => (c.section || '').toUpperCase().trim()).filter(Boolean);
-        const fromMeta = meta.sections || [];
-        return Array.from(new Set(['A', 'B', 'C', 'D', ...fromClasses, ...fromMeta])).sort();
-    }, [meta.classes, meta.sections]);
+    // Debounce the search box so typing doesn't fire a request per keystroke.
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setSearch(searchInput.trim());
+            setPage(1);
+        }, 300);
+        return () => clearTimeout(t);
+    }, [searchInput]);
 
-    // 2. Fetch paginated students
-    const loadStudents = useCallback(async () => {
+    const requestId = useRef(0);
+
+    const loadStudents = useCallback(async ({ fresh = false } = {}) => {
+        const id = ++requestId.current;
         setLoading(true);
+        setError(null);
         try {
             const query = { page, limit };
+            if (fresh) query.fresh = '1';
             if (branch) query.branch = branch;
-            if (semester && semester !== 'all') query.semester = semester;
+            if (semester !== 'all') {
+                query.semester = semester;
+                query.semesterMode = semesterMode;
+            }
             if (batch) query.batch = batch;
-            if (section && section !== 'all') query.section = section;
+            if (section !== 'all') query.section = section;
             if (status !== 'all') query.status = status;
+            if (entry !== 'all') query.entry = entry;
             if (backlogsFilter !== 'all') query.backlogsFilter = backlogsFilter;
             if (search) query.search = search;
 
             const res = await apiRequest('/api/faculty/students', { query });
-            if (res) {
-                setStudents(res.students || []);
-                setPagination(res.pagination || { total: 0, page: 1, limit: 25, totalPages: 1 });
-            }
+            if (id !== requestId.current) return; // a newer request already won
+
+            setStudents(res?.students || []);
+            setPagination(res?.pagination || { total: 0, page: 1, limit, totalPages: 1 });
+            setFacets(res?.facets || EMPTY_FACETS);
+            setBlockingFilters(res?.blockingFilters || []);
+            setDirectoryTotal(res?.meta?.totalStudents || 0);
+            setQuality(res?.quality || { flagged: 0, byCode: {} });
         } catch (err) {
+            if (id !== requestId.current) return;
             console.error('Failed to load students:', err);
+            setError(err?.message || 'Failed to load the students directory.');
+            setStudents([]);
+            setPagination({ total: 0, page: 1, limit, totalPages: 1 });
         } finally {
-            setLoading(false);
+            if (id === requestId.current) setLoading(false);
         }
-    }, [page, limit, branch, semester, batch, section, status, backlogsFilter, search]);
+    }, [page, limit, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
 
     useEffect(() => {
         loadStudents();
     }, [loadStudents]);
 
-    // Reset page on filter change
     const handleFilterChange = (setter, val) => {
         setter(val);
         setPage(1);
     };
 
+    const clearFilter = useCallback((name) => {
+        setPage(1);
+        switch (name) {
+            case 'branch': setBranch(''); break;
+            case 'batch': setBatch(''); break;
+            case 'semester': setSemester('all'); break;
+            case 'section': setSection('all'); break;
+            case 'status': setStatus('all'); break;
+            case 'entry': setEntry('all'); break;
+            case 'backlogsFilter': setBacklogsFilter('all'); break;
+            case 'search': setSearchInput(''); setSearch(''); break;
+            default: break;
+        }
+    }, []);
+
+    const resetAll = useCallback(() => {
+        setBranch('');
+        setSemester('all');
+        setSemesterMode('records');
+        setBatch('');
+        setSection('all');
+        setStatus('all');
+        setEntry('all');
+        setBacklogsFilter('all');
+        setSearchInput('');
+        setSearch('');
+        setPage(1);
+    }, []);
+
+    // Chips describing exactly what is narrowing the table right now.
+    const activeChips = useMemo(() => {
+        const chips = [];
+        const branchLabel = facets.branches.find(b => b.value === branch)?.label || branch;
+        if (branch) chips.push({ name: 'branch', label: branchLabel });
+        if (semester !== 'all') {
+            chips.push({
+                name: 'semester',
+                label: `Semester ${semester} · ${semesterMode === 'current' ? 'currently in' : 'any records'}`
+            });
+        }
+        if (batch) chips.push({ name: 'batch', label: `Batch ${batch}` });
+        if (section !== 'all') chips.push({ name: 'section', label: section === 'UNASSIGNED' ? 'Unassigned section' : `Section ${section}` });
+        if (status !== 'all') chips.push({ name: 'status', label: status === 'active' ? 'Active only' : 'Inactive only' });
+        if (entry !== 'all') chips.push({ name: 'entry', label: entry === 'lateral' ? 'Lateral entry only' : 'Regular intake only' });
+        if (backlogsFilter !== 'all') chips.push({ name: 'backlogsFilter', label: backlogsFilter === 'clear' ? 'All clear' : 'Carrying backlogs' });
+        if (search) chips.push({ name: 'search', label: `“${search}”` });
+        return chips;
+    }, [facets.branches, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
+
+    const semesterColumn = semester !== 'all' ? Number(semester) : null;
+    const statusCount = (value) => facets.statuses.find(s => s.value === value)?.count ?? 0;
+
     // ── Excel Export ──
     const handleExportExcel = async () => {
         const XLSX = await getXLSX();
         const wb = XLSX.utils.book_new();
-        const headers = ['#', 'USN', 'Name', 'Department', 'Semester', 'Section', 'Batch', 'CGPA', 'Backlogs Count', 'Backlog Credits', 'Status'];
-        const rows = (students || []).map((s, idx) => [
-            (page - 1) * limit + idx + 1,
-            s.usn,
-            s.name,
-            s.branch,
-            s.semester,
-            s.section || '—',
-            s.year || '—',
-            s.cgpa !== null ? s.cgpa.toFixed(2) : '—',
-            s.total_backlogs,
-            s.backlog_credits,
-            s.total_backlogs > 0 ? `${s.total_backlogs} Subjects (${s.backlog_credits} Cr)` : 'Clear'
-        ]);
+        const headers = [
+            '#', 'USN', 'Name', 'Department', 'Current Sem', 'Semesters On Record',
+            'Section', 'Batch', 'CGPA', 'Backlogs Count', 'Backlog Credits', 'Status'
+        ];
+        if (semesterColumn) headers.push(`Sem ${semesterColumn} SGPA`, `Sem ${semesterColumn} Backlogs`);
+
+        const rows = (students || []).map((s, idx) => {
+            const row = [
+                (page - 1) * limit + idx + 1,
+                s.usn,
+                s.name,
+                s.branchLabel || s.branch,
+                s.semester,
+                (s.recordedSemesters || []).join(', ') || '—',
+                s.section || '—',
+                s.batch || '—',
+                s.cgpa !== null && s.cgpa !== undefined ? s.cgpa.toFixed(2) : '—',
+                s.total_backlogs,
+                s.backlog_credits,
+                s.is_inactive ? 'Inactive' : 'Active'
+            ];
+            if (semesterColumn) {
+                row.push(
+                    s.semesterView?.sgpa !== null && s.semesterView?.sgpa !== undefined ? s.semesterView.sgpa.toFixed(2) : '—',
+                    s.semesterView?.backlogs !== null && s.semesterView?.backlogs !== undefined ? s.semesterView.backlogs : '—'
+                );
+            }
+            return row;
+        });
 
         const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
         XLSX.utils.book_append_sheet(wb, ws, 'Students');
@@ -153,27 +275,36 @@ function StudentsDirectoryContent() {
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text(`GradeFlow - Students Directory`, 14, 15);
+        doc.text('GradeFlow - Students Directory', 14, 15);
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Total: ${pagination.total} Students | Department: ${branch || 'All'} | Semester: ${semester} | Section: ${section || 'All'} | Batch: ${batch || 'All'} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
+        const filterLine = activeChips.length > 0 ? activeChips.map(c => c.label).join(' | ') : 'No filters applied';
+        doc.text(`Total: ${pagination.total} Students | ${filterLine} | ${new Date().toLocaleDateString()}`, 14, 21);
 
-        const tableHead = [['#', 'USN', 'Student Name', 'Branch', 'Sem', 'Sec', 'CGPA', 'Backlog Status']];
-        const tableBody = (students || []).map((s, idx) => [
-            (page - 1) * limit + idx + 1,
-            s.usn,
-            s.name,
-            s.branch,
-            s.semester,
-            s.section || '—',
-            s.cgpa !== null ? s.cgpa.toFixed(2) : '—',
-            s.total_backlogs > 0 ? `${s.total_backlogs} Sub (${s.backlog_credits} Cr)` : 'Clear'
-        ]);
+        const head = [['#', 'USN', 'Student Name', 'Dept', 'Sem', 'Sec', 'CGPA', 'Backlog Status']];
+        if (semesterColumn) head[0].push(`S${semesterColumn} SGPA`);
+
+        const body = (students || []).map((s, idx) => {
+            const row = [
+                (page - 1) * limit + idx + 1,
+                s.usn,
+                s.name,
+                s.branch,
+                s.semester,
+                s.section || '—',
+                s.cgpa !== null && s.cgpa !== undefined ? s.cgpa.toFixed(2) : '—',
+                s.total_backlogs > 0 ? `${s.total_backlogs} Sub (${s.backlog_credits} Cr)` : 'Clear'
+            ];
+            if (semesterColumn) {
+                row.push(s.semesterView?.sgpa !== null && s.semesterView?.sgpa !== undefined ? s.semesterView.sgpa.toFixed(2) : '—');
+            }
+            return row;
+        });
 
         autoTable(doc, {
-            head: tableHead,
-            body: tableBody,
+            head,
+            body,
             startY: 25,
             theme: 'striped',
             styles: { fontSize: 8, cellPadding: 2 },
@@ -182,6 +313,8 @@ function StudentsDirectoryContent() {
 
         doc.save(`Students_Directory_${branch || 'All'}.pdf`);
     };
+
+    const colCount = semesterColumn ? 9 : 8;
 
     return (
         <div style={{ padding: 'var(--page-py) var(--page-px)', maxWidth: '1400px', margin: '0 auto' }} className="gf-fade-up">
@@ -203,124 +336,167 @@ function StudentsDirectoryContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={loadStudents} variant="primary">
+                    <Button onClick={() => loadStudents({ fresh: true })} variant="primary" disabled={loading}>
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
-                        Refresh
+                        {loading ? 'Loading…' : 'Refresh'}
                     </Button>
                 </div>
             </div>
 
-            {/* Filter Toolbar */}
+            {/* Filter Toolbar — every option and count comes from the live dataset */}
             <Card style={{ marginBottom: '20px' }}>
                 <CardContent style={{ padding: '16px 20px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
-                        <div>
+                        <Select
+                            label="Department"
+                            value={branch}
+                            onChange={e => handleFilterChange(setBranch, e.target.value)}
+                            options={facetOptions(facets.branches, branch, { allValue: '', allLabel: 'All Departments' })}
+                        />
+                        <Select
+                            label="Semester"
+                            value={semester}
+                            onChange={e => handleFilterChange(setSemester, e.target.value)}
+                            options={facetOptions(facets.semesters, semester, { allValue: 'all', allLabel: 'All Semesters' })}
+                        />
+                        {semester !== 'all' && (
                             <Select
-                                label="Department"
-                                value={branch}
-                                onChange={e => handleFilterChange(setBranch, e.target.value)}
-                                options={getCleanBranchOptions(meta.branches).map(b => ({
-                                    value: b.value === 'ALL' ? '' : b.value,
-                                    label: b.value === 'ALL' ? 'All Departments' : b.label
-                                }))}
-                            />
-                        </div>
-                        <div>
-                            <Select
-                                label="Semester"
-                                value={semester}
-                                onChange={e => handleFilterChange(setSemester, e.target.value)}
+                                label="Semester Match"
+                                value={semesterMode}
+                                onChange={e => handleFilterChange(setSemesterMode, e.target.value)}
                                 options={[
-                                    { value: 'all', label: 'All Semesters' },
-                                    ...(meta.semesters && meta.semesters.length > 0 ? meta.semesters : [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({
-                                        value: s,
-                                        label: `Semester ${s}`
-                                    }))
+                                    { value: 'records', label: 'Has records for it' },
+                                    { value: 'current', label: 'Currently studying it' }
                                 ]}
                             />
-                        </div>
-                        <div>
-                            <Select
-                                label="Batch"
-                                value={batch}
-                                onChange={e => handleFilterChange(setBatch, e.target.value)}
-                                options={[
-                                    { value: '', label: 'All Batches' },
-                                    ...(meta.batches && meta.batches.length > 0 ? meta.batches : DEFAULT_BATCH_OPTIONS).map(b => ({
-                                        value: b,
-                                        label: `${b.slice(-2)} Batch (${b})`
-                                    }))
-                                ]}
-                            />
-                        </div>
-                        <div>
-                            <Select
-                                label="Section"
-                                value={section}
-                                onChange={e => handleFilterChange(setSection, e.target.value)}
-                                options={[
-                                    { value: 'all', label: 'All Sections' },
-                                    ...availableSections.map(s => ({
-                                        value: s,
-                                        label: `Section ${s}`
-                                    })),
-                                    { value: 'UNASSIGNED', label: 'Unassigned (No Class)' }
-                                ]}
-                            />
-                        </div>
-                        <div>
-                            <Select
-                                label="Backlogs Status"
-                                value={backlogsFilter}
-                                onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
-                                options={[
-                                    { value: 'all', label: 'All Students' },
-                                    { value: 'clear', label: 'All Clear (0 Arrears)' },
-                                    { value: 'backlogs', label: 'Carrying Backlogs' },
-                                ]}
-                            />
-                        </div>
-                        <div>
-                            <Input
-                                label="Search"
-                                placeholder="USN, Name or Email..."
-                                value={search}
-                                onChange={e => handleFilterChange(setSearch, e.target.value)}
-                            />
-                        </div>
+                        )}
+                        <Select
+                            label="Batch"
+                            value={batch}
+                            onChange={e => handleFilterChange(setBatch, e.target.value)}
+                            options={facetOptions(facets.batches, batch, { allValue: '', allLabel: 'All Batches' })}
+                        />
+                        <Select
+                            label="Section"
+                            value={section}
+                            onChange={e => handleFilterChange(setSection, e.target.value)}
+                            options={facetOptions(facets.sections, section, { allValue: 'all', allLabel: 'All Sections' })}
+                        />
+                        <Select
+                            label="Entry Type"
+                            value={entry}
+                            onChange={e => handleFilterChange(setEntry, e.target.value)}
+                            options={(facets.entries?.length ? facets.entries : [{ value: 'all', label: 'All Entries', count: 0 }])
+                                .map(o => ({ value: o.value, label: o.value === 'all' ? `${o.label} (${o.count})` : `${o.label} · ${o.count}` }))}
+                        />
+                        <Select
+                            label="Backlogs Status"
+                            value={backlogsFilter}
+                            onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
+                            options={[
+                                { value: 'all', label: 'All Students' },
+                                { value: 'clear', label: 'All Clear (0 Arrears)' },
+                                { value: 'backlogs', label: 'Carrying Backlogs' }
+                            ]}
+                        />
+                        <Input
+                            label="Search"
+                            placeholder="USN, Name or Email…"
+                            value={searchInput}
+                            onChange={e => setSearchInput(e.target.value)}
+                        />
                     </div>
+
+                    {activeChips.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-low)' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tx-dim)' }}>
+                                Filtering by
+                            </span>
+                            {activeChips.map(chip => (
+                                <button
+                                    key={chip.name}
+                                    type="button"
+                                    onClick={() => clearFilter(chip.name)}
+                                    title={`Remove ${chip.label}`}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                        padding: '4px 8px', borderRadius: '999px', cursor: 'pointer',
+                                        border: '1px solid var(--border)', background: 'var(--surface-low)',
+                                        color: 'var(--tx-main)', fontSize: '11px', fontWeight: 700
+                                    }}
+                                >
+                                    {chip.label}
+                                    <span className="material-icons-round" style={{ fontSize: '13px', color: 'var(--tx-dim)' }}>close</span>
+                                </button>
+                            ))}
+                            <Button size="sm" variant="ghost" onClick={resetAll}>Reset all</Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
+
+            {error && (
+                <Card style={{ marginBottom: '16px', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
+                    <CardContent style={{ padding: '14px 18px', color: '#EF4444', fontSize: '13px', fontWeight: 600 }}>
+                        {error}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Student Count / Status Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
                     Found <strong>{pagination.total}</strong> students matching filters
+                    {directoryTotal > 0 && pagination.total !== directoryTotal && (
+                        <span style={{ color: 'var(--tx-dim)' }}> · {directoryTotal} in the directory</span>
+                    )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <Button
-                        size="sm"
-                        variant={status === 'all' ? 'primary' : 'ghost'}
-                        onClick={() => handleFilterChange(setStatus, 'all')}
-                    >
-                        All
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant={status === 'active' ? 'primary' : 'ghost'}
-                        onClick={() => handleFilterChange(setStatus, 'active')}
-                    >
-                        Active
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant={status === 'inactive' ? 'primary' : 'ghost'}
-                        onClick={() => handleFilterChange(setStatus, 'inactive')}
-                    >
-                        Inactive
-                    </Button>
+                    {['all', 'active', 'inactive'].map(value => (
+                        <Button
+                            key={value}
+                            size="sm"
+                            variant={status === value ? 'primary' : 'ghost'}
+                            onClick={() => handleFilterChange(setStatus, value)}
+                        >
+                            {value === 'all' ? 'All' : value === 'active' ? 'Active' : 'Inactive'}
+                            <span style={{ marginLeft: '6px', opacity: 0.7, fontWeight: 700 }}>{statusCount(value)}</span>
+                        </Button>
+                    ))}
                 </div>
             </div>
+
+            {/* Data-quality banner — the same findings the Data Health sweep reports,
+                narrowed to the students currently on screen. */}
+            {quality.flagged > 0 && (
+                <Card style={{ marginBottom: '14px', borderColor: 'rgba(245, 158, 11, 0.35)' }}>
+                    <CardContent style={{ padding: '12px 18px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="material-icons-round" style={{ color: '#F59E0B', fontSize: '19px' }}>fact_check</span>
+                        <span style={{ fontSize: '12.5px', fontWeight: 700 }}>
+                            {quality.flagged} of {pagination.total} students in this selection carry a data-quality flag
+                        </span>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {Object.entries(quality.byCode).sort((a, b) => b[1] - a[1]).map(([code, n]) => (
+                                <span key={code} style={{
+                                    padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 800,
+                                    background: 'var(--surface-low)', border: `1px solid ${FLAG_TONE[code] || 'var(--border)'}`,
+                                    color: FLAG_TONE[code] || 'var(--tx-muted)'
+                                }}>
+                                    {code.replace(/_/g, ' ')} · {n}
+                                </span>
+                            ))}
+                        </div>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+                            <Button size="sm" variant={showFlagged ? 'primary' : 'ghost'} onClick={() => setShowFlagged(v => !v)}>
+                                {showFlagged ? 'Hide row details' : 'Show row details'}
+                            </Button>
+                            <Link href="/faculty/data-health">
+                                <Button size="sm" variant="secondary" iconEnd="arrow_forward">Data Health</Button>
+                            </Link>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Students Table */}
             <Card style={{ overflow: 'hidden', marginBottom: '20px' }}>
@@ -331,30 +507,63 @@ function StudentsDirectoryContent() {
                                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '50px' }}>#</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '140px' }}>USN</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left' }}>Student Name</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'left', width: '140px' }}>Department</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'center', width: '105px' }}>Sem & Sec</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', width: '110px' }}>Department</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'center', width: '105px' }}>Sem &amp; Sec</th>
+                                {semesterColumn && (
+                                    <th style={{ padding: '12px 16px', textAlign: 'center', width: '110px' }}>Sem {semesterColumn}</th>
+                                )}
                                 <th style={{ padding: '12px 16px', textAlign: 'center', width: '90px' }}>CGPA</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'left', width: '180px' }}>Backlogs</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', width: '170px' }}>Backlogs</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'center', width: '110px' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {students.length === 0 ? (
+                            {loading && students.length === 0 ? (
+                                Array.from({ length: 6 }).map((_, i) => (
+                                    <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--border-low)' }}>
+                                        <td colSpan={colCount} style={{ padding: '14px 16px' }}>
+                                            <div style={{ height: '14px', borderRadius: '6px', background: 'var(--surface-low)', opacity: 1 - i * 0.12 }} />
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : students.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
-                                        {loading ? 'Loading student directory...' : 'No students found matching current filters.'}
+                                    <td colSpan={colCount} style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                        <div style={{ fontWeight: 700, color: 'var(--tx-muted)', marginBottom: '6px' }}>
+                                            No students match the current filters.
+                                        </div>
+                                        {blockingFilters.length > 0 ? (
+                                            <>
+                                                <div style={{ fontSize: '12px', marginBottom: '12px' }}>
+                                                    Removing one of these brings results back:
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                    {blockingFilters.map(b => (
+                                                        <Button key={b.filter} size="sm" variant="secondary" onClick={() => clearFilter(b.filter)}>
+                                                            Clear {b.label} → {b.countIfCleared} students
+                                                        </Button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        ) : activeChips.length > 0 ? (
+                                            <Button size="sm" variant="secondary" onClick={resetAll}>Reset all filters</Button>
+                                        ) : (
+                                            <div style={{ fontSize: '12px' }}>The directory is empty — no student records have been imported yet.</div>
+                                        )}
                                     </td>
                                 </tr>
                             ) : (
                                 students.map((s, idx) => {
                                     const hasBacklogs = s.total_backlogs > 0;
+                                    const sv = s.semesterView;
                                     return (
                                         <tr
                                             key={s.usn}
                                             style={{
                                                 borderBottom: '1px solid var(--border-low)',
                                                 background: s.is_inactive ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
-                                                transition: 'background 0.15s ease'
+                                                opacity: loading ? 0.55 : 1,
+                                                transition: 'background 0.15s ease, opacity 0.15s ease'
                                             }}
                                         >
                                             <td style={{ padding: '12px 16px', color: 'var(--tx-dim)' }}>
@@ -369,16 +578,18 @@ function StudentsDirectoryContent() {
                                                     {s.usn}
                                                 </Link>
                                                 {s.lateral_entry && (
-                                                    <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '9px', fontWeight: 800 }}>
+                                                    <span title="Lateral entry" style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '9px', fontWeight: 800 }}>
                                                         LE
                                                     </span>
                                                 )}
+                                                {s.batch && (
+                                                    <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', fontFamily: 'inherit' }}>
+                                                        {s.batch} batch
+                                                    </div>
+                                                )}
                                             </td>
                                             <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                                                <Link
-                                                    href={`/faculty/students/${s.usn}`}
-                                                    style={{ color: 'inherit', textDecoration: 'none' }}
-                                                >
+                                                <Link href={`/faculty/students/${s.usn}`} style={{ color: 'inherit', textDecoration: 'none' }}>
                                                     {s.name}
                                                 </Link>
                                                 {s.is_inactive && (
@@ -386,12 +597,41 @@ function StudentsDirectoryContent() {
                                                         Inactive
                                                     </span>
                                                 )}
+                                                {s.flags?.length > 0 && (
+                                                    showFlagged ? (
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '5px' }}>
+                                                            {s.flags.map(f => (
+                                                                <span key={f.code} title={f.label} style={{
+                                                                    padding: '1px 6px', borderRadius: '4px', fontSize: '9.5px', fontWeight: 800,
+                                                                    background: 'var(--surface-low)',
+                                                                    border: `1px solid ${FLAG_TONE[f.code] || 'var(--border)'}`,
+                                                                    color: FLAG_TONE[f.code] || 'var(--tx-muted)'
+                                                                }}>
+                                                                    {f.label}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span
+                                                            title={s.flags.map(f => f.label).join(' · ')}
+                                                            style={{ marginLeft: '8px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10px', fontWeight: 800, color: '#F59E0B', cursor: 'help' }}
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '13px' }}>info</span>
+                                                            {s.flags.length}
+                                                        </span>
+                                                    )
+                                                )}
                                             </td>
-                                            <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                            <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 700 }} title={s.branchLabel}>
                                                 {s.branch}
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                                <div style={{ fontWeight: 700, color: 'var(--tx-main)' }}>Sem {s.semester}</div>
+                                                <div
+                                                    style={{ fontWeight: 700, color: 'var(--tx-main)' }}
+                                                    title={(s.recordedSemesters || []).length ? `Records for semesters ${s.recordedSemesters.join(', ')}` : 'No semester records yet'}
+                                                >
+                                                    Sem {s.semester}
+                                                </div>
                                                 {s.section ? (
                                                     <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 800 }}>
                                                         Sec {s.section}
@@ -402,24 +642,40 @@ function StudentsDirectoryContent() {
                                                     </span>
                                                 )}
                                             </td>
+                                            {semesterColumn && (
+                                                <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                    {sv?.hasRecord ? (
+                                                        <>
+                                                            <div style={{ fontWeight: 900, color: 'var(--tx-main)' }}>
+                                                                {Number.isFinite(sv.sgpa) && sv.sgpa > 0 ? sv.sgpa.toFixed(2) : '—'}
+                                                            </div>
+                                                            <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: sv.backlogs > 0 ? '#EF4444' : '#10B981' }}>
+                                                                {sv.backlogs > 0 ? `${sv.backlogs} backlog${sv.backlogs === 1 ? '' : 's'}` : 'clear'}
+                                                            </div>
+                                                            {sv.attemptCount > 1 && (
+                                                                <div
+                                                                    title={`Published across ${sv.attemptCount} exam rounds; showing the ${sv.hasRevaluation ? 'revaluation' : sv.examKind} result (${sv.examName})`}
+                                                                    style={{ marginTop: '2px', fontSize: '9px', fontWeight: 800, color: sv.hasRevaluation ? '#8B5CF6' : 'var(--tx-dim)', cursor: 'help' }}
+                                                                >
+                                                                    {sv.hasRevaluation ? 'REVAL' : `${sv.attemptCount} ROUNDS`}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)' }}>Not attempted</span>
+                                                    )}
+                                                </td>
+                                            )}
                                             <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 900, color: s.cgpa >= 8.0 ? '#10B981' : s.cgpa >= 5.0 ? 'var(--primary)' : s.cgpa > 0 ? '#EF4444' : 'var(--tx-dim)' }}>
                                                 {s.cgpa !== null && s.cgpa > 0 ? s.cgpa.toFixed(2) : '—'}
                                             </td>
                                             <td style={{ padding: '12px 16px' }}>
                                                 {hasBacklogs ? (
-                                                    <span style={{
-                                                        padding: '3px 9px', borderRadius: '6px',
-                                                        background: 'rgba(239, 68, 68, 0.12)',
-                                                        color: '#EF4444', fontWeight: 800, fontSize: '11px'
-                                                    }}>
+                                                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', fontWeight: 800, fontSize: '11px' }}>
                                                         {s.total_backlogs} Subjects ({s.backlog_credits} Cr)
                                                     </span>
                                                 ) : (
-                                                    <span style={{
-                                                        padding: '3px 9px', borderRadius: '6px',
-                                                        background: 'rgba(16, 185, 129, 0.12)',
-                                                        color: '#10B981', fontWeight: 800, fontSize: '11px'
-                                                    }}>
+                                                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', fontWeight: 800, fontSize: '11px' }}>
                                                         Clear
                                                     </span>
                                                 )}

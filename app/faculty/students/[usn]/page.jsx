@@ -120,8 +120,9 @@ function StudentRecordContent() {
         try {
             await apiRequest(`/api/faculty/students/${usn}`, {
                 method: 'PUT',
+                // Batch is derived from the USN and is never posted — only the
+                // student's current semester standing is editable here.
                 body: JSON.stringify({
-                    year: batchForm.year,
                     semester: Number(batchForm.semester),
                     reason: batchForm.reason
                 })
@@ -129,7 +130,7 @@ function StudentRecordContent() {
             setShowBatchModal(false);
             await loadStudentRecord();
         } catch (err) {
-            alert('Failed to update academic cohort batch: ' + (err.message || err));
+            alert('Failed to update semester standing: ' + (err.message || err));
         } finally {
             setSavingBatch(false);
         }
@@ -644,34 +645,25 @@ function StudentRecordContent() {
                                 <span className="material-icons-round" style={{ fontSize: '20px' }}>tune</span>
                             </div>
                             <div>
-                                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Manage Academic Cohort & Batch</h2>
+                                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Semester Standing</h2>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>Student: <strong>{data.profile.name}</strong> ({data.profile.usn})</div>
                             </div>
                         </div>
 
                         <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', marginBottom: '16px', fontSize: '12.5px', color: 'var(--tx-muted)' }}>
-                            <div><strong>Original USN Intake Year:</strong> 20{data.profile.raw_usn_batch || (data.profile.usn.length >= 5 ? data.profile.usn.slice(3, 5) : '23')}</div>
-                            <div style={{ marginTop: '4px' }}><strong>Current Assigned Batch:</strong> <span style={{ color: 'var(--tx-main)', fontWeight: 700 }}>{data.profile.batch} Batch</span> {data.profile.is_batch_overridden && <span style={{ color: '#D97706', fontWeight: 700 }}>(Overridden)</span>}</div>
+                            <div>
+                                <strong>Batch (from USN):</strong>{' '}
+                                <span style={{ color: 'var(--tx-main)', fontWeight: 800 }}>{data.profile.batch} Batch</span>
+                            </div>
+                            <div style={{ marginTop: '6px', lineHeight: 1.5 }}>
+                                The two digits after the college code in{' '}
+                                <code style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--tx-main)' }}>{data.profile.usn}</code>{' '}
+                                are the batch, whatever branch code follows them — so this cannot be reassigned here.
+                                Correct the USN if the batch is wrong.
+                            </div>
                         </div>
 
                         <form onSubmit={handleSaveBatch} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: 'var(--tx-main)' }}>
-                                    Assigned Academic Cohort Batch *
-                                </label>
-                                <Select
-                                    value={batchForm.year}
-                                    onChange={e => setBatchForm({ ...batchForm, year: e.target.value })}
-                                    options={[
-                                        { value: '2025', label: '2025 Batch (25)' },
-                                        { value: '2024', label: '2024 Batch (24) — Year-back / New intake' },
-                                        { value: '2023', label: '2023 Batch (23) — Default Regular' },
-                                        { value: '2022', label: '2022 Batch (22)' },
-                                        { value: '2021', label: '2021 Batch (21)' },
-                                    ]}
-                                />
-                            </div>
-
                             <div>
                                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: 'var(--tx-main)' }}>
                                     Current Semester
@@ -687,8 +679,8 @@ function StudentRecordContent() {
                             </div>
 
                             <Input
-                                label="Reason for Batch Reassignment"
-                                placeholder="e.g. Year Back in 1st/2nd Semester, Admission transfer, etc."
+                                label="Reason for the standing change"
+                                placeholder="e.g. Year back in semester 3, re-admission, detained"
                                 value={batchForm.reason}
                                 onChange={e => setBatchForm({ ...batchForm, reason: e.target.value })}
                             />
