@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { readTable, SELECTS } from '@/lib/table-cache';
 import { requireAdmin } from '../../../../lib/server-session';
 import { fetchCatalogIndex, resolveSubjectCredit } from '../../../../lib/subjectCreditResolver';
 import { isAuditCourse, normalizeBranch, calculateAcademicRecord } from '../../../../lib/vtuAcademicEngine';
@@ -37,11 +38,14 @@ async function fetchAllPaged(table, select, filterFn) {
 }
 
 async function runAudit() {
-    const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
-    const students = await fetchAllPaged('students', 'id, usn, branch, scheme');
+    // Shares the process-wide cached reads instead of walking both tables one page at
+    // a time on every call — subject_marks alone is twenty sequential round trips.
+    const [catalogIndex, students, marks] = await Promise.all([
+        fetchCatalogIndex(supabaseAdmin),
+        readTable(supabaseAdmin, 'students', SELECTS.students, { orderCol: 'usn' }),
+        readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks)
+    ]);
     const studentByUsn = new Map(students.map(s => [s.usn.toUpperCase(), s]));
-
-    const marks = await fetchAllPaged('subject_marks', 'id, usn, semester, subject_code, credits');
 
     const mismatches = [];
     const unresolved = [];

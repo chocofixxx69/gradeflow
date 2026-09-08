@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../lib/server-session';
-import { getAdminClient } from '../../../../lib/analytics-data';
+import { getAdminClient, invalidateAnalyticsCache } from '../../../../lib/analytics-data';
 
 const supabaseAdmin = getAdminClient();
 
@@ -15,6 +15,11 @@ export async function POST(req) {
 
         const body = await req.json().catch(() => ({}));
         const { action, usn, usns, reason } = body || {};
+
+        // Suspension, reinstatement and the bulk variants all change what the
+        // analytics warehouse reports, so the cached copy is dropped up front rather
+        // than at each of the eight success returns below.
+        invalidateAnalyticsCache();
 
         if (!action) {
             return NextResponse.json({ error: 'Action parameter is required.' }, { status: 400 });

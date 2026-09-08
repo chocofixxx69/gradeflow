@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../lib/server-session';
-import { getAdminClient } from '../../../../lib/analytics-data';
+import { getAdminClient, invalidateAnalyticsCache } from '../../../../lib/analytics-data';
 
 const supabaseAdmin = getAdminClient();
 
@@ -56,11 +56,18 @@ export async function GET(req) {
         });
     }
 
+    const isTerminal = ['finished', 'no_result', 'error'].includes(job.status);
+
+    // The scraper is a separate worker writing straight to Supabase, so this process
+    // never observes the write itself. A job reaching a terminal state is the signal
+    // that new marks may have landed, and it is the moment to drop the cached
+    // analytics warehouse so the next report is built from the new rows.
+    if (job.status === 'finished') {
+        invalidateAnalyticsCache();
+    }
+
     return NextResponse.json({
         success: true,
-        data: {
-            ...job,
-            isTerminal: ['finished', 'no_result', 'error'].includes(job.status),
-        },
+        data: { ...job, isTerminal },
     });
 }
