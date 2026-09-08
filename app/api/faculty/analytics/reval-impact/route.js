@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { readTable, SELECTS } from '@/lib/table-cache';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
@@ -114,6 +115,10 @@ export async function GET(req) {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
+        // searchParams was read without ever being derived from the request, so every
+        // call to this route threw ReferenceError before it reached the database.
+        const { searchParams } = new URL(req.url);
+
         const rawBranch = searchParams.get('branch') || 'ALL';
         const branch = rawBranch === 'ALL' ? 'ALL' : (canonicalBranchCode(rawBranch) || rawBranch.toUpperCase().trim());
         const semParam = (searchParams.get('semester') || 'ALL').toUpperCase().trim();
@@ -130,8 +135,8 @@ export async function GET(req) {
             { data: rawClassStudents }
         ] = await Promise.all([
             fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' }),
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch'),
-            supabaseAdmin.from('class_students').select('class_id, usn')
+            readTable(supabaseAdmin, 'classes', SELECTS.classes, { orderCol: 'created_at', ascending: false }).then(data => ({ data })),
+            readTable(supabaseAdmin, 'class_students', SELECTS.class_students).then(data => ({ data }))
         ]);
 
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
