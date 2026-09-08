@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA, invalidateAnalyticsCache } from '@/lib/analytics-data';
-import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { getAdminClient, invalidateAnalyticsCache } from '@/lib/analytics-data';
 import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 import { readTable, SELECTS } from '@/lib/table-cache';
+import { getStudentRecord, invalidateStudentRecords } from '@/lib/student-record';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 
 export const dynamic = 'force-dynamic';
@@ -138,135 +137,91 @@ export async function GET(req, { params }) {
         ]);
 
         const marks = rawMarks || [];
-        const remarks = rawRemarks || [];
 
-        // Build semester-inference map from catalog
-        const codeToSemMap = buildCodeToSemMap(catalogRows, studentBranch);
+        // ── THE canonical academic record ─────────────────────────────────────
+        // Every number on this page comes from lib/student-record.js — the same
+        // record the faculty dashboard and the students directory read. This route
+        // used to compute its own: it averaged academic_remarks at a flat 20 credits
+        // per semester, which for 2AB23CS006 produced a CGPA of 7.56 from a stale
+        // semester-6 SGPA of 7.56 while this very page's mark sheet showed 6.72 for
+        // that semester. Nothing here recomputes anything any more.
+        const record = await getStudentRecord(supabaseAdmin, cleanUsn);
+        if (!record) return fail('Student not found.', 'STUDENT_NOT_FOUND', 404);
 
-        // 3. Compute Backlogs
-        const backlogInfo = computeBacklogs(marks);
-        const totalBacklogCredits = backlogInfo.failedSubjects.reduce((sum, sub) => sum + (sub.credits || 3), 0);
+        // Exam round per mark, for the "Exam Session" column — provenance the engine
+        // does not carry because it is not part of the academic calculation.
+        const examByMarkId = new Map();
+        for (const m of marks) if (m.id) examByMarkId.set(m.id, m.results?.exam_name || null);
 
-        // 4. Group marks by semester & compute SGPA per semester
+        // ── Mark sheets, straight off the engine's normalised subjects ────────
         const semesterMarks = {};
-        const semStats = {};
         const gradeCounts = { O: 0, 'A+': 0, A: 0, 'B+': 0, B: 0, C: 0, P: 0, F: 0 };
-        let totalCreditsEarned = 0;
-        let subjectsClearedCount = 0;
-        let subjectsFailedCount = 0;
-        let bestSgpa = 0;
         let semesterInferredCount = 0;
 
-        marks.forEach(m => {
-            const code = (m.subject_code || '').toUpperCase().trim();
-
-            // ── CORE FIX: infer semester from subject_catalog when NULL/0 ──
-            const storedSem = Number(m.semester) || 0;
-            const inferredSem = storedSem > 0 ? null : inferSemester(code, codeToSemMap);
-            const sem = storedSem > 0 ? storedSem : (inferredSem || 1);
-            const semesterWasInferred = storedSem === 0 && inferredSem !== null;
-            if (semesterWasInferred) semesterInferredCount++;
-
-            if (!semesterMarks[sem]) semesterMarks[sem] = [];
-
-            const isFail = isFailedSubject(m);
-            const cr = resolveSubjectCredits(m);
-            const score = Number(m.total) || 0;
-            const gp = scoreToGradePoint(m.total, m.grade);
-            const g = (m.grade || '').toUpperCase().trim();
-
-            if (isFail) {
-                subjectsFailedCount++;
-                gradeCounts.F++;
-            } else {
-                subjectsClearedCount++;
-                totalCreditsEarned += cr;
-                if (gradeCounts[g] !== undefined) {
+        for (const [semKey, subjects] of Object.entries(record.marksBySemester || {})) {
+            const sem = Number(semKey);
+            semesterMarks[sem] = (subjects || []).map(sub => {
+                const g = (sub.rawGrade || sub.grade || '').toUpperCase().trim();
+                if (sub.isFailed) {
+                    gradeCounts.F++;
+                } else if (gradeCounts[g] !== undefined) {
                     gradeCounts[g]++;
                 } else if (g === 'S') {
                     gradeCounts.O++;
                 } else {
                     gradeCounts.P++;
                 }
-            }
 
-            semesterMarks[sem].push({
-                id: m.id,
-                subject_code: code,
-                subject_name: m.subject_name || code,
-                credits: cr,
-                internal: m.internal,
-                external: m.external,
-                total: m.total,
-                grade: m.grade || (isFail ? 'F' : 'P'),
-                grade_point: gp,
-                is_fail: isFail,
-                result: isFail ? 'FAIL' : 'PASS',
-                exam_session: m.results?.exam_name || 'Regular',
-                semester_inferred: semesterWasInferred   // data-quality flag for UI
+                return {
+                    id: sub.id,
+                    subject_code: sub.subjectCode || sub.subject_code,
+                    subject_name: sub.subjectName || sub.subject_name,
+                    credits: sub.credits,
+                    credit_source: sub.creditSource,
+                    internal: sub.internal ?? sub.internalMarks,
+                    external: sub.external ?? sub.seeMarks,
+                    total: sub.total ?? sub.totalMarks,
+                    grade: sub.grade,
+                    grade_point: sub.gradePoint,
+                    is_fail: sub.isFailed,
+                    is_audit: sub.isAudit,
+                    // A subject the catalog cannot price is excluded from the SGPA
+                    // rather than guessed at; the page can say so.
+                    credit_unresolved: Boolean(sub.isUnresolved),
+                    result: sub.isFailed ? 'FAIL' : 'PASS',
+                    exam_session: examByMarkId.get(sub.id) || 'Regular'
+                };
             });
-        });
+        }
 
-        // Compute SGPA for each semester
+        // ── Per-semester stats and the SGPA trend, from the record ────────────
+        const sortedSemesters = Object.keys(record.semStats).map(Number).sort((a, b) => a - b);
+        const semStats = {};
         const trend = [];
-        const sortedSemesters = Object.keys(semesterMarks).map(Number).sort((a, b) => a - b);
-
-        sortedSemesters.forEach(sem => {
-            const sList = semesterMarks[sem];
-            let semRegCr = 0;
-            let semEarnedCr = 0;
-            let semCrP = 0;
-            let semBacklogs = 0;
-
-            sList.forEach(item => {
-                semRegCr += item.credits;
-                if (item.is_fail) {
-                    semBacklogs++;
-                } else {
-                    semEarnedCr += item.credits;
-                    semCrP += (item.credits * item.grade_point);
-                }
-            });
-
-            const storedRemark = remarks.find(r => Number(r.semester) === sem);
-            let semSgpa = semRegCr > 0 ? Number((semCrP / semRegCr).toFixed(2)) : (storedRemark?.sgpa ? Number(storedRemark.sgpa) : 0);
-
-            if (semSgpa > bestSgpa) bestSgpa = semSgpa;
-
+        for (const sem of sortedSemesters) {
+            const st = record.semStats[sem];
+            const pv = record.provenance[sem] || {};
             semStats[sem] = {
-                sgpa: semSgpa,
-                earnedCredits: semEarnedCr,
-                registeredCredits: semRegCr,
-                backlogs: semBacklogs,
-                subjectCount: sList.length
+                sgpa: st.sgpa,
+                earnedCredits: st.earnedCredits,
+                registeredCredits: st.totalCredits,
+                gradePoints: st.gradePoints,
+                backlogs: st.backlogs,
+                subjectCount: st.subjectCount,
+                examName: pv.examName || null,
+                examKind: pv.examKind || null,
+                attemptCount: pv.attemptCount || 0,
+                hasRevaluation: Boolean(pv.hasRevaluation),
+                publishedSgpa: pv.publishedSgpa ?? null,
+                sgpaDelta: pv.sgpaDelta ?? 0
             };
-
             trend.push({
                 semester: `Sem ${sem}`,
                 semNum: sem,
-                sgpa: semSgpa,
-                credits: semEarnedCr,
-                backlogs: semBacklogs
+                sgpa: st.sgpa,
+                credits: st.earnedCredits,
+                backlogs: st.backlogs
             });
-        });
-
-        // Compute CGPA
-        let cgpa = null;
-        if (remarks.length > 0) {
-            const creditsMap = {};
-            remarks.forEach(r => creditsMap[r.semester] = 20);
-            cgpa = weightedCGPA(remarks, creditsMap);
-        } else if (sortedSemesters.length > 0) {
-            let totalCr = 0;
-            let totalWeighted = 0;
-            sortedSemesters.forEach(s => {
-                const stat = semStats[s];
-                if (stat && stat.sgpa > 0) {
-                    totalCr += (stat.registeredCredits || 20);
-                    totalWeighted += (stat.sgpa * (stat.registeredCredits || 20));
-                }
-            });
-            if (totalCr > 0) cgpa = Number((totalWeighted / totalCr).toFixed(2));
         }
 
         const gradeDistribution = Object.entries(gradeCounts).map(([grade, count]) => ({
@@ -303,15 +258,19 @@ export async function GET(req, { params }) {
                 guardian_relation: student?.guardian_relation || 'Parent'
             },
             kpis: {
-                cgpa: cgpa || 0,
-                total_backlogs: backlogInfo.totalBacklogs,
-                backlog_credits: totalBacklogCredits,
-                semesters_tracked: sortedSemesters.length,
-                credits_earned: totalCreditsEarned,
-                subjects_cleared: subjectsClearedCount,
-                subjects_failed: subjectsFailedCount,
-                best_sgpa: bestSgpa,
-                semester_inferred_count: semesterInferredCount  // diagnostic: how many subjects had semester inferred
+                cgpa: record.cgpa || 0,
+                cgpa_source: record.cgpaSource,
+                total_backlogs: record.totalActiveBacklogs,
+                backlog_credits: record.backlogCredits,
+                semesters_tracked: record.semestersTracked,
+                credits_earned: record.totalEarnedCredits,
+                credits_registered: record.totalRegisteredCredits,
+                subjects_cleared: record.subjectsCleared,
+                subjects_failed: record.subjectsFailed,
+                best_sgpa: record.bestSgpa,
+                stale_semesters: record.staleSemesters,
+                unresolved_credit_subjects: record.unresolvedSubjects.length,
+                semester_inferred_count: semesterInferredCount
             },
             trend,
             gradeDistribution,
@@ -407,6 +366,7 @@ export async function PUT(req, { params }) {
         // Every analytics page reads a cached copy of the warehouse; a student
         // mutation has to drop it or the change stays invisible for a minute.
         invalidateAnalyticsCache();
+        invalidateStudentRecords();
 
         return ok({
             message: 'Student record updated successfully.',

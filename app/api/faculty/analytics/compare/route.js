@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA } from '@/lib/analytics-data';
+import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
+import { loadStudentRecords } from '@/lib/student-record';
 import { getCached, setCached } from '@/lib/server-cache';
 import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
@@ -82,6 +83,9 @@ export async function GET(req) {
         const studentSemSgpas = new Map(); // usn -> Map(sem -> sgpa)
         const allSubjectCodes = new Map(); // code -> { code, name, credits }
 
+        // One shared read of the canonical records for every student in the compare set.
+        const canonicalRecords = await loadStudentRecords(supabaseAdmin);
+
         usnList.forEach(usn => {
             const studentObj = (rawStudents || []).find(s => s.usn === usn) || { usn, name: usn, branch: '—', semester: 1 };
             const uMarks = marksByUsn.get(usn) || [];
@@ -145,7 +149,12 @@ export async function GET(req) {
 
             studentSemSgpas.set(usn, semSgpas);
 
-            const cgpa = totalCredits > 0 ? Number((totalPoints / totalCredits).toFixed(2)) : null;
+            // CGPA comes from the canonical record. The local roll-up above divides
+            // grade points by EARNED credits, which for 2AB23CS006 gives 7.64 where
+            // VTU's formula over registered credits gives 7.45 - a fourth different
+            // answer for the same student. It is kept only for totalCredits below.
+            const canonical = canonicalRecords.get(usn) || null;
+            const cgpa = canonical?.cgpa ?? null;
             const appeared = uMarks.length;
             const failed = backlogInfo.totalBacklogs;
             const passed = Math.max(0, appeared - failed);

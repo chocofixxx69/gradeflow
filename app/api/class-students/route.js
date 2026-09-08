@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchByChunks } from '../../../lib/supabase-utils';
 import { calculateAcademicRecord, normalizeBranch } from '../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
-import { weightedCGPA, getAdminClient } from '../../../lib/analytics-data';
+import { getAdminClient } from '../../../lib/analytics-data';
 import { requireStaff } from '../../../lib/server-session';
 import { generateFormulaPassword, hashStudentPassword } from '../../../lib/student-auth';
 
@@ -105,17 +105,14 @@ export async function GET(req) {
             const semester_data = {};
             let cgpa = null;
             if (record) {
-                const remarks = [];
-                const creditsBySem = {};
                 Object.entries(record.semStats).forEach(([sem, s]) => {
                     semester_data[sem] = { sgpa: s.sgpa, backlogs: s.backlogs, total_credits: s.totalCredits };
-                    remarks.push({ semester: Number(sem), sgpa: s.sgpa });
-                    creditsBySem[sem] = s.totalCredits;
                 });
-                // Existing, unmodified CGPA formula (lib/analytics-data.js) — fed
-                // live-computed per-semester SGPA/credits instead of the stale
-                // academic_remarks/results caches.
-                cgpa = weightedCGPA(remarks, creditsBySem);
+                // The engine's own CGPA, taken directly. Re-deriving it by weighting
+                // the per-semester SGPAs is arithmetically the same thing but rounds
+                // each SGPA to two decimals first, so it could drift a hundredth away
+                // from the figure every other surface shows.
+                cgpa = record.cgpa;
             }
 
             return {

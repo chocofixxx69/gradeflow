@@ -1,17 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
+import { getAdminClient } from '@/lib/analytics-data';
 import { readTable, invalidateTableCache, SELECTS } from '@/lib/table-cache';
-import { fetchCatalogIndex, resolveSubjectCredit } from '@/lib/subjectCreditResolver';
-import { isAuditCourse } from '@/lib/vtuAcademicEngine';
-import {
-    configureBranchRegistry,
-    buildStudentIdentity,
-    canonicalBranch,
-    branchLabelFor,
-    matchesBatchYear
-} from '@/lib/vtu-identity';
-import { buildSemesterIndex, cumulativeGPA } from '@/lib/vtu-results';
+import { canonicalBranch, branchLabelFor } from '@/lib/vtu-identity';
+import { loadStudentRecords, toSummary } from '@/lib/student-record';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,65 +50,21 @@ function loadDataset(supabaseAdmin, { fresh = false } = {}) {
     if (fresh) invalidateTableCache();
 
     const promise = Promise.all([
-        readTable(supabaseAdmin, 'students', SELECTS.students, { orderCol: 'usn' }),
+        // THE canonical academic record for every student. CGPA, backlogs, credits
+        // and per-semester SGPA all come from here and nowhere else — see
+        // lib/student-record.js for why the derived tables are not trusted.
+        loadStudentRecords(supabaseAdmin, { fresh }),
         readTable(supabaseAdmin, 'classes', SELECTS.classes, { orderCol: 'created_at', ascending: false }),
-        readTable(supabaseAdmin, 'class_students', SELECTS.class_students),
-        readTable(supabaseAdmin, 'results', SELECTS.results),
-        readTable(supabaseAdmin, 'academic_remarks', SELECTS.academic_remarks),
-        readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks),
-        supabaseAdmin.from('branches').select('code, label, usn_codes, aliases, sort_order, is_active').then(r => r.data || []),
-        fetchCatalogIndex(supabaseAdmin).catch(() => null)
-    ]).then(([students, classes, classStudents, results, remarks, marks, branches, catalogIndex]) => {
-        // The branches table is the department authority — seed the resolver from it
-        // before a single branch code is resolved.
-        configureBranchRegistry(branches);
-
-        const marksByUsn = new Map();
-        for (const m of marks) {
-            const u = String(m.usn || '').toUpperCase().trim();
-            if (!marksByUsn.has(u)) marksByUsn.set(u, []);
-            marksByUsn.get(u).push(m);
-        }
-
-        // ONE resolution of the multi-attempt results log, shared by every request.
-        const semesterIndex = buildSemesterIndex({ results, remarks, marks });
-
-        return { students, classes, classStudents, marksByUsn, semesterIndex, branches, catalogIndex };
-    }).catch(err => {
-        // Never leave a rejected promise cached — the next request must retry.
-        datasetCache = { at: 0, promise: null };
-        throw err;
-    });
+        readTable(supabaseAdmin, 'class_students', SELECTS.class_students)
+    ]).then(([studentRecords, classes, classStudents]) => ({ studentRecords, classes, classStudents }))
+        .catch(err => {
+            // Never leave a rejected promise cached — the next request must retry.
+            datasetCache = { at: 0, promise: null };
+            throw err;
+        });
 
     datasetCache = { at: Date.now(), promise };
     return promise;
-}
-
-/**
- * Credits for one mark, resolved through the catalog rather than read off the row.
- * subject_marks.credits is null or zero on 1,846 live rows across 527 students, so
- * trusting the column silently weights real subjects at zero.
- */
-function creditsFor(mark, identity, catalogIndex) {
-    const code = String(mark.subject_code || '').toUpperCase().trim();
-    if (!code) return { credits: 0, source: 'no-code' };
-    if (isAuditCourse(code)) return { credits: 0, source: 'audit' };
-
-    if (catalogIndex) {
-        const r = resolveSubjectCredit(catalogIndex, {
-            scheme: identity.scheme,
-            branch: identity.branch.code,
-            semester: mark.semester,
-            subject_code: code
-        });
-        if (r.source !== 'unresolved' && Number(r.credits) > 0) {
-            return { credits: Number(r.credits), source: r.source };
-        }
-    }
-
-    const stored = Number(mark.credits);
-    if (Number.isFinite(stored) && stored > 0) return { credits: stored, source: 'stored' };
-    return { credits: 0, source: 'unresolved' };
 }
 
 export async function GET(req) {
@@ -143,14 +91,8 @@ export async function GET(req) {
         const backlogsFilter = searchParams.get('backlogsFilter') || 'all'; // 'all' | 'clear' | 'backlogs'
         const entryFilter = (searchParams.get('entry') || 'all').trim(); // 'all' | 'regular' | 'lateral'
 
-        const {
-            students: rawStudents,
-            classes: rawClasses,
-            classStudents: rawClassStudents,
-            marksByUsn,
-            semesterIndex,
-            catalogIndex
-        } = await loadDataset(getAdminClient(), { fresh: searchParams.get('fresh') === '1' });
+        const { studentRecords, classes: rawClasses, classStudents: rawClassStudents } =
+            await loadDataset(getAdminClient(), { fresh: searchParams.get('fresh') === '1' });
 
         // ── Class membership → section ────────────────────────────────────────
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
@@ -172,30 +114,30 @@ export async function GET(req) {
             }
         });
 
-        // ── Normalise every student into one filterable record ────────────────
-        const records = (rawStudents || []).map(s => {
-            const key = String(s.usn || '').toUpperCase().trim();
-            const perSemester = semesterIndex.get(key) || new Map();
-            const recordedSemesters = [...perSemester.keys()].sort((a, b) => a - b);
-            const identity = buildStudentIdentity(s, recordedSemesters);
-            const classInfo = usnToClassMap.get(key) || null;
-
+        // ── One filterable row per student, wrapped around the canonical record ──
+        const records = [...studentRecords.values()].map(record => {
+            const classInfo = usnToClassMap.get(record.usn) || null;
             return {
-                raw: s,
-                usn: key,
-                identity,
-                perSemester,
-                recordedSemesters,
+                record,
+                usn: record.usn,
+                identity: record.identity,
+                recordedSemesters: record.recordedSemesters,
                 section: classInfo?.section || null,
                 classInfo,
-                searchBlob: `${s.usn || ''} ${s.name || ''} ${s.email || ''}`.toLowerCase()
+                searchBlob: `${record.usn} ${record.name} ${record.raw?.email || ''}`.toLowerCase()
             };
-        });
+        }).sort((a, b) => a.usn.localeCompare(b.usn));
+
+        // "23", "2023" and "23 Batch (2023)" all mean the same cohort.
+        const batchDigits = String(batch).replace(/[^0-9]/g, '');
+        const batchTwoDigit = batchDigits ? batchDigits.slice(-2) : '';
 
         // ── One predicate per filter, so facets can re-run every filter but one ──
         const predicates = {
             branch: r => !branch || r.identity.branch.code === branch,
-            batch: r => !batch || matchesBatchYear(r.raw, batch),
+            // Compared against the batch already resolved on the identity, so the
+            // filter and the facet counts can never read the USN differently.
+            batch: r => !batchTwoDigit || r.identity.batch.twoDigit === batchTwoDigit,
             semester: r => {
                 if (!semester) return true;
                 if (semesterMode === 'current') return r.identity.standing.current === semester;
@@ -312,22 +254,14 @@ export async function GET(req) {
                 .sort((a, b) => b.countIfCleared - a.countIfCleared)
             : [];
 
-        // ── Enrich only what is shown ─────────────────────────────────────────
+        // ── Project the canonical record onto a table row ─────────────────────
+        // Nothing is recomputed here. Every number below already exists on the
+        // student's canonical record (lib/student-record.js), so this row and the
+        // detail page and the faculty dashboard cannot disagree.
         const enrichList = (targetRecords) => targetRecords.map(r => {
-            const s = r.raw;
+            const rec = r.record;
             const id = r.identity;
-            const uMarks = marksByUsn.get(r.usn) || [];
-
-            const backlogInfo = computeBacklogs(uMarks);
-            let backlogCredits = 0;
-            let unresolvedCredits = 0;
-            for (const fb of backlogInfo.failedSubjects) {
-                const c = creditsFor({ subject_code: fb.subject_code, semester: fb.semester, credits: fb.credits }, id, catalogIndex);
-                backlogCredits += c.credits;
-                if (c.source === 'unresolved') unresolvedCredits += 1;
-            }
-
-            const { cgpa, credits: gpaCredits, semesters: gradedSemesters } = cumulativeGPA(r.perSemester);
+            const s = rec.raw;
 
             // Every quality signal that applies to THIS student, so the row can say
             // why a number might be off instead of quietly presenting it as solid.
@@ -337,62 +271,45 @@ export async function GET(req) {
             if (id.standing.missingSemesters.length) flags.push({ code: 'SEMESTER_GAP', label: `No records for semester ${id.standing.missingSemesters.join(', ')}` });
             if (!id.batch.agreesWithColumn) flags.push({ code: 'YEAR_MISMATCH', label: `students.year is ${id.batch.declaredYear}, USN says ${id.batch.year}` });
             if (!id.lateral.flagAgrees) flags.push({ code: 'LATERAL_FLAG', label: id.lateral.isLateral ? 'Lateral entry not flagged on the record' : 'Flagged lateral but has first-year records' });
-            if (unresolvedCredits) flags.push({ code: 'CREDIT_UNRESOLVED', label: `${unresolvedCredits} backlog subject(s) with no catalog credit` });
-            const contested = [...r.perSemester.values()].filter(e => e.contested);
-            if (contested.length) flags.push({ code: 'MULTI_ATTEMPT', label: `${contested.length} semester(s) published across several exam rounds` });
-            const conflicts = [...r.perSemester.values()].filter(e => e.sgpaConflict > 0.5);
-            if (conflicts.length) flags.push({ code: 'SGPA_CONFLICT', label: `${conflicts.length} semester(s) where results and remarks disagree` });
+            if (rec.hasUnresolvedCredits) flags.push({ code: 'CREDIT_UNRESOLVED', label: `${rec.unresolvedSubjects.length} subject(s) with no catalog credit, excluded from the CGPA` });
+            const multiRound = Object.values(rec.provenance).filter(p => p.attemptCount > 1);
+            if (multiRound.length) flags.push({ code: 'MULTI_ATTEMPT', label: `${multiRound.length} semester(s) published across several exam rounds` });
+            if (rec.staleSemesters) flags.push({ code: 'SGPA_CONFLICT', label: `${rec.staleSemesters} semester(s) where the published SGPA is stale against the marks` });
 
             let semesterView = null;
             if (semester) {
-                const entry = r.perSemester.get(semester) || null;
-                const semMarks = uMarks.filter(m => Number(m.semester) === semester);
-                const semBacklogs = entry?.backlogCount ?? (semMarks.length ? computeBacklogs(semMarks).totalBacklogs : null);
+                const st = rec.semStats[semester] || null;
+                const pv = rec.provenance[semester] || null;
                 semesterView = {
                     semester,
-                    hasRecord: Boolean(entry) || semMarks.length > 0,
-                    sgpa: Number.isFinite(entry?.sgpa) ? entry.sgpa : null,
-                    sgpaSource: entry?.sgpaSource || null,
-                    credits: entry?.credits ?? null,
-                    backlogs: semBacklogs,
-                    subjectCount: semMarks.length,
-                    examName: entry?.examName || null,
-                    examKind: entry?.examKind || null,
-                    attemptCount: entry?.attemptCount || 0,
-                    hasRevaluation: Boolean(entry?.hasRevaluation)
+                    hasRecord: Boolean(st),
+                    sgpa: st ? st.sgpa : null,
+                    sgpaSource: st ? 'subject_marks' : null,
+                    credits: st ? st.totalCredits : null,
+                    earnedCredits: st ? st.earnedCredits : null,
+                    backlogs: st ? st.backlogs : null,
+                    subjectCount: st ? st.subjectCount : 0,
+                    examName: pv?.examName || null,
+                    examKind: pv?.examKind || null,
+                    attemptCount: pv?.attemptCount || 0,
+                    hasRevaluation: Boolean(pv?.hasRevaluation),
+                    publishedSgpa: pv?.publishedSgpa ?? null,
+                    sgpaDelta: pv?.sgpaDelta ?? 0
                 };
             }
 
             return {
-                id: s.id,
-                usn: r.usn,
-                name: id.name,
-                branch: id.branch.code || '—',
-                branchLabel: id.branch.label,
+                ...toSummary(rec),
+                id: s?.id || null,
                 branchSource: id.branch.source,
-                semester: id.standing.current || 1,
-                declaredSemester: id.standing.declared,
-                recordedSemesters: r.recordedSemesters,
-                semesterDrift: id.standing.drift,
-                batch: id.batch.year,
-                batchLabel: id.batch.label,
-                year: s.year,
-                scheme: id.scheme,
-                email: s.email || '—',
-                phone: s.phone || '—',
-                is_inactive: id.isInactive,
+                year: s?.year ?? null,
+                email: s?.email || '—',
+                phone: s?.phone || '—',
                 is_suspended: id.isInactive,
-                lateral_entry: id.lateral.isLateral,
-                lateralConfidence: id.lateral.confidence,
                 section: r.section || null,
                 className: r.classInfo?.className || null,
                 classId: r.classInfo?.classId || null,
-                cgpa,
-                cgpaCredits: gpaCredits,
-                gradedSemesters,
-                total_backlogs: backlogInfo.totalBacklogs,
-                backlog_credits: backlogCredits,
-                failedSubjects: backlogInfo.failedSubjects.map(f => f.subject_code),
+                cgpaSource: rec.cgpaSource,
                 flags,
                 semesterView
             };
@@ -427,8 +344,8 @@ export async function GET(req) {
             if (id.standing.missingSemesters.length) codes.push('SEMESTER_GAP');
             if (!id.batch.agreesWithColumn) codes.push('YEAR_MISMATCH');
             if (!id.lateral.flagAgrees) codes.push('LATERAL_FLAG');
-            if ([...r.perSemester.values()].some(e => e.sgpaConflict > 0.5)) codes.push('SGPA_CONFLICT');
-            if ([...r.perSemester.values()].some(e => e.contested)) codes.push('MULTI_ATTEMPT');
+            if (r.record.staleSemesters) codes.push('SGPA_CONFLICT');
+            if (Object.values(r.record.provenance).some(p => p.attemptCount > 1)) codes.push('MULTI_ATTEMPT');
             if (codes.length) qualitySummary.flagged += 1;
             for (const c of codes) qualitySummary.byCode[c] = (qualitySummary.byCode[c] || 0) + 1;
         }
@@ -461,7 +378,7 @@ export async function GET(req) {
                 sections: facets.sections.map(o => o.value).filter(v => v !== 'UNASSIGNED'),
                 totalStudents: records.length,
                 matchedBeforeBacklogFilter: matched.length,
-                creditsResolvedFromCatalog: Boolean(catalogIndex)
+                cgpaSource: 'subject_marks + subject_catalog (vtuAcademicEngine)'
             }
         });
     } catch (err) {

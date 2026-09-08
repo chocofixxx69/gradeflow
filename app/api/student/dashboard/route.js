@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStudent } from '../../../../lib/server-session';
-import { weightedCGPA, computeBacklogs, getAdminClient } from '../../../../lib/analytics-data';
+import { computeBacklogs, getAdminClient } from '../../../../lib/analytics-data';
+import { getStudentRecord } from '../../../../lib/student-record';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
 
@@ -113,15 +114,13 @@ export async function GET(req) {
             });
         }
 
-        // Calculate credits per semester
-        const creditsMap = {};
-        (resultRows || []).forEach(r => {
-            const prev = creditsMap[r.semester] || 0;
-            creditsMap[r.semester] = Math.max(prev, r.total_credits || 0);
-        });
-
-        // CGPA computation
-        const cgpa = weightedCGPA(remarks || [], creditsMap);
+        // CGPA comes from the canonical record, never from academic_remarks weighted
+        // by results.total_credits. Both of those are derived tables the scraper does
+        // not keep current - for 2AB23CS006 they claimed a semester-6 SGPA of 7.56
+        // against marks that give 6.72 - so a student was shown a CGPA their own mark
+        // sheet contradicted. See lib/student-record.js.
+        const canonical = await getStudentRecord(supabaseAdmin, usn);
+        const cgpa = canonical?.cgpa ?? 0;
         const backlogsInfo = computeBacklogs(pool);
 
         // Group by semester summary
