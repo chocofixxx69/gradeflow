@@ -70,9 +70,8 @@ export function AnalyticsFiltersProvider({ children }) {
             classOpts.push({ label: cls.name || 'Unnamed Class', value: cls.id });
         });
 
-        if (sections.size === 0) {
-            ['A', 'B', 'C', 'D'].forEach(s => sections.add(s));
-        }
+        // No fabricated A-D fallback: with no classes defined there are genuinely no
+        // sections to pick, and offering four of them only produced empty results.
 
         return {
             branch: [

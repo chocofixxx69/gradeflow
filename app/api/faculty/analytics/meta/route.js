@@ -331,8 +331,10 @@ export async function GET(req) {
             return a.code.localeCompare(b.code);
         });
 
-        // Dynamically discover all active semesters present in marks, catalog, and classes
-        const semSet = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+        // Semesters that actually carry data. Seeding this with 1-8 offered eight
+        // options regardless of what the institution holds, so a filter could always
+        // be pointed at a semester with nothing behind it.
+        const semSet = new Set();
         (marksSubjects || []).forEach(m => {
             const semNum = Number(m.semester);
             if (!isNaN(semNum) && semNum > 0) semSet.add(semNum);
@@ -345,10 +347,16 @@ export async function GET(req) {
             const semNum = Number(c.semester);
             if (!isNaN(semNum) && semNum > 0) semSet.add(semNum);
         });
+        (rawStudents || []).forEach(s => {
+            const semNum = Number(s.semester);
+            if (!isNaN(semNum) && semNum > 0) semSet.add(semNum);
+        });
         const semesters = Array.from(semSet).sort((a, b) => a - b);
 
-        // Dynamically compute institutional sections from classes with standard fallbacks
-        const sectionSet = new Set(['A', 'B', 'C', 'D']);
+        // Sections come from the classes that exist. A-D used to be seeded in
+        // unconditionally, which offered sections C and D at an institution that has
+        // only A and B — every pick landed on an empty roster.
+        const sectionSet = new Set();
         (rawClasses || []).forEach(c => {
             if (c.section) sectionSet.add(String(c.section).trim().toUpperCase());
         });

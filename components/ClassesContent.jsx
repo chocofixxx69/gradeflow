@@ -835,9 +835,13 @@ export function ClassesContent({ embedded = false }) {
     const avgCgpa = withCgpa.length ? (withCgpa.reduce((s, st) => s + (st.cgpa || 0), 0) / withCgpa.length).toFixed(2) : '—';
     const classTopper = top10[0] || null;
 
+    // Batches that exist, plus a rolling window around today for classes being created
+    // ahead of an intake. The literal 2020-2026 list this replaced would have started
+    // omitting the current intake in 2027.
+    const currentYear = new Date().getFullYear();
     const availableClassBatches = Array.from(new Set([
-        ...classes.map(c => c.batch).filter(Boolean),
-        '2026', '2025', '2024', '2023', '2022', '2021', '2020'
+        ...classes.map(c => c.batch).filter(Boolean).map(String),
+        ...Array.from({ length: 8 }, (_, i) => String(currentYear + 1 - i))
     ])).sort().reverse();
 
     const availableClassSections = Array.from(new Set([

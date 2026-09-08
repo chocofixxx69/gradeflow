@@ -154,11 +154,10 @@ function RankingsAndMeritContent() {
             .map(c => (c.section || '').trim().toUpperCase())
             .filter(Boolean);
         const fromMeta = meta?.sections || [];
+        // Only sections that exist — an A-D fallback used to offer sections this
+        // institution has never created.
         const combined = new Set([...fromLeaderboard, ...fromClasses, ...fromMeta]);
-        if (combined.size === 0) {
-            ['A', 'B', 'C', 'D'].forEach(s => combined.add(s));
-        }
-        return Array.from(combined).sort();
+        return Array.from(combined).filter(Boolean).sort();
     }, [leaderboardData?.availableSections, meta?.classes, meta?.sections, branch]);
 
     useEffect(() => {
