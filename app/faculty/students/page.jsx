@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'rea
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, clearApiCache } from '@/lib/api/client';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
@@ -159,7 +159,7 @@ function StudentsDirectoryContent() {
         setIsDebouncing(false);
     };
 
-    const loadStudents = useCallback(async ({ fresh = false } = {}) => {
+    const loadStudents = useCallback(async ({ fresh = false, silent = false } = {}) => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -167,9 +167,8 @@ function StudentsDirectoryContent() {
         abortControllerRef.current = controller;
 
         const id = ++activeRequestIdRef.current;
-        setLoading(true);
+        if (!silent) setLoading(true);
         setError(null);
-
         try {
             const query = { page, limit };
             if (fresh) query.fresh = '1';
@@ -189,7 +188,7 @@ function StudentsDirectoryContent() {
                 query,
                 signal: controller.signal
             });
-            if (id !== activeRequestIdRef.current) return;
+            if (id !== activeRequestIdRef.current) return null;
 
             setStudents(res?.students || []);
             setPagination(res?.pagination || { total: 0, page: 1, limit, totalPages: 1 });
@@ -197,17 +196,65 @@ function StudentsDirectoryContent() {
             setBlockingFilters(res?.blockingFilters || []);
             setDirectoryTotal(res?.meta?.totalStudents || 0);
             setQuality(res?.quality || { flagged: 0, byCode: {} });
+            return res;
         } catch (err) {
-            if (err?.name === 'AbortError' || controller.signal.aborted) return;
-            if (id !== activeRequestIdRef.current) return;
+            if (err?.name === 'AbortError' || controller.signal.aborted) return null;
+            if (id !== activeRequestIdRef.current) return null;
             console.error('Failed to load students:', err);
             setError(err?.message || 'Failed to load the students directory.');
             setStudents([]);
             setPagination({ total: 0, page: 1, limit, totalPages: 1 });
+            return null;
         } finally {
-            if (id === activeRequestIdRef.current) setLoading(false);
+            if (id === activeRequestIdRef.current && !silent) setLoading(false);
         }
     }, [page, limit, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
+
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [refreshBanner, setRefreshBanner] = useState(null);
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        clearApiCache();
+        try {
+            const prevTotal = pagination.total || students.length;
+
+            const metaPromise = apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } })
+                .catch(e => { console.warn('Metadata refresh note:', e); return null; });
+            const dataPromise = loadStudents(true);
+
+            const [freshMeta, res] = await Promise.all([metaPromise, dataPromise]);
+
+            let newlyFoundBatches = [];
+            if (freshMeta) {
+                const prevBatches = new Set(meta?.batches || []);
+                newlyFoundBatches = (freshMeta.batches || []).filter(b => !prevBatches.has(b));
+                setMeta(freshMeta);
+            }
+
+            const newTotal = res?.pagination?.total ?? (res?.students?.length || prevTotal);
+            const diff = newTotal - prevTotal;
+
+            if (diff > 0 || newlyFoundBatches.length > 0) {
+                const parts = [];
+                if (diff > 0) parts.push(`+${diff} students`);
+                if (newlyFoundBatches.length > 0) parts.push(`Batches [${newlyFoundBatches.join(', ')}] available`);
+                setRefreshBanner({
+                    type: 'new',
+                    text: `✓ New student data detected: ${parts.join(' · ')} synced dynamically!`
+                });
+            } else {
+                setRefreshBanner({
+                    type: 'current',
+                    text: `✓ Live directory verified: All ${newTotal} student records are up to date.`
+                });
+            }
+            setTimeout(() => setRefreshBanner(null), 5000);
+        } catch (e) {
+            console.error('Refresh students error:', e);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     useEffect(() => {
         loadStudents();
@@ -376,12 +423,37 @@ function StudentsDirectoryContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={() => loadStudents({ fresh: true })} variant="primary" disabled={loading}>
-                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
-                        {loading ? 'Loading…' : 'Refresh'}
+                    <Button onClick={handleRefresh} variant="primary" disabled={loading || isRefreshing}>
+                        <span className={`material-icons-round ${(loading || isRefreshing) ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
+                        {(loading || isRefreshing) ? 'Refreshing...' : 'Refresh'}
                     </Button>
                 </div>
             </div>
+
+            {/* Dynamic Sync Banner */}
+            {refreshBanner && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: refreshBanner.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                        color: refreshBanner.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+                        border: `1px solid ${refreshBanner.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
+                    </span>
+                    {refreshBanner.text}
+                </div>
+            )}
 
             {/* Filter Toolbar — every option and count comes from the live dataset */}
             <Card style={{ marginBottom: '20px' }}>

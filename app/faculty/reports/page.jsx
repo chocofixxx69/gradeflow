@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { apiRequest } from '../../../lib/api/client';
+import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -102,10 +102,21 @@ function ReportsContent() {
         } catch { /* ignored */ }
     }, []);
 
-    const loadReportData = async () => {
-        setLoading(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [reportSyncMsg, setReportSyncMsg] = useState('');
+
+    const loadReportData = async (isManual = false) => {
+        const prevStudents = stats.uniqueStudents;
+        const prevSubjects = stats.totalSubjects;
+
+        if (isManual) {
+            setIsRefreshing(true);
+            clearApiCache();
+        } else {
+            setLoading(true);
+        }
         try {
-            const data = await apiRequest('/api/faculty/reports').catch(() => null);
+            const data = await apiRequest(`/api/faculty/reports?_t=${Date.now()}`).catch(() => null);
 
             if (data) {
                 setStats({
@@ -125,12 +136,30 @@ function ReportsContent() {
                     subjectPassRates: data.subjectPassRates || [],
                     facultyWorkload: data.facultyWorkload || [],
                 });
+
+                if (isManual) {
+                    const newStudents = data.uniqueStudents || 0;
+                    const diffStudents = newStudents - prevStudents;
+                    const newSubjects = data.totalSubjects || 0;
+                    const diffSubjects = newSubjects - prevSubjects;
+
+                    if (diffStudents > 0 || diffSubjects > 0) {
+                        const parts = [];
+                        if (diffStudents > 0) parts.push(`+${diffStudents} students`);
+                        if (diffSubjects > 0) parts.push(`+${diffSubjects} subjects`);
+                        setReportSyncMsg(`✓ New examination data detected: ${parts.join(', ')} synced dynamically!`);
+                    } else {
+                        setReportSyncMsg(`✓ Verified live: All ${newStudents} students across ${newSubjects} courses are current.`);
+                    }
+                    setTimeout(() => setReportSyncMsg(''), 5000);
+                }
             }
             setLastUpdated(new Date());
         } catch (err) {
             console.error('Failed to load report data:', err);
         } finally {
             setLoading(false);
+            setIsRefreshing(false);
         }
     };
 
@@ -304,6 +333,27 @@ function ReportsContent() {
                     <p style={{ fontSize: '14px', maxWidth: '400px', margin: '0 auto', lineHeight: 1.6 }}>
                         Add students to a class or fetch VTU results to see reporting data here. It updates automatically.
                     </p>
+                    <button
+                        onClick={() => loadReportData(true)}
+                        disabled={isRefreshing}
+                        style={{
+                            marginTop: '16px',
+                            padding: '8px 18px',
+                            background: 'var(--primary)',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '10px',
+                            fontSize: '13px',
+                            fontWeight: 700,
+                            cursor: isRefreshing ? 'wait' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}
+                    >
+                        <span className="material-icons-round" style={{ fontSize: '18px', animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
+                        {isRefreshing ? 'Refreshing...' : 'Check Again'}
+                    </button>
                 </div>
             </div>
         );
@@ -325,23 +375,35 @@ function ReportsContent() {
                 </PageHeader>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
-                        onClick={loadReportData}
+                        onClick={() => loadReportData(true)}
+                        disabled={isRefreshing || loading}
                         style={{
-                            padding: '6px 12px',
+                            padding: '6px 14px',
                             background: 'var(--surface-low)',
                             border: '1px solid var(--border)',
                             borderRadius: '10px',
                             fontSize: '12px',
                             fontWeight: 700,
                             color: 'var(--tx-main)',
-                            cursor: 'pointer',
+                            cursor: (isRefreshing || loading) ? 'wait' : 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '6px'
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
                         }}
+                        title="Refresh academic reports from database"
                     >
-                        <span className="material-icons-round" style={{ fontSize: '15px' }}>refresh</span>
-                        Refresh
+                        <span
+                            className="material-icons-round"
+                            style={{
+                                fontSize: '16px',
+                                color: 'var(--primary)',
+                                animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
+                            }}
+                        >
+                            refresh
+                        </span>
+                        {isRefreshing ? 'Refreshing...' : 'Refresh'}
                     </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'var(--surface-low)', borderRadius: '10px', fontSize: '11px', fontWeight: 700, color: 'var(--green)' }}>
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--green)', display: 'inline-block' }} />
@@ -349,6 +411,28 @@ function ReportsContent() {
                     </div>
                 </div>
             </div>
+
+            {reportSyncMsg && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: 'var(--green)',
+                        border: '1px solid var(--green)',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>check_circle</span>
+                    {reportSyncMsg}
+                </div>
+            )}
 
             {/* Top KPI Cards */}
             <div style={c.statGrid}>

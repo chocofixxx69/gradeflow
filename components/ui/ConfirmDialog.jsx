@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Foundation';
 import styles from './ConfirmDialog.module.css';
 
 export function ConfirmDialog({ confirmLabel = 'Delete', description, onCancel, onConfirm, open, title, busy = false }) {
     const cancelRef = useRef(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -15,8 +21,9 @@ export function ConfirmDialog({ confirmLabel = 'Delete', description, onCancel, 
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [open, busy, onCancel]);
 
-    if (!open) return null;
-    return (
+    if (!open || !mounted) return null;
+
+    return createPortal(
         <div className={styles.backdrop} role="presentation">
             <div className={styles.dialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-description">
                 <h2 id="confirm-dialog-title" className={styles.title}>{title}</h2>
@@ -26,6 +33,7 @@ export function ConfirmDialog({ confirmLabel = 'Delete', description, onCancel, 
                     <Button variant="danger" loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

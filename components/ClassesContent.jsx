@@ -81,7 +81,7 @@ export function ClassesContent({ embedded = false }) {
         id: '',
         name: '',
         branch: 'CS',
-        semester: 3,
+        semester: 6,
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
@@ -125,10 +125,15 @@ export function ClassesContent({ embedded = false }) {
         });
     };
 
+    const latestClassSem = useMemo(() => {
+        const validSems = (classes || []).map(c => Number(c.semester)).filter(s => !isNaN(s) && s > 0);
+        return validSems.length > 0 ? Math.max(...validSems) : 6;
+    }, [classes]);
+
     const openCreateClassModal = () => {
         setNameIsManual(false);
         const initBranch = branches[0]?.code || 'CS';
-        const initSem = 3;
+        const initSem = latestClassSem;
         const initSec = 'A';
         const initBatch = '2023';
         setNewClass({
@@ -145,9 +150,9 @@ export function ClassesContent({ embedded = false }) {
     };
 
     const [newClass, setNewClass] = useState({
-        name: 'CS - Sem 3 - (Sec A) - 2023 Batch',
+        name: 'CS - Sem 6 - (Sec A) - 2023 Batch',
         branch: 'CS',
-        semester: 3,
+        semester: 6,
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
@@ -316,14 +321,29 @@ export function ClassesContent({ embedded = false }) {
         fetchClasses();
     }, []);
 
-    const fetchClasses = async () => {
-        setLoadingClasses(true);
+    const fetchClasses = async (isManual = false) => {
+        if (!isManual) setLoadingClasses(true);
         setClassesError(null);
         try {
-            const res = await apiRequest('/api/classes', { credentials: 'include' });
+            clearApiCache();
+            const prevCount = classes.length;
+            const [res] = await Promise.all([
+                apiRequest(`/api/classes?_t=${Date.now()}`, { credentials: 'include' }),
+                fetchBranches()
+            ]);
             if (res) {
-                setClasses(res.classes || []);
+                const newClasses = res.classes || [];
+                setClasses(newClasses);
                 if (res.faculty) setFacultyList(res.faculty);
+                if (isManual) {
+                    const diff = newClasses.length - prevCount;
+                    if (diff > 0) {
+                        setMsg(`✓ New data detected: +${diff} academic class(es) synced dynamically!`);
+                    } else {
+                        setMsg(`✓ Live sync verified: All ${newClasses.length} classes are up to date.`);
+                    }
+                    setTimeout(() => setMsg(''), 4500);
+                }
             }
         } catch (err) {
             console.error('Failed to fetch classes:', err);
@@ -333,10 +353,15 @@ export function ClassesContent({ embedded = false }) {
         }
     };
 
-    const fetchClassStudents = useCallback(async (cls) => {
-        setLoadingStudents(true); setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
+    const fetchClassStudents = useCallback(async (cls, isManual = false) => {
+        setLoadingStudents(true);
+        if (!isManual) {
+            setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
+        }
         try {
-            const res = await apiRequest(`/api/class-students?class_id=${cls.id}`);
+            clearApiCache();
+            const prevCount = students.length;
+            const res = await apiRequest(`/api/class-students?class_id=${cls.id}&_t=${Date.now()}`);
             if (!res?.students) return;
             const studs = res.students || [];
             setStudents(studs);
@@ -346,11 +371,20 @@ export function ClassesContent({ embedded = false }) {
                 setAvailableSems(sems);
                 setSelectedSem(sems[sems.length - 1]);
             }
+            if (isManual) {
+                const diff = studs.length - prevCount;
+                if (diff > 0) {
+                    setMsg(`✓ New student enrollment detected: +${diff} student(s) synced dynamically!`);
+                } else {
+                    setMsg(`✓ Class roster verified: All ${studs.length} students are up to date.`);
+                }
+                setTimeout(() => setMsg(''), 4500);
+            }
         } catch (err) {
             console.error('Failed to fetch class students:', err);
             setMsg('Failed to load students for this class.');
         } finally { setLoadingStudents(false); }
-    }, []);
+    }, [students.length]);
 
     const computeToppers = (marks, studs, sem, remarks = null) => {
         const filtered = marks.filter(m => Number(m.semester) === Number(sem));
@@ -458,7 +492,7 @@ export function ClassesContent({ embedded = false }) {
             setNewClass({
                 name: '',
                 branch: 'CS',
-                semester: 3,
+                semester: latestClassSem,
                 scheme: '2022',
                 section: 'A',
                 faculty_id: 'all',
@@ -480,7 +514,7 @@ export function ClassesContent({ embedded = false }) {
             id: cls.id,
             name: cls.name || '',
             branch: cls.branch || 'CS',
-            semester: cls.semester || 3,
+            semester: cls.semester || latestClassSem || 1,
             scheme: cls.scheme || '2022',
             section: cls.section || 'A',
             faculty_id: cls.faculty_id || 'all',
@@ -973,6 +1007,24 @@ export function ClassesContent({ embedded = false }) {
                                 <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
                                     <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
                                 </button>
+                                <button
+                                    style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => fetchClassStudents(selectedClass, true)}
+                                    disabled={loadingStudents}
+                                    title="Refresh student roster for this class"
+                                >
+                                    <span
+                                        className="material-icons-round"
+                                        style={{
+                                            fontSize: '16px',
+                                            color: 'var(--primary)',
+                                            animation: loadingStudents ? 'spin 1s linear infinite' : 'none'
+                                        }}
+                                    >
+                                        refresh
+                                    </span>
+                                    {loadingStudents ? 'Refreshing...' : 'Refresh'}
+                                </button>
                                 <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginLeft: '4px' }}>{filteredStudents.length} students</div>
                             </div>
                         </div>
@@ -1147,9 +1199,29 @@ export function ClassesContent({ embedded = false }) {
                             <h1 style={S.title}>Classes & Sections</h1>
                             <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
                         </div>
-                        <button style={btn('primary')} onClick={openCreateClassModal}>
-                            <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class & Section
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...btn('secondary'), display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                onClick={() => fetchClasses(true)}
+                                disabled={loadingClasses}
+                                title="Refresh classes from database"
+                            >
+                                <span
+                                    className="material-icons-round"
+                                    style={{
+                                        fontSize: '16px',
+                                        color: 'var(--primary)',
+                                        animation: loadingClasses ? 'spin 1s linear infinite' : 'none'
+                                    }}
+                                >
+                                    refresh
+                                </span>
+                                {loadingClasses ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                            <button style={btn('primary')} onClick={openCreateClassModal}>
+                                <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class & Section
+                            </button>
+                        </div>
                     </div>
 
                     {/* Filter and Search Bar */}
@@ -1217,9 +1289,9 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--surface-low)', borderRadius: 'var(--radius-7)', border: '1px solid var(--border)' }}>
                             <span className="material-icons-round" style={{ fontSize: '40px', color: 'var(--red)', marginBottom: '12px', display: 'block' }}>error_outline</span>
                             <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '8px' }}>{classesError}</div>
-                            <button onClick={fetchClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '18px' }}>refresh</span>
-                                Retry
+                            <button onClick={fetchClasses} disabled={loadingClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px', animation: loadingClasses ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
+                                {loadingClasses ? 'Retrying...' : 'Retry'}
                             </button>
                         </div>
                     ) : loadingClasses ? (

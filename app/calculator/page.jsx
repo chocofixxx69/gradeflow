@@ -27,7 +27,7 @@ function CalculatorContent() {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [scheme, setScheme] = useState('2022');
-    const [semester, setSemester] = useState(3);
+    const [semester, setSemester] = useState(1);
     const [branch, setBranch] = useState('CSE');
     const [subjects, setSubjects] = useState([]);
     const [usn, setUsn] = useState('');
@@ -49,10 +49,15 @@ function CalculatorContent() {
             setStudentName(user.name);
             if (user.branch) setBranch(user.branch);
             if (user.scheme) setScheme(user.scheme);
-            refreshMatrix(user.branch || branch, semester, user.scheme || scheme);
+            const userSem = Number(user.semester);
+            const semToUse = (!isNaN(userSem) && userSem >= 1 && userSem <= 8) ? userSem : 1;
+            setSemester(semToUse);
+            refreshMatrix(user.branch || branch, semToUse, user.scheme || scheme);
         } else if (facSession) {
             // Faculty mode — USN is editable, no identity lock
             setLoggedInUser(null); // null = no identity lock
+            refreshMatrix(branch, semester, scheme);
+        } else {
             refreshMatrix(branch, semester, scheme);
         }
     }, []);

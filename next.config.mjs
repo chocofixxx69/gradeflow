@@ -5,6 +5,18 @@ const nextConfig = {
       bodySizeLimit: '30mb',
     },
   },
+  // This app has 3 portals (student/faculty/admin) each with dozens of routes,
+  // and it's normal to have many tabs open against the same dev server at once.
+  // The default dev buffer only keeps ~5 compiled pages warm, so extra tabs
+  // constantly evict and recompile each other's routes — under heavy concurrent
+  // load that churn has caused the dev route manifest to desync (previously-working
+  // routes returning stale 404s until a full server restart). Widening the buffer
+  // and how long an inactive page stays compiled avoids that thrashing. No effect
+  // on production builds.
+  onDemandEntries: {
+    maxInactiveAge: 60 * 60 * 1000,
+    pagesBufferLength: 20,
+  },
   async redirects() {
     return [
       { source: '/faculty/analytics/leaderboard', destination: '/faculty/analytics/merit?tab=leaderboard', permanent: false },

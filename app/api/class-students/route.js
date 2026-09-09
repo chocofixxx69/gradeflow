@@ -100,7 +100,7 @@ export async function GET(req) {
             const hasData = hasResultsMap[u] || false;
             const record = recordByUsn[u];
             const semNumbers = record ? Object.keys(record.semStats).map(Number) : [];
-            const computedSem = (semNumbers.length ? Math.max(...semNumbers) : 0) || Number(profileMap[u]?.semester) || classSem;
+            const computedSem = (semNumbers.length ? Math.max(...semNumbers) : 0) || classSem || Number(profileMap[u]?.semester) || 1;
 
             const semester_data = {};
             let cgpa = null;

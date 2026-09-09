@@ -25,21 +25,42 @@ export function AuditLogContent() {
         return () => clearTimeout(timer);
     }, [search]);
 
-    const fetchAuditData = useCallback(async () => {
+    const [refreshBanner, setRefreshBanner] = useState(null);
+
+    const fetchAuditData = useCallback(async (isManual = false) => {
         const requestId = ++activeRequestIdRef.current;
         setLoading(true);
         setError('');
+        const prevCount = logs.length;
         try {
-            const query = {};
+            if (isManual) clearApiCache();
+            const query = { _t: Date.now() };
             if (actionFilter !== 'all') query.action = actionFilter;
             if (severityFilter !== 'all') query.severity = severityFilter;
             if (debouncedSearch.trim()) query.search = debouncedSearch.trim();
 
             const res = await apiRequest('/api/admin/audit-logs', { query });
             if (requestId !== activeRequestIdRef.current) return;
-            setLogs(res?.logs || []);
+            const newLogs = res?.logs || [];
+            setLogs(newLogs);
             if (res?.diagnostics) {
                 setDiagnostics(res.diagnostics);
+            }
+
+            if (isManual) {
+                const diff = newLogs.length - prevCount;
+                if (diff > 0) {
+                    setRefreshBanner({
+                        type: 'new',
+                        text: `✓ New audit events detected: +${diff} immutable event(s) synced!`
+                    });
+                } else {
+                    setRefreshBanner({
+                        type: 'current',
+                        text: `✓ System audit trail verified: All ${newLogs.length} events are current.`
+                    });
+                }
+                setTimeout(() => setRefreshBanner(null), 4500);
             }
         } catch (err) {
             if (requestId !== activeRequestIdRef.current) return;
@@ -50,7 +71,7 @@ export function AuditLogContent() {
                 setLoading(false);
             }
         }
-    }, [actionFilter, severityFilter, debouncedSearch]);
+    }, [actionFilter, severityFilter, debouncedSearch, logs.length]);
 
     useEffect(() => {
         fetchAuditData();
@@ -187,7 +208,7 @@ export function AuditLogContent() {
                     </button>
 
                     <button
-                        onClick={fetchAuditData}
+                        onClick={() => fetchAuditData(true)}
                         disabled={loading}
                         style={{
                             padding: '9px 14px', borderRadius: '8px', border: '1px solid var(--border)',
@@ -200,6 +221,31 @@ export function AuditLogContent() {
                     </button>
                 </div>
             </div>
+
+            {/* Dynamic Sync Banner */}
+            {refreshBanner && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: refreshBanner.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                        color: refreshBanner.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+                        border: `1px solid ${refreshBanner.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '16px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
+                    </span>
+                    {refreshBanner.text}
+                </div>
+            )}
 
             {/* Success Notification */}
             {pingSuccessMsg && (

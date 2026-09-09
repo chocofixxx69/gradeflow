@@ -25,8 +25,11 @@ export const NAV_CONFIG = {
     { key: 'subjectAnalytics', label: 'Subject Analytics', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Curriculum' },
     { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Curriculum' },
     { key: 'subjects', label: 'Subjects Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Curriculum' },
-    { key: 'hallTickets', label: 'Hall Tickets', href: '/faculty/hall-tickets', icon: 'confirmation_number', group: 'Teaching & Curriculum' },
-    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/faculty/vtu-urls', icon: 'link', group: 'Teaching & Curriculum' },
+
+    // Each kept out of Teaching & Curriculum (exam-administration tasks, not
+    // teaching) and out of each other — standalone, single-item sections.
+    { key: 'hallTickets', label: 'Hall Tickets', href: '/faculty/hall-tickets', icon: 'confirmation_number', group: 'Hall Tickets' },
+    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/faculty/vtu-urls', icon: 'link', group: 'VTU Result URLs' },
 
     // Account
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
@@ -36,6 +39,8 @@ export const NAV_CONFIG = {
     { key: 'classes', label: 'Classes', href: '/admin/classes', icon: 'groups', group: 'Institution' },
     { key: 'examSessions', label: 'Exam Sessions', href: '/admin/exam-sessions', icon: 'event', group: 'Institution' },
     { key: 'facultyAssignments', label: 'Faculty Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },
+    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/admin/faculty-performance', icon: 'supervisor_account', group: 'Institution' },
+    { key: 'subjects', label: 'Subjects Catalog', href: '/admin/subjects', icon: 'library_books', group: 'Institution' },
     { key: 'vtuUrls', label: 'VTU Result URLs', href: '/admin/vtu-urls', icon: 'link', group: 'Institution' },
     { key: 'analytics', label: 'Analytics', href: '/admin/analytics', icon: 'analytics', group: 'Institution' },
     { key: 'auditLog', label: 'Audit Log', href: '/admin/audit-log', icon: 'history', group: 'Governance' },
@@ -121,6 +126,9 @@ export const ROUTE_LABELS = {
   '/admin/classes': 'Classes',
   '/admin/exam-sessions': 'Exam Sessions',
   '/admin/faculty-assignments': 'Faculty Assignments',
+  '/admin/faculty-performance': 'Teaching Performance',
+  '/admin/teaching-performance': 'Teaching Performance',
+  '/admin/subjects': 'Subjects Catalog',
   '/admin/vtu-urls': 'VTU Result URLs',
   '/admin/analytics': 'Analytics',
   '/admin/audit-log': 'Audit Log',

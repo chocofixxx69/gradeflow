@@ -78,6 +78,39 @@ export async function GET(req) {
             branch: s.branch
         }));
 
+        // Enrich with active course records from subject_marks for this semester
+        if (semester && semester !== 'all') {
+            try {
+                const { data: realMarks } = await supabaseAdmin
+                    .from('subject_marks')
+                    .select('subject_code, subject_name, credits')
+                    .eq('semester', parseInt(semester))
+                    .limit(250);
+
+                if (realMarks && realMarks.length > 0) {
+                    const existingCodes = new Set(subjects.map(s => (s.code || '').toUpperCase().trim()));
+                    realMarks.forEach(rm => {
+                        const code = (rm.subject_code || '').trim().toUpperCase();
+                        if (code && !existingCodes.has(code)) {
+                            existingCodes.add(code);
+                            subjects.push({
+                                id: `mark_${code}`,
+                                code,
+                                name: rm.subject_name || code,
+                                credits: rm.credits || 3,
+                                semester: parseInt(semester),
+                                scheme: reqScheme || '2022',
+                                branch
+                            });
+                        }
+                    });
+                    subjects.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+                }
+            } catch (e) {
+                console.warn('[GET /api/subjects] Real marks enrichment skipped:', e?.message);
+            }
+        }
+
         return NextResponse.json({ success: true, subjects, data });
     } catch (err) {
         console.error('[GET /api/subjects] Error:', err);
