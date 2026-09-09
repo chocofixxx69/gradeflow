@@ -12,6 +12,69 @@ import {
 import { apiRequest } from '../lib/api/client';
 import { filterAndRank } from '../lib/search-utils';
 
+function renderEntityChips(record) {
+    if (!record) return null;
+    const meta = record.metadata || {};
+    const chips = [];
+
+    // Subject Code(s)
+    if (meta.subject_code) {
+        chips.push({ label: meta.subject_code, icon: 'book', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.09)', border: 'rgba(37, 99, 235, 0.25)' });
+    } else if (Array.isArray(meta.subject_codes) && meta.subject_codes.length > 0) {
+        chips.push({ label: meta.subject_codes.join(', '), icon: 'book', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.09)', border: 'rgba(37, 99, 235, 0.25)' });
+    }
+
+    // Class Name / Container
+    if (meta.class_name || meta.name) {
+        chips.push({ label: meta.class_name || meta.name, icon: 'groups', color: '#0284c7', bg: 'rgba(14, 165, 233, 0.09)', border: 'rgba(14, 165, 233, 0.25)' });
+    }
+
+    // Modified Fields
+    if (meta.updates && typeof meta.updates === 'object') {
+        const keys = Object.keys(meta.updates).join(', ');
+        chips.push({ label: `Edited: ${keys}`, icon: 'edit', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.09)', border: 'rgba(234, 88, 12, 0.25)' });
+    }
+
+    // Student Count
+    if (meta.count || meta.transferred_count || meta.studentCount) {
+        const c = meta.count || meta.transferred_count || meta.studentCount;
+        chips.push({ label: `${c} Students`, icon: 'person', color: '#059669', bg: 'rgba(16, 185, 129, 0.09)', border: 'rgba(16, 185, 129, 0.25)' });
+    }
+
+    // Semester / Branch
+    if (meta.semester || meta.branch) {
+        chips.push({ label: `${meta.branch || ''} Sem ${meta.semester || ''}`.trim(), icon: 'school', color: '#7c3aed', bg: 'rgba(124, 58, 237, 0.09)', border: 'rgba(124, 58, 237, 0.25)' });
+    }
+
+    if (chips.length === 0) return null;
+
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap', margin: '4px 0 2px 0' }}>
+            {chips.map((chip, idx) => (
+                <span
+                    key={idx}
+                    style={{
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        color: chip.color,
+                        background: chip.bg,
+                        border: `1px solid ${chip.border}`,
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        lineHeight: '1.4',
+                    }}
+                >
+                    <span className="material-icons-round" style={{ fontSize: '11px' }}>{chip.icon}</span>
+                    <span>{chip.label}</span>
+                </span>
+            ))}
+        </div>
+    );
+}
+
 export function FacultyActivityContent({
     activityLogs = [],
     students = [],
@@ -1288,17 +1351,37 @@ export function FacultyActivityContent({
 
 
                                             {/* Details / Reason */}
-                                            <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
+                                            <td style={{ padding: '12px 14px', verticalAlign: 'top', maxWidth: '380px' }}>
+                                                {/* 1. EXACT ACTION PERFORMED (High contrast bold) */}
                                                 <div style={{
-                                                    fontSize: '12px',
-                                                    color: 'var(--tx-muted)',
+                                                    fontSize: '12.5px',
+                                                    fontWeight: 750,
+                                                    color: 'var(--tx-main)',
                                                     lineHeight: '1.4',
+                                                    marginBottom: '2px',
+                                                }}>
+                                                    {record.details || record.what?.details || record.why?.reason || 'Academic operation completed.'}
+                                                </div>
+
+                                                {/* 2. Structured Entity Chips (Subject, Class, Fields, Counts) */}
+                                                {renderEntityChips(record)}
+
+                                                {/* 3. Reason / Compliance Intent (Subtle secondary) */}
+                                                <div style={{
+                                                    fontSize: '11px',
+                                                    color: 'var(--tx-dim)',
+                                                    lineHeight: '1.3',
+                                                    marginTop: '2px',
                                                     display: '-webkit-box',
                                                     WebkitLineClamp: 2,
                                                     WebkitBoxOrient: 'vertical',
                                                     overflow: 'hidden',
-                                                }}>
-                                                    {record.why?.reason || record.what?.details || '—'}
+                                                }}
+                                                title={record.why?.reason || record.reason || ''}
+                                                >
+                                                    <span style={{ opacity: 0.85 }}>
+                                                        {record.why?.reason || record.reason || 'Verified institutional academic action.'}
+                                                    </span>
                                                 </div>
                                             </td>
 
@@ -1510,9 +1593,16 @@ export function FacultyActivityContent({
                                 </div>
 
 
+                                {/* Action Details & Metadata Chips */}
+                                <div style={{ fontSize: '12.5px', fontWeight: 750, color: 'var(--tx-main)', lineHeight: '1.4' }}>
+                                    {record.details || record.what?.details || record.why?.reason}
+                                </div>
+
+                                {renderEntityChips(record)}
+
                                 {/* Reason / Note */}
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', lineHeight: '1.4' }}>
-                                    {record.why?.reason || record.what?.details}
+                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', lineHeight: '1.3' }}>
+                                    {record.why?.reason || record.reason}
                                 </div>
 
                                 {/* Card Footer */}
@@ -1726,13 +1816,43 @@ export function FacultyActivityContent({
                                 </div>
                             )}
 
+                            {/* Action Performed / Exact Change */}
+                            <div style={{ background: 'var(--surface-low)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '13px' }}>bolt</span>
+                                    Action Executed
+                                </span>
+                                <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--tx-main)', lineHeight: '1.4' }}>
+                                    {selectedRecord.details || selectedRecord.what?.details || selectedRecord.why?.reason}
+                                </div>
+                                {renderEntityChips(selectedRecord)}
+                            </div>
+
                             {/* Action Reason / Notes */}
-                            <div style={{ background: 'var(--surface-low)', padding: '12px', borderRadius: '8px' }}>
-                                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Reason / Notes</span>
-                                <div style={{ fontSize: '13px', color: 'var(--tx-main)', lineHeight: '1.5' }}>
-                                    {selectedRecord.why?.reason || selectedRecord.what?.details || 'Standard academic session activity.'}
+                            <div style={{ background: 'var(--surface-low)', padding: '12px', borderRadius: '10px' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Institutional Justification & Objective</span>
+                                <div style={{ fontSize: '12.5px', color: 'var(--tx-muted)', lineHeight: '1.5' }}>
+                                    {selectedRecord.why?.reason || selectedRecord.reason || 'Standard academic session activity.'}
                                 </div>
                             </div>
+
+                            {/* Structured Context Metadata */}
+                            {selectedRecord.metadata && Object.keys(selectedRecord.metadata).length > 0 && (
+                                <div style={{ background: 'var(--surface-low)', padding: '12px', borderRadius: '10px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Contextual Metadata</span>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                                        {Object.entries(selectedRecord.metadata).map(([k, v]) => {
+                                            if (typeof v === 'object' && v !== null) v = JSON.stringify(v);
+                                            return (
+                                                <div key={k} style={{ background: 'var(--surface)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>{k.replace(/_/g, ' ')}</div>
+                                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-main)', wordBreak: 'break-all' }}>{String(v)}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Module & Origin Info */}
                             <div style={{ fontSize: '11px', color: 'var(--tx-dim)', display: 'flex', flexDirection: 'column', gap: '3px' }}>
