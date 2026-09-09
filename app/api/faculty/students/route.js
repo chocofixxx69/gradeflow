@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, weightedCGPA, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient, weightedCGPA, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
-import { resolveSubjectCredits } from '@/lib/export-utils';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 import { filterAndRankStudents } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
@@ -80,7 +81,7 @@ export async function GET(req) {
         while (true) {
             let q = supabaseAdmin
                 .from('students')
-                .select('id, usn, name, branch, semester, year, email, phone, is_suspended, lateral_entry, created_at')
+                .select('id, usn, name, branch, semester, year, email, phone, is_suspended, lateral_entry, created_at, scheme')
                 .order('usn', { ascending: true });
 
             if (semester) {
@@ -143,7 +144,14 @@ export async function GET(req) {
             students = filterAndRankStudents(searchableStudents, search);
         }
 
-        // Helper function to enrich student records with live CGPA, backlogs & section
+        // Helper function to enrich student records with live CGPA, backlogs &
+        // section using the canonical academic engine (lib/vtuAcademicEngine.js)
+        // — the same SGPA/CGPA/backlog/credit source the Student Lookup dashboard
+        // uses, so this directory never shows a different CGPA for the same
+        // student. This used to hand-roll its own CGPA using a credit resolver
+        // that trusted the (sometimes stale) subject_marks.credits column.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+
         const enrichList = async (targetStudents) => {
             const usns = targetStudents.map(s => s.usn);
             if (usns.length === 0) return [];
@@ -170,38 +178,21 @@ export async function GET(req) {
                 remarksByUsn.set(r.student_usn, list);
             });
 
-            return targetStudents.map(s => {
+            return Promise.all(targetStudents.map(async s => {
                 const uMarks = marksByUsn.get(s.usn) || [];
                 const uRemarks = remarksByUsn.get(s.usn) || [];
 
-                const backlogInfo = computeBacklogs(uMarks);
-                const backlogCredits = backlogInfo.failedSubjects.reduce((sum, sub) => sum + (sub.credits || 3), 0);
+                const record = await calculateAcademicRecord(
+                    uMarks,
+                    { usn: s.usn, branch: s.branch, scheme: s.scheme },
+                    { catalogIndex }
+                );
 
-                let cgpa = null;
-                if (uRemarks.length > 0) {
+                let cgpa = record.cgpa > 0 ? record.cgpa : null;
+                if (cgpa === null && uRemarks.length > 0) {
                     const creditsMap = {};
                     uRemarks.forEach(r => creditsMap[r.semester] = 20);
                     cgpa = weightedCGPA(uRemarks, creditsMap);
-                } else if (uMarks.length > 0) {
-                    const semGroups = {};
-                    uMarks.forEach(m => {
-                        const sem = m.semester || 1;
-                        (semGroups[sem] ||= []).push(m);
-                    });
-                    let totalCr = 0;
-                    let totalPoints = 0;
-                    Object.entries(semGroups).forEach(([_, sMarks]) => {
-                        sMarks.forEach(m => {
-                            const cr = resolveSubjectCredits(m);
-                            const score = Number(m.total) || 0;
-                            const gp = score >= 90 ? 10 : score >= 80 ? 9 : score >= 70 ? 8 : score >= 60 ? 7 : score >= 50 ? 6 : score >= 40 ? 4 : 0;
-                            if (!backlogInfo.failedSubjects.some(fb => fb.subject_code === m.subject_code)) {
-                                totalCr += cr;
-                                totalPoints += (cr * gp);
-                            }
-                        });
-                    });
-                    if (totalCr > 0) cgpa = Number((totalPoints / totalCr).toFixed(2));
                 }
 
                 const classInfo = usnToClassMap.get(s.usn);
@@ -222,11 +213,11 @@ export async function GET(req) {
                     className: classInfo?.className || null,
                     classId: classInfo?.classId || null,
                     cgpa,
-                    total_backlogs: backlogInfo.totalBacklogs,
-                    backlog_credits: backlogCredits,
-                    failedSubjects: backlogInfo.failedSubjects.map(f => f.subject_code)
+                    total_backlogs: record.totalActiveBacklogs,
+                    backlog_credits: record.activeBacklogSubjects.reduce((sum, sub) => sum + (sub.credits || 0), 0),
+                    failedSubjects: record.activeBacklogSubjects.map(f => f.subjectCode)
                 };
-            });
+            }));
         };
 
         let totalStudents = students.length;

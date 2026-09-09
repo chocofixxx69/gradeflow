@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
-import { resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +33,10 @@ export async function GET(req) {
         const supabaseAdmin = getAdminClient();
 
         // 1. Fetch students dynamically for this branch & batch without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, {
+            branch,
+            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
+        });
 
         let students = rawStudents || [];
         if (batch) {
@@ -65,20 +68,25 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
-        // 3. Evaluate VTU Vertical Progression Rules
+        // 3. Evaluate VTU Vertical Progression Rules using the canonical academic
+        // engine (lib/vtuAcademicEngine.js) — same SGPA/credits/backlogs source as
+        // the Student Lookup dashboard, so eligibility figures never drift from it.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
         const eligibleStudents = [];
         const detainedStudents = [];
 
-        students.forEach(student => {
+        await Promise.all(students.map(async student => {
             const uMarks = marksByUsn.get(student.usn) || [];
-            const backlogInfo = computeBacklogs(uMarks);
-            const activeBacklogs = backlogInfo.failedSubjects;
+            const record = await calculateAcademicRecord(
+                uMarks,
+                { usn: student.usn, branch: student.branch, scheme: student.scheme },
+                { catalogIndex }
+            );
+            const activeBacklogs = record.activeBacklogSubjects;
             const totalBacklogs = activeBacklogs.length;
             const isLE = isLateralEntry(student.usn, student.lateral_entry) || /[A-Z]{2,3}9\d{2}/i.test(student.usn);
-            const totalEarnedCredits = uMarks.filter(m => !isFailedSubject(m)).reduce((acc, m) => acc + resolveSubjectCredits(m), 0);
-            const year1EarnedCredits = uMarks
-                .filter(m => (Number(m.semester) === 1 || Number(m.semester) === 2) && !isFailedSubject(m))
-                .reduce((acc, m) => acc + resolveSubjectCredits(m), 0);
+            const totalEarnedCredits = record.totalEarnedCredits;
+            const year1EarnedCredits = (record.semStats[1]?.earnedCredits || 0) + (record.semStats[2]?.earnedCredits || 0);
 
             let isEligible = true;
             const reasons = [];
@@ -162,7 +170,7 @@ export async function GET(req) {
             } else {
                 detainedStudents.push(studentReport);
             }
-        });
+        }));
 
         // Sort both lists by USN
         eligibleStudents.sort((a, b) => a.usn.localeCompare(b.usn));

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
-import { resolveSubjectCredits } from '@/lib/export-utils';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 import { filterAndRankStudents } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,10 @@ export async function GET(req) {
         const supabaseAdmin = getAdminClient();
 
         // 1. Fetch students dynamically for this branch & batch without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, {
+            branch,
+            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
+        });
 
         let students = rawStudents || [];
         if (branch && branch !== 'ALL') {
@@ -71,21 +75,29 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
-        // 3. Compute active arrears per student and aggregate subject failure counts
+        // 3. Compute active arrears per student and aggregate subject failure counts,
+        // using the canonical academic engine (lib/vtuAcademicEngine.js) — the same
+        // credit/backlog source the Student Lookup dashboard uses, so this register
+        // never disagrees with what faculty see there for the same student.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
         const ledger = [];
         const subjectFailCount = new Map(); // code -> { code, name, count, credits }
         let totalArrearsSubjectsCount = 0;
         let totalArrearsCreditsCount = 0;
         let criticalCarriersCount = 0;
 
-        students.forEach(s => {
+        await Promise.all(students.map(async s => {
             const uMarks = marksByUsn.get(s.usn) || [];
-            const backlogInfo = computeBacklogs(uMarks);
-            const activeBacklogs = backlogInfo.failedSubjects;
+            const record = await calculateAcademicRecord(
+                uMarks,
+                { usn: s.usn, branch: s.branch, scheme: s.scheme },
+                { catalogIndex }
+            );
+            const activeBacklogs = record.activeBacklogSubjects;
             const count = activeBacklogs.length;
 
             if (count >= threshold) {
-                const totalCredits = activeBacklogs.reduce((sum, sub) => sum + (sub.credits || 3), 0);
+                const totalCredits = activeBacklogs.reduce((sum, sub) => sum + (sub.credits || 0), 0);
                 totalArrearsSubjectsCount += count;
                 totalArrearsCreditsCount += totalCredits;
                 if (count > 4) criticalCarriersCount++;
@@ -96,7 +108,7 @@ export async function GET(req) {
                         code,
                         name: sub.subject_name || code,
                         count: 0,
-                        credits: sub.credits || 3,
+                        credits: sub.credits || 0,
                         semester: sub.semester || 1
                     };
                     existing.count++;
@@ -116,11 +128,11 @@ export async function GET(req) {
                         code: b.subject_code,
                         name: b.subject_name,
                         semester: b.semester,
-                        credits: b.credits || 3
+                        credits: b.credits || 0
                     }))
                 });
             }
-        });
+        }));
 
         // Sort ledger by backlog count descending
         ledger.sort((a, b) => b.totalBacklogs - a.totalBacklogs || a.usn.localeCompare(b.usn));

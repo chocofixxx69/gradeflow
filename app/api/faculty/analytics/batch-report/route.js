@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
-import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
@@ -70,7 +70,10 @@ export async function GET(req) {
         });
 
         // 2. Fetch students dynamically for this branch & batch without limits
-        const stData = await fetchDynamicStudents(supabaseAdmin, { branch: branch === 'ALL' ? '' : branch });
+        const stData = await fetchDynamicStudents(supabaseAdmin, {
+            branch: branch === 'ALL' ? '' : branch,
+            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
+        });
         let students = stData || [];
 
         if (batch && batch.toUpperCase() !== 'ALL') {
@@ -133,26 +136,29 @@ export async function GET(req) {
             marksByUsn.set(m.usn, list);
         });
 
-        // 3. Process progression for each student
-        const processedStudents = [];
-        let totalCgpaSum = 0;
-        let cgpaCount = 0;
-        let withBacklogsCount = 0;
-        let distinctionCount = 0;
-        let lateralCount = 0;
+        // 3. Process progression for each student using the canonical academic
+        // engine (lib/vtuAcademicEngine.js) — the same SGPA/CGPA/backlog/credit
+        // computation the Student Lookup dashboard uses, so figures here never
+        // drift from what faculty see there. This used to hand-roll its own SGPA
+        // math with a credit resolver that trusted the (sometimes stale)
+        // subject_marks.credits column instead of the live subject_catalog table.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
 
-        students.forEach(student => {
+        const processedStudents = (await Promise.all(students.map(async student => {
             const uMarks = marksByUsn.get(student.usn) || [];
             const uRemarks = remarksByUsn.get(student.usn) || [];
-
-            // Detect Lateral Entry (LE)
             const isLE = isLateralEntry(student.usn, student.lateral_entry);
-            if (isLE) lateralCount++;
 
-            // Calculate per-semester stats
+            const record = await calculateAcademicRecord(
+                uMarks,
+                { usn: student.usn, branch: student.branch, scheme: student.scheme },
+                { catalogIndex }
+            );
+
             const semesters = {};
             let cumulativeCredits = 0;
-            let cumulativeWeightedPoints = 0;
+            let totalTrackedCredits = 0;
+            let weightedSum = 0;
 
             for (let sem = 1; sem <= upToSemester; sem++) {
                 if (isLE && (sem === 1 || sem === 2)) {
@@ -160,82 +166,37 @@ export async function GET(req) {
                     continue;
                 }
 
-                const semMarks = uMarks.filter(m => Number(m.semester) === sem);
+                const stat = record.semStats[sem];
                 const storedRemark = uRemarks.find(r => Number(r.semester) === sem);
 
-                if (semMarks.length === 0 && !storedRemark) {
-                    semesters[sem] = { hasData: false, sgpa: null, credits: null, backlogs: 0 };
-                    continue;
-                }
-
-                let semRegCredits = 0;
-                let semEarnedCredits = 0;
-                let semPoints = 0;
-                let semBacklogs = 0;
-
-                semMarks.forEach(m => {
-                    const cr = resolveSubjectCredits(m);
-                    const isFail = isFailedSubject(m);
-                    const gp = scoreToGradePoint(m.total ?? m.total_marks, m.grade);
-
-                    semRegCredits += cr;
-                    if (isFail) {
-                        semBacklogs++;
-                    } else {
-                        semEarnedCredits += cr;
-                        semPoints += (cr * gp);
-                    }
-                });
-
-                let sgpa = null;
-                if (semRegCredits > 0) {
-                    sgpa = Number((semPoints / semRegCredits).toFixed(2));
+                if (stat) {
+                    semesters[sem] = {
+                        hasData: true,
+                        sgpa: stat.sgpa,
+                        credits: stat.earnedCredits,
+                        regCredits: stat.totalCredits,
+                        backlogs: stat.backlogs
+                    };
+                    cumulativeCredits += stat.earnedCredits;
+                    totalTrackedCredits += stat.totalCredits;
+                    weightedSum += (stat.sgpa * stat.totalCredits);
                 } else if (storedRemark?.sgpa) {
-                    sgpa = Number(Number(storedRemark.sgpa).toFixed(2));
-                    semEarnedCredits = 20; // standard default
-                    semRegCredits = 20;
-                }
-
-                if (sgpa !== null) {
-                    cumulativeCredits += semEarnedCredits;
-                    cumulativeWeightedPoints += (sgpa * semRegCredits);
-                }
-
-                semesters[sem] = {
-                    hasData: true,
-                    sgpa,
-                    credits: semEarnedCredits,
-                    regCredits: semRegCredits,
-                    backlogs: semBacklogs
-                };
-            }
-
-            // Calculate Backlog Credits using canonical computeBacklogs
-            const backlogInfo = computeBacklogs(uMarks);
-            const totalBacklogCredits = backlogInfo.failedSubjects.reduce((sum, sub) => sum + (sub.credits || 3), 0);
-
-            // Cumulative CGPA
-            let totalTrackedCredits = 0;
-            let weightedSum = 0;
-            for (let s = 1; s <= upToSemester; s++) {
-                const info = semesters[s];
-                if (info && info.hasData && info.sgpa !== null) {
-                    const cr = info.regCredits || info.credits || 20;
-                    totalTrackedCredits += cr;
-                    weightedSum += (info.sgpa * cr);
+                    // No subject_marks rows for this semester yet — fall back to
+                    // the previously-stored academic_remarks SGPA (legacy data).
+                    const sgpa = Number(Number(storedRemark.sgpa).toFixed(2));
+                    semesters[sem] = { hasData: true, sgpa, credits: 20, regCredits: 20, backlogs: 0 };
+                    cumulativeCredits += 20;
+                    totalTrackedCredits += 20;
+                    weightedSum += (sgpa * 20);
+                } else {
+                    semesters[sem] = { hasData: false, sgpa: null, credits: null, backlogs: 0 };
                 }
             }
 
             const cgpa = totalTrackedCredits > 0 ? Number((weightedSum / totalTrackedCredits).toFixed(2)) : null;
+            const totalBacklogCredits = record.activeBacklogSubjects.reduce((sum, sub) => sum + (sub.credits || 0), 0);
 
-            if (cgpa !== null) {
-                totalCgpaSum += cgpa;
-                cgpaCount++;
-                if (cgpa >= 8.0) distinctionCount++;
-            }
-            if (backlogInfo.totalBacklogs > 0) withBacklogsCount++;
-
-            processedStudents.push({
+            return {
                 usn: student.usn,
                 name: student.name || student.usn,
                 branch: student.branch || (student.usn.length >= 7 ? student.usn.substring(5, 7).toUpperCase() : '—'),
@@ -244,16 +205,29 @@ export async function GET(req) {
                 semesters,
                 cumulativeCredits,
                 cgpa,
-                totalBacklogs: backlogInfo.totalBacklogs,
+                totalBacklogs: record.totalActiveBacklogs,
                 backlogCredits: totalBacklogCredits,
                 isDistinction: cgpa !== null && cgpa >= 8.0,
                 isLow: cgpa !== null && cgpa < 5.0,
-                hasBacklogs: backlogInfo.totalBacklogs > 0
-            });
-        });
+                hasBacklogs: record.totalActiveBacklogs > 0
+            };
+        }))).sort((a, b) => a.usn.localeCompare(b.usn));
 
-        // Sort by USN
-        processedStudents.sort((a, b) => a.usn.localeCompare(b.usn));
+        let totalCgpaSum = 0;
+        let cgpaCount = 0;
+        let withBacklogsCount = 0;
+        let distinctionCount = 0;
+        let lateralCount = 0;
+
+        processedStudents.forEach(s => {
+            if (s.isLE) lateralCount++;
+            if (s.cgpa !== null) {
+                totalCgpaSum += s.cgpa;
+                cgpaCount++;
+                if (s.cgpa >= 8.0) distinctionCount++;
+            }
+            if (s.hasBacklogs) withBacklogsCount++;
+        });
 
         const avgCGPA = cgpaCount > 0 ? Number((totalCgpaSum / cgpaCount).toFixed(2)) : 0;
 

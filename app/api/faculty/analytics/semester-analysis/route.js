@@ -3,8 +3,8 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, isLateralEntry, canonicalBranchCode } from '@/lib/semester-utils';
-import { resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject, getGradePoint } from '@/lib/vtuGrades';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex, resolveSubjectCredit } from '@/lib/subjectCreditResolver';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
@@ -85,12 +85,15 @@ export async function GET(req) {
             if (studentUsns.length > 0) {
                 const { data: stData } = await supabaseAdmin
                     .from('students')
-                    .select('id, usn, name, branch, semester, year, lateral_entry')
+                    .select('id, usn, name, branch, semester, year, lateral_entry, scheme')
                     .in('usn', studentUsns);
                 studentsList = stData || [];
             }
         } else {
-            const stData = await fetchDynamicStudents(supabaseAdmin, { branch: (!branch || branch === 'ALL') ? '' : branch });
+            const stData = await fetchDynamicStudents(supabaseAdmin, {
+                branch: (!branch || branch === 'ALL') ? '' : branch,
+                select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
+            });
             let filtered = stData || [];
 
             if (batch && batch.toUpperCase() !== 'ALL') {
@@ -157,16 +160,23 @@ export async function GET(req) {
             studentUsns = studentsList.map(s => s.usn);
         }
 
-        // 5. Determine unique subject columns from marks actually taken by this cohort
+        // 5. Determine unique subject columns from marks actually taken by this cohort.
+        // Credits are resolved from the live subject_catalog (via catalogIndex, the
+        // same authority the canonical academic engine uses below) rather than the
+        // mark row's own (sometimes stale) credits column.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
         const subjectCodeMap = new Map();
         (allMarks || []).forEach(m => {
             const code = (m.subject_code || m.code || '').toUpperCase();
             if (code && !subjectCodeMap.has(code)) {
                 const cat = catalogMap.get(code);
+                const resolvedScheme = cat?.scheme || (code.startsWith('1') ? '2025' : '2022');
+                const resolvedBranch = (branch && branch !== 'ALL') ? branch : 'CS';
+                const resolved = resolveSubjectCredit(catalogIndex, { scheme: resolvedScheme, branch: resolvedBranch, semester, subject_code: code });
                 subjectCodeMap.set(code, {
                     code,
                     name: cat?.subject_name || m.subject_name || m.name || code,
-                    credits: Number(cat?.credits) || resolveSubjectCredits(m, cat)
+                    credits: Number(cat?.credits) || resolved.credits || 0
                 });
             }
         });
@@ -187,7 +197,12 @@ export async function GET(req) {
 
         const subjectCols = Array.from(subjectCodeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
 
-        // 6. Process each student row
+        // 6. Process each student row using the canonical academic engine
+        // (lib/vtuAcademicEngine.js) — same SGPA/credits/grade-point source as
+        // the Student Lookup dashboard, so this gazette never disagrees with it
+        // for the same student. This used to hand-roll its own per-subject
+        // credit/GP math using a credit resolver that trusted the (sometimes
+        // stale) subject_marks.credits column instead of the live subject_catalog.
         const studentsProcessed = [];
         const backlogRoster = [];
         let totalAppeared = 0;
@@ -209,71 +224,56 @@ export async function GET(req) {
             });
         });
 
-        studentsList.forEach(student => {
+        await Promise.all(studentsList.map(async student => {
             const uMarks = marksByUsn.get(student.usn) || [];
             const hasData = uMarks.length > 0;
             if (hasData) totalAppeared++;
 
-            const marksByCode = new Map();
-            uMarks.forEach(m => marksByCode.set((m.subject_code || m.code || '').toUpperCase(), m));
+            const record = await calculateAcademicRecord(
+                uMarks,
+                { usn: student.usn, branch: student.branch, scheme: student.scheme },
+                { catalogIndex }
+            );
+            const stat = record.semStats[semester];
+            const subjectsByCode = new Map((record.marksBySemester[semester] || []).map(s => [s.subjectCode, s]));
 
-            let totalRegisteredCr = 0;
-            let totalEarnedCi = 0;
-            let totalCrP = 0;
             let totalScoreSum = 0;
-            let arrearsCount = 0;
+            let arrearsCount = stat?.backlogs ?? 0;
             const failedSubjectsForStudent = [];
-
             const subjectDetails = {};
 
             subjectCols.forEach(sub => {
-                const m = marksByCode.get(sub.code);
+                const s = subjectsByCode.get(sub.code);
                 const subTally = tallyMap.get(sub.code);
 
-                if (m) {
-                    const cr = resolveSubjectCredits(m, sub);
-                    const grade = (m.grade || '').trim().toUpperCase();
-                    const intMarks = m.internal ?? m.cie_marks ?? null;
-                    const extMarks = m.external ?? m.see_marks ?? null;
-                    const totMarks = m.total ?? m.total_marks ?? null;
-                    const isFail = isFailedSubject(m);
-                    const gp = isFail ? 0 : getGradePoint(grade, student.scheme || '2022', totMarks, extMarks);
-                    const ci = isFail ? 0 : cr;
-                    const crp = ci * gp;
+                if (s) {
+                    if (s.totalMarks !== null) totalScoreSum += Number(s.totalMarks);
 
-                    totalRegisteredCr += cr;
-                    totalEarnedCi += ci;
-                    totalCrP += crp;
-                    if (totMarks !== null) totalScoreSum += Number(totMarks);
-
-                    if (isFail) {
-                        arrearsCount++;
+                    if (s.isFailed) {
                         failedSubjectsForStudent.push({
                             code: sub.code,
                             name: sub.name,
-                            internal: intMarks,
-                            external: extMarks,
-                            total: totMarks,
-                            grade: grade || 'F'
+                            internal: s.internalMarks,
+                            external: s.seeMarks,
+                            total: s.totalMarks,
+                            grade: s.grade || 'F'
                         });
                     }
 
                     // Accumulate in subject tally
                     if (subTally) {
                         subTally.appeared++;
-                        if (isFail) {
+                        if (s.isFailed) {
                             subTally.failed++;
-                            if (grade === 'A' || grade === 'AB' || grade === 'ABSENT' || totMarks === 0) {
+                            if (s.isAbsent) {
                                 subTally.grades['Ab']++;
                             } else {
                                 subTally.grades['F']++;
                             }
                         } else {
                             subTally.passed++;
-                            if (subTally.grades[grade] !== undefined) {
-                                subTally.grades[grade]++;
-                            } else if (grade === 'S') {
-                                subTally.grades['O']++;
+                            if (subTally.grades[s.grade] !== undefined) {
+                                subTally.grades[s.grade]++;
                             } else {
                                 subTally.grades['P']++;
                             }
@@ -281,23 +281,25 @@ export async function GET(req) {
                     }
 
                     subjectDetails[sub.code] = {
-                        cr,
-                        ci,
-                        g: grade || (isFail ? 'F' : 'P'),
-                        gi: gp,
-                        crp,
-                        internal: intMarks,
-                        external: extMarks,
-                        total: totMarks,
-                        isFail
+                        cr: s.credits,
+                        ci: s.isFailed ? 0 : s.credits,
+                        g: s.grade,
+                        gi: s.gradePoint,
+                        crp: s.weightedPoints,
+                        internal: s.internalMarks,
+                        external: s.seeMarks,
+                        total: s.totalMarks,
+                        isFail: s.isFailed
                     };
                 } else {
                     subjectDetails[sub.code] = null;
                 }
             });
 
-            // Calculate SGPA
-            const sgpa = totalRegisteredCr > 0 ? Number((totalCrP / totalRegisteredCr).toFixed(2)) : 0;
+            const totalRegisteredCr = stat?.totalCredits ?? 0;
+            const totalEarnedCi = stat?.earnedCredits ?? 0;
+            const totalCrP = stat?.gradePoints ?? 0;
+            const sgpa = stat?.sgpa ?? 0;
             const percentage = sgpa > 0 ? Number(Math.max(0, (sgpa - 0.75) * 10).toFixed(2)) : 0;
             const backlogCredits = totalRegisteredCr - totalEarnedCi;
 
@@ -364,7 +366,7 @@ export async function GET(req) {
                 backlogCredits,
                 subjectDetails
             });
-        });
+        }));
 
         // Sort students naturally by USN
         studentsProcessed.sort((a, b) => a.usn.localeCompare(b.usn));

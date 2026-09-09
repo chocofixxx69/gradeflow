@@ -114,6 +114,7 @@ export async function GET(req) {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
+        const { searchParams } = new URL(req.url);
         const rawBranch = searchParams.get('branch') || 'ALL';
         const branch = rawBranch === 'ALL' ? 'ALL' : (canonicalBranchCode(rawBranch) || rawBranch.toUpperCase().trim());
         const semParam = (searchParams.get('semester') || 'ALL').toUpperCase().trim();
