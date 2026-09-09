@@ -29,7 +29,36 @@ export default function InstitutionalIntelligencePage() {
     );
 }
 
-const LINE_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899'];
+// Professional Institutional Categorical Palette
+// High contrast, colorblind-friendly, non-neon executive tones curated for academic data visualization.
+// Benchmark reference lines use neutral slate guides to prevent color collision.
+const PROFESSIONAL_PALETTE = [
+    '#1D4ED8', // 1. Deep Royal Navy
+    '#D97706', // 2. Warm Amber / Ochre
+    '#0F766E', // 3. Deep Sea Teal
+    '#7E22CE', // 4. Imperial Violet
+    '#B91C1C', // 5. Crimson Burgundy
+    '#0284C7', // 6. Steel Cerulean
+    '#C2410C', // 7. Burnt Terracotta
+    '#475569', // 8. Nordic Slate
+    '#15803D', // 9. Forest Emerald
+    '#A21CAF', // 10. Muted Plum
+    '#4338CA', // 11. Midnight Indigo
+    '#A16207', // 12. Antique Bronze
+    '#0E7490', // 13. Deep Cyan Petrol
+    '#6B21A8', // 14. Royal Iris
+    '#4D7C0F', // 15. Olive Sage
+    '#334155', // 16. Charcoal Steel
+];
+
+function getStudentColor(index) {
+    if (index < PROFESSIONAL_PALETTE.length) {
+        return PROFESSIONAL_PALETTE[index];
+    }
+    const hue = Math.round((index * 137.508) % 360);
+    return `hsl(${hue}, 58%, 42%)`;
+}
+
 
 function InstitutionalIntelligenceContent() {
     const searchParams = useSearchParams();
@@ -281,11 +310,7 @@ function InstitutionalIntelligenceContent() {
             setSearchDropdownOpen(false);
             return;
         }
-        if (usnList.length >= 6) {
-            alert('You can compare a maximum of 6 students simultaneously.');
-            return;
-        }
-        setUsnList(prev => [...prev, clean].slice(0, 6));
+        setUsnList(prev => [...prev, clean]);
         setUsnInput('');
         setSearchDropdownOpen(false);
     };
@@ -1602,7 +1627,7 @@ function InstitutionalIntelligenceContent() {
                                         Student Head-to-Head Comparison Roster
                                     </div>
                                     <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                        Search students by Name or USN (max 6 students), or load benchmark cohorts with one click.
+                                        Search students by Name or USN, or load benchmark cohorts with one click. Compare any number of students without restriction.
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1871,7 +1896,8 @@ function InstitutionalIntelligenceContent() {
                                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                                         {usnList.map((u, i) => {
                                             const stu = studentMap.get(u);
-                                            const color = LINE_COLORS[i % LINE_COLORS.length];
+                                            const color = getStudentColor(i);
+                                            const hasRealName = stu?.name && stu.name.trim().toUpperCase() !== u.toUpperCase();
                                             return (
                                                 <div
                                                     key={u}
@@ -1880,23 +1906,32 @@ function InstitutionalIntelligenceContent() {
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         background: 'var(--surface-low)',
-                                                        border: `1.5px solid ${color}`,
+                                                        border: '1px solid var(--border)',
                                                         borderRadius: '8px',
                                                         padding: '6px 12px',
-                                                        fontSize: '12px'
+                                                        fontSize: '12px',
+                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
                                                     }}
                                                 >
                                                     <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: color, flexShrink: 0 }} />
                                                     <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>
-                                                        {stu?.name || u}
+                                                        {hasRealName ? stu.name : u}
                                                     </span>
-                                                    {stu?.name && (
+                                                    {hasRealName && (
                                                         <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
                                                             ({u})
                                                         </span>
                                                     )}
                                                     {stu?.cgpa && (
-                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: color, marginLeft: '2px' }}>
+                                                        <span style={{
+                                                            fontSize: '11px',
+                                                            fontWeight: 800,
+                                                            color: color,
+                                                            background: `${color}14`,
+                                                            padding: '1px 6px',
+                                                            borderRadius: '4px',
+                                                            marginLeft: '2px'
+                                                        }}>
                                                             {stu.cgpa.toFixed(2)}
                                                         </span>
                                                     )}
@@ -1911,7 +1946,8 @@ function InstitutionalIntelligenceContent() {
                                                             fontSize: '16px',
                                                             lineHeight: 1,
                                                             padding: 0,
-                                                            marginLeft: '4px'
+                                                            marginLeft: '4px',
+                                                            transition: 'color 0.15s ease'
                                                         }}
                                                         title="Remove student"
                                                     >
@@ -1922,7 +1958,7 @@ function InstitutionalIntelligenceContent() {
                                         })}
                                     </div>
                                     <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-muted)' }}>
-                                        {usnList.length} of 6 students selected
+                                        {usnList.length} student{usnList.length === 1 ? '' : 's'} selected for comparison
                                     </div>
                                 </div>
                             )}
@@ -2007,8 +2043,10 @@ function InstitutionalIntelligenceContent() {
                                     {usnList.map((u, i) => {
                                         const stu = studentMap.get(u);
                                         const stats = studentStats[u] || {};
-                                        const color = LINE_COLORS[i % LINE_COLORS.length];
+                                        const color = getStudentColor(i);
                                         const cgpa = typeof stu?.cgpa === 'number' ? stu.cgpa : null;
+                                        const hasRealName = stu?.name && stu.name.trim().toUpperCase() !== u.toUpperCase();
+                                        const displayName = hasRealName ? stu.name : u;
 
                                         let classTag = { label: 'Not Graded', color: 'var(--tx-muted)', bg: 'var(--surface-low)' };
                                         if (cgpa !== null) {
@@ -2022,11 +2060,11 @@ function InstitutionalIntelligenceContent() {
                                             <Card key={u} style={{
                                                 position: 'relative',
                                                 overflow: 'hidden',
-                                                border: `1.5px solid ${color}40`,
+                                                border: `1.5px solid ${color}30`,
                                                 boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
                                             }}>
                                                 {/* Top Accent Strip */}
-                                                <div style={{ height: '5px', background: color, width: '100%' }} />
+                                                <div style={{ height: '4px', background: color, width: '100%' }} />
 
                                                 <CardContent style={{ padding: '18px' }}>
                                                     {/* Header: Avatar, Name, USN */}
@@ -2035,7 +2073,7 @@ function InstitutionalIntelligenceContent() {
                                                             width: '40px',
                                                             height: '40px',
                                                             borderRadius: '50%',
-                                                            background: `${color}20`,
+                                                            background: `${color}18`,
                                                             color: color,
                                                             border: `2px solid ${color}`,
                                                             display: 'flex',
@@ -2045,14 +2083,14 @@ function InstitutionalIntelligenceContent() {
                                                             fontSize: '14px',
                                                             flexShrink: 0
                                                         }}>
-                                                            {(stu?.name || u).slice(0, 2).toUpperCase()}
+                                                            {displayName.slice(0, 2).toUpperCase()}
                                                         </div>
                                                         <div style={{ overflow: 'hidden' }}>
                                                             <div style={{ fontWeight: 900, fontSize: '14px', color: 'var(--tx-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {stu?.name || u}
+                                                                {displayName}
                                                             </div>
                                                             <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
-                                                                {u} • {stu?.branch || 'CSE'}
+                                                                {hasRealName ? `${u} • ${stu?.branch || 'CSE'}` : (stu?.branch || 'CSE')}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2220,14 +2258,14 @@ function InstitutionalIntelligenceContent() {
                                             gap: '6px',
                                             fontSize: '11px',
                                             fontWeight: 700,
-                                            padding: '4px 9px',
+                                            padding: '4px 10px',
                                             borderRadius: '6px',
-                                            background: 'rgba(16, 185, 129, 0.1)',
-                                            color: '#10B981',
-                                            border: '1px solid rgba(16, 185, 129, 0.25)'
+                                            background: 'var(--surface-low)',
+                                            color: 'var(--tx-muted)',
+                                            border: '1px solid var(--border)'
                                         }}>
-                                            <span style={{ width: '12px', height: '2px', background: '#10B981', display: 'inline-block' }} />
-                                            Distinction (7.75)
+                                            <span style={{ width: '12px', height: '0px', borderTop: '2px dashed #64748B', display: 'inline-block' }} />
+                                            Distinction (≥ 7.75)
                                         </span>
                                         <span style={{
                                             display: 'inline-flex',
@@ -2235,14 +2273,14 @@ function InstitutionalIntelligenceContent() {
                                             gap: '6px',
                                             fontSize: '11px',
                                             fontWeight: 700,
-                                            padding: '4px 9px',
+                                            padding: '4px 10px',
                                             borderRadius: '6px',
-                                            background: 'rgba(99, 102, 241, 0.1)',
-                                            color: '#6366F1',
-                                            border: '1px solid rgba(99, 102, 241, 0.25)'
+                                            background: 'var(--surface-low)',
+                                            color: 'var(--tx-muted)',
+                                            border: '1px solid var(--border)'
                                         }}>
-                                            <span style={{ width: '12px', height: '2px', background: '#6366F1', display: 'inline-block' }} />
-                                            First Class (6.75)
+                                            <span style={{ width: '12px', height: '0px', borderTop: '2px dotted #94A3B8', display: 'inline-block' }} />
+                                            First Class (≥ 6.75)
                                         </span>
                                         <div style={{ display: 'flex', background: 'var(--surface-low)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                                             <button
@@ -2321,12 +2359,14 @@ function InstitutionalIntelligenceContent() {
                                                                     {sorted.map((item, idx) => {
                                                                         const stu = studentMap.get(item.dataKey);
                                                                         const isTop = idx === 0 && sorted.length > 1 && item.value > 0;
+                                                                        const hasRealName = stu?.name && stu.name.trim().toUpperCase() !== item.dataKey.toUpperCase();
+                                                                        const displayName = hasRealName ? stu.name : item.dataKey;
                                                                         return (
                                                                             <div key={item.dataKey} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', gap: '12px' }}>
                                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
                                                                                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color, flexShrink: 0 }} />
                                                                                     <span style={{ fontWeight: 700, color: 'var(--tx-main)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '140px' }}>
-                                                                                        {stu?.name || item.dataKey}
+                                                                                        {displayName}
                                                                                     </span>
                                                                                     {isTop && <span title="Highest this semester" style={{ fontSize: '11px' }}>⭐</span>}
                                                                                 </div>
@@ -2342,22 +2382,29 @@ function InstitutionalIntelligenceContent() {
                                                     }}
                                                 />
                                                 <Legend
+                                                    verticalAlign="bottom"
+                                                    wrapperStyle={{ paddingTop: '20px' }}
                                                     formatter={(value) => {
                                                         const stu = studentMap.get(value);
-                                                        return stu?.name ? `${stu.name} (${value})` : value;
+                                                        const hasRealName = stu?.name && stu.name.trim().toUpperCase() !== value.toUpperCase();
+                                                        return (
+                                                            <span style={{ color: 'var(--tx-main)', fontSize: '12px', fontWeight: 600, marginRight: '14px' }}>
+                                                                {hasRealName ? `${stu.name} (${value})` : value}
+                                                            </span>
+                                                        );
                                                     }}
                                                 />
 
-                                                {/* Milestone Reference Lines — Right-aligned to avoid colliding with Sem 1 data nodes */}
+                                                {/* Milestone Reference Lines — Neutral structural guidelines to never clash with student series */}
                                                 <ReferenceLine
                                                     y={7.75}
-                                                    stroke="#10B981"
-                                                    strokeDasharray="4 4"
+                                                    stroke="#64748B"
+                                                    strokeDasharray="6 6"
                                                     strokeWidth={1.5}
                                                     label={{
                                                         value: 'Distinction (7.75)',
                                                         position: 'insideTopRight',
-                                                        fill: '#10B981',
+                                                        fill: 'var(--tx-muted)',
                                                         fontSize: 11,
                                                         fontWeight: 700,
                                                         offset: 6
@@ -2365,32 +2412,35 @@ function InstitutionalIntelligenceContent() {
                                                 />
                                                 <ReferenceLine
                                                     y={6.75}
-                                                    stroke="#6366F1"
-                                                    strokeDasharray="4 4"
+                                                    stroke="#94A3B8"
+                                                    strokeDasharray="3 3"
                                                     strokeWidth={1.5}
                                                     label={{
                                                         value: 'First Class (6.75)',
                                                         position: 'insideBottomRight',
-                                                        fill: '#6366F1',
+                                                        fill: 'var(--tx-dim)',
                                                         fontSize: 11,
                                                         fontWeight: 700,
                                                         offset: 6
                                                     }}
                                                 />
 
-                                                {usnList.map((u, i) => (
-                                                    <Line
-                                                        key={u}
-                                                        type="monotone"
-                                                        dataKey={u}
-                                                        name={u}
-                                                        stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                                                        strokeWidth={3}
-                                                        connectNulls={true}
-                                                        dot={{ r: 5, fill: LINE_COLORS[i % LINE_COLORS.length] }}
-                                                        activeDot={{ r: 7 }}
-                                                    />
-                                                ))}
+                                                {usnList.map((u, i) => {
+                                                    const strokeColor = getStudentColor(i);
+                                                    return (
+                                                        <Line
+                                                            key={u}
+                                                            type="monotone"
+                                                            dataKey={u}
+                                                            name={u}
+                                                            stroke={strokeColor}
+                                                            strokeWidth={2.5}
+                                                            connectNulls={true}
+                                                            dot={{ r: 4, fill: strokeColor, strokeWidth: 1.5, stroke: 'var(--surface)' }}
+                                                            activeDot={{ r: 6, stroke: strokeColor, strokeWidth: 2 }}
+                                                        />
+                                                    );
+                                                })}
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -2485,17 +2535,20 @@ function InstitutionalIntelligenceContent() {
                                                     <tr style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', color: 'var(--tx-dim)', textTransform: 'uppercase', fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em' }}>
                                                         <th style={{ padding: '12px 16px', minWidth: '220px' }}>Course Code &amp; Title</th>
                                                         {usnList.map((u, i) => {
-                                                            const color = LINE_COLORS[i % LINE_COLORS.length];
+                                                            const color = getStudentColor(i);
                                                             const stu = studentMap.get(u);
+                                                            const hasRealName = stu?.name && stu.name.trim().toUpperCase() !== u.toUpperCase();
                                                             return (
                                                                 <th key={u} style={{ padding: '12px 16px', textAlign: 'center', minWidth: '140px' }}>
                                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                                                                         <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: color }} />
-                                                                        <span style={{ color: 'var(--tx-main)', fontWeight: 800 }}>{stu?.name || u}</span>
+                                                                        <span style={{ color: 'var(--tx-main)', fontWeight: 800 }}>{hasRealName ? stu.name : u}</span>
                                                                     </div>
-                                                                    <div style={{ fontSize: '10px', color: 'var(--tx-muted)', textTransform: 'none', fontFamily: 'monospace' }}>
-                                                                        {u}
-                                                                    </div>
+                                                                    {hasRealName && (
+                                                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)', textTransform: 'none', fontFamily: 'monospace' }}>
+                                                                            {u}
+                                                                        </div>
+                                                                    )}
                                                                 </th>
                                                             );
                                                         })}
@@ -2667,7 +2720,7 @@ function InstitutionalIntelligenceContent() {
                                             Pick Students from Class Roster
                                         </div>
                                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                            Select a class section and click students to compare. (Selected: {usnList.length} / 6)
+                                            Select a class section and click students to compare. ({usnList.length} student{usnList.length === 1 ? '' : 's'} selected)
                                         </div>
                                     </div>
                                     <button
@@ -2845,7 +2898,7 @@ function InstitutionalIntelligenceContent() {
                                 {/* Modal Footer */}
                                 <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 700 }}>
-                                        {usnList.length} of 6 students in comparison cohort
+                                        {usnList.length} student{usnList.length === 1 ? '' : 's'} in comparison cohort
                                     </span>
                                     <Button variant="primary" onClick={() => setClassPickerOpen(false)}>
                                         Done

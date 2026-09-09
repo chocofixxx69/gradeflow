@@ -27,7 +27,7 @@ export async function GET(req) {
             .split(',')
             .map(u => u.trim().toUpperCase())
             .filter(Boolean)
-            .slice(0, 6); // Max 6 students for comparison
+            .slice(0, 100); // Unrestricted cohort comparison (up to 100 students)
 
         if (usnList.length === 0) {
             return ok({ students: [], trajectory: [], subjectComparison: [] });
