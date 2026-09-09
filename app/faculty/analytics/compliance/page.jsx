@@ -12,6 +12,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 
 export default function AcademicCompliancePage() {
     return (
@@ -131,7 +132,6 @@ function AcademicComplianceContent() {
         if (!branch) return;
         const query = { branch, threshold: backlogThreshold };
         if (batch) query.batch = batch;
-        if (searchQuery) query.search = searchQuery;
 
         const cached = getCachedApiData('/api/faculty/analytics/backlogs', query);
         if (cached) {
@@ -149,7 +149,7 @@ function AcademicComplianceContent() {
         } finally {
             setBacklogLoading(false);
         }
-    }, [branch, batch, backlogThreshold, searchQuery]);
+    }, [branch, batch, backlogThreshold]);
 
     useEffect(() => {
         if (viewTab === 'eligibility') {
@@ -167,18 +167,12 @@ function AcademicComplianceContent() {
                 ? (eligibilityReport.eligibleStudents || [])
                 : (eligibilityReport.allStudents || []);
 
-        if (!searchQuery) return pool;
-        const q = searchQuery.toLowerCase();
-        return pool.filter(s => s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
+        return filterAndRankStudents(pool, searchQuery);
     }, [eligibilityReport, eligibilityFilterTab, searchQuery]);
 
     // Filtered ledger for Backlogs
     const filteredBacklogLedger = useMemo(() => {
-        return (backlogReport.ledger || []).filter(s => {
-            if (!searchQuery) return true;
-            const q = searchQuery.toLowerCase();
-            return s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
-        });
+        return filterAndRankStudents(backlogReport.ledger || [], searchQuery);
     }, [backlogReport.ledger, searchQuery]);
 
     // ── Manual Refresh ──

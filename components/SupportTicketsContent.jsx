@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiRequest } from '../lib/api/client';
 
 export function SupportTicketsContent({ onStatsUpdate }) {
@@ -9,6 +9,8 @@ export function SupportTicketsContent({ onStatsUpdate }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const activeRequestIdRef = useRef(0);
     const [statusFilter, setStatusFilter] = useState('all');
     const [userTypeFilter, setUserTypeFilter] = useState('all');
     const [categoryFilter, setCategoryFilter] = useState('all');
@@ -40,7 +42,15 @@ export function SupportTicketsContent({ onStatsUpdate }) {
         admin_notes: '',
     });
 
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [search]);
+
     const fetchTickets = useCallback(async () => {
+        const requestId = ++activeRequestIdRef.current;
         setLoading(true);
         setError('');
         try {
@@ -49,21 +59,25 @@ export function SupportTicketsContent({ onStatsUpdate }) {
             if (userTypeFilter !== 'all') query.user_type = userTypeFilter;
             if (categoryFilter !== 'all') query.category = categoryFilter;
             if (sortOrder) query.sort = sortOrder;
-            if (search) query.search = search;
+            if (debouncedSearch.trim()) query.search = debouncedSearch.trim();
 
             const res = await apiRequest('/api/admin/support/tickets', { query });
+            if (requestId !== activeRequestIdRef.current) return;
             setTickets(res?.tickets || []);
             if (res?.stats) {
                 setStats(res.stats);
                 if (onStatsUpdate) onStatsUpdate(res.stats);
             }
         } catch (err) {
+            if (requestId !== activeRequestIdRef.current) return;
             console.error('Fetch tickets error:', err);
             setError(err.message || 'Failed to load support tickets.');
         } finally {
-            setLoading(false);
+            if (requestId === activeRequestIdRef.current) {
+                setLoading(false);
+            }
         }
-    }, [statusFilter, userTypeFilter, categoryFilter, sortOrder, search, onStatsUpdate]);
+    }, [statusFilter, userTypeFilter, categoryFilter, sortOrder, debouncedSearch, onStatsUpdate]);
 
     useEffect(() => {
         fetchTickets();
@@ -433,18 +447,36 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                 padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center',
                 justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 280px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 280px', position: 'relative' }}>
                     <span className="material-icons-round" style={{ color: 'var(--tx-muted)', fontSize: '20px' }}>search</span>
                     <input
                         type="text"
                         placeholder="Search ticket #, USN, email, name, or subject..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                setDebouncedSearch(search);
+                            }
+                        }}
                         style={{
-                            width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)',
+                            width: '100%', padding: '8px 32px 8px 12px', borderRadius: '6px', border: '1px solid var(--border)',
                             fontSize: '0.88rem', background: 'var(--surface-low)', color: 'var(--tx-main)', outline: 'none'
                         }}
                     />
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSearch('');
+                                setDebouncedSearch('');
+                            }}
+                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                            title="Clear search"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

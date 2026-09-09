@@ -6,6 +6,7 @@ import { supabase } from '../../../lib/supabase';
 import AuthGuard from '../../../components/AuthGuard';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getXLSX } from '@/lib/lazy-export-libs';
+import { matchesGeneric } from '@/lib/search-utils';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Input, Button, Select } from '@/components/ui/Foundation';
@@ -103,9 +104,7 @@ export default function SubjectsPage() {
   // ── Derived Data ──
   const filtered = subjects.filter(s => {
     const matchSem = filterSem === 'all' || String(s.semester) === String(filterSem);
-    const matchSearch = !searchQuery || 
-      s.subject_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.subject_code?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchSearch = matchesGeneric(s, searchQuery, ['subject_name', 'subject_code']);
     return matchSem && matchSearch;
   });
 
@@ -481,9 +480,7 @@ export default function SubjectsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
             {SEMESTERS.map(sem => {
               const semSubs = bySemseter[sem].filter(s => 
-                !searchQuery || 
-                s.subject_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                s.subject_code?.toLowerCase().includes(searchQuery.toLowerCase())
+                matchesGeneric(s, searchQuery, ['subject_name', 'subject_code'])
               );
               
               if (filterSem !== 'all' && String(sem) !== String(filterSem)) return null;

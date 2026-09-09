@@ -13,6 +13,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { filterAndRankStudents, filterAndRank, matchesGeneric } from '@/lib/search-utils';
 
 export default function InstitutionalIntelligencePage() {
     return (
@@ -113,7 +114,41 @@ function InstitutionalIntelligenceContent() {
     const [classRosterStudents, setClassRosterStudents] = useState([]);
     const [rosterSearch, setRosterSearch] = useState('');
     const [isLoadingRoster, setIsLoadingRoster] = useState(false);
+    const [trajectoryScale, setTrajectoryScale] = useState('focus'); // 'focus' | 'full'
     const searchContainerRef = useRef(null);
+
+    // Dynamic scale for academic trajectory chart to prevent squashing and collision
+    const { trajectoryDomain, trajectoryTicks } = useMemo(() => {
+        if (trajectoryScale === 'full') {
+            return { trajectoryDomain: [0, 10], trajectoryTicks: [0, 2, 4, 6, 8, 10] };
+        }
+
+        const values = [];
+        (comparatorData?.trajectory || []).forEach(row => {
+            (usnList || []).forEach(u => {
+                const val = Number(row[u]);
+                if (!isNaN(val) && val > 0) values.push(val);
+            });
+        });
+
+        if (values.length === 0) {
+            return { trajectoryDomain: [0, 10], trajectoryTicks: [0, 2, 4, 6, 8, 10] };
+        }
+
+        const minVal = Math.min(...values);
+        const floorBound = Math.min(minVal, 6.75);
+        const yMin = Math.max(0, Math.floor(floorBound - 0.75));
+        const yMax = 10;
+
+        const ticks = [];
+        const step = (yMax - yMin) <= 5 ? 1 : 2;
+        for (let t = yMin; t <= yMax; t += step) {
+            ticks.push(t);
+        }
+        if (!ticks.includes(10)) ticks.push(10);
+
+        return { trajectoryDomain: [yMin, yMax], trajectoryTicks: ticks };
+    }, [comparatorData?.trajectory, usnList, trajectoryScale]);
 
     // Synchronize filters
     useEffect(() => {
@@ -228,13 +263,7 @@ function InstitutionalIntelligenceContent() {
     const filteredClassesList = useMemo(() => {
         const list = classReport?.classes || [];
         if (!classSearch.trim()) return list;
-        const q = classSearch.toLowerCase().trim();
-        return list.filter(c =>
-            c.name.toLowerCase().includes(q) ||
-            c.branch.toLowerCase().includes(q) ||
-            c.facultyName.toLowerCase().includes(q) ||
-            (c.section && c.section.toLowerCase().includes(q))
-        );
+        return filterAndRank(list, classSearch, ['name', 'branch', 'facultyName', 'section', 'academicYear', 'scheme']);
     }, [classReport, classSearch]);
 
     // USN list management for comparator
@@ -476,27 +505,24 @@ function InstitutionalIntelligenceContent() {
 
     // Filtered subjects for table
     const filteredSubjectComparison = useMemo(() => {
-        const list = comparatorData?.subjectComparison || [];
-        return list.filter(sub => {
-            if (subjectSearch.trim()) {
-                const q = subjectSearch.toLowerCase().trim();
-                const matchesCode = (sub.code || '').toLowerCase().includes(q);
-                const matchesName = (sub.name || '').toLowerCase().includes(q);
-                if (!matchesCode && !matchesName) return false;
-            }
-            if (subjectFilterMode === 'delta') {
+        let list = comparatorData?.subjectComparison || [];
+        if (subjectFilterMode === 'delta') {
+            list = list.filter(sub => {
                 const totals = Object.values(sub.students || {})
                     .filter(m => m && typeof m.total === 'number')
                     .map(m => m.total);
                 if (totals.length < 2) return false;
                 const gap = Math.max(...totals) - Math.min(...totals);
                 return gap >= 15;
-            }
-            if (subjectFilterMode === 'fails') {
-                return Object.values(sub.students || {}).some(m => m && m.isFail);
-            }
-            return true;
-        });
+            });
+        } else if (subjectFilterMode === 'fails') {
+            list = list.filter(sub => Object.values(sub.students || {}).some(m => m && m.isFail));
+        }
+
+        if (subjectSearch.trim()) {
+            list = filterAndRank(list, subjectSearch, ['code', 'name']);
+        }
+        return list;
     }, [comparatorData?.subjectComparison, subjectSearch, subjectFilterMode]);
 
     // ── Manual Refresh ──
@@ -2180,11 +2206,80 @@ function InstitutionalIntelligenceContent() {
 
                             {/* Academic Trajectory Comparison Chart (Cleaned & Enhanced) */}
                             <Card style={{ marginBottom: '24px' }}>
-                                <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                                     <div>
                                         <CardTitle>Academic Trajectory Comparison (SGPA Progression)</CardTitle>
                                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
                                             Semester-over-semester progression benchmarked against VTU Distinction (7.75) and First Class (6.75) thresholds.
+                                        </div>
+                                    </div>
+                                    {/* Benchmark Chips + Scale Switcher */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                        <span style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '11px',
+                                            fontWeight: 700,
+                                            padding: '4px 9px',
+                                            borderRadius: '6px',
+                                            background: 'rgba(16, 185, 129, 0.1)',
+                                            color: '#10B981',
+                                            border: '1px solid rgba(16, 185, 129, 0.25)'
+                                        }}>
+                                            <span style={{ width: '12px', height: '2px', background: '#10B981', display: 'inline-block' }} />
+                                            Distinction (7.75)
+                                        </span>
+                                        <span style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '11px',
+                                            fontWeight: 700,
+                                            padding: '4px 9px',
+                                            borderRadius: '6px',
+                                            background: 'rgba(99, 102, 241, 0.1)',
+                                            color: '#6366F1',
+                                            border: '1px solid rgba(99, 102, 241, 0.25)'
+                                        }}>
+                                            <span style={{ width: '12px', height: '2px', background: '#6366F1', display: 'inline-block' }} />
+                                            First Class (6.75)
+                                        </span>
+                                        <div style={{ display: 'flex', background: 'var(--surface-low)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                            <button
+                                                onClick={() => setTrajectoryScale('focus')}
+                                                title="Focus SGPA range to clearly inspect trends"
+                                                style={{
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '11px',
+                                                    fontWeight: 700,
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    background: trajectoryScale === 'focus' ? 'var(--primary)' : 'transparent',
+                                                    color: trajectoryScale === 'focus' ? '#fff' : 'var(--tx-muted)',
+                                                    transition: 'all 0.15s'
+                                                }}
+                                            >
+                                                Focus Scale
+                                            </button>
+                                            <button
+                                                onClick={() => setTrajectoryScale('full')}
+                                                title="Display standard 0–10 scale"
+                                                style={{
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '11px',
+                                                    fontWeight: 700,
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    background: trajectoryScale === 'full' ? 'var(--primary)' : 'transparent',
+                                                    color: trajectoryScale === 'full' ? '#fff' : 'var(--tx-muted)',
+                                                    transition: 'all 0.15s'
+                                                }}
+                                            >
+                                                0–10 Scale
+                                            </button>
                                         </div>
                                     </div>
                                 </CardHeader>
@@ -2193,17 +2288,18 @@ function InstitutionalIntelligenceContent() {
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart
                                                 data={comparatorData?.trajectory || []}
-                                                margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
+                                                margin={{ top: 16, right: 36, left: 10, bottom: 8 }}
                                             >
                                                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                                                 <XAxis
                                                     dataKey="semester"
                                                     tickFormatter={s => (typeof s === 'string' && s.startsWith('Sem') ? s : `Sem ${s}`)}
                                                     tick={{ fontSize: 12, fill: 'var(--tx-muted)', fontWeight: 600 }}
+                                                    padding={{ left: 24, right: 36 }}
                                                 />
                                                 <YAxis
-                                                    domain={[0, 10]}
-                                                    ticks={[0, 2, 4, 6, 8, 10]}
+                                                    domain={trajectoryDomain}
+                                                    ticks={trajectoryTicks}
                                                     tick={{ fontSize: 11, fill: 'var(--tx-muted)' }}
                                                 />
                                                 <Tooltip
@@ -2253,20 +2349,34 @@ function InstitutionalIntelligenceContent() {
                                                     }}
                                                 />
 
-                                                {/* Milestone Reference Lines */}
+                                                {/* Milestone Reference Lines — Right-aligned to avoid colliding with Sem 1 data nodes */}
                                                 <ReferenceLine
                                                     y={7.75}
                                                     stroke="#10B981"
                                                     strokeDasharray="4 4"
                                                     strokeWidth={1.5}
-                                                    label={{ value: 'Distinction (7.75)', position: 'insideTopLeft', fill: '#10B981', fontSize: 11, fontWeight: 700 }}
+                                                    label={{
+                                                        value: 'Distinction (7.75)',
+                                                        position: 'insideTopRight',
+                                                        fill: '#10B981',
+                                                        fontSize: 11,
+                                                        fontWeight: 700,
+                                                        offset: 6
+                                                    }}
                                                 />
                                                 <ReferenceLine
                                                     y={6.75}
                                                     stroke="#6366F1"
                                                     strokeDasharray="4 4"
                                                     strokeWidth={1.5}
-                                                    label={{ value: 'First Class (6.75)', position: 'insideTopLeft', fill: '#6366F1', fontSize: 11, fontWeight: 700 }}
+                                                    label={{
+                                                        value: 'First Class (6.75)',
+                                                        position: 'insideBottomRight',
+                                                        fill: '#6366F1',
+                                                        fontSize: 11,
+                                                        fontWeight: 700,
+                                                        offset: 6
+                                                    }}
                                                 />
 
                                                 {usnList.map((u, i) => (
@@ -2637,12 +2747,7 @@ function InstitutionalIntelligenceContent() {
                                             <div style={{ fontSize: '12px' }}>Try selecting another class section above.</div>
                                         </div>
                                     ) : (
-                                        classRosterStudents
-                                            .filter(s => {
-                                                if (!rosterSearch.trim()) return true;
-                                                const q = rosterSearch.toLowerCase().trim();
-                                                return (s.name || '').toLowerCase().includes(q) || (s.usn || '').toLowerCase().includes(q);
-                                            })
+                                        filterAndRankStudents(classRosterStudents, rosterSearch)
                                             .map(stu => {
                                                 const isAdded = usnList.includes(stu.usn);
                                                 return (

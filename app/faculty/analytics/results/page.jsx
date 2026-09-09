@@ -12,6 +12,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { filterAndRankStudents, matchesStudent } from '@/lib/search-utils';
 
 export default function ExamResultsHubPage() {
     return (
@@ -209,30 +210,24 @@ function ExamResultsHubContent() {
 
     // Filtered lists
     const filteredSemesterStudents = useMemo(() => {
-        return (semData.students || []).filter(s => {
+        const base = (semData.students || []).filter(s => {
             const isP = s.isPassed ?? (s.hasData && s.arrearsCount === 0);
             if (statusFilter === 'passed' && !isP) return false;
             if (statusFilter === 'failed' && isP) return false;
-            if (!searchQuery) return true;
-            const q = searchQuery.toLowerCase();
-            return s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+            return true;
         });
+        return filterAndRankStudents(base, searchQuery);
     }, [semData.students, statusFilter, searchQuery]);
 
     const filteredBatchStudents = useMemo(() => {
-        return (batchData.students || []).filter(s => {
-            if (!searchQuery) return true;
-            const q = searchQuery.toLowerCase();
-            return s.usn.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
-        });
+        return filterAndRankStudents(batchData.students || [], searchQuery);
     }, [batchData.students, searchQuery]);
 
     const filteredRevalRoster = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
         return (revalData.deltaRoster || []).filter(item => {
             const matchSearch = !query ||
-                item.usn?.toLowerCase().includes(query) ||
-                item.name?.toLowerCase().includes(query) ||
+                matchesStudent(item, query) ||
                 item.subject_code?.toLowerCase().includes(query) ||
                 item.subject_name?.toLowerCase().includes(query);
 

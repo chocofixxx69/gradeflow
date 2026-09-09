@@ -2,19 +2,30 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../lib/server-session';
 import {
     getAdminClient, loadResultAnalysisDataset, buildStudentRow, rankBy,
+    mode, average, findFacultyAssignment,
 } from '../../../../lib/analytics-data';
 
 export const dynamic = 'force-dynamic';
 
 const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 
+const GRADE_TIERS = [
+    { key: 'O', label: 'O (90-100)', name: 'Outstanding', min: 90, max: 100, color: '#6366F1' },
+    { key: 'A+', label: 'A+ (80-89)', name: 'Excellent', min: 80, max: 89, color: '#3B82F6' },
+    { key: 'A', label: 'A (70-79)', name: 'Very Good', min: 70, max: 79, color: '#10B981' },
+    { key: 'B+', label: 'B+ (60-69)', name: 'Good', min: 60, max: 69, color: '#14B8A6' },
+    { key: 'B', label: 'B (55-59)', name: 'Above Average', min: 55, max: 59, color: '#84CC16' },
+    { key: 'C', label: 'C (50-54)', name: 'Average', min: 50, max: 54, color: '#F59E0B' },
+    { key: 'P', label: 'P (40-49)', name: 'Pass', min: 40, max: 49, color: '#F97316' },
+    { key: 'F', label: 'F (<40)', name: 'Fail / Backlog', min: 0, max: 39, color: '#EF4444' },
+    { key: 'Absent', label: 'Absent', name: 'Absent (A)', min: 0, max: 0, color: '#64748B' },
+];
+
 /**
  * GET /api/faculty/reports
  * Faculty-scoped reporting rollup (subject pass/fail/absent counts, grade
  * distribution, class pass rates, top students by CGPA, subject-wise pass
- * rates). Reuses the same dataset/helpers as /api/admin/analytics/* —
- * loadResultAnalysisDataset already scopes everything to the calling
- * faculty's own classes when role === 'faculty'.
+ * rates, and faculty workload).
  */
 export async function GET(req) {
     try {
@@ -28,32 +39,153 @@ export async function GET(req) {
 
         const scopedUsns = new Set(dataset.students.map(s => s.usn));
         const scopedMarks = dataset.subjectMarks.filter(m => scopedUsns.has(m.usn));
+        const totalMarksCount = scopedMarks.length;
 
-        // ── Grade distribution + pass/fail/absent counts ──
-        const gradeDist = {};
+        // ── Authentic Grade Distribution from Total Scores ──
+        const letterGradeCounts = {
+            'O': 0, 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0, 'P': 0, 'F': 0, 'Absent': 0,
+        };
+        let passCount = 0;
+        let failCount = 0;
+        let absentCount = 0;
+
         for (const m of scopedMarks) {
-            const g = (m.grade || '—').toUpperCase();
-            gradeDist[g] = (gradeDist[g] || 0) + 1;
-        }
-        const passCount = scopedMarks.filter(m => m.passed).length;
-        const failCount = gradeDist['F'] || 0;
-        const absentCount = gradeDist['A'] || 0;
+            const rawG = (m.grade || '').toUpperCase().trim();
+            if (rawG === 'A' || rawG === 'AB' || rawG === 'ABSENT') {
+                letterGradeCounts['Absent']++;
+                absentCount++;
+                continue;
+            }
+            if (rawG === 'F' || !m.passed) {
+                letterGradeCounts['F']++;
+                failCount++;
+                continue;
+            }
 
-        // ── Subject-wise pass rates ──
+            passCount++;
+            const total = Number(m.total);
+            if (isNaN(total) || total <= 0) {
+                letterGradeCounts['P']++;
+            } else if (total >= 90) {
+                letterGradeCounts['O']++;
+            } else if (total >= 80) {
+                letterGradeCounts['A+']++;
+            } else if (total >= 70) {
+                letterGradeCounts['A']++;
+            } else if (total >= 60) {
+                letterGradeCounts['B+']++;
+            } else if (total >= 55) {
+                letterGradeCounts['B']++;
+            } else if (total >= 50) {
+                letterGradeCounts['C']++;
+            } else {
+                letterGradeCounts['P']++;
+            }
+        }
+
+        // Formatted letter grade distribution for charts
+        const letterGradeData = GRADE_TIERS.map(t => {
+            const count = letterGradeCounts[t.key] || 0;
+            return {
+                key: t.key,
+                label: t.label,
+                name: t.name,
+                count,
+                percent: pct(count, totalMarksCount),
+                color: t.color,
+            };
+        });
+
+        // High-level outcome summary. `label` is required — the chart's
+        // XAxis reads dataKey="label" (same field letterGradeData already
+        // provides), and without it every bar collapses onto one undefined
+        // category and the chart renders empty.
+        const outcomeData = [
+            { key: 'Pass', label: 'Pass', name: 'Clear Pass', count: passCount, percent: pct(passCount, totalMarksCount), color: '#10B981' },
+            { key: 'Fail', label: 'Fail', name: 'Backlogs (F)', count: failCount, percent: pct(failCount, totalMarksCount), color: '#EF4444' },
+            { key: 'Absent', label: 'Absent', name: 'Absents (A)', count: absentCount, percent: pct(absentCount, totalMarksCount), color: '#F59E0B' },
+        ];
+
+        // Legacy map compatibility
+        const gradeDist = {
+            'P': passCount,
+            'F': failCount,
+            'A': absentCount,
+            ...letterGradeCounts,
+        };
+
+        // Distinction / First class summary
+        const distinctionCount = (letterGradeCounts['O'] || 0) + (letterGradeCounts['A+'] || 0);
+        const firstClassCount = (letterGradeCounts['A'] || 0) + (letterGradeCounts['B+'] || 0);
+
+        // ── Subject-wise pass rates with Faculty Attribution & Metrics ──
+        const studentByUsn = {};
+        for (const s of dataset.students) studentByUsn[s.usn] = s;
+
         const bySubject = {};
         for (const m of scopedMarks) (bySubject[m.subject_code] ||= []).push(m);
+
         const subjectPassRates = Object.entries(bySubject)
             .map(([code, marks]) => {
                 const passed = marks.filter(m => m.passed).length;
+                const failed = marks.length - passed;
+                const totals = marks.map(m => m.total).filter(v => typeof v === 'number' && !isNaN(v));
+                const semester = mode(marks.map(m => m.semester).filter(Boolean));
+                const branch = mode(marks.map(m => studentByUsn[m.usn]?.branch).filter(Boolean));
+                const scheme = mode(marks.map(m => studentByUsn[m.usn]?.scheme).filter(Boolean));
+
+                const assignment = findFacultyAssignment(dataset.facultyAssignments, { subjectCode: code, branch, semester, scheme });
+                const facultyObj = assignment ? dataset.facultyById[assignment.faculty_id] : null;
+                const facultyName = facultyObj?.full_name || 'Unassigned';
+                const facultyDept = facultyObj?.department || null;
+
+                const catalogEntry = dataset.lookupSubjectCatalog({ code, branch, semester, scheme });
+
                 return {
                     code,
-                    name: marks[0]?.subject_name || code,
+                    name: catalogEntry?.name || marks[0]?.subject_name || code,
+                    semester: semester || null,
+                    branch: branch || null,
                     passed,
+                    failed,
                     total: marks.length,
                     passRate: pct(passed, marks.length),
+                    facultyName,
+                    facultyDept,
+                    avgMarks: totals.length ? Math.round(average(totals) * 10) / 10 : null,
+                    highestMarks: totals.length ? Math.max(...totals) : null,
+                    lowestMarks: totals.length ? Math.min(...totals) : null,
                 };
             })
             .sort((a, b) => a.code.localeCompare(b.code));
+
+        // ── Faculty Workload Rollup ──
+        const facultyMap = {};
+        for (const sub of subjectPassRates) {
+            const facKey = sub.facultyName;
+            if (!facultyMap[facKey]) {
+                facultyMap[facKey] = {
+                    facultyName: facKey,
+                    department: sub.facultyDept,
+                    subjects: [],
+                    totalStudents: 0,
+                    totalPassed: 0,
+                };
+            }
+            facultyMap[facKey].subjects.push(sub);
+            facultyMap[facKey].totalStudents += sub.total;
+            facultyMap[facKey].totalPassed += sub.passed;
+        }
+
+        const facultyWorkload = Object.values(facultyMap).map(f => ({
+            facultyName: f.facultyName,
+            department: f.department,
+            subjectCount: f.subjects.length,
+            subjects: f.subjects,
+            totalStudents: f.totalStudents,
+            totalPassed: f.totalPassed,
+            avgPassRate: pct(f.totalPassed, f.totalStudents),
+        })).sort((a, b) => b.totalStudents - a.totalStudents);
 
         // ── Class pass rates ──
         const allStudentRows = dataset.students.map(s => buildStudentRow(s, dataset));
@@ -82,14 +214,21 @@ export async function GET(req) {
             success: true,
             data: {
                 uniqueStudents: dataset.students.length,
-                totalSubjects: scopedMarks.length,
+                totalSubjects: totalMarksCount,
                 passCount,
                 failCount,
                 absentCount,
+                distinctionCount,
+                firstClassCount,
+                distinctionRate: pct(distinctionCount, totalMarksCount),
+                firstClassRate: pct(firstClassCount, totalMarksCount),
                 gradeDist,
+                letterGradeData,
+                outcomeData,
                 topStudents,
                 classStats,
                 subjectPassRates,
+                facultyWorkload,
             },
         });
     } catch (err) {

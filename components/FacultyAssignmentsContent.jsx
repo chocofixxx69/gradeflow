@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest } from '../lib/api/client';
-import { ConfirmDialog } from './ui';
+import { ConfirmDialog, SearchableSelect } from './ui';
+import { filterAndRank } from '../lib/search-utils';
 
 const BRANCH_ALIASES = {
     CS: ['CS', 'CSE', 'COMPUTER SCIENCE', 'COMPUTER SCIENCE & ENGINEERING'],
@@ -78,8 +79,8 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
         }
     }, [preselectedFacultyId]);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
+    const fetchData = useCallback(async (isSilent = false) => {
+        if (!isSilent) setLoading(true);
         setError('');
         try {
             // Proactively align admin session cookies if admin_session is stored
@@ -104,21 +105,53 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 } catch {}
             }
 
-            const res = await apiRequest('/api/admin/faculty-assignments');
+            const res = await apiRequest(`/api/admin/faculty-assignments?_t=${Date.now()}`);
             setAssignments(res?.assignments || []);
             setFacultyList(res?.faculty || []);
             setClassesList(res?.classes || []);
             setSubjectsList(res?.subjects || []);
         } catch (err) {
             console.error('Failed to load faculty assignments:', err);
-            setError(err.message || 'Failed to load faculty assignments.');
+            if (!isSilent) setError(err.message || 'Failed to load faculty assignments.');
         } finally {
-            setLoading(false);
+            if (!isSilent) setLoading(false);
         }
     }, []);
 
     useEffect(() => {
         fetchData();
+
+        // 1. In-tab custom event listener
+        const handleUpdate = () => {
+            fetchData(true);
+        };
+        window.addEventListener('faculty_assignments_updated', handleUpdate);
+
+        // 2. Cross-tab storage synchronization
+        const handleStorage = (e) => {
+            if (e.key === 'faculty_assignments_last_sync') {
+                fetchData(true);
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+
+        // 3. Re-sync when switching back to this tab
+        const handleFocus = () => {
+            fetchData(true);
+        };
+        window.addEventListener('focus', handleFocus);
+
+        // 4. Polling heartbeat every 15 seconds
+        const timer = setInterval(() => {
+            fetchData(true);
+        }, 15000);
+
+        return () => {
+            window.removeEventListener('faculty_assignments_updated', handleUpdate);
+            window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('focus', handleFocus);
+            clearInterval(timer);
+        };
     }, [fetchData]);
 
     // Derived maps & lists
@@ -182,25 +215,35 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
 
     // Filtered assignments displayed in table
     const displayedAssignments = useMemo(() => {
-        return assignments.filter(a => {
-            const fac = facultyMap.get(a.faculty_id) || a.faculty_onboarding;
-            const facName = fac?.full_name || '';
-            const facEmail = fac?.email || '';
-            const sub = subjectMap.get(a.subject_code);
-            const subName = sub?.subject_name || '';
-
-            const matchesSearch = !search ||
-                facName.toLowerCase().includes(search.toLowerCase()) ||
-                facEmail.toLowerCase().includes(search.toLowerCase()) ||
-                a.subject_code.toLowerCase().includes(search.toLowerCase()) ||
-                subName.toLowerCase().includes(search.toLowerCase());
-
+        let list = assignments.filter(a => {
             const matchesFaculty = filterFaculty === 'all' || a.faculty_id === filterFaculty;
-            const matchesBranch = filterBranch === 'all' || matchesBranch(a.branch, filterBranch);
+            const matchesBranchFilter = filterBranch === 'all' || matchesBranch(a.branch, filterBranch);
             const matchesSem = filterSemester === 'all' || String(a.semester) === String(filterSemester);
-
-            return matchesSearch && matchesFaculty && matchesBranch && matchesSem;
+            return matchesFaculty && matchesBranchFilter && matchesSem;
         });
+
+        if (search.trim()) {
+            list = filterAndRank(list, search, [
+                a => {
+                    const fac = facultyMap.get(a.faculty_id) || a.faculty_onboarding;
+                    return fac?.full_name || '';
+                },
+                a => {
+                    const fac = facultyMap.get(a.faculty_id) || a.faculty_onboarding;
+                    return fac?.email || '';
+                },
+                'subject_code',
+                a => {
+                    const sub = subjectMap.get(a.subject_code);
+                    return sub?.subject_name || '';
+                },
+                'branch',
+                'semester',
+                'section'
+            ]);
+        }
+
+        return list;
     }, [assignments, facultyMap, subjectMap, search, filterFaculty, filterBranch, filterSemester]);
 
     // KPI Metrics
@@ -540,12 +583,22 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                         search
                     </span>
                     <input
-                        style={{ ...s.input, width: '100%', paddingLeft: '32px', boxSizing: 'border-box' }}
+                        style={{ ...s.input, width: '100%', paddingLeft: '32px', paddingRight: search ? '30px' : '14px', boxSizing: 'border-box' }}
                         type="text"
-                        placeholder="Search faculty or subject code..."
+                        placeholder="Search faculty, email, or subject code..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                     />
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => setSearch('')}
+                            style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--tx-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                            title="Clear search"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '15px' }}>close</span>
+                        </button>
+                    )}
                 </div>
 
                 <select
@@ -937,20 +990,19 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                 </div>
 
                                 {!manualSubjectMode && availableSubjectsForForm.length > 0 ? (
-                                    <>
-                                        <select
-                                            style={{ ...s.select, width: '100%' }}
+                                    <div>
+                                        <SearchableSelect
+                                            options={availableSubjectsForForm.map(s => ({
+                                                value: s.subject_code,
+                                                label: `${s.subject_code} — ${s.subject_name}`,
+                                                subtitle: `${s.branch} · Sem ${s.semester} · Scheme ${s.scheme} · ${s.credits || 3} credits`,
+                                                badge: `Sem ${s.semester}`,
+                                            }))}
                                             value={form.subject_code}
                                             onChange={e => setForm(f => ({ ...f, subject_code: e.target.value }))}
-                                            required
-                                        >
-                                            <option value="">Select a subject from catalog...</option>
-                                            {availableSubjectsForForm.map(s => (
-                                                <option key={s.id || s.subject_code} value={s.subject_code}>
-                                                    {s.subject_code} — {s.subject_name} ({s.credits || 3} credits)
-                                                </option>
-                                            ))}
-                                        </select>
+                                            placeholder="Select or search a subject from catalog..."
+                                            searchPlaceholder="Search by code, name, sem (e.g. BCS601, Cloud)..."
+                                        />
 
                                         {selectedSubjectDetails && (
                                             <div style={{
@@ -1002,7 +1054,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                                 </div>
                                             </div>
                                         )}
-                                    </>
+                                    </div>
                                 ) : (
                                     <div>
                                         <input

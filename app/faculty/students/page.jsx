@@ -87,10 +87,17 @@ function StudentsDirectoryContent() {
     const [status, setStatus] = useState('all');
     const [entry, setEntry] = useState('all');
     const [backlogsFilter, setBacklogsFilter] = useState('all');
+    // Search states (immediate input vs debounced search term)
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
+    const [isDebouncing, setIsDebouncing] = useState(false);
+
     const [page, setPage] = useState(1);
     const limit = 25;
+
+    // Request tracking to eliminate race conditions
+    const activeRequestIdRef = useRef(0);
+    const abortControllerRef = useRef(null);
 
     // Data
     const [students, setStudents] = useState([]);
@@ -104,6 +111,7 @@ function StudentsDirectoryContent() {
     // Deep links from Data Health ("23 batch / CS" chips) land here pre-filtered.
     const searchParams = useSearchParams();
     const appliedDeepLink = useRef(false);
+
     useEffect(() => {
         if (appliedDeepLink.current || !searchParams) return;
         appliedDeepLink.current = true;
@@ -119,21 +127,49 @@ function StudentsDirectoryContent() {
         if (ent) setEntry(ent);
     }, [searchParams]);
 
-    // Debounce the search box so typing doesn't fire a request per keystroke.
+    // Debounce search input by 300ms
     useEffect(() => {
-        const t = setTimeout(() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-        }, 300);
-        return () => clearTimeout(t);
-    }, [searchInput]);
+        const trimmed = searchInput.trim();
+        if (trimmed === search) {
+            setIsDebouncing(false);
+            return;
+        }
 
-    const requestId = useRef(0);
+        setIsDebouncing(true);
+        const timer = setTimeout(() => {
+            setSearch(trimmed);
+            setPage(1);
+            setIsDebouncing(false);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [searchInput, search]);
+
+    const triggerSearchImmediately = (val) => {
+        const trimmed = (val !== undefined ? val : searchInput).trim();
+        setSearch(trimmed);
+        setPage(1);
+        setIsDebouncing(false);
+    };
+
+    const handleClearSearch = () => {
+        setSearchInput('');
+        setSearch('');
+        setPage(1);
+        setIsDebouncing(false);
+    };
 
     const loadStudents = useCallback(async ({ fresh = false } = {}) => {
-        const id = ++requestId.current;
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        const id = ++activeRequestIdRef.current;
         setLoading(true);
         setError(null);
+
         try {
             const query = { page, limit };
             if (fresh) query.fresh = '1';
@@ -149,8 +185,11 @@ function StudentsDirectoryContent() {
             if (backlogsFilter !== 'all') query.backlogsFilter = backlogsFilter;
             if (search) query.search = search;
 
-            const res = await apiRequest('/api/faculty/students', { query });
-            if (id !== requestId.current) return; // a newer request already won
+            const res = await apiRequest('/api/faculty/students', {
+                query,
+                signal: controller.signal
+            });
+            if (id !== activeRequestIdRef.current) return;
 
             setStudents(res?.students || []);
             setPagination(res?.pagination || { total: 0, page: 1, limit, totalPages: 1 });
@@ -159,13 +198,14 @@ function StudentsDirectoryContent() {
             setDirectoryTotal(res?.meta?.totalStudents || 0);
             setQuality(res?.quality || { flagged: 0, byCode: {} });
         } catch (err) {
-            if (id !== requestId.current) return;
+            if (err?.name === 'AbortError' || controller.signal.aborted) return;
+            if (id !== activeRequestIdRef.current) return;
             console.error('Failed to load students:', err);
             setError(err?.message || 'Failed to load the students directory.');
             setStudents([]);
             setPagination({ total: 0, page: 1, limit, totalPages: 1 });
         } finally {
-            if (id === requestId.current) setLoading(false);
+            if (id === activeRequestIdRef.current) setLoading(false);
         }
     }, [page, limit, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
 
@@ -399,12 +439,50 @@ function StudentsDirectoryContent() {
                                 { value: 'backlogs', label: 'Carrying Backlogs' }
                             ]}
                         />
-                        <Input
-                            label="Search"
-                            placeholder="USN, Name or Email…"
-                            value={searchInput}
-                            onChange={e => setSearchInput(e.target.value)}
-                        />
+                        <div style={{ position: 'relative' }}>
+                            <Input
+                                label="Search"
+                                placeholder="USN, Name, Email, Phone..."
+                                value={searchInput}
+                                onChange={e => setSearchInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        triggerSearchImmediately(e.target.value);
+                                    }
+                                }}
+                            />
+                            <div style={{ position: 'absolute', right: '10px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 2 }}>
+                                {isDebouncing && (
+                                    <span
+                                        className="material-icons-round"
+                                        style={{ fontSize: '16px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}
+                                        title="Searching..."
+                                    >
+                                        sync
+                                    </span>
+                                )}
+                                {searchInput && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearSearch}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            color: 'var(--tx-dim)',
+                                            padding: '2px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            borderRadius: '50%',
+                                        }}
+                                        title="Clear search"
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     {activeChips.length > 0 && (
@@ -446,10 +524,12 @@ function StudentsDirectoryContent() {
             {/* Student Count / Status Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
-                    Found <strong>{pagination.total}</strong> students matching filters
+                    Found <strong>{loading ? '…' : pagination.total}</strong> student{pagination.total === 1 ? '' : 's'}
+                    {search ? <span> matching &ldquo;<strong style={{ color: 'var(--tx-main)' }}>{search}</strong>&rdquo;</span> : ' matching filters'}
                     {directoryTotal > 0 && pagination.total !== directoryTotal && (
                         <span style={{ color: 'var(--tx-dim)' }}> · {directoryTotal} in the directory</span>
                     )}
+                    {loading && <span style={{ marginLeft: '6px', fontSize: '12px', color: 'var(--primary)' }}>(Updating…)</span>}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {['all', 'active', 'inactive'].map(value => (

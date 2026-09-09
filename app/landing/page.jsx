@@ -294,7 +294,7 @@ export default function LandingPage() {
                     <div className={styles.developerCreditCard}>
                         <div className={styles.developerCreditHeader}>
                             <span className="material-icons-round" style={{ fontSize: '15px' }}>code</span>
-                            <span>ENGINEERED & DEVELOPED BY</span>
+                            <span>DEVELOPED BY</span>
                         </div>
                         <div className={styles.developerNamesRow}>
                             <a

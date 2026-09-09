@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiRequest } from '../lib/api/client';
 
 export function AuditLogContent() {
@@ -9,6 +9,8 @@ export function AuditLogContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const activeRequestIdRef = useRef(0);
     const [severityFilter, setSeverityFilter] = useState('all');
     const [actionFilter, setActionFilter] = useState('all');
     const [entityFilter, setEntityFilter] = useState('all');
@@ -16,27 +18,39 @@ export function AuditLogContent() {
     const [runningPing, setRunningPing] = useState(false);
     const [pingSuccessMsg, setPingSuccessMsg] = useState('');
 
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [search]);
+
     const fetchAuditData = useCallback(async () => {
+        const requestId = ++activeRequestIdRef.current;
         setLoading(true);
         setError('');
         try {
             const query = {};
             if (actionFilter !== 'all') query.action = actionFilter;
             if (severityFilter !== 'all') query.severity = severityFilter;
-            if (search) query.search = search;
+            if (debouncedSearch.trim()) query.search = debouncedSearch.trim();
 
             const res = await apiRequest('/api/admin/audit-logs', { query });
+            if (requestId !== activeRequestIdRef.current) return;
             setLogs(res?.logs || []);
             if (res?.diagnostics) {
                 setDiagnostics(res.diagnostics);
             }
         } catch (err) {
+            if (requestId !== activeRequestIdRef.current) return;
             console.error('Audit log fetch error:', err);
             setError(err.message || 'Failed to load system audit trail.');
         } finally {
-            setLoading(false);
+            if (requestId === activeRequestIdRef.current) {
+                setLoading(false);
+            }
         }
-    }, [actionFilter, severityFilter, search]);
+    }, [actionFilter, severityFilter, debouncedSearch]);
 
     useEffect(() => {
         fetchAuditData();
@@ -299,18 +313,36 @@ export function AuditLogContent() {
                 padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center',
                 justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 260px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 260px', position: 'relative' }}>
                     <span className="material-icons-round" style={{ color: 'var(--tx-muted)', fontSize: '20px' }}>search</span>
                     <input
                         type="text"
                         placeholder="Search audit action, admin email, entity ID, or description..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                setDebouncedSearch(search);
+                            }
+                        }}
                         style={{
-                            width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)',
+                            width: '100%', padding: '8px 32px 8px 12px', borderRadius: '6px', border: '1px solid var(--border)',
                             fontSize: '0.88rem', background: 'var(--surface-low)', color: 'var(--tx-main)', outline: 'none'
                         }}
                     />
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSearch('');
+                                setDebouncedSearch('');
+                            }}
+                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                            title="Clear search"
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

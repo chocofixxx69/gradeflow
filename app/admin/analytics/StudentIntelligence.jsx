@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Button, EmptyState, SearchInput } from '../../../components/ui';
 import styles from './AnalyticsTable.module.css';
 import { SkeletonRows, SortButton, StatusBadge, sortRows } from './AnalyticsShared';
+import { filterAndRankStudents } from '../../../lib/search-utils';
 
 // ---------------------------------------------------------------------------
 // Pure helpers - no new API calls, no duplicate hook logic
@@ -46,13 +47,7 @@ const SORT_COLUMNS = [
 ];
 
 function filterRows(rows, searchQuery) {
-    if (!searchQuery) return rows;
-    const lowerQuery = searchQuery.toLowerCase();
-    return rows.filter(row =>
-        row.name.toLowerCase().includes(lowerQuery) ||
-        row.usn.toLowerCase().includes(lowerQuery) ||
-        row.className.toLowerCase().includes(lowerQuery)
-    );
+    return filterAndRankStudents(rows, searchQuery);
 }
 
 // ---------------------------------------------------------------------------

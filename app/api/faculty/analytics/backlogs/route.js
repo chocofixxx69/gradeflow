@@ -4,6 +4,7 @@ import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMark
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
 import { resolveSubjectCredits } from '@/lib/export-utils';
+import { filterAndRankStudents } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,9 +45,7 @@ export async function GET(req) {
         }
 
         if (search) {
-            students = students.filter(s =>
-                s.usn.toLowerCase().includes(search) || (s.name && s.name.toLowerCase().includes(search))
-            );
+            students = filterAndRankStudents(students, search);
         }
 
         if (students.length === 0) {

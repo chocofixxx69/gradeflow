@@ -6,7 +6,7 @@ import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
-import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, Select } from '../../../components/ui';
+import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, SearchableSelect, Select } from '../../../components/ui';
 import { createFacultyAssignment, deleteFacultyAssignment } from '../../../lib/api/admin-management';
 import styles from './FacultyDashboard.module.css';
 
@@ -21,7 +21,10 @@ const BRANCH_OPTIONS = [
     { value: 'CV', label: 'Civil Engineering (CV)' },
     { value: 'RI', label: 'Robotics & AI (RI)' },
 ];
-const SEMESTER_OPTIONS = Array.from({ length: 8 }, (_, i) => ({ value: String(i + 1), label: `Semester ${i + 1}` }));
+const SEMESTER_OPTIONS = [
+    { value: '', label: 'All Semesters (Browse All)' },
+    ...Array.from({ length: 8 }, (_, i) => ({ value: String(i + 1), label: `Semester ${i + 1}` })),
+];
 const SCHEME_OPTIONS = [
     { value: '2022', label: '2022 Scheme' },
     { value: '2025', label: '2025 Scheme' },
@@ -574,7 +577,19 @@ function FacultyDashboardView({
                     <Button
                         variant={addSubjectOpen ? 'ghost' : 'secondary'}
                         iconStart={addSubjectOpen ? 'close' : 'add'}
-                        onClick={() => setAddSubjectOpen?.(!addSubjectOpen)}
+                        onClick={() => {
+                            const nextState = !addSubjectOpen;
+                            setAddSubjectOpen?.(nextState);
+                            if (nextState && assignedClasses.length > 0 && !addSubjectForm?.semester) {
+                                const firstClass = assignedClasses[0];
+                                setAddSubjectForm?.(prev => ({
+                                    ...prev,
+                                    branch: firstClass.branch || prev.branch || 'CS',
+                                    semester: firstClass.semester ? String(firstClass.semester) : prev.semester || '',
+                                    scheme: firstClass.batch && Number(firstClass.batch) >= 2025 ? '2025' : (prev.scheme || '2022'),
+                                }));
+                            }
+                        }}
                     >
                         {addSubjectOpen ? 'Cancel' : 'Add Subject'}
                     </Button>
@@ -591,7 +606,7 @@ function FacultyDashboardView({
                             <Select
                                 label="Branch"
                                 options={BRANCH_OPTIONS}
-                                value={addSubjectForm?.branch || ''}
+                                value={addSubjectForm?.branch || 'CS'}
                                 onChange={e => setAddSubjectForm?.(prev => ({ ...prev, branch: e.target.value, subject_code: '' }))}
                             />
                             <Select
@@ -607,12 +622,35 @@ function FacultyDashboardView({
                                 value={addSubjectForm?.scheme || '2022'}
                                 onChange={e => setAddSubjectForm?.(prev => ({ ...prev, scheme: e.target.value, subject_code: '' }))}
                             />
-                            <Select
+                            <SearchableSelect
                                 label="Subject"
-                                options={subjectOptions.map(s => ({ value: s.code, label: `${s.code} — ${s.name}` }))}
-                                placeholder={subjectOptionsLoading ? 'Loading…' : (subjectOptions.length ? 'Select a subject' : 'No subjects found')}
+                                options={subjectOptions.map(s => ({
+                                    value: s.code,
+                                    label: `${s.code} — ${s.name}`,
+                                    subtitle: `${s.branch} · Sem ${s.semester} · Scheme ${s.scheme} · ${s.credits || 3} credits`,
+                                    badge: `Sem ${s.semester}`,
+                                    code: s.code,
+                                    name: s.name,
+                                    semester: s.semester,
+                                }))}
+                                placeholder={
+                                    subjectOptionsLoading
+                                        ? 'Loading subjects…'
+                                        : subjectOptions.length > 0
+                                            ? 'Select or search a subject'
+                                            : 'No subjects in catalog'
+                                }
+                                searchPlaceholder="Search code, name, or sem (e.g. BCS601, Cloud, 6)..."
                                 value={addSubjectForm?.subject_code || ''}
-                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, subject_code: e.target.value }))}
+                                onChange={e => {
+                                    const chosenCode = e.target.value;
+                                    const chosenSub = subjectOptions.find(s => s.code === chosenCode);
+                                    setAddSubjectForm?.(prev => ({
+                                        ...prev,
+                                        subject_code: chosenCode,
+                                        semester: prev.semester || (chosenSub?.semester ? String(chosenSub.semester) : prev.semester)
+                                    }));
+                                }}
                                 disabled={subjectOptionsLoading || subjectOptions.length === 0}
                             />
                             <Select
@@ -620,7 +658,19 @@ function FacultyDashboardView({
                                 options={assignedClasses.map(c => ({ value: c.id, label: `${c.name} (${c.branch} · S${c.semester} · ${c.section})` }))}
                                 placeholder={assignedClasses.length ? 'All my classes' : 'No classes assigned yet'}
                                 value={addSubjectForm?.class_id || ''}
-                                onChange={e => setAddSubjectForm?.(prev => ({ ...prev, class_id: e.target.value }))}
+                                onChange={e => {
+                                    const chosenClassId = e.target.value;
+                                    const chosenClass = assignedClasses.find(c => String(c.id) === String(chosenClassId));
+                                    setAddSubjectForm?.(prev => ({
+                                        ...prev,
+                                        class_id: chosenClassId,
+                                        ...(chosenClass ? {
+                                            branch: chosenClass.branch || prev.branch,
+                                            semester: chosenClass.semester ? String(chosenClass.semester) : prev.semester,
+                                            ...(chosenClass.batch && Number(chosenClass.batch) >= 2025 ? { scheme: '2025' } : {})
+                                        } : {})
+                                    }));
+                                }}
                                 disabled={assignedClasses.length === 0}
                                 helperText={assignedClasses.length ? 'Leave blank to teach this subject across all your classes.' : undefined}
                             />
@@ -628,7 +678,7 @@ function FacultyDashboardView({
                                 variant="primary"
                                 onClick={handleAddSubject}
                                 loading={addSubjectSaving}
-                                disabled={addSubjectSaving || !addSubjectForm?.subject_code || !addSubjectForm?.semester}
+                                disabled={addSubjectSaving || !addSubjectForm?.subject_code}
                             >
                                 Add to My Load
                             </Button>
@@ -881,7 +931,7 @@ function FacultyDashboardContent() {
     // Populate the subject picker for whichever branch/semester/scheme is
     // currently selected in the "Add Subject" form.
     useEffect(() => {
-        if (!addSubjectOpen || !addSubjectForm.semester) {
+        if (!addSubjectOpen) {
             setSubjectOptions([]);
             return;
         }
@@ -889,7 +939,13 @@ function FacultyDashboardContent() {
         (async () => {
             setSubjectOptionsLoading(true);
             try {
-                const res = await fetch(`/api/subjects?branch=${addSubjectForm.branch}&semester=${addSubjectForm.semester}&scheme=${addSubjectForm.scheme}`, { credentials: 'include' });
+                const branch = addSubjectForm?.branch || 'CS';
+                const scheme = addSubjectForm?.scheme || '2022';
+                let url = `/api/subjects?branch=${encodeURIComponent(branch)}&scheme=${encodeURIComponent(scheme)}`;
+                if (addSubjectForm?.semester) {
+                    url += `&semester=${encodeURIComponent(addSubjectForm.semester)}`;
+                }
+                const res = await fetch(url, { credentials: 'include' });
                 const json = await res.json();
                 if (!cancelled) setSubjectOptions(json?.subjects || []);
             } catch (err) {
@@ -903,7 +959,10 @@ function FacultyDashboardContent() {
     }, [addSubjectOpen, addSubjectForm.branch, addSubjectForm.semester, addSubjectForm.scheme]);
 
     const handleAddSubject = async () => {
-        if (!addSubjectForm.subject_code || !addSubjectForm.semester) return;
+        if (!addSubjectForm.subject_code) return;
+        const selectedSub = subjectOptions.find(s => s.code === addSubjectForm.subject_code);
+        const resolvedSemester = addSubjectForm.semester || (selectedSub?.semester ? String(selectedSub.semester) : '1');
+
         setAddSubjectSaving(true);
         setAddSubjectError('');
         try {
@@ -912,11 +971,31 @@ function FacultyDashboardContent() {
             // (or misattribute) a subject to anyone but the logged-in faculty.
             await createFacultyAssignment({
                 subject_code: addSubjectForm.subject_code,
-                branch: addSubjectForm.branch,
-                semester: parseInt(addSubjectForm.semester, 10),
-                scheme: addSubjectForm.scheme,
+                branch: addSubjectForm.branch || selectedSub?.branch || 'CS',
+                semester: parseInt(resolvedSemester, 10),
+                scheme: addSubjectForm.scheme || selectedSub?.scheme || '2022',
                 class_id: addSubjectForm.class_id || undefined,
             });
+
+            // Activity log for faculty_activity & 5W1H audit
+            recordFacultyAction(faculty, 'ASSIGN_SUBJECT', null, {
+                details: `Added subject ${addSubjectForm.subject_code} to teaching load (${addSubjectForm.branch || 'CS'} · Sem ${resolvedSemester})`,
+                context_module: 'Faculty Portal > Teaching Load > Subject Mapping',
+                metadata: {
+                    subject_code: addSubjectForm.subject_code,
+                    branch: addSubjectForm.branch || 'CS',
+                    semester: resolvedSemester,
+                    scheme: addSubjectForm.scheme || '2022',
+                    class_id: addSubjectForm.class_id || null,
+                }
+            });
+
+            // Notify admin panel or other tabs
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('faculty_assignments_updated'));
+                localStorage.setItem('faculty_assignments_last_sync', String(Date.now()));
+            }
+
             setAddSubjectForm(prev => ({ ...prev, subject_code: '', class_id: '' }));
             setAddSubjectOpen(false);
             await loadAssignments();
@@ -929,8 +1008,26 @@ function FacultyDashboardContent() {
 
     const handleRemoveAssignment = async (id) => {
         setRemovingAssignmentId(id);
+        const targetAssignment = assignedSubjects.find(a => a.id === id);
         try {
             await deleteFacultyAssignment(id);
+
+            // Activity log for faculty_activity & 5W1H audit
+            recordFacultyAction(faculty, 'UNASSIGN_SUBJECT', null, {
+                details: `Removed subject ${targetAssignment?.subject_code || id} from teaching load`,
+                context_module: 'Faculty Portal > Teaching Load > Subject Mapping',
+                metadata: {
+                    assignment_id: id,
+                    subject_code: targetAssignment?.subject_code,
+                }
+            });
+
+            // Notify admin panel or other tabs
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('faculty_assignments_updated'));
+                localStorage.setItem('faculty_assignments_last_sync', String(Date.now()));
+            }
+
             await loadAssignments();
         } catch (err) {
             console.error('Failed to remove assignment:', err);

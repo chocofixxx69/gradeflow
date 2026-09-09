@@ -4,6 +4,7 @@ import { getAdminClient } from '@/lib/analytics-data';
 import { readTable, invalidateTableCache, SELECTS } from '@/lib/table-cache';
 import { canonicalBranch, branchLabelFor } from '@/lib/vtu-identity';
 import { loadStudentRecords, toSummary } from '@/lib/student-record';
+import { matchesStudent, scoreStudentMatch } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,7 +160,18 @@ export async function GET(req) {
                 if (entryFilter === 'regular') return !r.identity.lateral.isLateral;
                 return true;
             },
-            search: r => !search || r.searchBlob.includes(search)
+            search: r => {
+                if (!search) return true;
+                return matchesStudent({
+                    usn: r.usn,
+                    name: r.record.name,
+                    email: r.record.raw?.email,
+                    phone: r.record.raw?.phone,
+                    section: r.section,
+                    className: r.classInfo?.className,
+                    branch: r.identity.branch.code
+                }, search);
+            }
         };
 
         const isActive = {
@@ -179,6 +191,29 @@ export async function GET(req) {
         );
 
         const matched = applyAllExcept(null);
+        if (search) {
+            matched.sort((a, b) => {
+                const sB = scoreStudentMatch({
+                    usn: b.usn,
+                    name: b.record.name,
+                    email: b.record.raw?.email,
+                    phone: b.record.raw?.phone,
+                    section: b.section,
+                    className: b.classInfo?.className,
+                    branch: b.identity.branch.code
+                }, search);
+                const sA = scoreStudentMatch({
+                    usn: a.usn,
+                    name: a.record.name,
+                    email: a.record.raw?.email,
+                    phone: a.record.raw?.phone,
+                    section: a.section,
+                    className: a.classInfo?.className,
+                    branch: a.identity.branch.code
+                }, search);
+                return sB - sA;
+            });
+        }
 
         // ── Facets: every dropdown option counted against the *other* filters ──
         // A facet count of 0 is never rendered as a selectable dead end on the

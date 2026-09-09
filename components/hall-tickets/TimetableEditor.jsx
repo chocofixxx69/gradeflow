@@ -225,6 +225,25 @@ export default function TimetableEditor({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+            <style jsx>{`
+                .tt-field-grid {
+                    /* Date and the two short-code fields don't need much room;
+                       Catalog Subject (a full course name) gets the rest. Fixed
+                       tracks, not auto-fit, so all 5 fields share one row instead
+                       of one wrapping alone onto its own line. */
+                    grid-template-columns: 118px 150px 1.6fr 1fr 0.9fr;
+                }
+                @media (max-width: 900px) {
+                    .tt-field-grid {
+                        grid-template-columns: repeat(2, 1fr);
+                    }
+                }
+                @media (max-width: 480px) {
+                    .tt-field-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+            `}</style>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>schedule</span>
@@ -320,57 +339,75 @@ export default function TimetableEditor({
                 </div>
             )}
 
-            {/* Timetable Rows Table */}
-            <div style={{ width: '100%', overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                    <thead style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }}>
-                        <tr>
-                            <th style={{ padding: '8px 10px', textAlign: 'left', width: '120px' }}>Date (DD/MM/YYYY)</th>
-                            <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '180px' }}>Time Slot</th>
-                            <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '175px' }}>
-                                Catalog Subject
-                                <span style={{ display: 'block', fontSize: '9.5px', fontWeight: 500, color: 'var(--tx-muted)' }}>
-                                    Populates code & name
-                                </span>
-                            </th>
-                            <th style={{ padding: '8px 10px', textAlign: 'left', width: '100px' }}>
-                                Subject Code
-                                <span style={{ display: 'block', fontSize: '9.5px', fontWeight: 500, color: 'var(--tx-muted)' }}>
-                                    Editable
-                                </span>
-                            </th>
-                            <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '85px' }}>
-                                Subject (Short)
-                                <span style={{ display: 'block', fontSize: '9.5px', fontWeight: 500, color: 'var(--tx-muted)' }}>
-                                    Editable
-                                </span>
-                            </th>
-                            <th style={{ padding: '8px 6px', textAlign: 'center', width: '32px' }}></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {timetable.map((row, idx) => {
-                            const isStandard = STANDARD_TIME_SLOTS.includes(row.time);
-                            return (
-                                <tr key={idx} style={{ borderBottom: '1px solid var(--border-low)', background: 'var(--surface)' }}>
-                                    <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
-                                        <input
-                                            type="date"
-                                            value={toISO(row.date)}
-                                            onChange={(e) => handleUpdateRow(idx, 'date', toDisplay(e.target.value))}
-                                            style={{
-                                                width: '100%',
-                                                padding: '5px 8px',
-                                                borderRadius: '6px',
-                                                border: `1px solid ${toISO(row.date) ? 'var(--border)' : '#B45309'}`,
-                                                background: 'var(--surface)',
-                                                color: 'var(--tx-main)',
-                                                fontSize: '12px'
-                                            }}
-                                        />
-                                    </td>
-                                    <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            {/* Timetable rows: a responsive card grid, not a <table>. A table
+                with 5 real-content columns has no honest way to fit a narrow
+                container — either columns get compressed below a usable
+                width (the native <input list="..."> dropdown arrow overlaps
+                the value) or the table is given a min-width and forces a
+                horizontal scrollbar. A CSS grid with auto-fit columns just
+                reflows fields onto more lines as the container narrows, so
+                everything stays readable in one vertical scroll — no
+                horizontal scroll, ever. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {timetable.map((row, idx) => {
+                    const isStandard = STANDARD_TIME_SLOTS.includes(row.time);
+                    // Fixed-height label (room for the longest 2-line label in this
+                    // set, e.g. "SUBJECT CODE (EDITABLE)") so every field's input
+                    // starts at the same y regardless of whether its own label
+                    // happens to wrap to one line or two — that's what was making
+                    // inputs across a row drift up/down against each other.
+                    const fieldLabel = { fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px', display: 'block', minHeight: '26px', lineHeight: '1.3' };
+                    return (
+                        <div key={idx} style={{ border: '1px solid var(--border-low)', borderRadius: '10px', padding: '12px', background: 'var(--surface)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)' }}>Subject {idx + 1}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveRow(idx)}
+                                    disabled={timetable.length <= 1}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: timetable.length > 1 ? 'pointer' : 'not-allowed',
+                                        color: timetable.length > 1 ? '#EF4444' : 'var(--tx-dim)',
+                                        padding: '2px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center'
+                                    }}
+                                    title="Remove Subject"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '18px' }}>delete_outline</span>
+                                </button>
+                            </div>
+                            {/* Explicit column sizes (not auto-fit) so all 5 fields
+                                share one row on a normal-width panel instead of the
+                                5th ("Subject Short") orphaning onto its own line —
+                                auto-fit packs as many minmax(130px,1fr) tracks as fit
+                                and wraps the remainder, which is exactly what
+                                stranded it before. Breakpoints below collapse to 2
+                                and then 1 column as the panel narrows. */}
+                            <div className="tt-field-grid" style={{ display: 'grid', gap: '10px 12px' }}>
+                                <div>
+                                    <label style={fieldLabel}>Date (DD/MM/YYYY)</label>
+                                    <input
+                                        type="date"
+                                        value={toISO(row.date)}
+                                        onChange={(e) => handleUpdateRow(idx, 'date', toDisplay(e.target.value))}
+                                        style={{
+                                            width: '100%',
+                                            padding: '5px 8px',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${toISO(row.date) ? 'var(--border)' : '#B45309'}`,
+                                            background: 'var(--surface)',
+                                            color: 'var(--tx-main)',
+                                            fontSize: '12px',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={fieldLabel}>Time Slot</label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                             <select
                                                 value={isStandard ? row.time : '__custom__'}
                                                 onChange={(e) => {
@@ -484,10 +521,11 @@ export default function TimetableEditor({
                                                 </div>
                                             )}
                                         </div>
-                                    </td>
-                                    {/* Catalog Subject Dropdown: choosing from here auto-fills code & short name */}
-                                    <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
-                                        <select
+                                    </div>
+                                {/* Catalog Subject Dropdown: choosing from here auto-fills code & short name */}
+                                <div>
+                                    <label style={fieldLabel}>Catalog Subject <span style={{ textTransform: 'none', fontWeight: 500 }}>(populates code &amp; name)</span></label>
+                                    <select
                                             value={
                                                 catalogSubjects.some(s => (s.code || '').toUpperCase() === (row.subjectCode || '').toUpperCase())
                                                     ? (row.subjectCode || '').toUpperCase()
@@ -498,8 +536,18 @@ export default function TimetableEditor({
                                                 if (!selectedCode) return;
                                                 const found = catalogSubjects.find(s => (s.code || '').toUpperCase() === selectedCode.toUpperCase());
                                                 if (found) {
-                                                    handleUpdateRow(idx, 'subjectCode', found.code);
-                                                    handleUpdateRow(idx, 'subjectName', found.shortName || abbreviate(found.name) || found.name);
+                                                    // One atomic update, not two handleUpdateRow calls — each of
+                                                    // those builds its own copy from the same (stale, pre-render)
+                                                    // timetable array, so the second call's write clobbers the
+                                                    // first's: only the last field set actually survives, leaving
+                                                    // code/short-name mismatched (e.g. new code, stale old name).
+                                                    const updated = [...timetable];
+                                                    updated[idx] = {
+                                                        ...updated[idx],
+                                                        subjectCode: found.code,
+                                                        subjectName: found.shortName || abbreviate(found.name) || found.name,
+                                                    };
+                                                    onChange(updated);
                                                 }
                                             }}
                                             style={{
@@ -522,8 +570,9 @@ export default function TimetableEditor({
                                                 </option>
                                             ))}
                                         </select>
-                                    </td>
-                                    <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
+                                </div>
+                                <div>
+                                    <label style={fieldLabel}>Subject Code <span style={{ textTransform: 'none', fontWeight: 500 }}>(editable)</span></label>
                                         {/* Combobox, not a select: the list gives
                                             type-to-filter over the catalog, while the
                                             field stays a normal text input so the
@@ -540,7 +589,7 @@ export default function TimetableEditor({
                                             style={{
                                                 width: '100%',
                                                 minWidth: '85px',
-                                                padding: '5px 8px',
+                                                padding: '5px 20px 5px 8px', // right space reserved for the native list-picker arrow, so it never overlaps typed text
                                                 borderRadius: '6px',
                                                 border: `1px solid ${
                                                     !row.subjectCode || lookup(row.subjectCode) ? 'var(--border)' : '#B45309'
@@ -549,7 +598,8 @@ export default function TimetableEditor({
                                                 color: 'var(--tx-main)',
                                                 fontSize: '12px',
                                                 fontWeight: 800,
-                                                fontFamily: 'monospace'
+                                                fontFamily: 'monospace',
+                                                boxSizing: 'border-box'
                                             }}
                                         />
                                         {row.subjectCode && (
@@ -564,8 +614,9 @@ export default function TimetableEditor({
                                                     : 'Not in this class’s catalog'}
                                             </div>
                                         )}
-                                    </td>
-                                    <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
+                                </div>
+                                <div>
+                                    <label style={fieldLabel}>Subject (Short) <span style={{ textTransform: 'none', fontWeight: 500 }}>(editable)</span></label>
                                         {/* Also accepts a full subject name from the
                                             list - picking one sets the code and
                                             collapses this field to the abbreviation
@@ -580,40 +631,21 @@ export default function TimetableEditor({
                                             style={{
                                                 width: '100%',
                                                 minWidth: '70px',
-                                                padding: '5px 8px',
+                                                padding: '5px 20px 5px 8px', // right space reserved for the native list-picker arrow, so it never overlaps typed text
                                                 borderRadius: '6px',
                                                 border: '1px solid var(--border)',
                                                 background: 'var(--surface)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '12px',
-                                                fontWeight: 700
+                                                fontWeight: 700,
+                                                boxSizing: 'border-box'
                                             }}
                                         />
-                                    </td>
-                                    <td style={{ padding: '6px 6px', textAlign: 'center', verticalAlign: 'top' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveRow(idx)}
-                                            disabled={timetable.length <= 1}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                cursor: timetable.length > 1 ? 'pointer' : 'not-allowed',
-                                                color: timetable.length > 1 ? '#EF4444' : 'var(--tx-dim)',
-                                                padding: '4px',
-                                                display: 'inline-flex',
-                                                alignItems: 'center'
-                                            }}
-                                            title="Remove Subject"
-                                        >
-                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>delete_outline</span>
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
 
                 {/* Shared option lists backing the two comboboxes above. Rendered
                     once rather than per row - the browser matches on both the
