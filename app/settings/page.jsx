@@ -51,6 +51,8 @@ function SettingsContent() {
     const [editPhone, setEditPhone] = useState('');
     const [editDepartment, setEditDepartment] = useState('');
     const [editDesignation, setEditDesignation] = useState('');
+    const [customDesignationMode, setCustomDesignationMode] = useState(false);
+    const [customDepartmentMode, setCustomDepartmentMode] = useState(false);
     const [editEmployeeId, setEditEmployeeId] = useState('');
     const [editOfficeLocation, setEditOfficeLocation] = useState('');
     const [photoUrl, setPhotoUrl] = useState(null);
@@ -143,9 +145,17 @@ function SettingsContent() {
                 setStats(res.stats || { assignedClasses: 0, assignedSubjects: 0, assignments: [] });
                 setEditName(p.full_name || fac?.name || fac?.full_name || '');
                 setEditEmail(p.email || fac?.email || '');
-                setEditPhone(p.phone || '');
-                setEditDepartment(p.department || fac?.department || '');
-                setEditDesignation(p.designation || 'Faculty Member');
+                const des = p.designation || 'Faculty Member';
+                setEditDesignation(des);
+                if (des && !FACULTY_DESIGNATIONS.includes(des)) {
+                    setCustomDesignationMode(true);
+                }
+                const dept = p.department || fac?.department || '';
+                setEditDepartment(dept);
+                if (dept && !CANONICAL_DEPARTMENTS.some(d => d.name.toLowerCase() === dept.toLowerCase() || d.code.toLowerCase() === dept.toLowerCase())) {
+                    setCustomDepartmentMode(true);
+                }
+
                 setEditEmployeeId(p.employee_id || '');
                 setEditOfficeLocation(p.office_location || '');
                 setPhotoUrl(p.photo_url || null);
@@ -153,8 +163,8 @@ function SettingsContent() {
                 setInitialFormState({
                     name: p.full_name || fac?.name || fac?.full_name || '',
                     phone: p.phone || '',
-                    department: p.department || fac?.department || '',
-                    designation: p.designation || 'Faculty Member',
+                    department: dept,
+                    designation: des,
                     employeeId: p.employee_id || '',
                     officeLocation: p.office_location || '',
                     photo: p.photo_url || null,
@@ -330,6 +340,8 @@ function SettingsContent() {
             setEditDesignation(initialFormState.designation);
             setEditEmployeeId(initialFormState.employeeId || '');
             setEditOfficeLocation(initialFormState.officeLocation);
+            setCustomDesignationMode(Boolean(initialFormState.designation && !FACULTY_DESIGNATIONS.includes(initialFormState.designation)));
+            setCustomDepartmentMode(Boolean(initialFormState.department && !CANONICAL_DEPARTMENTS.some(d => d.name.toLowerCase() === initialFormState.department.toLowerCase() || d.code.toLowerCase() === initialFormState.department.toLowerCase())));
         } else {
             setEditName(initialFormState.name);
             setEditBranch(initialFormState.branch);
@@ -935,59 +947,169 @@ function SettingsContent() {
                                 {userType === 'faculty' && (
                                     <>
                                         <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                                                Department
-                                            </label>
-                                            <select
-                                                value={editDepartment}
-                                                onChange={e => setEditDepartment(e.target.value)}
-                                                style={{
-                                                    width: '100%',
-                                                    background: 'var(--surface-low)',
-                                                    border: '1px solid var(--border)',
-                                                    borderRadius: '8px',
-                                                    padding: '10px 14px',
-                                                    fontSize: '14px',
-                                                    fontWeight: 600,
-                                                    color: 'var(--tx-main)',
-                                                    outline: 'none',
-                                                    fontFamily: 'inherit'
-                                                }}
-                                            >
-                                                <option value="">Select Department</option>
-                                                {CANONICAL_DEPARTMENTS.map(d => (
-                                                    <option key={d.code} value={d.name}>
-                                                        {d.name} ({d.code})
-                                                    </option>
-                                                ))}
-                                                <option value="computer science">computer science</option>
-                                            </select>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                    Department
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomDepartmentMode(!customDepartmentMode)}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: 700,
+                                                        color: 'var(--primary)',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>
+                                                        {customDepartmentMode ? 'view_list' : 'edit_note'}
+                                                    </span>
+                                                    {customDepartmentMode ? 'Choose from list' : 'Write manually'}
+                                                </button>
+                                            </div>
+
+                                            {customDepartmentMode ? (
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <Input
+                                                            value={editDepartment}
+                                                            onChange={e => setEditDepartment(e.target.value)}
+                                                            placeholder="Enter department name (e.g. Computer Science & Engineering)"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() => setCustomDepartmentMode(false)}
+                                                        title="Switch back to list"
+                                                        style={{ padding: '0 12px', height: '42px', marginTop: 0 }}
+                                                    >
+                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>list</span>
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <select
+                                                    value={CANONICAL_DEPARTMENTS.some(d => d.name === editDepartment || d.code === editDepartment) ? editDepartment : (editDepartment ? '__custom__' : '')}
+                                                    onChange={e => {
+                                                        if (e.target.value === '__custom__') {
+                                                            setCustomDepartmentMode(true);
+                                                        } else {
+                                                            setEditDepartment(e.target.value);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        width: '100%',
+                                                        background: 'var(--surface-low)',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: '8px',
+                                                        padding: '10px 14px',
+                                                        fontSize: '14px',
+                                                        fontWeight: 600,
+                                                        color: 'var(--tx-main)',
+                                                        outline: 'none',
+                                                        fontFamily: 'inherit'
+                                                    }}
+                                                >
+                                                    <option value="">Select Department</option>
+                                                    {CANONICAL_DEPARTMENTS.map(d => (
+                                                        <option key={d.code} value={d.name}>
+                                                            {d.name} ({d.code})
+                                                        </option>
+                                                    ))}
+                                                    <option value="__custom__">✏️ Other (Write manually)...</option>
+                                                </select>
+                                            )}
                                         </div>
 
                                         <div>
-                                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                                                Designation / Academic Title
-                                            </label>
-                                            <select
-                                                value={editDesignation}
-                                                onChange={e => setEditDesignation(e.target.value)}
-                                                style={{
-                                                    width: '100%',
-                                                    background: 'var(--surface-low)',
-                                                    border: '1px solid var(--border)',
-                                                    borderRadius: '8px',
-                                                    padding: '10px 14px',
-                                                    fontSize: '14px',
-                                                    fontWeight: 600,
-                                                    color: 'var(--tx-main)',
-                                                    outline: 'none',
-                                                    fontFamily: 'inherit'
-                                                }}
-                                            >
-                                                {FACULTY_DESIGNATIONS.map(des => (
-                                                    <option key={des} value={des}>{des}</option>
-                                                ))}
-                                            </select>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                    Designation / Academic Title
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomDesignationMode(!customDesignationMode)}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: 700,
+                                                        color: 'var(--primary)',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>
+                                                        {customDesignationMode ? 'view_list' : 'edit_note'}
+                                                    </span>
+                                                    {customDesignationMode ? 'Choose from list' : 'Write manually'}
+                                                </button>
+                                            </div>
+
+                                            {customDesignationMode ? (
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <Input
+                                                            value={editDesignation}
+                                                            onChange={e => setEditDesignation(e.target.value)}
+                                                            placeholder="Enter custom designation (e.g. Assistant Professor & Tech Lead)"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() => setCustomDesignationMode(false)}
+                                                        title="Switch back to list"
+                                                        style={{ padding: '0 12px', height: '42px', marginTop: 0 }}
+                                                    >
+                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>list</span>
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <select
+                                                    value={FACULTY_DESIGNATIONS.includes(editDesignation) ? editDesignation : (editDesignation ? '__custom__' : '')}
+                                                    onChange={e => {
+                                                        if (e.target.value === '__custom__') {
+                                                            setCustomDesignationMode(true);
+                                                        } else {
+                                                            setEditDesignation(e.target.value);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        width: '100%',
+                                                        background: 'var(--surface-low)',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: '8px',
+                                                        padding: '10px 14px',
+                                                        fontSize: '14px',
+                                                        fontWeight: 600,
+                                                        color: 'var(--tx-main)',
+                                                        outline: 'none',
+                                                        fontFamily: 'inherit'
+                                                    }}
+                                                >
+                                                    <option value="">Select Designation</option>
+                                                    {FACULTY_DESIGNATIONS.map(des => (
+                                                        <option key={des} value={des}>{des}</option>
+                                                    ))}
+                                                    <option value="__custom__">✏️ Other (Write manually)...</option>
+                                                </select>
+                                            )}
                                         </div>
 
                                         <div>
