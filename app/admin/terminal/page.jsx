@@ -1580,6 +1580,24 @@ function AdminPanelContent() {
                                     <span className="material-icons-round" style={{ fontSize: '14px' }}>dashboard</span>
                                     Overview
                                 </span>
+                                {(() => {
+                                    const prevTab = tabHistory[tabHistory.length - 1];
+                                    if (!prevTab || prevTab === 'overview' || prevTab === tab) return null;
+                                    return (
+                                        <>
+                                            <span>›</span>
+                                            <span
+                                                style={{ color: 'var(--tx-muted)', cursor: 'pointer', fontWeight: 600 }}
+                                                onClick={() => switchTab(prevTab)}
+                                                onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                                                onMouseLeave={e => e.currentTarget.style.color = 'var(--tx-muted)'}
+                                                title={`Back to ${TAB_METADATA[prevTab]?.shortLabel || prevTab}`}
+                                            >
+                                                {TAB_METADATA[prevTab]?.shortLabel || prevTab}
+                                            </span>
+                                        </>
+                                    );
+                                })()}
                                 <span>›</span>
                                 <span style={{ color: 'var(--tx-main)', fontWeight: 800 }}>
                                     {TAB_METADATA[tab]?.shortLabel || tab}
@@ -1996,6 +2014,20 @@ function AdminPanelContent() {
                             </p>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
+                                onClick={loadData}
+                                disabled={loading}
+                                title="Reload students directory from database"
+                            >
+                                <span
+                                    className="material-icons-round"
+                                    style={{ fontSize: '16px', color: 'var(--primary)', animation: loading ? 'spin 1s linear infinite' : 'none' }}
+                                >
+                                    refresh
+                                </span>
+                                {loading ? 'Reloading…' : 'Reload'}
+                            </button>
                             <button
                                 style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
                                 onClick={handleSyncAllSemesters}
@@ -3011,7 +3043,28 @@ function AdminPanelContent() {
 
                 {tab === 'settings' && <>
                     <div style={c.pageLabel}>Admin Control Panel</div>
-                    <h1 style={c.pageTitle}>System Settings & Administration</h1>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+                        <div>
+                            <h1 style={{ ...c.pageTitle, marginBottom: '4px' }}>System Settings & Administration</h1>
+                            <p style={{ fontSize: '12px', color: 'var(--tx-muted)', margin: 0 }}>
+                                Configure institutional metadata, administrative access tokens, security policies, and environment status.
+                            </p>
+                        </div>
+                        <button
+                            style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
+                            onClick={handleReloadAllData}
+                            disabled={reloadingData}
+                            title="Reload all configurations, profiles, and database settings"
+                        >
+                            <span
+                                className="material-icons-round"
+                                style={{ fontSize: '16px', color: 'var(--primary)', animation: reloadingData ? 'spin 1s linear infinite' : 'none' }}
+                            >
+                                refresh
+                            </span>
+                            {reloadingData ? 'Reloading…' : 'Reload Settings'}
+                        </button>
+                    </div>
 
                     {settingsMsg && (
                         <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green)', fontWeight: 700, fontSize: '13px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>

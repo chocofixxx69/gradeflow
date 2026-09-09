@@ -77,6 +77,7 @@ function FacultyDashboardView({
     handleAddSubject,
     handleRemoveAssignment,
     removingAssignmentId = null,
+    loadAssignments = null,
 }) {
     const percentage = Math.max(0, (cgpa - 0.75) * 10);
     const messageTone = (() => {
@@ -574,25 +575,38 @@ function FacultyDashboardView({
                         <h2 id="faculty-assigned-title" className={styles.sectionTitle}>My Assigned Subjects &amp; Classes</h2>
                         <p className={styles.meta}>Your current semester teaching roster and assignments. An admin can assign you a subject, or you can add one yourself below.</p>
                     </div>
-                    <Button
-                        variant={addSubjectOpen ? 'ghost' : 'secondary'}
-                        iconStart={addSubjectOpen ? 'close' : 'add'}
-                        onClick={() => {
-                            const nextState = !addSubjectOpen;
-                            setAddSubjectOpen?.(nextState);
-                            if (nextState && assignedClasses.length > 0 && !addSubjectForm?.semester) {
-                                const firstClass = assignedClasses[0];
-                                setAddSubjectForm?.(prev => ({
-                                    ...prev,
-                                    branch: firstClass.branch || prev.branch || 'CS',
-                                    semester: firstClass.semester ? String(firstClass.semester) : prev.semester || '',
-                                    scheme: firstClass.batch && Number(firstClass.batch) >= 2025 ? '2025' : (prev.scheme || '2022'),
-                                }));
-                            }
-                        }}
-                    >
-                        {addSubjectOpen ? 'Cancel' : 'Add Subject'}
-                    </Button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {loadAssignments && (
+                            <Button
+                                variant="ghost"
+                                iconStart="refresh"
+                                loading={assignedLoading}
+                                onClick={loadAssignments}
+                                title="Refresh teaching assignments from database"
+                            >
+                                {assignedLoading ? 'Refreshing...' : 'Refresh'}
+                            </Button>
+                        )}
+                        <Button
+                            variant={addSubjectOpen ? 'ghost' : 'secondary'}
+                            iconStart={addSubjectOpen ? 'close' : 'add'}
+                            onClick={() => {
+                                const nextState = !addSubjectOpen;
+                                setAddSubjectOpen?.(nextState);
+                                if (nextState && assignedClasses.length > 0 && !addSubjectForm?.semester) {
+                                    const firstClass = assignedClasses[0];
+                                    setAddSubjectForm?.(prev => ({
+                                        ...prev,
+                                        branch: firstClass.branch || prev.branch || 'CS',
+                                        semester: firstClass.semester ? String(firstClass.semester) : prev.semester || '',
+                                        scheme: firstClass.batch && Number(firstClass.batch) >= 2025 ? '2025' : (prev.scheme || '2022'),
+                                    }));
+                                }
+                            }}
+                        >
+                            {addSubjectOpen ? 'Cancel' : 'Add Subject'}
+                        </Button>
+                    </div>
                 </div>
 
                 {addSubjectOpen && (
@@ -1340,6 +1354,7 @@ function FacultyDashboardContent() {
             handleAddSubject={handleAddSubject}
             handleRemoveAssignment={handleRemoveAssignment}
             removingAssignmentId={removingAssignmentId}
+            loadAssignments={loadAssignments}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import AuthGuard from '@/components/AuthGuard';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, clearApiCache } from '@/lib/api/client';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
@@ -175,6 +175,11 @@ function StudentsDirectoryContent() {
         }
     }, [page, limit, branch, semester, batch, section, status, backlogsFilter, debouncedSearch]);
 
+    const handleRefresh = async () => {
+        clearApiCache();
+        await loadStudents();
+    };
+
     useEffect(() => {
         loadStudents();
     }, [loadStudents]);
@@ -265,9 +270,9 @@ function StudentsDirectoryContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={loadStudents} variant="primary">
-                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
-                        Refresh
+                    <Button onClick={handleRefresh} variant="primary" disabled={loading}>
+                        <span className={`material-icons-round ${loading ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
+                        {loading ? 'Refreshing...' : 'Refresh'}
                     </Button>
                 </div>
             </div>

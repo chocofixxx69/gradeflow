@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AuthGuard from '../../../../components/AuthGuard';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions, matchesBranch, canonicalBranchCode } from '@/lib/semester-utils';
 import { filterAndRankStudents } from '@/lib/search-utils';
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
@@ -189,6 +189,11 @@ function SubjectAnalyticsContent() {
             setLoading(false);
         }
     }, [subjectCode, branch, semester, batch]);
+
+    const handleRefresh = async () => {
+        clearApiCache();
+        await loadSubjectData();
+    };
 
     useEffect(() => {
         if (subjectCode) {
@@ -384,9 +389,9 @@ function SubjectAnalyticsContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={loadSubjectData} variant="primary">
-                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
-                        Refresh Data
+                    <Button onClick={handleRefresh} variant="primary" disabled={loading}>
+                        <span className={`material-icons-round ${loading ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
+                        {loading ? 'Refreshing...' : 'Refresh Data'}
                     </Button>
                 </div>
             </div>

@@ -974,6 +974,24 @@ export function ClassesContent({ embedded = false }) {
                                 <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
                                     <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
                                 </button>
+                                <button
+                                    style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => fetchClassStudents(selectedClass)}
+                                    disabled={loadingStudents}
+                                    title="Refresh student roster for this class"
+                                >
+                                    <span
+                                        className="material-icons-round"
+                                        style={{
+                                            fontSize: '16px',
+                                            color: 'var(--primary)',
+                                            animation: loadingStudents ? 'spin 1s linear infinite' : 'none'
+                                        }}
+                                    >
+                                        refresh
+                                    </span>
+                                    {loadingStudents ? 'Refreshing...' : 'Refresh'}
+                                </button>
                                 <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginLeft: '4px' }}>{filteredStudents.length} students</div>
                             </div>
                         </div>
@@ -1148,9 +1166,29 @@ export function ClassesContent({ embedded = false }) {
                             <h1 style={S.title}>Classes & Sections</h1>
                             <p style={S.subtitle}>All college classes, sections, and assigned faculty members. Shared across all faculty.</p>
                         </div>
-                        <button style={btn('primary')} onClick={openCreateClassModal}>
-                            <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class & Section
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...btn('secondary'), display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                onClick={fetchClasses}
+                                disabled={loadingClasses}
+                                title="Refresh classes from database"
+                            >
+                                <span
+                                    className="material-icons-round"
+                                    style={{
+                                        fontSize: '16px',
+                                        color: 'var(--primary)',
+                                        animation: loadingClasses ? 'spin 1s linear infinite' : 'none'
+                                    }}
+                                >
+                                    refresh
+                                </span>
+                                {loadingClasses ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                            <button style={btn('primary')} onClick={openCreateClassModal}>
+                                <span className="material-icons-round" style={{ fontSize: '15px', verticalAlign: 'middle', marginRight: '6px' }}>add</span>New Class & Section
+                            </button>
+                        </div>
                     </div>
 
                     {/* Filter and Search Bar */}
@@ -1218,9 +1256,9 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--surface-low)', borderRadius: 'var(--radius-7)', border: '1px solid var(--border)' }}>
                             <span className="material-icons-round" style={{ fontSize: '40px', color: 'var(--red)', marginBottom: '12px', display: 'block' }}>error_outline</span>
                             <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '8px' }}>{classesError}</div>
-                            <button onClick={fetchClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '18px' }}>refresh</span>
-                                Retry
+                            <button onClick={fetchClasses} disabled={loadingClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px', animation: loadingClasses ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
+                                {loadingClasses ? 'Retrying...' : 'Retry'}
                             </button>
                         </div>
                     ) : loadingClasses ? (

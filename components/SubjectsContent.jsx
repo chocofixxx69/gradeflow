@@ -373,6 +373,24 @@ export function SubjectsContent() {
           <PageHeaderSubtitle>Manage academic subjects, credits, and branches. Changes to credits reflect dynamically in SGPA/CGPA calculations.</PageHeaderSubtitle>
         </PageHeader>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <Button
+            onClick={() => { fetchBranches(); fetchSubjects(); }}
+            variant="ghost"
+            disabled={loading}
+            title="Refresh subjects and branches from database"
+          >
+            <span
+              className="material-icons-round"
+              style={{
+                fontSize: '17px',
+                marginRight: 'var(--space-2)',
+                animation: loading ? 'spin 1s linear infinite' : 'none'
+              }}
+            >
+              refresh
+            </span>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </Button>
           <Button onClick={() => setShowBranchForm(true)} variant="ghost">
             <span className="material-icons-round" style={{ fontSize: '17px', marginRight: 'var(--space-2)' }}>account_tree</span>
             Add Branch

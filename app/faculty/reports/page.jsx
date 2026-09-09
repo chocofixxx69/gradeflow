@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { apiRequest } from '../../../lib/api/client';
+import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -102,8 +102,15 @@ function ReportsContent() {
         } catch { /* ignored */ }
     }, []);
 
-    const loadReportData = async () => {
-        setLoading(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const loadReportData = async (isManual = false) => {
+        if (isManual) {
+            setIsRefreshing(true);
+            clearApiCache();
+        } else {
+            setLoading(true);
+        }
         try {
             const data = await apiRequest('/api/faculty/reports').catch(() => null);
 
@@ -131,6 +138,7 @@ function ReportsContent() {
             console.error('Failed to load report data:', err);
         } finally {
             setLoading(false);
+            setIsRefreshing(false);
         }
     };
 
@@ -304,6 +312,27 @@ function ReportsContent() {
                     <p style={{ fontSize: '14px', maxWidth: '400px', margin: '0 auto', lineHeight: 1.6 }}>
                         Add students to a class or fetch VTU results to see reporting data here. It updates automatically.
                     </p>
+                    <button
+                        onClick={() => loadReportData(true)}
+                        disabled={isRefreshing}
+                        style={{
+                            marginTop: '16px',
+                            padding: '8px 18px',
+                            background: 'var(--primary)',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '10px',
+                            fontSize: '13px',
+                            fontWeight: 700,
+                            cursor: isRefreshing ? 'wait' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}
+                    >
+                        <span className="material-icons-round" style={{ fontSize: '18px', animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
+                        {isRefreshing ? 'Refreshing...' : 'Check Again'}
+                    </button>
                 </div>
             </div>
         );
@@ -325,23 +354,35 @@ function ReportsContent() {
                 </PageHeader>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
-                        onClick={loadReportData}
+                        onClick={() => loadReportData(true)}
+                        disabled={isRefreshing || loading}
                         style={{
-                            padding: '6px 12px',
+                            padding: '6px 14px',
                             background: 'var(--surface-low)',
                             border: '1px solid var(--border)',
                             borderRadius: '10px',
                             fontSize: '12px',
                             fontWeight: 700,
                             color: 'var(--tx-main)',
-                            cursor: 'pointer',
+                            cursor: (isRefreshing || loading) ? 'wait' : 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '6px'
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
                         }}
+                        title="Refresh academic reports from database"
                     >
-                        <span className="material-icons-round" style={{ fontSize: '15px' }}>refresh</span>
-                        Refresh
+                        <span
+                            className="material-icons-round"
+                            style={{
+                                fontSize: '16px',
+                                color: 'var(--primary)',
+                                animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
+                            }}
+                        >
+                            refresh
+                        </span>
+                        {isRefreshing ? 'Refreshing...' : 'Refresh'}
                     </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'var(--surface-low)', borderRadius: '10px', fontSize: '11px', fontWeight: 700, color: 'var(--green)' }}>
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--green)', display: 'inline-block' }} />

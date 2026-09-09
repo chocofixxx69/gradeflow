@@ -103,7 +103,8 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
     }, [preselectedFacultyId]);
 
     const fetchData = useCallback(async (isSilent = false) => {
-        if (!isSilent) setLoading(true);
+        const silent = typeof isSilent === 'boolean' ? isSilent : false;
+        if (!silent) setLoading(true);
         setError('');
         try {
             // Proactively align admin session cookies if admin_session is stored
@@ -135,9 +136,9 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
             setSubjectsList(res?.subjects || []);
         } catch (err) {
             console.error('Failed to load faculty assignments:', err);
-            if (!isSilent) setError(err.message || 'Failed to load faculty assignments.');
+            if (!silent) setError(err.message || 'Failed to load faculty assignments.');
         } finally {
-            if (!isSilent) setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, []);
 
@@ -534,9 +535,23 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button style={s.btnSecondary} onClick={fetchData} disabled={loading}>
-                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>refresh</span>
-                        Refresh
+                    <button
+                        style={s.btnSecondary}
+                        onClick={() => fetchData(false)}
+                        disabled={loading}
+                        title="Refresh faculty assignments"
+                    >
+                        <span
+                            className="material-icons-round"
+                            style={{
+                                fontSize: '16px',
+                                color: 'var(--primary)',
+                                animation: loading ? 'spin 1s linear infinite' : 'none'
+                            }}
+                        >
+                            refresh
+                        </span>
+                        {loading ? 'Refreshing...' : 'Refresh'}
                     </button>
                     <button style={s.btnPrimary} onClick={() => { setShowAssignModal(true); setFormError(''); }}>
                         <span className="material-icons-round" style={{ fontSize: '16px' }}>add_task</span>

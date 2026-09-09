@@ -491,6 +491,27 @@ export default function VtuUrlManager({ facultyId }) {
                     </div>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                         <Button
+                            onClick={() => fetchVtuUrls(selectedScheme)}
+                            size="sm"
+                            variant="ghost"
+                            disabled={fetching}
+                            style={{ color: 'var(--tx-main)', fontWeight: 700 }}
+                            title="Refresh portals from database"
+                        >
+                            <span
+                                className="material-icons-round"
+                                style={{
+                                    fontSize: '16px',
+                                    marginRight: '4px',
+                                    verticalAlign: 'text-bottom',
+                                    animation: fetching ? 'spin 1s linear infinite' : 'none'
+                                }}
+                            >
+                                refresh
+                            </span>
+                            {fetching ? 'Syncing...' : 'Refresh Portals'}
+                        </Button>
+                        <Button
                             onClick={restoreDefaults}
                             size="sm"
                             variant="ghost"
