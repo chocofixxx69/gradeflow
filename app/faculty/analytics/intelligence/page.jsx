@@ -329,8 +329,18 @@ function InstitutionalIntelligenceContent() {
                 setSearchDropdownOpen(false);
             }
         };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setClassPickerOpen(false);
+                setSearchDropdownOpen(false);
+            }
+        };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
     }, []);
 
     // Load roster when class is picked in Class Picker
@@ -2687,32 +2697,40 @@ function InstitutionalIntelligenceContent() {
                     )}
                     {/* Class Roster Picker Modal */}
                     {classPickerOpen && (
-                        <div style={{
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            background: 'rgba(0, 0, 0, 0.65)',
-                            backdropFilter: 'blur(4px)',
-                            zIndex: 1000,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '20px'
-                        }}>
-                            <div style={{
-                                background: 'var(--surface)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '16px',
-                                width: '100%',
-                                maxWidth: '680px',
-                                maxHeight: '85vh',
+                        <div
+                            onClick={() => setClassPickerOpen(false)}
+                            style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: 'rgba(0, 0, 0, 0.65)',
+                                backdropFilter: 'blur(4px)',
+                                zIndex: 9999,
                                 display: 'flex',
-                                flexDirection: 'column',
-                                boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
-                                overflow: 'hidden'
-                            }}>
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '20px'
+                            }}
+                        >
+                            <div
+                                onClick={e => e.stopPropagation()}
+                                style={{
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '16px',
+                                    width: '100%',
+                                    maxWidth: '680px',
+                                    maxHeight: '85vh',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    boxShadow: '0 25px 60px rgba(0,0,0,0.4)',
+                                    overflow: 'hidden',
+                                    position: 'relative',
+                                    zIndex: 10000
+                                }}
+                            >
                                 {/* Modal Header */}
                                 <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>

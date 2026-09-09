@@ -30,7 +30,7 @@ export async function GET(req) {
         const classIdsParam = searchParams.get('classIds');
         const selectedClassIds = classIdsParam ? classIdsParam.split(',').map(s => s.trim()).filter(Boolean) : null;
 
-        const cacheKey = `classes_compare:${branch}:${batch}:${semester}:${classIdsParam || 'all'}`;
+        const cacheKey = `classes_compare_v3:${branch}:${batch}:${semester}:${classIdsParam || 'all'}`;
         const forceFresh = searchParams.get('fresh') === '1' || searchParams.has('t');
         if (!forceFresh) {
             const cached = getCached(cacheKey);
@@ -63,12 +63,14 @@ export async function GET(req) {
                 matchedClasses = matchedClasses.filter(c => !c.batch || c.batch === batch);
             }
             if (semester !== 'ALL') {
-                matchedClasses = matchedClasses.filter(c => !c.semester || Number(c.semester) === Number(semester));
+                const semNum = Number(semester);
+                const scoped = matchedClasses.filter(c => !c.semester || Number(c.semester) >= semNum);
+                if (scoped.length > 0) {
+                    matchedClasses = scoped;
+                }
             }
         }
 
-        // If no matching classes found with strict filters, fallback to all classes or branch classes
-        // so faculty can always compare existing classes in the college
         const displayClasses = matchedClasses.length > 0 ? matchedClasses : allClasses;
 
         // 2. Fetch class_students, faculty, students
@@ -110,7 +112,7 @@ export async function GET(req) {
 
             const targetSemesters = semester !== 'ALL'
                 ? [Number(semester)]
-                : Array.from(new Set(displayClasses.map(c => Number(c.semester)).filter(Boolean)));
+                : [1, 2, 3, 4, 5, 6, 7, 8];
 
             for (let i = 0; i < allUsns.length; i += chunkSize) {
                 const chunk = allUsns.slice(i, i + chunkSize);
@@ -153,7 +155,7 @@ export async function GET(req) {
         const classComparisons = displayClasses.map(c => {
             const enrolledUsns = usnsByClass.get(c.id) || [];
             const teacher = facultyMap.get(c.faculty_id);
-            const targetSem = c.semester ? Number(c.semester) : (semester !== 'ALL' ? Number(semester) : null);
+            const targetSem = semester !== 'ALL' ? Number(semester) : null;
 
             let appeared = 0;
             let passed = 0;
@@ -196,7 +198,9 @@ export async function GET(req) {
                 appeared++;
 
                 // Check backlog
-                const hasFail = uMarks.some(isFailedSubject);
+                const hasFail = uMarks.length > 0
+                    ? uMarks.some(isFailedSubject)
+                    : (uRes?.sgpa ? Number(uRes.sgpa) < 4.0 : false);
                 if (hasFail) {
                     failed++;
                 } else {
