@@ -159,7 +159,7 @@ function InstitutionalIntelligenceContent() {
     useEffect(() => {
         async function loadMeta() {
             try {
-                const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+                const res = await apiRequest('/api/faculty/analytics/meta', { cacheTtl: 60_000 });
                 if (res) setMeta(res);
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -175,7 +175,7 @@ function InstitutionalIntelligenceContent() {
         try {
             const query = { branch: deptBranch };
             if (batch && batch !== 'ALL') query.batch = batch;
-            const res = await apiRequest('/api/faculty/analytics/department', { query });
+            const res = await apiRequest('/api/faculty/analytics/department', { query, cacheTtl: 30_000 });
             if (res) setDeptReport(res);
         } catch (err) {
             console.error('Failed to load department report:', err);
@@ -191,11 +191,9 @@ function InstitutionalIntelligenceContent() {
             const query = {
                 branch: classBranch,
                 batch: classBatch,
-                semester: classSemester,
-                fresh: '1',
-                t: Date.now()
+                semester: classSemester
             };
-            const res = await apiRequest('/api/faculty/analytics/classes-compare', { query });
+            const res = await apiRequest('/api/faculty/analytics/classes-compare', { query, cacheTtl: 30_000 });
             if (res) setClassReport(res);
         } catch (err) {
             console.error('Failed to load classes comparison:', err);
@@ -209,8 +207,8 @@ function InstitutionalIntelligenceContent() {
         const targetBranch = branch === 'ALL' ? 'AI' : branch;
         setSectionLoading(true);
         try {
-            const query = { branch: targetBranch, batch, semester, sectionMode: 'auto', fresh: '1', t: Date.now() };
-            const res = await apiRequest('/api/faculty/analytics/sections-compare', { query });
+            const query = { branch: targetBranch, batch, semester, sectionMode: 'auto' };
+            const res = await apiRequest('/api/faculty/analytics/sections-compare', { query, cacheTtl: 30_000 });
             if (res) setSectionReport(res);
         } catch (err) {
             console.error('Failed to load sections comparison:', err);
@@ -228,7 +226,8 @@ function InstitutionalIntelligenceContent() {
         setComparatorLoading(true);
         try {
             const res = await apiRequest('/api/faculty/analytics/compare', {
-                query: { usns: usnList.join(','), t: Date.now() }
+                query: { usns: usnList.join(',') },
+                cacheTtl: 30_000
             });
             if (res) setComparatorData(res);
         } catch (err) {

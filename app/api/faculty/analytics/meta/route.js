@@ -44,7 +44,7 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const forceFresh = searchParams.get('fresh') === '1' || searchParams.has('t');
+        const forceFresh = searchParams.get('fresh') === '1';
 
         if (!forceFresh) {
             const cachedMeta = getCached('analytics_meta_all');

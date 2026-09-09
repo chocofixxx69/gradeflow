@@ -93,7 +93,7 @@ function RankingsAndMeritContent() {
     useEffect(() => {
         async function loadMeta() {
             try {
-                const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+                const res = await apiRequest('/api/faculty/analytics/meta', { cacheTtl: 60_000 });
                 if (res) setMeta(res);
             } catch (err) {
                 console.error('Failed to load meta:', err);
@@ -119,7 +119,7 @@ function RankingsAndMeritContent() {
         }
 
         try {
-            const res = await apiRequest('/api/faculty/analytics/merit-list', { query });
+            const res = await apiRequest('/api/faculty/analytics/merit-list', { query, cacheTtl: 30_000 });
             if (res) {
                 setMeritReport(res);
             }

@@ -80,7 +80,7 @@ function SubjectAnalyticsContent() {
     useEffect(() => {
         async function loadMeta() {
             try {
-                const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+                const res = await apiRequest('/api/faculty/analytics/meta', { cacheTtl: 60_000 });
                 if (res) {
                     setMeta(res);
                 }
@@ -173,13 +173,14 @@ function SubjectAnalyticsContent() {
     }, [availableSubjects, subjectCode]);
 
     // 2. Fetch subject analytics
-    const loadSubjectData = useCallback(async (silent = false) => {
+    const loadSubjectData = useCallback(async (silent = false, fresh = false) => {
         if (!subjectCode) return null;
         if (!silent) setLoading(true);
         try {
-            const query = { subjectCode, branch, semester, _t: Date.now() };
+            const query = { subjectCode, branch, semester };
             if (batch) query.batch = batch;
-            const res = await apiRequest('/api/faculty/analytics/subject', { query });
+            if (fresh) query.fresh = '1';
+            const res = await apiRequest('/api/faculty/analytics/subject', { query, cacheTtl: fresh ? 0 : 30_000 });
             if (res) {
                 setAnalytics(res);
             }
@@ -200,9 +201,9 @@ function SubjectAnalyticsContent() {
         try {
             const prevAppeared = analytics?.kpis?.appeared || 0;
 
-            const metaPromise = apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } })
+            const metaPromise = apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1' } })
                 .catch(e => { console.warn('Meta refresh note:', e); return null; });
-            const dataPromise = loadSubjectData(true);
+            const dataPromise = loadSubjectData(true, true);
 
             const [freshMeta, res] = await Promise.all([metaPromise, dataPromise]);
 

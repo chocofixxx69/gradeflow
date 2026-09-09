@@ -124,6 +124,12 @@ export async function GET(req) {
         const semester = (semParam === 'ALL' || !semParam) ? 'ALL' : parseInt(semParam, 10);
         const batch = searchParams.get('batch') || '';
         const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
+        const cacheKey = `reval_impact_v2:${branch}:${semester}:${batch}:${section}`;
+        const fresh = searchParams.get('fresh') === '1';
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
@@ -374,6 +380,8 @@ export async function GET(req) {
             branch,
             semester,
         };
+
+        setCached(cacheKey, payload, 30_000);
 
         return ok(payload);
     } catch (err) {
