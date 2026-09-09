@@ -38,35 +38,6 @@ async function getSubjectCatalog(client) {
         true
     ) || [];
 
-    // Also supplement with distinct subjects from subject_marks to ensure active courses appear
-    try {
-        const { data: marks } = await client
-            .from('subject_marks')
-            .select('subject_code, subject_name, credits, semester')
-            .limit(1000);
-        if (marks && marks.length > 0) {
-            const seen = new Set(subjects.map(s => `${(s.subject_code || '').toUpperCase()}_${s.semester}`));
-            for (const m of marks) {
-                const code = (m.subject_code || '').trim().toUpperCase();
-                const key = `${code}_${m.semester}`;
-                if (code && !seen.has(key)) {
-                    seen.add(key);
-                    subjects.push({
-                        id: `mark_${code}_${m.semester}`,
-                        subject_code: code,
-                        subject_name: m.subject_name || code,
-                        branch: 'CS',
-                        semester: m.semester,
-                        scheme: '2022',
-                        credits: m.credits || 3
-                    });
-                }
-            }
-        }
-    } catch (e) {
-        console.warn('[getSubjectCatalog] marks supplement skipped:', e?.message);
-    }
-
     _subjectsCache = subjects;
     _subjectsCacheTime = Date.now();
     return _subjectsCache;
@@ -138,14 +109,42 @@ export async function POST(req) {
 
         const body = await req.json().catch(() => ({}));
         let facultyId = typeof body.faculty_id === 'string' ? body.faculty_id.trim() : '';
+        const client = getAdminClient();
 
-        // If faculty user, ensure they can only assign to themselves
+        // Auto-resolve facultyId if omitted or if caller is faculty
+        if (!facultyId) {
+            if (session?.sub) {
+                const { data: bySub } = await client
+                    .from('faculty_onboarding')
+                    .select('id')
+                    .eq('id', session.sub)
+                    .maybeSingle();
+                if (bySub) facultyId = bySub.id;
+            }
+            if (!facultyId && session?.email) {
+                const { data: byEmail } = await client
+                    .from('faculty_onboarding')
+                    .select('id')
+                    .eq('email', session.email.toLowerCase().trim())
+                    .maybeSingle();
+                if (byEmail) facultyId = byEmail.id;
+            }
+        }
+
+        // If faculty user, ensure they can only assign to themselves (or their matched onboarding account)
         if (session?.role === 'faculty') {
             const myFacultyId = session?.sub || session?.user?.id;
-            if (!facultyId) {
+            if (facultyId && facultyId !== myFacultyId) {
+                const { data: myOnboarding } = await client
+                    .from('faculty_onboarding')
+                    .select('id')
+                    .eq('email', session?.email?.toLowerCase()?.trim())
+                    .maybeSingle();
+                if (!myOnboarding || myOnboarding.id !== facultyId) {
+                    return fail('Faculty members can only assign subjects to their own profile.', 'FORBIDDEN', 403);
+                }
+            } else if (!facultyId) {
                 facultyId = myFacultyId;
-            } else if (facultyId !== myFacultyId) {
-                return fail('Faculty members can only assign subjects to their own profile.', 'FORBIDDEN', 403);
             }
         }
 
@@ -182,8 +181,6 @@ export async function POST(req) {
         if (!facultyId) return fail('faculty_id is required.', 'VALIDATION_ERROR', 400);
         if (subjectCodes.length === 0) return fail('subject_code or subject_codes is required.', 'VALIDATION_ERROR', 400);
 
-        const client = getAdminClient();
-
         const { data: existingFaculty, error: facultyLookupError } = await client
             .from('faculty_onboarding')
             .select('id, full_name, email, department')
@@ -191,6 +188,17 @@ export async function POST(req) {
             .maybeSingle();
         if (facultyLookupError) throw facultyLookupError;
         if (!existingFaculty) return fail('faculty_id does not reference an existing faculty record.', 'FACULTY_NOT_FOUND', 404);
+
+        // Resolve class metadata from DB for multi-class and cross-branch assignments
+        const nonNullClassIds = classIds.filter(Boolean);
+        const classMap = new Map();
+        if (nonNullClassIds.length > 0) {
+            const { data: dbClasses } = await client
+                .from('classes')
+                .select('id, name, branch, semester, scheme, section, batch')
+                .in('id', nonNullClassIds);
+            (dbClasses || []).forEach(c => classMap.set(c.id, c));
+        }
 
         // Fetch existing assignments for this faculty to skip duplicates gracefully
         const { data: existingAssignments, error: existingLookupError } = await client
@@ -210,7 +218,13 @@ export async function POST(req) {
 
         for (const sCode of subjectCodes) {
             for (const cId of classIds) {
-                const sig = `${sCode}|${branch || ''}|${semester ?? ''}|${scheme || ''}|${cId || ''}`;
+                const classRecord = cId ? classMap.get(cId) : null;
+                // If a specific class is assigned, use that class's true branch, semester, and scheme
+                const itemBranch = classRecord?.branch || branch;
+                const itemSemester = classRecord?.semester ? Number(classRecord.semester) : semester;
+                const itemScheme = classRecord?.scheme || scheme;
+
+                const sig = `${sCode}|${itemBranch || ''}|${itemSemester ?? ''}|${itemScheme || ''}|${cId || ''}`;
                 if (existingSigSet.has(sig)) {
                     skippedPairs.push({ subject_code: sCode, class_id: cId });
                 } else {
@@ -218,9 +232,9 @@ export async function POST(req) {
                     recordsToInsert.push({
                         faculty_id: facultyId,
                         subject_code: sCode,
-                        branch,
-                        semester,
-                        scheme,
+                        branch: itemBranch,
+                        semester: itemSemester,
+                        scheme: itemScheme,
                         class_id: cId
                     });
                 }

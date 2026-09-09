@@ -286,14 +286,34 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
         return facultyMap.get(form.faculty_id) || null;
     }, [facultyMap, form.faculty_id]);
 
-    // Filtered classes matching branch and semester scope
-    const matchingClasses = useMemo(() => {
+    const [classBranchFilter, setClassBranchFilter] = useState('all');
+    const [classSemesterFilter, setClassSemesterFilter] = useState('all');
+
+    const availableClassBranches = useMemo(() => {
+        const set = new Set();
+        classesList.forEach(c => {
+            if (c.branch) set.add(c.branch.trim().toUpperCase());
+        });
+        return Array.from(set).sort();
+    }, [classesList]);
+
+    const availableClassSemesters = useMemo(() => {
+        const set = new Set();
+        classesList.forEach(c => {
+            if (c.semester) set.add(Number(c.semester));
+        });
+        return Array.from(set).sort((a, b) => a - b);
+    }, [classesList]);
+
+    // Intelligent class selector: allows cross-branch and cross-semester selection under scheme
+    const selectableClasses = useMemo(() => {
         return classesList.filter(c => {
-            const bMatch = !form.branch || matchesBranch(c.branch, form.branch);
-            const sMatch = !form.semester || String(c.semester) === String(form.semester);
+            if (form.scheme && c.scheme && String(c.scheme) !== String(form.scheme)) return false;
+            const bMatch = classBranchFilter === 'all' || matchesBranch(c.branch, classBranchFilter);
+            const sMatch = classSemesterFilter === 'all' || String(c.semester) === String(classSemesterFilter);
             return bMatch && sMatch;
         });
-    }, [classesList, form.branch, form.semester]);
+    }, [classesList, form.scheme, classBranchFilter, classSemesterFilter]);
 
     // Multi-class helpers
     const toggleAssignClass = (classId) => {
@@ -303,7 +323,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
     };
 
     const handleSelectAllClasses = () => {
-        setAssignClassIds(matchingClasses.map(c => c.id));
+        setAssignClassIds(Array.from(new Set([...assignClassIds, ...selectableClasses.map(c => c.id)])));
     };
 
     const handleClearAllClasses = () => {
@@ -1179,14 +1199,14 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                     </select>
                                 </div>
 
-                                {/* Class Section Selection: Multi-Class Selector */}
-                                <div style={{ marginBottom: '18px', padding: '12px 14px', borderRadius: '12px', background: 'var(--surface-low)', border: '1px solid var(--border)' }}>
+                                {/* Class Section Selection: Cross-Branch & Multi-Class Selector */}
+                                <div style={{ marginBottom: '18px', padding: '14px', borderRadius: '12px', background: 'var(--surface-low)', border: '1px solid var(--border)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                             Which Class / Section Does Faculty Teach? <span style={{ color: 'var(--red)' }}>*</span>
                                         </label>
                                         <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 700 }}>
-                                            {matchingClasses.length} Sections in Sem {form.semester}
+                                            {selectableClasses.length} Section{selectableClasses.length === 1 ? '' : 's'} Available
                                         </span>
                                     </div>
 
@@ -1210,7 +1230,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                         >
                                             <div>
                                                 <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>Specific Section(s) Only</div>
-                                                <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>E.g. Sec A only, or Sec A + Sec B</div>
+                                                <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>Select multiple classes across branches/semesters</div>
                                             </div>
                                             <span className="material-icons-round" style={{ fontSize: '18px', color: assignScope === 'class' ? 'var(--primary)' : 'var(--tx-dim)' }}>
                                                 {assignScope === 'class' ? 'radio_button_checked' : 'radio_button_unchecked'}
@@ -1235,7 +1255,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                         >
                                             <div>
                                                 <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>All Sections (Shared)</div>
-                                                <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>Teaches combined cohort</div>
+                                                <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>Teaches combined cohort across all classes</div>
                                             </div>
                                             <span className="material-icons-round" style={{ fontSize: '18px', color: assignScope === 'shared' ? 'var(--primary)' : 'var(--tx-dim)' }}>
                                                 {assignScope === 'shared' ? 'radio_button_checked' : 'radio_button_unchecked'}
@@ -1246,21 +1266,110 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                     {/* Multi-Class Division Checklist if specific section */}
                                     {assignScope === 'class' && (
                                         <div>
+                                            {/* Filter pills for cross-branch / cross-semester picking */}
+                                            <div style={{ background: 'var(--surface)', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '10px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
+                                                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                        Branch Filter:
+                                                    </span>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setClassBranchFilter('all')}
+                                                            style={{
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                padding: '3px 8px',
+                                                                fontSize: '11px',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                                background: classBranchFilter === 'all' ? 'var(--primary)' : 'var(--surface-low)',
+                                                                color: classBranchFilter === 'all' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                            }}
+                                                        >
+                                                            All Branches
+                                                        </button>
+                                                        {availableClassBranches.map(b => (
+                                                            <button
+                                                                key={b}
+                                                                type="button"
+                                                                onClick={() => setClassBranchFilter(b)}
+                                                                style={{
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    padding: '3px 8px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer',
+                                                                    background: classBranchFilter === b ? 'var(--primary)' : 'var(--surface-low)',
+                                                                    color: classBranchFilter === b ? '#FFFFFF' : 'var(--tx-muted)',
+                                                                }}
+                                                            >
+                                                                {b}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                                                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                        Semester Filter:
+                                                    </span>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setClassSemesterFilter('all')}
+                                                            style={{
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                padding: '3px 8px',
+                                                                fontSize: '11px',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                                background: classSemesterFilter === 'all' ? 'var(--primary)' : 'var(--surface-low)',
+                                                                color: classSemesterFilter === 'all' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                            }}
+                                                        >
+                                                            All Semesters
+                                                        </button>
+                                                        {availableClassSemesters.map(sem => (
+                                                            <button
+                                                                key={sem}
+                                                                type="button"
+                                                                onClick={() => setClassSemesterFilter(String(sem))}
+                                                                style={{
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    padding: '3px 8px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer',
+                                                                    background: classSemesterFilter === String(sem) ? 'var(--primary)' : 'var(--surface-low)',
+                                                                    color: classSemesterFilter === String(sem) ? '#FFFFFF' : 'var(--tx-muted)',
+                                                                }}
+                                                            >
+                                                                Sem {sem}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>
                                                     Select Class Section(s):
                                                 </label>
-                                                {matchingClasses.length > 0 && (
+                                                {selectableClasses.length > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                         <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 700 }}>
-                                                            {assignClassIds.length} of {matchingClasses.length} selected
+                                                            {assignClassIds.length} of {classesList.length} total selected
                                                         </span>
                                                         <button
                                                             type="button"
                                                             onClick={handleSelectAllClasses}
                                                             style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: 0 }}
                                                         >
-                                                            Select All
+                                                            Select All Visible
                                                         </button>
                                                         <span style={{ color: 'var(--border)' }}>·</span>
                                                         <button
@@ -1274,13 +1383,13 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                                 )}
                                             </div>
 
-                                            {matchingClasses.length === 0 ? (
-                                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontStyle: 'italic', padding: '8px 0' }}>
-                                                    No class sections found for {form.branch} Sem {form.semester}. Select &quot;All Sections (Shared)&quot; or manage classes in Class Manager.
+                                            {selectableClasses.length === 0 ? (
+                                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontStyle: 'italic', padding: '12px', textAlign: 'center', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                    No classes match the filter. Click &quot;All Branches&quot; or &quot;All Semesters&quot; above to choose classes.
                                                 </div>
                                             ) : (
-                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px' }}>
-                                                    {matchingClasses.map(c => {
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px' }}>
+                                                    {selectableClasses.map(c => {
                                                         const isSelected = assignClassIds.includes(c.id);
                                                         return (
                                                             <div
@@ -1300,7 +1409,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                                                 }}
                                                             >
                                                                 <div>
-                                                                    <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                                         <span>{c.name}</span>
                                                                         {c.section && (
                                                                             <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'var(--primary)', color: '#fff', fontWeight: 800 }}>
@@ -1308,8 +1417,16 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                                                             </span>
                                                                         )}
                                                                     </div>
-                                                                    <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                                        {c.student_count ?? 0} Students {c.batch ? `· ${c.batch}` : ''}
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                                        <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#1D4ED8' }}>
+                                                                            {c.branch}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669' }}>
+                                                                            Sem {c.semester}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '10.5px', color: 'var(--tx-muted)' }}>
+                                                                            {c.student_count ?? 0} Students {c.batch ? `· ${c.batch}` : ''}
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                                 <span className="material-icons-round" style={{ fontSize: '20px', color: isSelected ? 'var(--primary)' : 'var(--tx-dim)' }}>
@@ -1335,7 +1452,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                             }}>
                                                 <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>verified</span>
                                                 <span>
-                                                    Evaluation strictly isolated to students enrolled in the {assignClassIds.length} selected section{assignClassIds.length === 1 ? '' : 's'}.
+                                                    Evaluation strictly isolated to students enrolled in the {assignClassIds.length} selected section{assignClassIds.length === 1 ? '' : 's'}. Faculty can teach across multiple branches (CS, DS, AI).
                                                 </span>
                                             </div>
                                         </div>

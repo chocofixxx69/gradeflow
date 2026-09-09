@@ -80,42 +80,7 @@ export async function GET(req) {
             branch: s.branch
         }));
 
-        // Enrich with active course records from subject_marks for this semester
-        if (semester && semester !== 'all') {
-            try {
-                const { data: realMarks } = await supabaseAdmin
-                    .from('subject_marks')
-                    .select('subject_code, subject_name, credits')
-                    .eq('semester', parseInt(semester))
-                    .limit(250);
-
-                if (realMarks && realMarks.length > 0) {
-                    const existingCodes = new Set(subjects.map(s => (s.code || s.subject_code || '').toUpperCase().trim()));
-                    realMarks.forEach(rm => {
-                        const code = (rm.subject_code || '').trim().toUpperCase();
-                        if (code && !existingCodes.has(code)) {
-                            existingCodes.add(code);
-                            subjects.push({
-                                id: `mark_${code}`,
-                                code,
-                                name: rm.subject_name || code,
-                                subject_code: code,
-                                subject_name: rm.subject_name || code,
-                                credits: rm.credits || 3,
-                                semester: parseInt(semester),
-                                scheme: reqScheme || '2022',
-                                branch
-                            });
-                        }
-                    });
-                    subjects.sort((a, b) => (a.code || a.subject_code || '').localeCompare(b.code || b.subject_code || ''));
-                }
-            } catch (e) {
-                console.warn('[GET /api/subjects] Real marks enrichment skipped:', e?.message);
-            }
-        }
-
-        // Fallback to official VTU syllabus catalog if DB has no records for this branch/sem
+        // If subject_catalog had no records for this branch/semester, check VTU syllabus catalog
         if (subjects.length === 0 && semester && semester !== 'all') {
             try {
                 const officialList = getSubjectsFor(branch, semester, reqScheme || '2022') || [];
@@ -136,6 +101,42 @@ export async function GET(req) {
                 }
             } catch (catalogErr) {
                 console.warn('[GET /api/subjects] Official catalog fallback error:', catalogErr);
+            }
+        }
+
+        // Only if still empty, check subject_marks strictly for students belonging to this branch
+        if (subjects.length === 0 && semester && semester !== 'all') {
+            try {
+                const { data: realMarks } = await supabaseAdmin
+                    .from('subject_marks')
+                    .select('subject_code, subject_name, credits, usn')
+                    .eq('semester', parseInt(semester))
+                    .limit(500);
+
+                if (realMarks && realMarks.length > 0) {
+                    const branchMarks = realMarks.filter(m => matchesBranch(m.usn, null, branch));
+                    const existingCodes = new Set();
+                    branchMarks.forEach(rm => {
+                        const code = (rm.subject_code || '').trim().toUpperCase();
+                        if (code && !existingCodes.has(code)) {
+                            existingCodes.add(code);
+                            subjects.push({
+                                id: `mark_${code}`,
+                                code,
+                                name: rm.subject_name || code,
+                                subject_code: code,
+                                subject_name: rm.subject_name || code,
+                                credits: rm.credits || 3,
+                                semester: parseInt(semester),
+                                scheme: reqScheme || '2022',
+                                branch
+                            });
+                        }
+                    });
+                    subjects.sort((a, b) => (a.code || a.subject_code || '').localeCompare(b.code || b.subject_code || ''));
+                }
+            } catch (e) {
+                console.warn('[GET /api/subjects] Real marks enrichment skipped:', e?.message);
             }
         }
 

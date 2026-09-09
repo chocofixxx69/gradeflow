@@ -1009,10 +1009,8 @@ function FacultyDashboardContent() {
         setAddSubjectSaving(true);
         setAddSubjectError('');
         try {
-            // faculty_id is intentionally omitted — the API defaults it to the
-            // caller's own session for a faculty role, so this can never assign
-            // (or misattribute) a subject to anyone but the logged-in faculty.
             await createFacultyAssignment({
+                faculty_id: faculty?.id || undefined,
                 subject_code: addSubjectForm.subject_code,
                 branch: addSubjectForm.branch || selectedSub?.branch || 'CS',
                 semester: parseInt(resolvedSemester, 10),
