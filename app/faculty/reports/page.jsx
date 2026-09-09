@@ -103,8 +103,12 @@ function ReportsContent() {
     }, []);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [reportSyncMsg, setReportSyncMsg] = useState('');
 
     const loadReportData = async (isManual = false) => {
+        const prevStudents = stats.uniqueStudents;
+        const prevSubjects = stats.totalSubjects;
+
         if (isManual) {
             setIsRefreshing(true);
             clearApiCache();
@@ -112,7 +116,7 @@ function ReportsContent() {
             setLoading(true);
         }
         try {
-            const data = await apiRequest('/api/faculty/reports').catch(() => null);
+            const data = await apiRequest(`/api/faculty/reports?_t=${Date.now()}`).catch(() => null);
 
             if (data) {
                 setStats({
@@ -132,6 +136,23 @@ function ReportsContent() {
                     subjectPassRates: data.subjectPassRates || [],
                     facultyWorkload: data.facultyWorkload || [],
                 });
+
+                if (isManual) {
+                    const newStudents = data.uniqueStudents || 0;
+                    const diffStudents = newStudents - prevStudents;
+                    const newSubjects = data.totalSubjects || 0;
+                    const diffSubjects = newSubjects - prevSubjects;
+
+                    if (diffStudents > 0 || diffSubjects > 0) {
+                        const parts = [];
+                        if (diffStudents > 0) parts.push(`+${diffStudents} students`);
+                        if (diffSubjects > 0) parts.push(`+${diffSubjects} subjects`);
+                        setReportSyncMsg(`✓ New examination data detected: ${parts.join(', ')} synced dynamically!`);
+                    } else {
+                        setReportSyncMsg(`✓ Verified live: All ${newStudents} students across ${newSubjects} courses are current.`);
+                    }
+                    setTimeout(() => setReportSyncMsg(''), 5000);
+                }
             }
             setLastUpdated(new Date());
         } catch (err) {
@@ -390,6 +411,28 @@ function ReportsContent() {
                     </div>
                 </div>
             </div>
+
+            {reportSyncMsg && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: 'var(--green)',
+                        border: '1px solid var(--green)',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>check_circle</span>
+                    {reportSyncMsg}
+                </div>
+            )}
 
             {/* Top KPI Cards */}
             <div style={c.statGrid}>

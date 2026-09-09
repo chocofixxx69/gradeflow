@@ -49,12 +49,17 @@ export function SupportTicketsContent({ onStatsUpdate }) {
         return () => clearTimeout(timer);
     }, [search]);
 
-    const fetchTickets = useCallback(async () => {
+    const [refreshBanner, setRefreshBanner] = useState(null);
+
+    const fetchTickets = useCallback(async (isManual = false) => {
         const requestId = ++activeRequestIdRef.current;
         setLoading(true);
         setError('');
+        const prevCount = tickets.length;
+        const prevOpen = stats.open;
         try {
-            const query = {};
+            if (isManual) clearApiCache();
+            const query = { _t: Date.now() };
             if (statusFilter !== 'all') query.status = statusFilter;
             if (userTypeFilter !== 'all') query.user_type = userTypeFilter;
             if (categoryFilter !== 'all') query.category = categoryFilter;
@@ -63,10 +68,28 @@ export function SupportTicketsContent({ onStatsUpdate }) {
 
             const res = await apiRequest('/api/admin/support/tickets', { query });
             if (requestId !== activeRequestIdRef.current) return;
-            setTickets(res?.tickets || []);
+            const newTickets = res?.tickets || [];
+            setTickets(newTickets);
             if (res?.stats) {
                 setStats(res.stats);
                 if (onStatsUpdate) onStatsUpdate(res.stats);
+            }
+
+            if (isManual) {
+                const diff = newTickets.length - prevCount;
+                const newOpen = res?.stats?.open ?? prevOpen;
+                if (diff > 0) {
+                    setRefreshBanner({
+                        type: 'new',
+                        text: `✓ New tickets detected: +${diff} inquiry/ticket(s) synced dynamically!`
+                    });
+                } else {
+                    setRefreshBanner({
+                        type: 'current',
+                        text: `✓ Support desk verified: All ${newTickets.length} tickets current (${newOpen} pending).`
+                    });
+                }
+                setTimeout(() => setRefreshBanner(null), 4500);
             }
         } catch (err) {
             if (requestId !== activeRequestIdRef.current) return;
@@ -77,7 +100,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                 setLoading(false);
             }
         }
-    }, [statusFilter, userTypeFilter, categoryFilter, sortOrder, debouncedSearch, onStatsUpdate]);
+    }, [statusFilter, userTypeFilter, categoryFilter, sortOrder, debouncedSearch, onStatsUpdate, tickets.length, stats.open]);
 
     useEffect(() => {
         fetchTickets();
@@ -348,7 +371,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                     </button>
 
                     <button
-                        onClick={fetchTickets}
+                        onClick={() => fetchTickets(true)}
                         disabled={loading}
                         style={{
                             padding: '9px 14px', borderRadius: '8px', border: '1px solid var(--border)',
@@ -362,6 +385,31 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                     </button>
                 </div>
             </div>
+
+            {/* Dynamic Sync Banner */}
+            {refreshBanner && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: refreshBanner.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                        color: refreshBanner.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+                        border: `1px solid ${refreshBanner.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '16px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
+                    </span>
+                    {refreshBanner.text}
+                </div>
+            )}
 
             {/* Success Banner */}
             {actionSuccessMsg && (

@@ -158,14 +158,16 @@ function ExamResultsHubContent() {
 
     // 2. Fetch Semester Analysis Data
     const loadSemesterData = useCallback(async () => {
-        if (!branch || !semester || !batch) return;
+        if (!branch || !semester || !batch) return null;
         setSemLoading(true);
         try {
             const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/semester-analysis', { query });
             if (res) setSemData(res);
+            return res;
         } catch (err) {
             console.error('Failed to load semester data:', err);
+            return null;
         } finally {
             setSemLoading(false);
         }
@@ -173,14 +175,16 @@ function ExamResultsHubContent() {
 
     // 3. Fetch Batch Trajectory Data
     const loadBatchTrajectory = useCallback(async () => {
-        if (!branch || !batch) return;
+        if (!branch || !batch) return null;
         setBatchLoading(true);
         try {
             const query = { branch, batch, upToSemester, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/batch-report', { query });
             if (res) setBatchData(res);
+            return res;
         } catch (err) {
             console.error('Failed to load batch report:', err);
+            return null;
         } finally {
             setBatchLoading(false);
         }
@@ -188,14 +192,16 @@ function ExamResultsHubContent() {
 
     // 4. Fetch Reval Impact Data
     const loadRevalData = useCallback(async () => {
-        if (!branch) return;
+        if (!branch) return null;
         setRevalLoading(true);
         try {
             const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/reval-impact', { query });
             if (res) setRevalData(res);
+            return res;
         } catch (err) {
             console.error('Failed to load reval data:', err);
+            return null;
         } finally {
             setRevalLoading(false);
         }
@@ -246,25 +252,60 @@ function ExamResultsHubContent() {
 
     // ── Manual Refresh ──
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [refreshBanner, setRefreshBanner] = useState(null);
     const handleRefresh = async () => {
         setIsRefreshing(true);
         clearApiCache();
         try {
+            let discoveredNewSem = false;
+            let newlyFoundSems = [];
             // Reload metadata with fresh=1 to dynamically discover any newly scraped semesters, batches, or classes
             try {
                 const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
-                if (freshMeta) setMeta(freshMeta);
+                if (freshMeta) {
+                    const prevSems = new Set(meta?.semesters || []);
+                    newlyFoundSems = (freshMeta.semesters || []).filter(s => !prevSems.has(s));
+                    if (newlyFoundSems.length > 0) discoveredNewSem = true;
+                    setMeta(freshMeta);
+                }
             } catch (err) {
                 console.warn('Metadata refresh notice:', err);
             }
 
+            const prevStudentCount = viewTab === 'semester'
+                ? (semData.students || []).length
+                : viewTab === 'batch'
+                    ? (batchData.students || []).length
+                    : (revalData.deltaRoster || []).length;
+
+            let newStudentCount = 0;
             if (viewTab === 'semester') {
-                await loadSemesterData();
+                const res = await loadSemesterData();
+                newStudentCount = (res?.students || []).length;
             } else if (viewTab === 'batch') {
-                await loadBatchTrajectory();
+                const res = await loadBatchTrajectory();
+                newStudentCount = (res?.students || []).length;
             } else {
-                await loadRevalData();
+                const res = await loadRevalData();
+                newStudentCount = (res?.deltaRoster || []).length;
             }
+
+            const diff = newStudentCount - prevStudentCount;
+            if (diff > 0 || discoveredNewSem) {
+                const parts = [];
+                if (diff > 0) parts.push(`+${diff} students`);
+                if (discoveredNewSem) parts.push(`New semester(s): Sem ${newlyFoundSems.join(', ')} added`);
+                setRefreshBanner({
+                    type: 'new',
+                    text: `✓ New examination data detected: ${parts.join(' · ')} synced dynamically!`
+                });
+            } else {
+                setRefreshBanner({
+                    type: 'current',
+                    text: `✓ Live sync verified: All ${newStudentCount} records are current and up to date.`
+                });
+            }
+            setTimeout(() => setRefreshBanner(null), 5000);
         } finally {
             setIsRefreshing(false);
         }
@@ -490,6 +531,31 @@ function ExamResultsHubContent() {
                     </Button>
                 </div>
             </div>
+
+            {/* Dynamic Sync Banner */}
+            {refreshBanner && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: refreshBanner.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                        color: refreshBanner.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+                        border: `1px solid ${refreshBanner.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
+                    </span>
+                    {refreshBanner.text}
+                </div>
+            )}
 
             {/* Mode Switcher Tabs */}
             <div style={{

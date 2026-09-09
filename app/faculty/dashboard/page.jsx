@@ -78,6 +78,7 @@ function FacultyDashboardView({
     handleRemoveAssignment,
     removingAssignmentId = null,
     loadAssignments = null,
+    assignmentSyncMsg = '',
 }) {
     const percentage = Math.max(0, (cgpa - 0.75) * 10);
     const messageTone = (() => {
@@ -581,7 +582,7 @@ function FacultyDashboardView({
                                 variant="ghost"
                                 iconStart="refresh"
                                 loading={assignedLoading}
-                                onClick={loadAssignments}
+                                onClick={() => loadAssignments(true)}
                                 title="Refresh teaching assignments from database"
                             >
                                 {assignedLoading ? 'Refreshing...' : 'Refresh'}
@@ -608,6 +609,13 @@ function FacultyDashboardView({
                         </Button>
                     </div>
                 </div>
+
+                {assignmentSyncMsg && (
+                    <div style={{ padding: '8px 14px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--green)', border: '1px solid var(--green)', fontSize: '12px', fontWeight: 700, marginBottom: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="gf-fade-in">
+                        <span className="material-icons-round" style={{ fontSize: '16px' }}>check_circle</span>
+                        {assignmentSyncMsg}
+                    </div>
+                )}
 
                 {addSubjectOpen && (
                     <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
@@ -923,12 +931,33 @@ function FacultyDashboardContent() {
     // Rows can come from either an admin (Admin -> Faculty Assignments) or
     // the faculty member themself (Add Subject below) — same table, same
     // endpoint, so nothing ever needs reconciling between the two.
-    const loadAssignments = useCallback(async () => {
+    const [assignmentSyncMsg, setAssignmentSyncMsg] = useState('');
+
+    const loadAssignments = useCallback(async (isManual = false) => {
         setAssignedLoading(true);
+        const prevSubjectsCount = assignedSubjects.length;
+        const prevClassesCount = assignedClasses.length;
         try {
-            const data = await apiRequest('/api/faculty/dashboard');
-            setAssignedSubjects(data?.assignedSubjects || []);
-            setAssignedClasses(data?.assignedClasses || []);
+            if (isManual) clearApiCache();
+            const data = await apiRequest(`/api/faculty/dashboard?_t=${Date.now()}`);
+            const newSubjects = data?.assignedSubjects || [];
+            const newClasses = data?.assignedClasses || [];
+            setAssignedSubjects(newSubjects);
+            setAssignedClasses(newClasses);
+
+            if (isManual) {
+                const diffSubj = newSubjects.length - prevSubjectsCount;
+                const diffCls = newClasses.length - prevClassesCount;
+                if (diffSubj > 0 || diffCls > 0) {
+                    const parts = [];
+                    if (diffSubj > 0) parts.push(`+${diffSubj} subject(s)`);
+                    if (diffCls > 0) parts.push(`+${diffCls} class(es)`);
+                    setAssignmentSyncMsg(`✓ New assignments detected: ${parts.join(', ')} synced dynamically!`);
+                } else {
+                    setAssignmentSyncMsg(`✓ Teaching load verified: All ${newSubjects.length} subject assignments are current.`);
+                }
+                setTimeout(() => setAssignmentSyncMsg(''), 4500);
+            }
         } catch (err) {
             console.error('Failed to load assigned subjects:', err);
             setAssignedSubjects([]);
@@ -936,7 +965,7 @@ function FacultyDashboardContent() {
         } finally {
             setAssignedLoading(false);
         }
-    }, []);
+    }, [assignedSubjects.length, assignedClasses.length]);
 
     useEffect(() => {
         loadAssignments();
@@ -1355,6 +1384,7 @@ function FacultyDashboardContent() {
             handleRemoveAssignment={handleRemoveAssignment}
             removingAssignmentId={removingAssignmentId}
             loadAssignments={loadAssignments}
+            assignmentSyncMsg={assignmentSyncMsg}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}

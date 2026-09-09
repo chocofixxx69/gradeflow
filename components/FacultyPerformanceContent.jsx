@@ -91,27 +91,78 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     }, [showAssignModal]);
 
     // 2. Fetch faculty performance and classes
-    const loadPerformance = useCallback(async () => {
-        setLoading(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshStatus, setRefreshStatus] = useState(null);
+
+    const loadPerformance = useCallback(async (isManual = false) => {
+        if (isManual) {
+            setRefreshing(true);
+            clearApiCache();
+        } else {
+            setLoading(true);
+        }
         try {
-            const query = {};
+            // If manual refresh, re-fetch metadata with fresh=1 to dynamically discover any new semesters or classes
+            if (isManual) {
+                try {
+                    const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+                    if (freshMeta) setMeta(freshMeta);
+                } catch (e) {
+                    console.warn('Meta refresh note:', e);
+                }
+            }
+
+            const query = { _t: Date.now() };
             if (branch) query.branch = branch;
             if (semester && semester !== 'all') query.semester = semester;
             if (classFilter && classFilter !== 'all') query.classId = classFilter;
 
             const res = await apiRequest('/api/faculty/analytics/faculty-performance', { query });
             if (res) {
-                setFacultyList(res.faculty || []);
+                const newFaculty = res.faculty || [];
+                const prevFacultyCount = facultyList.length;
+                const prevTotalAppeared = facultyList.reduce((acc, f) => acc + (f.total_appeared || 0), 0);
+                const newTotalAppeared = newFaculty.reduce((acc, f) => acc + (f.total_appeared || 0), 0);
+
+                setFacultyList(newFaculty);
                 if (res.classes) setClassesList(res.classes);
                 if (res.currentFacultyId) setCurrentFacultyId(res.currentFacultyId);
                 if (res.currentUserRole) setCurrentUserRole(res.currentUserRole);
+
+                if (isManual) {
+                    const diffAppeared = newTotalAppeared - prevTotalAppeared;
+                    const diffFaculty = newFaculty.length - prevFacultyCount;
+                    if (diffAppeared > 0 || diffFaculty > 0) {
+                        const parts = [];
+                        if (diffAppeared > 0) parts.push(`+${diffAppeared} student marks`);
+                        if (diffFaculty > 0) parts.push(`+${diffFaculty} faculty entries`);
+                        setRefreshStatus({
+                            type: 'new',
+                            msg: `✓ New exam data detected: ${parts.join(', ')} synced dynamically!`
+                        });
+                    } else {
+                        setRefreshStatus({
+                            type: 'current',
+                            msg: `✓ Live sync verified: Teaching performance is fully up to date (${newFaculty.length} faculty).`
+                        });
+                    }
+                    setTimeout(() => setRefreshStatus(null), 5000);
+                }
             }
         } catch (err) {
             console.error('Failed to load faculty performance:', err);
+            if (isManual) {
+                setRefreshStatus({
+                    type: 'error',
+                    msg: 'Failed to refresh teaching performance: ' + (err.message || 'Unknown error')
+                });
+                setTimeout(() => setRefreshStatus(null), 5000);
+            }
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
-    }, [branch, semester, classFilter]);
+    }, [branch, semester, classFilter, facultyList]);
 
     useEffect(() => {
         loadPerformance();
@@ -565,26 +616,54 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
                     <button
                         type="button"
-                        onClick={loadPerformance}
-                        title="Refresh Faculty Analytics Data"
+                        onClick={() => loadPerformance(true)}
+                        disabled={refreshing || loading}
+                        title="Check for new examination data and dynamically sync"
                         style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
+                            gap: '6px',
                             background: 'var(--surface)',
                             color: 'var(--tx-main)',
                             border: '1px solid var(--border)',
-                            width: '40px',
-                            height: '40px',
+                            padding: '10px 16px',
                             borderRadius: '10px',
-                            cursor: 'pointer',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            cursor: (refreshing || loading) ? 'wait' : 'pointer',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                            transition: 'all 0.15s ease'
                         }}
                     >
-                        <span className="material-icons-round" style={{ fontSize: '18px', animation: loading ? 'spin 1s linear infinite' : 'none' }}>sync</span>
+                        <span className={`material-icons-round ${refreshing ? 'gf-spin' : ''}`} style={{ fontSize: '18px', color: 'var(--primary)' }}>sync</span>
+                        {refreshing ? 'Checking Live Data…' : 'Refresh'}
                     </button>
                 </div>
             </div>
+
+            {refreshStatus && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: refreshStatus.type === 'error' ? 'var(--red-bg)' : refreshStatus.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                        color: refreshStatus.type === 'error' ? 'var(--red)' : refreshStatus.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+                        border: `1px solid ${refreshStatus.type === 'error' ? 'var(--red)' : refreshStatus.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {refreshStatus.type === 'error' ? 'error' : refreshStatus.type === 'new' ? 'auto_awesome' : 'check_circle'}
+                    </span>
+                    {refreshStatus.msg}
+                </div>
+            )}
 
             {/* View Perspective Switcher & Manage Classes Link */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '22px' }}>

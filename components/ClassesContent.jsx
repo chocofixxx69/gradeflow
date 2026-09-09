@@ -321,14 +321,27 @@ export function ClassesContent({ embedded = false }) {
         fetchClasses();
     }, []);
 
-    const fetchClasses = async () => {
+    const fetchClasses = async (isManual = false) => {
         setLoadingClasses(true);
         setClassesError(null);
         try {
-            const res = await apiRequest('/api/classes', { credentials: 'include' });
+            clearApiCache();
+            const prevCount = classes.length;
+            const res = await apiRequest(`/api/classes?_t=${Date.now()}`, { credentials: 'include' });
+            await fetchBranches();
             if (res) {
-                setClasses(res.classes || []);
+                const newClasses = res.classes || [];
+                setClasses(newClasses);
                 if (res.faculty) setFacultyList(res.faculty);
+                if (isManual) {
+                    const diff = newClasses.length - prevCount;
+                    if (diff > 0) {
+                        setMsg(`✓ New data detected: +${diff} academic class(es) synced dynamically!`);
+                    } else {
+                        setMsg(`✓ Live sync verified: All ${newClasses.length} classes are up to date.`);
+                    }
+                    setTimeout(() => setMsg(''), 4500);
+                }
             }
         } catch (err) {
             console.error('Failed to fetch classes:', err);
@@ -338,10 +351,15 @@ export function ClassesContent({ embedded = false }) {
         }
     };
 
-    const fetchClassStudents = useCallback(async (cls) => {
-        setLoadingStudents(true); setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
+    const fetchClassStudents = useCallback(async (cls, isManual = false) => {
+        setLoadingStudents(true);
+        if (!isManual) {
+            setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
+        }
         try {
-            const res = await apiRequest(`/api/class-students?class_id=${cls.id}`);
+            clearApiCache();
+            const prevCount = students.length;
+            const res = await apiRequest(`/api/class-students?class_id=${cls.id}&_t=${Date.now()}`);
             if (!res?.students) return;
             const studs = res.students || [];
             setStudents(studs);
@@ -351,11 +369,20 @@ export function ClassesContent({ embedded = false }) {
                 setAvailableSems(sems);
                 setSelectedSem(sems[sems.length - 1]);
             }
+            if (isManual) {
+                const diff = studs.length - prevCount;
+                if (diff > 0) {
+                    setMsg(`✓ New student enrollment detected: +${diff} student(s) synced dynamically!`);
+                } else {
+                    setMsg(`✓ Class roster verified: All ${studs.length} students are up to date.`);
+                }
+                setTimeout(() => setMsg(''), 4500);
+            }
         } catch (err) {
             console.error('Failed to fetch class students:', err);
             setMsg('Failed to load students for this class.');
         } finally { setLoadingStudents(false); }
-    }, []);
+    }, [students.length]);
 
     const computeToppers = (marks, studs, sem, remarks = null) => {
         const filtered = marks.filter(m => Number(m.semester) === Number(sem));
@@ -976,7 +1003,7 @@ export function ClassesContent({ embedded = false }) {
                                 </button>
                                 <button
                                     style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    onClick={() => fetchClassStudents(selectedClass)}
+                                    onClick={() => fetchClassStudents(selectedClass, true)}
                                     disabled={loadingStudents}
                                     title="Refresh student roster for this class"
                                 >
@@ -1169,7 +1196,7 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <button
                                 style={{ ...btn('secondary'), display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                onClick={fetchClasses}
+                                onClick={() => fetchClasses(true)}
                                 disabled={loadingClasses}
                                 title="Refresh classes from database"
                             >

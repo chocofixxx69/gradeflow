@@ -60,10 +60,13 @@ export function SubjectsContent() {
     fetchBranches();
   }, [fetchBranches]);
 
-  const fetchSubjects = useCallback(async () => {
+  const [refreshBanner, setRefreshBanner] = useState(null);
+
+  const fetchSubjects = useCallback(async (isManual = false) => {
     if (!branch) return;
     setLoading(true);
     setError('');
+    const prevCount = subjects.length;
     try {
       const { data: catData, error: catErr } = await supabase
         .from('subject_catalog')
@@ -74,14 +77,31 @@ export function SubjectsContent() {
         .order('subject_code', { ascending: true });
 
       if (catErr) throw catErr;
-      setSubjects(catData || []);
+      const newSubjects = catData || [];
+      setSubjects(newSubjects);
+
+      if (isManual) {
+        const diff = newSubjects.length - prevCount;
+        if (diff > 0) {
+          setRefreshBanner({
+            type: 'new',
+            text: `✓ New subjects detected: +${diff} courses added to catalog!`
+          });
+        } else {
+          setRefreshBanner({
+            type: 'current',
+            text: `✓ Subject catalog verified: All ${newSubjects.length} courses are current.`
+          });
+        }
+        setTimeout(() => setRefreshBanner(null), 4500);
+      }
     } catch (err) {
       setError(err.message);
       console.error('Subjects fetch error:', err);
     } finally {
       setLoading(false);
     }
-  }, [scheme, branch]);
+  }, [scheme, branch, subjects.length]);
 
   useEffect(() => {
     fetchSubjects();
@@ -374,7 +394,7 @@ export function SubjectsContent() {
         </PageHeader>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <Button
-            onClick={() => { fetchBranches(); fetchSubjects(); }}
+            onClick={() => { fetchBranches(); fetchSubjects(true); }}
             variant="ghost"
             disabled={loading}
             title="Refresh subjects and branches from database"
@@ -409,6 +429,30 @@ export function SubjectsContent() {
           </Button>
         </div>
       </div>
+
+      {refreshBanner && (
+        <div
+          style={{
+            padding: '10px 16px',
+            borderRadius: '10px',
+            background: refreshBanner.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+            color: refreshBanner.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+            border: `1px solid ${refreshBanner.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+            fontSize: '12px',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '16px'
+          }}
+          className="gf-fade-in"
+        >
+          <span className="material-icons-round" style={{ fontSize: '18px' }}>
+            {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
+          </span>
+          {refreshBanner.text}
+        </div>
+      )}
 
       {/* Error / Info */}
       {error && subjects.length === 0 && (

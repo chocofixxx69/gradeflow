@@ -174,25 +174,63 @@ function SubjectAnalyticsContent() {
 
     // 2. Fetch subject analytics
     const loadSubjectData = useCallback(async () => {
-        if (!subjectCode) return;
+        if (!subjectCode) return null;
         setLoading(true);
         try {
-            const query = { subjectCode, branch, semester };
+            const query = { subjectCode, branch, semester, _t: Date.now() };
             if (batch) query.batch = batch;
             const res = await apiRequest('/api/faculty/analytics/subject', { query });
             if (res) {
                 setAnalytics(res);
             }
+            return res;
         } catch (err) {
             console.error('Subject analytics error:', err);
+            return null;
         } finally {
             setLoading(false);
         }
     }, [subjectCode, branch, semester, batch]);
 
+    const [refreshBanner, setRefreshBanner] = useState(null);
     const handleRefresh = async () => {
         clearApiCache();
-        await loadSubjectData();
+        let newlyDiscoveredSems = [];
+        let newlyDiscoveredSubjects = [];
+        try {
+            const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+            if (freshMeta) {
+                const prevSems = new Set(meta?.semesters || []);
+                newlyDiscoveredSems = (freshMeta.semesters || []).filter(s => !prevSems.has(s));
+                const prevSubjCodes = new Set((meta?.subjects || []).map(s => s.code));
+                newlyDiscoveredSubjects = (freshMeta.subjects || []).filter(s => s.code && !prevSubjCodes.has(s.code));
+                setMeta(freshMeta);
+            }
+        } catch (e) {
+            console.warn('Meta refresh note:', e);
+        }
+
+        const prevAppeared = analytics?.kpis?.appeared || 0;
+        const res = await loadSubjectData();
+        const newAppeared = res?.kpis?.appeared || 0;
+        const diff = newAppeared - prevAppeared;
+
+        if (diff > 0 || newlyDiscoveredSems.length > 0 || newlyDiscoveredSubjects.length > 0) {
+            const parts = [];
+            if (diff > 0) parts.push(`+${diff} student mark entries`);
+            if (newlyDiscoveredSems.length > 0) parts.push(`Sem ${newlyDiscoveredSems.join(', ')} available`);
+            if (newlyDiscoveredSubjects.length > 0) parts.push(`+${newlyDiscoveredSubjects.length} subjects found`);
+            setRefreshBanner({
+                type: 'new',
+                text: `✓ New subject examination data detected: ${parts.join(' · ')} synced dynamically!`
+            });
+        } else {
+            setRefreshBanner({
+                type: 'current',
+                text: `✓ Live sync verified: All ${newAppeared} student outcomes for this subject are up to date.`
+            });
+        }
+        setTimeout(() => setRefreshBanner(null), 5000);
     };
 
     useEffect(() => {
@@ -395,6 +433,31 @@ function SubjectAnalyticsContent() {
                     </Button>
                 </div>
             </div>
+
+            {/* Dynamic Sync Banner */}
+            {refreshBanner && (
+                <div
+                    style={{
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: refreshBanner.type === 'new' ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                        color: refreshBanner.type === 'new' ? 'var(--green)' : 'var(--tx-main)',
+                        border: `1px solid ${refreshBanner.type === 'new' ? 'var(--green)' : 'var(--border)'}`,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px'
+                    }}
+                    className="gf-fade-in"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
+                    </span>
+                    {refreshBanner.text}
+                </div>
+            )}
 
             {/* Smart Filter Toolbar */}
             <Card style={{ marginBottom: '24px', boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' }}>

@@ -193,6 +193,7 @@ function AdminPanelContent() {
     const [tokenInput, setTokenInput] = useState('');
     const [reloadingData, setReloadingData] = useState(false);
     const [reloadDataSuccess, setReloadDataSuccess] = useState(false);
+    const [reloadDiffMsg, setReloadDiffMsg] = useState('');
 
     const switchTab = useCallback((newTab, origin = null) => {
         if (newTab === tab && !origin) return;
@@ -410,8 +411,9 @@ function AdminPanelContent() {
         setReloadingData(true);
         setReloadDataSuccess(false);
         try {
+            clearApiCache();
             await Promise.all([
-                loadData(),
+                loadData(true),
                 fetchSettings(),
             ]);
             setReloadDataSuccess(true);
@@ -423,10 +425,16 @@ function AdminPanelContent() {
         }
     };
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (isManual = false) => {
         setLoading(true);
         setLoadError('');
+        const prevStudents = students.length;
+        const prevMarks = stats.totalMarks;
+        const prevClasses = classesList.length;
+        const prevLogs = activityLogs.length;
+
         try {
+            if (isManual) clearApiCache();
             // Proactively ensure admin session cookies are active and aligned
             if (typeof window !== 'undefined') {
                 try {
@@ -449,7 +457,7 @@ function AdminPanelContent() {
                 } catch {}
             }
 
-            const resData = await apiRequest('/api/admin/terminal/data');
+            const resData = await apiRequest(`/api/admin/terminal/data?_t=${Date.now()}`);
             const s = resData?.students || [];
             const r = resData?.facultyOnboarding || [];
             const l = resData?.facultyActivity || [];
@@ -470,24 +478,63 @@ function AdminPanelContent() {
 
             const todayStr = new Date().toISOString().slice(0, 10);
             const todayCount = l.filter(x => x.created_at?.startsWith(todayStr)).length;
+            const newTotalStudents = resData?.counts?.totalStudents || s.length;
+            const newTotalMarks = resData?.counts?.totalMarksRecords || 0;
+
             setStats({
-                students: resData?.counts?.totalStudents || s.length,
+                students: newTotalStudents,
                 pending: r.filter(x => x.status === 'pending').length,
                 faculty: r.filter(x => x.status === 'approved').length,
-                totalMarks: resData?.counts?.totalMarksRecords || 0,
+                totalMarks: newTotalMarks,
                 activityToday: todayCount,
             });
+
+            if (isManual) {
+                const diffStudents = newTotalStudents - prevStudents;
+                const diffMarks = newTotalMarks - prevMarks;
+                const diffClasses = (resData?.classes || []).length - prevClasses;
+                const diffLogs = enrichedLogs.length - prevLogs;
+
+                if (diffStudents > 0 || diffMarks > 0 || diffClasses > 0 || diffLogs > 0) {
+                    const changes = [];
+                    if (diffStudents > 0) changes.push(`+${diffStudents} students`);
+                    if (diffMarks > 0) changes.push(`+${diffMarks} exam records`);
+                    if (diffClasses > 0) changes.push(`+${diffClasses} classes`);
+                    if (diffLogs > 0) changes.push(`+${diffLogs} activities`);
+                    const dynamicMsg = `✓ New dynamic data detected: ${changes.join(', ')} synced live!`;
+                    setReloadDiffMsg(dynamicMsg);
+                    setStudentActionMsg(dynamicMsg);
+                } else {
+                    const dynamicMsg = `✓ Live sync verified: All ${s.length} students & ${newTotalMarks} marks records are current.`;
+                    setReloadDiffMsg(dynamicMsg);
+                    setStudentActionMsg(dynamicMsg);
+                }
+                setTimeout(() => {
+                    setReloadDiffMsg('');
+                    setStudentActionMsg('');
+                }, 5000);
+            }
 
             apiRequest('/api/admin/support/tickets').then(tRes => {
                 if (tRes?.stats?.open !== undefined) setOpenTicketsCount(tRes.stats.open);
             }).catch(() => {});
         } catch (err) {
             console.error('Failed to load admin data:', err);
-            setLoadError('Failed to load admin data. Please check your connection and try again.');
+            if (err?.status === 401 || err?.status === 403 || err?.code === 'UNAUTHENTICATED' || err?.code === 'FORBIDDEN') {
+                // Client-side "logged in" flag (localStorage) had gone stale relative to the
+                // server's actual session cookie (expired / cleared / signing secret rotated).
+                // Surfacing this as a generic network error left admins stuck on a broken
+                // dashboard with no path forward — send them back through the gateway instead.
+                if (typeof window !== 'undefined') localStorage.removeItem('admin_session');
+                setLoadError('Your admin session has expired. Redirecting to sign-in...');
+                setTimeout(() => router.push('/admin/gateway'), 1200);
+            } else {
+                setLoadError('Failed to load admin data. Please check your connection and try again.');
+            }
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [router]);
 
     const openStudent = async (student) => {
         setSelectedStudent(student);
@@ -1663,6 +1710,13 @@ function AdminPanelContent() {
                         </button>
                     </div>
 
+                    {reloadDiffMsg && (
+                        <div style={{ padding: '10px 16px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--green)', border: '1px solid var(--green)', fontSize: '13px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }} className="gf-fade-in">
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>check_circle</span>
+                            {reloadDiffMsg}
+                        </div>
+                    )}
+
                     {/* Executive Metric Cards */}
                     <div className="gf-stats-grid" style={{ marginBottom: '32px' }}>
                         {[
@@ -2016,7 +2070,7 @@ function AdminPanelContent() {
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <button
                                 style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }}
-                                onClick={loadData}
+                                onClick={() => loadData(true)}
                                 disabled={loading}
                                 title="Reload students directory from database"
                             >
@@ -3494,10 +3548,10 @@ function AdminPanelContent() {
                                     e.currentTarget.style.borderColor = 'var(--border)';
                                     e.currentTarget.style.color = 'var(--tx-main)';
                                 }}
-                                title="Close dossier and return to student directory"
+                                title={`Close dossier and return to ${TAB_METADATA[tab]?.shortLabel || 'previous view'}`}
                             >
                                 <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
-                                <span>Back to Student Directory</span>
+                                <span>Back to {TAB_METADATA[tab]?.shortLabel || 'Previous'}</span>
                             </button>
                             <button
                                 onClick={() => setSelectedStudent(null)}
@@ -3979,10 +4033,10 @@ function AdminPanelContent() {
                                     e.currentTarget.style.borderColor = 'var(--border)';
                                     e.currentTarget.style.color = 'var(--tx-main)';
                                 }}
-                                title="Close dossier and return to faculty directory"
+                                title={`Close dossier and return to ${TAB_METADATA[tab]?.shortLabel || 'previous view'}`}
                             >
                                 <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
-                                <span>Back to Faculty Directory</span>
+                                <span>Back to {TAB_METADATA[tab]?.shortLabel || 'Previous'}</span>
                             </button>
                             <button
                                 onClick={() => setSelectedFaculty(null)}

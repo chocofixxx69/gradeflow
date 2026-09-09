@@ -102,11 +102,13 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
         }
     }, [preselectedFacultyId]);
 
-    const fetchData = useCallback(async (isSilent = false) => {
+    const fetchData = useCallback(async (isSilent = false, isManual = false) => {
         const silent = typeof isSilent === 'boolean' ? isSilent : false;
         if (!silent) setLoading(true);
         setError('');
         try {
+            clearApiCache();
+            const prevCount = assignments.length;
             // Proactively align admin session cookies if admin_session is stored
             if (typeof window !== 'undefined') {
                 try {
@@ -130,17 +132,28 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
             }
 
             const res = await apiRequest(`/api/admin/faculty-assignments?_t=${Date.now()}`);
-            setAssignments(res?.assignments || []);
+            const newAssignments = res?.assignments || [];
+            setAssignments(newAssignments);
             setFacultyList(res?.faculty || []);
             setClassesList(res?.classes || []);
             setSubjectsList(res?.subjects || []);
+
+            if (isManual) {
+                const diff = newAssignments.length - prevCount;
+                if (diff > 0) {
+                    setSuccessMsg(`✓ New faculty assignments detected: +${diff} mapping(s) synced dynamically!`);
+                } else {
+                    setSuccessMsg(`✓ Verified live: All ${newAssignments.length} faculty mappings are up to date.`);
+                }
+                setTimeout(() => setSuccessMsg(''), 4000);
+            }
         } catch (err) {
             console.error('Failed to load faculty assignments:', err);
             if (!silent) setError(err.message || 'Failed to load faculty assignments.');
         } finally {
             if (!silent) setLoading(false);
         }
-    }, []);
+    }, [assignments.length]);
 
     useEffect(() => {
         fetchData();
@@ -537,7 +550,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
                         style={s.btnSecondary}
-                        onClick={() => fetchData(false)}
+                        onClick={() => fetchData(false, true)}
                         disabled={loading}
                         title="Refresh faculty assignments"
                     >

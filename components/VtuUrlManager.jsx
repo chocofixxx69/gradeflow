@@ -41,9 +41,10 @@ export default function VtuUrlManager({ facultyId }) {
     const [confirmingRemove, setConfirmingRemove] = useState(null);
     const [removing, setRemoving] = useState(false);
 
-    const fetchVtuUrls = useCallback(async (schemeToFetch = selectedScheme) => {
+    const fetchVtuUrls = useCallback(async (schemeToFetch = selectedScheme, isManual = false) => {
         if (!facultyId) return;
         setFetching(true);
+        const prevCount = vtuUrls.length;
         try {
             const res = await fetch(`/api/vtu-urls?faculty_id=${facultyId}&scheme=${schemeToFetch}&_t=${Date.now()}`, {
                 cache: 'no-store',
@@ -51,9 +52,19 @@ export default function VtuUrlManager({ facultyId }) {
             });
             const json = await res.json();
             if (json.success) {
-                setVtuUrls(json.urls || []);
+                const newUrls = json.urls || [];
+                setVtuUrls(newUrls);
                 if (json.counts) {
                     setSchemeCounts(json.counts);
+                }
+                if (isManual) {
+                    const diff = newUrls.length - prevCount;
+                    if (diff > 0) {
+                        setMessage(`✓ New portal URL(s) detected: +${diff} added dynamically!`);
+                    } else {
+                        setMessage(`✓ Live portal sync verified: All ${newUrls.length} portals are current.`);
+                    }
+                    setTimeout(() => setMessage(''), 4500);
                 }
             }
         } catch (e) {
@@ -61,7 +72,7 @@ export default function VtuUrlManager({ facultyId }) {
         } finally {
             setFetching(false);
         }
-    }, [selectedScheme, facultyId]);
+    }, [selectedScheme, facultyId, vtuUrls.length]);
 
     useEffect(() => {
         if (!facultyId) return;
@@ -491,7 +502,7 @@ export default function VtuUrlManager({ facultyId }) {
                     </div>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                         <Button
-                            onClick={() => fetchVtuUrls(selectedScheme)}
+                            onClick={() => fetchVtuUrls(selectedScheme, true)}
                             size="sm"
                             variant="ghost"
                             disabled={fetching}
