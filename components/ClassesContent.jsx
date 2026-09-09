@@ -198,6 +198,7 @@ export function ClassesContent({ embedded = false }) {
 
         setFacultyMap({});
 
+        let resolvedFaculty = {};
         try {
             const res = await fetch(`/api/class-students?class_id=${selectedClass.id}&export_sem=${targetSem}`);
             const json = await res.json();
@@ -215,30 +216,31 @@ export function ClassesContent({ embedded = false }) {
                 } else {
                     setClassSubjects([]);
                 }
+
+                if (json.facultyMap && typeof json.facultyMap === 'object') {
+                    resolvedFaculty = { ...json.facultyMap };
+                }
             }
         } catch (e) {
             console.error('Failed to load export data:', e);
         }
 
-        // Faculty Name used to be free-text typed per subject and saved to
-        // localStorage — that's how garbage like "c"/"csa"/"sa" ended up on real
-        // reports. Pre-fill it from the actual admin-managed faculty_subject_assignments
-        // (same resolver /api/admin/analytics/subjects already uses) instead, scoped to
-        // this class's branch/semester. A subject with no real assignment stays blank —
-        // faculty can still type a name for one export, but it's never assumed.
+        // Dynamically augment faculty assignments from analytics resolver
         try {
             const subjRes = await fetch(`/api/admin/analytics/subjects?branch=${encodeURIComponent(selectedClass.branch || '')}&semester=${targetSem}&classId=${selectedClass.id}`, { credentials: 'include' });
             const subjJson = await subjRes.json();
             if (subjJson.success) {
-                const nameByCode = {};
                 (subjJson.data?.subjects || []).forEach(s => {
-                    if (s.faculty && s.faculty !== 'Unassigned') nameByCode[s.subject_code] = s.faculty;
+                    if (s.faculty && s.faculty !== 'Unassigned' && !resolvedFaculty[s.subject_code]) {
+                        resolvedFaculty[s.subject_code] = s.faculty;
+                    }
                 });
-                setFacultyMap(nameByCode);
             }
         } catch (e) {
             console.error('Failed to load real faculty assignments for export:', e);
         }
+
+        setFacultyMap(resolvedFaculty);
     };
 
     const openPdfExportModal = async () => {

@@ -75,7 +75,11 @@ export async function GET(req) {
 
         const { searchParams } = new URL(req.url);
         const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-        const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') || '25', 10)));
+        const limitParam = (searchParams.get('limit') || '25').toLowerCase().trim();
+        const isAll = limitParam === 'all' || limitParam === '-1';
+        const limit = isAll ? 10000 : Math.min(1000, Math.max(10, parseInt(limitParam, 10) || 25));
+        const sortBy = (searchParams.get('sortBy') || 'batch').toLowerCase().trim();
+        const sortOrder = (searchParams.get('sortOrder') || (sortBy === 'batch' ? 'desc' : 'asc')).toLowerCase().trim();
         const branchParam = (searchParams.get('branch') || '').toUpperCase().trim();
         const branch = branchParam && branchParam !== 'ALL' ? (canonicalBranch(branchParam) || branchParam) : '';
         const semesterRaw = searchParams.get('semester');
@@ -115,6 +119,45 @@ export async function GET(req) {
             }
         });
 
+        // ── Multi-axis sorting comparator (batch, branch, USN, CGPA, etc.) ──
+        const sortComparator = (a, b) => {
+            let res = 0;
+            if (sortBy === 'batch') {
+                const batchA = Number(a.identity.batch.year) || 0;
+                const batchB = Number(b.identity.batch.year) || 0;
+                res = sortOrder === 'asc' ? batchA - batchB : batchB - batchA;
+                if (res !== 0) return res;
+                // secondary sort: branch, then USN
+                const branchA = a.identity.branch.code || '';
+                const branchB = b.identity.branch.code || '';
+                const brRes = branchA.localeCompare(branchB);
+                if (brRes !== 0) return brRes;
+                return a.usn.localeCompare(b.usn);
+            } else if (sortBy === 'name') {
+                const nameA = a.record.name || '';
+                const nameB = b.record.name || '';
+                res = nameA.localeCompare(nameB);
+            } else if (sortBy === 'cgpa') {
+                const cgpaA = a.record.cgpa || 0;
+                const cgpaB = b.record.cgpa || 0;
+                res = cgpaA - cgpaB;
+            } else if (sortBy === 'backlogs') {
+                const bA = a.record.totalActiveBacklogs || 0;
+                const bB = b.record.totalActiveBacklogs || 0;
+                res = bA - bB;
+            } else if (sortBy === 'department') {
+                const brA = a.identity.branch.code || '';
+                const brB = b.identity.branch.code || '';
+                res = brA.localeCompare(brB);
+            } else {
+                // default USN
+                res = a.usn.localeCompare(b.usn);
+            }
+
+            if (res === 0) res = a.usn.localeCompare(b.usn);
+            return (sortOrder === 'desc' && sortBy !== 'batch') ? -res : res;
+        };
+
         // ── One filterable row per student, wrapped around the canonical record ──
         const records = [...studentRecords.values()].map(record => {
             const classInfo = usnToClassMap.get(record.usn) || null;
@@ -127,7 +170,7 @@ export async function GET(req) {
                 classInfo,
                 searchBlob: `${record.usn} ${record.name} ${record.raw?.email || ''}`.toLowerCase()
             };
-        }).sort((a, b) => a.usn.localeCompare(b.usn));
+        }).sort(sortComparator);
 
         // "23", "2023" and "23 Batch (2023)" all mean the same cohort.
         const batchDigits = String(batch).replace(/[^0-9]/g, '');
@@ -354,8 +397,9 @@ export async function GET(req) {
         let pagedEnriched = [];
 
         if (backlogsFilter === 'all') {
-            const startIndex = (page - 1) * limit;
-            pagedEnriched = enrichList(matched.slice(startIndex, startIndex + limit));
+            const startIndex = isAll ? 0 : (page - 1) * limit;
+            const endIndex = isAll ? matched.length : (startIndex + limit);
+            pagedEnriched = enrichList(matched.slice(startIndex, endIndex));
         } else {
             // Backlog status is only knowable after enrichment, so the whole
             // candidate set is enriched before paging.
@@ -364,8 +408,9 @@ export async function GET(req) {
                 backlogsFilter === 'clear' ? s.total_backlogs === 0 : s.total_backlogs > 0
             );
             totalStudents = filtered.length;
-            const startIndex = (page - 1) * limit;
-            pagedEnriched = filtered.slice(startIndex, startIndex + limit);
+            const startIndex = isAll ? 0 : (page - 1) * limit;
+            const endIndex = isAll ? filtered.length : (startIndex + limit);
+            pagedEnriched = filtered.slice(startIndex, endIndex);
         }
 
         // Quality summary across the whole matched set, not just this page, so the
@@ -390,8 +435,8 @@ export async function GET(req) {
             pagination: {
                 total: totalStudents,
                 page,
-                limit,
-                totalPages: Math.ceil(totalStudents / limit) || 1
+                limit: isAll ? totalStudents : limit,
+                totalPages: isAll ? 1 : (Math.ceil(totalStudents / limit) || 1)
             },
             facets,
             applied: {
@@ -405,6 +450,8 @@ export async function GET(req) {
                 entry: entryFilter,
                 backlogsFilter,
                 search: search || null,
+                sortBy,
+                sortOrder,
                 activeFilters: activeFilterNames
             },
             blockingFilters,
@@ -413,6 +460,8 @@ export async function GET(req) {
                 sections: facets.sections.map(o => o.value).filter(v => v !== 'UNASSIGNED'),
                 totalStudents: records.length,
                 matchedBeforeBacklogFilter: matched.length,
+                batchGroups: facets.batches,
+                branchGroups: facets.branches,
                 cgpaSource: 'subject_marks + subject_catalog (vtuAcademicEngine)'
             }
         });

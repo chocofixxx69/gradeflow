@@ -92,6 +92,7 @@ export async function GET(req) {
                 cgpa: record.cgpa,
                 totalSubjects: record.totalSubjects,
                 totalActiveBacklogs: record.totalActiveBacklogs,
+                activeBacklogSubjects: record.activeBacklogSubjects || [],
                 // Also expose raw for backwards compat
                 recentResults: (resultMarks || []).filter(m => m.usn === cleanUSN),
                 studentMarks: studentMarks || []

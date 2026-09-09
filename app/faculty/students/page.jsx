@@ -93,7 +93,9 @@ function StudentsDirectoryContent() {
     const [isDebouncing, setIsDebouncing] = useState(false);
 
     const [page, setPage] = useState(1);
-    const limit = 25;
+    const [limit, setLimit] = useState(25);
+    const [sortBy, setSortBy] = useState('batch');
+    const [sortOrder, setSortOrder] = useState('desc');
 
     // Request tracking to eliminate race conditions
     const activeRequestIdRef = useRef(0);
@@ -160,10 +162,11 @@ function StudentsDirectoryContent() {
         setIsDebouncing(false);
     };
 
-    const loadStudents = useCallback(async ({ fresh = false, silent = false } = {}) => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
+    // Primary data-loader. Holds an AbortController so typing fast or rapidly
+    // flipping filters immediately cancels the previous in-flight request rather
+    // than having it race the new one and clobber the table with stale rows.
+    const loadStudents = useCallback(async (fresh = false, silent = false) => {
+        if (abortControllerRef.current) abortControllerRef.current.abort();
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
@@ -171,7 +174,7 @@ function StudentsDirectoryContent() {
         if (!silent) setLoading(true);
         setError(null);
         try {
-            const query = { page, limit };
+            const query = { page: limit === 'all' ? 1 : page, limit, sortBy, sortOrder };
             if (fresh) query.fresh = '1';
             if (branch) query.branch = branch;
             if (semester !== 'all') {
@@ -209,7 +212,7 @@ function StudentsDirectoryContent() {
         } finally {
             if (id === activeRequestIdRef.current && !silent) setLoading(false);
         }
-    }, [page, limit, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
+    }, [page, limit, sortBy, sortOrder, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshBanner, setRefreshBanner] = useState(null);
@@ -328,9 +331,10 @@ function StudentsDirectoryContent() {
         ];
         if (semesterColumn) headers.push(`Sem ${semesterColumn} SGPA`, `Sem ${semesterColumn} Backlogs`);
 
+        const offset = limit === 'all' ? 0 : (page - 1) * Number(limit);
         const rows = (students || []).map((s, idx) => {
             const row = [
-                (page - 1) * limit + idx + 1,
+                offset + idx + 1,
                 s.usn,
                 s.name,
                 s.branchLabel || s.branch,
@@ -373,9 +377,10 @@ function StudentsDirectoryContent() {
         const head = [['#', 'USN', 'Student Name', 'Dept', 'Sem', 'Sec', 'CGPA', 'Backlog Status']];
         if (semesterColumn) head[0].push(`S${semesterColumn} SGPA`);
 
+        const offset = limit === 'all' ? 0 : (page - 1) * Number(limit);
         const body = (students || []).map((s, idx) => {
             const row = [
-                (page - 1) * limit + idx + 1,
+                offset + idx + 1,
                 s.usn,
                 s.name,
                 s.branch,
@@ -512,6 +517,39 @@ function StudentsDirectoryContent() {
                                 { value: 'backlogs', label: 'Carrying Backlogs' }
                             ]}
                         />
+                        <Select
+                            label="Arrange / Sort"
+                            value={`${sortBy}:${sortOrder}`}
+                            onChange={e => {
+                                const [sb, so] = e.target.value.split(':');
+                                setSortBy(sb);
+                                setSortOrder(so);
+                                setPage(1);
+                            }}
+                            options={[
+                                { value: 'batch:desc', label: 'Batch (Newest First)' },
+                                { value: 'batch:asc', label: 'Batch (Oldest First)' },
+                                { value: 'usn:asc', label: 'USN (Ascending)' },
+                                { value: 'name:asc', label: 'Name (A to Z)' },
+                                { value: 'cgpa:desc', label: 'CGPA (Highest First)' },
+                                { value: 'backlogs:desc', label: 'Backlogs (Most First)' },
+                                { value: 'department:asc', label: 'Department (A to Z)' }
+                            ]}
+                        />
+                        <Select
+                            label="Page Size"
+                            value={String(limit)}
+                            onChange={e => {
+                                setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                                setPage(1);
+                            }}
+                            options={[
+                                { value: '25', label: '25 per page' },
+                                { value: '50', label: '50 per page' },
+                                { value: '100', label: '100 per page' },
+                                { value: 'all', label: `All (${directoryTotal || 627})` }
+                            ]}
+                        />
                         <div style={{ position: 'relative' }}>
                             <Input
                                 label="Search"
@@ -557,6 +595,33 @@ function StudentsDirectoryContent() {
                             </div>
                         </div>
                     </div>
+
+                    {facets.batches?.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-low)', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Batch Cohorts:
+                            </span>
+                            {facets.batches.map(b => (
+                                <button
+                                    key={b.value}
+                                    type="button"
+                                    onClick={() => handleFilterChange(setBatch, batch === String(b.value) ? '' : String(b.value))}
+                                    style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${batch === String(b.value) ? 'var(--primary)' : 'var(--border)'}`,
+                                        background: batch === String(b.value) ? 'rgba(99, 102, 241, 0.12)' : 'var(--surface-low)',
+                                        color: batch === String(b.value) ? 'var(--primary)' : 'var(--tx-main)',
+                                        fontSize: '11.5px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    {b.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     {activeChips.length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-low)' }}>
@@ -720,7 +785,7 @@ function StudentsDirectoryContent() {
                                             }}
                                         >
                                             <td style={{ padding: '12px 16px', color: 'var(--tx-dim)' }}>
-                                                {(page - 1) * limit + idx + 1}
+                                                {(limit === 'all' ? 0 : (page - 1) * Number(limit)) + idx + 1}
                                             </td>
                                             <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
                                                 <Link
@@ -850,11 +915,17 @@ function StudentsDirectoryContent() {
             </Card>
 
             {/* Pagination Controls */}
-            {pagination.totalPages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
-                        Showing <strong>{(page - 1) * limit + 1}</strong> to <strong>{Math.min(page * limit, pagination.total)}</strong> of <strong>{pagination.total}</strong> students
-                    </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
+                    {limit === 'all' ? (
+                        <span>Loaded <strong>All {students.length}</strong> students across the database</span>
+                    ) : (
+                        <span>
+                            Showing <strong>{pagination.total > 0 ? (page - 1) * Number(limit) + 1 : 0}</strong> to <strong>{Math.min(page * Number(limit), pagination.total)}</strong> of <strong>{pagination.total}</strong> students
+                        </span>
+                    )}
+                </div>
+                {limit !== 'all' && pagination.totalPages > 1 && (
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <Button
                             size="sm"
@@ -878,8 +949,8 @@ function StudentsDirectoryContent() {
                             Next
                         </Button>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 }

@@ -139,14 +139,17 @@ def _parse_row(texts):
     non_nums = [v.strip().upper() for v in rem if not re.match(r'^\d+(?:\.\d+)?$', v.strip())]
     result_str = " ".join(non_nums) if non_nums else grade
     raw_res = (result_str or '').strip().upper()
-    is_res_fail = "F" in raw_res or "FAIL" in raw_res
+    is_res_fail = bool(re.search(r'\b(F|FAIL|FAILED)\b', raw_res))
     is_ext_fail = (ext_m > 0 and ext_m < 18)
     is_tot_fail = (tot_m > 0 and tot_m < 40)
+    is_true_pass = (tot_m >= 40 and (ext_m >= 18 or ext_m == 0) and not is_res_fail)
 
     if parsed_grade in ("W", "X", "NE"):
         final_grade = parsed_grade
     elif parsed_grade in ABSENT_MARKS:
         final_grade = "A"
+    elif is_true_pass:
+        final_grade = "P"
     elif parsed_grade == "F" or parsed_grade == "FAIL" or is_res_fail or is_ext_fail or is_tot_fail:
         final_grade = "F"
     elif parsed_grade in PASS_GRADES and not (is_ext_fail or is_tot_fail or is_res_fail):
@@ -154,12 +157,10 @@ def _parse_row(texts):
     elif parsed_grade == "A":
         if ext_m == 0 and tot_m < 40:
             final_grade = "A"
-        elif tot_m >= 40 and ext_m >= 18:
+        elif tot_m >= 40 and (ext_m >= 18 or ext_m == 0):
             final_grade = "P"
-        elif ext_m == 0:
-            final_grade = "A"
         else:
-            final_grade = "F"
+            final_grade = "A" if ext_m == 0 else "F"
     elif tot_m >= 40 and (ext_m >= 18 or ext_m == 0) and not is_res_fail:
         final_grade = "P"
     else:

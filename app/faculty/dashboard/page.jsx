@@ -819,6 +819,8 @@ function FacultyDashboardContent() {
     const [scraping, setScraping] = useState(false);
     const [scrapeProgress, setScrapeProgress] = useState('');
     const [showBacklogModal, setShowBacklogModal] = useState(false);
+    const [serverBacklogs, setServerBacklogs] = useState(null);
+    const [serverActiveBacklogsCount, setServerActiveBacklogsCount] = useState(null);
     const [confirmingDeleteStudent, setConfirmingDeleteStudent] = useState(false);
     const [assignedSubjects, setAssignedSubjects] = useState([]);
     const [assignedClasses, setAssignedClasses] = useState([]);
@@ -1139,6 +1141,8 @@ function FacultyDashboardContent() {
         setSgpas({});
         setSemStats({});
         setCgpa(0);
+        setServerBacklogs(null);
+        setServerActiveBacklogsCount(null);
 
         if (!silent) setLoading(true);
         setMessage('');
@@ -1160,6 +1164,8 @@ function FacultyDashboardContent() {
             setSgpas(semSGPAs);
             setSemStats(semStatsData);
             setCgpa(cgpaValue);
+            setServerBacklogs(resData?.activeBacklogSubjects || null);
+            setServerActiveBacklogsCount(resData?.totalActiveBacklogs ?? null);
 
             // Audit Log
             await recordFacultyAction(faculty, 'VIEW_RECORD', cleanUSN);
@@ -1297,6 +1303,8 @@ function FacultyDashboardContent() {
                 setStudent(null);
                 setMarks({});
                 setUsn('');
+                setServerBacklogs(null);
+                setServerActiveBacklogsCount(null);
             } else {
                 setMessage(`Error: ${json.error}`);
             }
@@ -1325,10 +1333,14 @@ function FacultyDashboardContent() {
     };
 
     const totalSubjects = Object.values(marks).flat().length;
-    // Active Backlogs: use canonical isFailedSubject() — same source of truth as per-semester calcSGPA
-    // This ensures the header count always matches the sum of per-semester backlog counts.
-    const backlogs = Object.values(marks).flat().filter(m => isFailedSubject(m));
-    const failCount = backlogs.length;
+    // Active Backlogs: prefer canonical activeBacklogSubjects computed server-side,
+    // fallback to isFailedSubject() filter on marks
+    const backlogs = serverBacklogs !== null
+        ? serverBacklogs
+        : Object.values(marks).flat().filter(m => isFailedSubject(m));
+    const failCount = serverActiveBacklogsCount !== null
+        ? serverActiveBacklogsCount
+        : backlogs.length;
     const sortedSemesters = Object.entries(marks).sort(([a], [b]) => Number(b) - Number(a));
 
 

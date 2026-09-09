@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchByChunks } from '../../../lib/supabase-utils';
 import { calculateAcademicRecord, normalizeBranch } from '../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
-import { getAdminClient } from '../../../lib/analytics-data';
+import { getAdminClient, findFacultyAssignment } from '../../../lib/analytics-data';
 import { requireStaff } from '../../../lib/server-session';
 import { generateFormulaPassword, hashStudentPassword } from '../../../lib/student-auth';
 import { logFacultyActivityServer } from '../../../lib/server-audit';
@@ -153,16 +153,7 @@ export async function GET(req) {
             // Ground truth only: a subject column exists if and only if at least one real
             // mark row exists for it among this roster. subject_catalog is used purely to
             // enrich the display name/credits for a code that IS backed by real marks — it
-            // never contributes a column on its own. This was a deliberate simplification:
-            // the catalog carries generic elective/NSS placeholder rows (BXX613X, BNSK658)
-            // whose real offered variant surfaces under a completely different code and name
-            // (BCS613B "Computer Vision", BPEK658 "Physical Education"), and it also carries
-            // stale/duplicate curriculum entries for shared branches (e.g. "AI" catalog rows
-            // that don't match what was actually taught/examined for a given cohort). No
-            // dedup heuristic (by name, by digit-slot) can reliably tell "genuinely not yet
-            // assessed" apart from "wrong/duplicate catalog seed" — so instead of guessing,
-            // catalog-only rows are simply never shown. This guarantees the report can never
-            // contain a column with zero real data.
+            // never contributes a column on its own.
             const catByCode = new Map((catData || []).map(c => [c.subject_code, c]));
             const markCodes = Array.from(new Set((exportMarksData || []).map(m => m.subject_code)));
 
@@ -178,11 +169,48 @@ export async function GET(req) {
             }).sort((a, b) => a.subject_code.localeCompare(b.subject_code));
         }
 
+        // Dynamically resolve faculty assignments for this class and its subjects
+        const facultyMap = {};
+        try {
+            const { data: assignments } = await supabaseAdmin
+                .from('faculty_subject_assignments')
+                .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, faculty_onboarding(id, full_name)');
+
+            if (assignments && assignments.length > 0) {
+                const targetCodes = exportCatData
+                    ? exportCatData.map(c => c.subject_code)
+                    : Array.from(new Set((marks || []).map(m => m.subject_code).filter(Boolean)));
+
+                const classBranch = classData?.branch || '';
+                const semNum = exportSem ? Number(exportSem) : (Number(classData?.semester) || null);
+                const classScheme = classData?.scheme || '2022';
+
+                for (const code of targetCodes) {
+                    const match = findFacultyAssignment(assignments, {
+                        subjectCode: code,
+                        branch: classBranch,
+                        semester: semNum,
+                        scheme: classScheme,
+                        classId: class_id
+                    });
+                    if (match) {
+                        const name = match.faculty_onboarding?.full_name || null;
+                        if (name) {
+                            facultyMap[code] = name;
+                        }
+                    }
+                }
+            }
+        } catch (fErr) {
+            console.warn('[GET /api/class-students] faculty assignments resolution notice:', fErr.message);
+        }
+
         return NextResponse.json({ 
             success: true, 
             students, 
             marksData: exportMarksData, 
-            catData: exportCatData 
+            catData: exportCatData,
+            facultyMap
         });
     } catch (err) {
         console.error('[GET /api/class-students]', err);

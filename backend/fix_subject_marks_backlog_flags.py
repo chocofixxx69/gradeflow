@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -47,12 +48,15 @@ for m in marks:
     # 1. Grade is F/A/FAIL/ABSENT
     # 2. External < 18 (when external exam taken)
     # 3. Total < 40 (when total > 0)
-    # 4. Result contains F or FAIL
-    should_be_backlog = (
+    # 4. Result contains whole-word F or FAIL
+    is_res_fail = bool(re.search(r'\b(F|FAIL|FAILED)\b', res)) if res else False
+    is_true_pass = (tot >= 40 and (ext >= 18 or ext == 0) and not is_res_fail)
+
+    should_be_backlog = not is_true_pass and (
         g in ("F", "A", "FAIL", "ABSENT", "X", "NE", "NP", "DX") or
         (ext > 0 and ext < 18) or
         (tot > 0 and tot < 40) or
-        "F" in res or "FAIL" in res
+        is_res_fail
     )
 
     expected_grade = "F" if (should_be_backlog and g not in ("A", "ABSENT")) else g
