@@ -197,15 +197,16 @@ function HallTicketsContent() {
     const { data: classesData } = useLive('/api/classes', { interval: LIVE.NORMAL });
     const classes = useMemo(() => classesData?.classes || [], [classesData]);
 
+    // All classes for the chosen Department/Branch
+    const branchClasses = useMemo(() => {
+        const normBranch = canonicalBranchCode(branch) || branch;
+        return classes.filter(c => matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch));
+    }, [classes, branch]);
+
     // Available classes filtered to the chosen Department & Semester
     const availableClasses = useMemo(() => {
-        const normBranch = canonicalBranchCode(branch) || branch;
-        return classes.filter(c => {
-            const bMatch = matchesBranch(c.branch, normBranch) || matchesBranch(c.branch_code, normBranch);
-            const semMatch = Number(c.semester) === Number(semester);
-            return bMatch && semMatch;
-        });
-    }, [classes, branch, semester]);
+        return branchClasses.filter(c => Number(c.semester) === Number(semester));
+    }, [branchClasses, semester]);
 
     // 2. Roster. If specific class(es) are selected, query by class_ids; otherwise
     // query by branch & semester.
@@ -486,8 +487,8 @@ function HallTicketsContent() {
     // that's when the roster query falls back to branch+batch+semester.
     const semesterMismatchClasses = useMemo(() => {
         if (dismissedMismatch) return [];
-        return availableBatchClasses.filter(c => Number(c.semester) !== Number(semester));
-    }, [availableBatchClasses, semester, dismissedMismatch]);
+        return branchClasses.filter(c => Number(c.semester) !== Number(semester));
+    }, [branchClasses, semester, dismissedMismatch]);
 
     // Pre-generation readiness check — surfaced near the action buttons so a
     // problem (missing exam date, duplicate subject code, no students) is

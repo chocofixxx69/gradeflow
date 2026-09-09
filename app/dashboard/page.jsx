@@ -7,6 +7,7 @@ import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject, getGradeRank } from '../../lib/vtuGrades';
 import { LIVE } from '../../lib/api/live';
+import { supabase } from '../../lib/supabase';
 import styles from './Dashboard.module.css';
 
 function StudentDashboardView({

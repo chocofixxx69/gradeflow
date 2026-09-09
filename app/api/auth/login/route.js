@@ -10,7 +10,7 @@ import {
     FACULTY_SESSION_COOKIE,
     STAFF_SESSION_COOKIE,
 } from '../../../../lib/server-session';
-import { verifyStudentPassword } from '../../../../lib/student-auth';
+import { verifyStudentPassword, hashStudentPassword } from '../../../../lib/student-auth';
 import { checkRateLimit, getClientIp } from '../../../../lib/rate-limit';
 
 const ADMIN_PASSWORD_SALT = 'vtu_calc_secure_2026';

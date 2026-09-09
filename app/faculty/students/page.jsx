@@ -107,6 +107,7 @@ function StudentsDirectoryContent() {
     const [directoryTotal, setDirectoryTotal] = useState(0);
     const [quality, setQuality] = useState({ flagged: 0, byCode: {} });
     const [showFlagged, setShowFlagged] = useState(false);
+    const [meta, setMeta] = useState(null);
 
     // Deep links from Data Health ("23 batch / CS" chips) land here pre-filtered.
     const searchParams = useSearchParams();

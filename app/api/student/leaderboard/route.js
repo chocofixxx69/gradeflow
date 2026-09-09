@@ -404,6 +404,7 @@ export async function GET(req) {
         if (authError) return authError;
 
         const currentUsn = session.usn?.toUpperCase().trim();
+        const { searchParams } = new URL(req.url);
         const { data: currentStudent } = await supabaseAdmin
             .from('students')
             .select('lateral_entry, year')
