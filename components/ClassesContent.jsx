@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { apiRequest } from '../lib/api/client';
+import { apiRequest, clearApiCache } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
 import { filterAndRank, filterAndRankStudents } from '../lib/search-utils';
 import { parseClassUsns } from '../lib/class-usn-import';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
-import { apiRequest } from '../../../lib/api/client';
+import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
 import { ClassesContent } from '../../../components/ClassesContent';

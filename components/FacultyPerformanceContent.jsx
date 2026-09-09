@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { apiRequest } from '@/lib/api/client';
+import { apiRequest, clearApiCache } from '@/lib/api/client';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input, ConfirmDialog } from '@/components/ui';

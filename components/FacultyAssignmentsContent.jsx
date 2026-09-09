@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { apiRequest } from '../lib/api/client';
+import { apiRequest, clearApiCache } from '../lib/api/client';
 import { ConfirmDialog, SearchableSelect } from './ui';
 import { filterAndRank } from '../lib/search-utils';
 

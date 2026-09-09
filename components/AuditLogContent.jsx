@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { apiRequest } from '../lib/api/client';
+import { apiRequest, clearApiCache } from '../lib/api/client';
 
 export function AuditLogContent() {
     const [logs, setLogs] = useState([]);
