@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { SWRConfig } from 'swr';
 import Sidebar from './Navbar';
+import FacultyPresenceHeartbeat from './FacultyPresenceHeartbeat';
 import { shouldHideNavigation } from './navigationConfig';
 import { swrGlobalConfig } from '../lib/api/live';
 
@@ -96,6 +97,7 @@ export default function ClientLayoutWrapper({ children }) {
 
     return (
         <SWRConfig value={swrGlobalConfig}>
+            <FacultyPresenceHeartbeat />
             <div className={`app-layout ${hideSidebar ? 'app-layout-public' : 'app-layout-authenticated'}`}>
                 {!hideSidebar && <Sidebar />}
                 <div

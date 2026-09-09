@@ -75,6 +75,57 @@ function renderEntityChips(record) {
     );
 }
 
+function formatExactTimeOnly(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch {
+        return '';
+    }
+}
+
+function formatExactDateTimeShort(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+        if (isToday) return timePart;
+        const datePart = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        return `${datePart}, ${timePart}`;
+    } catch {
+        return '';
+    }
+}
+
+function formatExactFullWithSeconds(dateStr) {
+    if (!dateStr) return 'No record';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 'No record';
+        const datePart = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        return `${datePart} at ${timePart}`;
+    } catch {
+        return 'No record';
+    }
+}
+
+function formatDurationHuman(ms) {
+    if (!ms || ms <= 0) return null;
+    const totalSecs = Math.round(ms / 1000);
+    const hours = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    if (mins > 0) return `${mins}m`;
+    return `${secs}s`;
+}
+
 export function FacultyActivityContent({
     activityLogs = [],
     students = [],
@@ -110,8 +161,10 @@ export function FacultyActivityContent({
     // ── Real-Time Data & Live Polling ──────────────────────────
     const [currentLogs, setCurrentLogs] = useState(activityLogs || []);
     const [currentFaculty, setCurrentFaculty] = useState(facultyList || []);
+    const [livePresenceMap, setLivePresenceMap] = useState({});
     const [liveSync, setLiveSync] = useState(true);
     const [lastSyncTime, setLastSyncTime] = useState(Date.now());
+    const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
     useEffect(() => {
         if (activityLogs) setCurrentLogs(activityLogs);
@@ -121,31 +174,42 @@ export function FacultyActivityContent({
         if (facultyList) setCurrentFaculty(facultyList);
     }, [facultyList]);
 
-    // Live real-time polling every 3.5 seconds
+    // Live real-time polling every 2.5 seconds (zero delay)
+    const fetchLatest = async (isManual = false) => {
+        if (!isManual && typeof document !== 'undefined' && document.hidden) return;
+        if (isManual) setIsManualRefreshing(true);
+        try {
+            const res = await fetch('/api/admin/faculty-activity?limit=300');
+            const json = await res.json();
+            if (json?.success) {
+                if (json.activity && json.activity.length > 0) setCurrentLogs(json.activity);
+                if (json.faculty && json.faculty.length > 0) setCurrentFaculty(json.faculty);
+                if (json.presence) setLivePresenceMap(json.presence);
+                setLastSyncTime(Date.now());
+            }
+        } catch { /* non-blocking */ }
+        finally {
+            if (isManual) {
+                setTimeout(() => setIsManualRefreshing(false), 500);
+            }
+        }
+    };
+
     useEffect(() => {
         if (!liveSync) return;
-        const fetchLatest = async () => {
-            if (typeof document !== 'undefined' && document.hidden) return;
-            try {
-                const res = await fetch('/api/admin/faculty-activity?limit=300');
-                const json = await res.json();
-                if (json?.success) {
-                    if (json.activity && json.activity.length > 0) setCurrentLogs(json.activity);
-                    if (json.faculty && json.faculty.length > 0) setCurrentFaculty(json.faculty);
-                    setLastSyncTime(Date.now());
-                }
-            } catch { /* ignored */ }
-        };
 
-        const intervalId = setInterval(fetchLatest, 3500);
+        const intervalId = setInterval(() => fetchLatest(false), 2500);
 
         const handleFocusOrVisible = () => {
             if (typeof document !== 'undefined' && !document.hidden) {
-                fetchLatest();
+                fetchLatest(false);
             }
         };
         window.addEventListener('focus', handleFocusOrVisible);
         document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+        // Fetch once immediately to establish presence sync
+        fetchLatest(false);
 
         return () => {
             clearInterval(intervalId);
@@ -179,59 +243,130 @@ export function FacultyActivityContent({
 
     // ── Faculty Login & Presence Status ────────────────────────
     const facultyPresenceList = useMemo(() => {
+        const now = Date.now();
+
         return (currentFaculty || []).map(f => {
-            // Find all logs for this faculty
+            const livePres = livePresenceMap[f.id] || null;
+
+            // Find all activity logs for this faculty
             const facultyLogs = enrichedLogs.filter(l =>
                 l.faculty_id === f.id ||
                 l.who?.email?.toLowerCase() === f.email?.toLowerCase() ||
                 l.who?.name?.toLowerCase() === f.full_name?.toLowerCase()
             );
 
-            // Compute latest login or activity timestamp
-            let latestTimestamp = f.last_login_at || null;
-            let latestIp = f.last_login_ip || null;
-
-            if (facultyLogs.length > 0) {
-                const sorted = [...facultyLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                const latestLog = sorted[0];
-                if (!latestTimestamp || new Date(latestLog.created_at) > new Date(latestTimestamp)) {
-                    latestTimestamp = latestLog.created_at;
-                    latestIp = latestLog.where?.ip || latestIp;
+            // Filter for actions performed BY the faculty member themselves
+            // (Administrative assignments/unassignments targeting faculty do NOT count as presence)
+            const isFacultyActorAction = (l) => {
+                const act = l.action_type || '';
+                if (act === 'FACULTY_LOGIN' || act === 'FACULTY_CHECKIN' || act === 'FACULTY_LOGOUT' || act === 'FACULTY_CHECKOUT' || act === 'FACULTY_OFFLINE' || act === 'FACULTY_HEARTBEAT') {
+                    return true;
                 }
-            }
+                // Administrative mutations on faculty
+                if (act.startsWith('ASSIGN_') || act.startsWith('UNASSIGN_') || act.startsWith('SUSPEND_') || act.startsWith('ADMIN_')) {
+                    return false;
+                }
+                if (l.context_module?.includes('Admin Console') || l.context_module?.includes('Admin Terminal')) {
+                    return false;
+                }
+                return true;
+            };
 
-            // Determine status
+            const facultyActorLogs = facultyLogs
+                .filter(isFacultyActorAction)
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // Determine latest login log and timestamp
+            const loginLog = facultyActorLogs.find(l => l.action_type === 'FACULTY_LOGIN' || l.action_type === 'FACULTY_CHECKIN');
+            const exactLoginTime = livePres?.login_at || loginLog?.created_at || f.last_login_at || null;
+
+            // Determine latest logout or disconnect log
+            const logoutOrOfflineLog = facultyActorLogs.find(l =>
+                l.action_type === 'FACULTY_LOGOUT' ||
+                l.action_type === 'FACULTY_CHECKOUT' ||
+                l.action_type === 'FACULTY_OFFLINE'
+            );
+
+            const latestActorLog = facultyActorLogs[0] || null;
+
             let status = 'offline';
             let statusLabel = 'Offline';
+            let statusDetail = '';
             let dotColor = '#9ca3af';
+            let exactOfflineTime = null;
+            let lastHeartbeatTime = null;
+            let sessionDuration = null;
 
-            const sortedLogs = facultyLogs.length > 0 ? [...facultyLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) : [];
-            const latestLogAction = sortedLogs[0]?.action_type || '';
-            const isExplicitLogout = latestLogAction === 'FACULTY_LOGOUT' || latestLogAction === 'FACULTY_CHECKOUT';
-
-            if (latestTimestamp) {
-                const diffMs = Date.now() - new Date(latestTimestamp).getTime();
-                if (isExplicitLogout) {
-                    status = 'offline';
-                    statusLabel = 'Logged Out';
-                    dotColor = '#9ca3af';
-                } else if (diffMs <= 20 * 60 * 1000) {
-                    status = 'online';
-                    statusLabel = 'Online Now';
-                    dotColor = '#10b981';
-                } else if (diffMs <= 60 * 60 * 1000) {
-                    status = 'recent';
-                    const mins = Math.max(1, Math.round(diffMs / 60000));
-                    statusLabel = `Active ${mins}m ago`;
-                    dotColor = '#3b82f6';
-                } else if (diffMs <= 24 * 60 * 60 * 1000) {
-                    status = 'today';
-                    const timeStr = new Date(latestTimestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-                    statusLabel = `Active at ${timeStr}`;
-                    dotColor = '#f59e0b';
+            if (!exactLoginTime && !f.last_login_at && facultyActorLogs.length === 0) {
+                // Faculty has never logged into the system
+                status = 'never';
+                statusLabel = 'Never Signed In';
+                statusDetail = 'No login session recorded';
+                dotColor = '#9ca3af';
+            } else if (livePres?.is_online) {
+                // Verified live active heartbeat within the last 75s
+                status = 'online';
+                statusLabel = 'Online Now';
+                dotColor = '#10b981';
+                lastHeartbeatTime = livePres.last_seen_at;
+                const loginMs = exactLoginTime ? (now - new Date(exactLoginTime).getTime()) : 0;
+                sessionDuration = loginMs > 0 ? formatDurationHuman(loginMs) : null;
+                const hbSecs = livePres.seconds_ago ?? 0;
+                const hbText = hbSecs < 8 ? 'active now' : `${hbSecs}s ago`;
+                statusDetail = `In: ${formatExactDateTimeShort(exactLoginTime)} · ${hbText}`;
+            } else if (livePres?.status === 'logged_out' || (logoutOrOfflineLog?.action_type === 'FACULTY_LOGOUT' && (!latestActorLog || new Date(logoutOrOfflineLog.created_at) >= new Date(latestActorLog.created_at)))) {
+                // Explicit logout (check-out)
+                status = 'logged_out';
+                exactOfflineTime = livePres?.logout_at || logoutOrOfflineLog?.created_at || null;
+                statusLabel = exactOfflineTime ? `Logged Out at ${formatExactTimeOnly(exactOfflineTime)}` : 'Logged Out';
+                dotColor = '#9ca3af';
+                if (exactLoginTime && exactOfflineTime) {
+                    const durMs = new Date(exactOfflineTime).getTime() - new Date(exactLoginTime).getTime();
+                    sessionDuration = durMs > 0 ? formatDurationHuman(durMs) : null;
+                }
+                statusDetail = exactOfflineTime ? `Left: ${formatExactDateTimeShort(exactOfflineTime)}${sessionDuration ? ` · (${sessionDuration})` : ''}` : 'Logged out';
+            } else if ((livePres?.status === 'offline' && livePres?.logout_at) || (logoutOrOfflineLog?.action_type === 'FACULTY_OFFLINE' && (!latestActorLog || new Date(logoutOrOfflineLog.created_at) >= new Date(latestActorLog.created_at)))) {
+                // Explicit disconnect / tab closed
+                status = 'offline';
+                exactOfflineTime = livePres?.logout_at || logoutOrOfflineLog?.created_at || null;
+                statusLabel = exactOfflineTime ? `Went offline at ${formatExactTimeOnly(exactOfflineTime)}` : 'Went Offline';
+                dotColor = '#9ca3af';
+                if (exactLoginTime && exactOfflineTime) {
+                    const durMs = new Date(exactOfflineTime).getTime() - new Date(exactLoginTime).getTime();
+                    sessionDuration = durMs > 0 ? formatDurationHuman(durMs) : null;
+                }
+                statusDetail = exactOfflineTime ? `Off: ${formatExactDateTimeShort(exactOfflineTime)}${sessionDuration ? ` · (${sessionDuration})` : ''}` : 'Went offline';
+            } else {
+                // Evaluate latest activity or login timestamp
+                const latestActivityTime = latestActorLog?.created_at || f.last_login_at;
+                if (latestActivityTime) {
+                    const diffMs = now - new Date(latestActivityTime).getTime();
+                    if (diffMs <= 75 * 1000) {
+                        status = 'online';
+                        statusLabel = 'Online Now';
+                        dotColor = '#10b981';
+                        const loginMs = exactLoginTime ? (now - new Date(exactLoginTime).getTime()) : 0;
+                        sessionDuration = loginMs > 0 ? formatDurationHuman(loginMs) : null;
+                        statusDetail = `In: ${formatExactDateTimeShort(exactLoginTime)} · active now`;
+                    } else {
+                        status = 'offline';
+                        exactOfflineTime = latestActivityTime;
+                        if (diffMs <= 24 * 60 * 60 * 1000) {
+                            statusLabel = `Went offline at ${formatExactTimeOnly(exactOfflineTime)}`;
+                        } else {
+                            statusLabel = `Offline since ${formatExactDateTimeShort(exactOfflineTime)}`;
+                        }
+                        dotColor = '#9ca3af';
+                        if (exactLoginTime && exactOfflineTime) {
+                            const durMs = new Date(exactOfflineTime).getTime() - new Date(exactLoginTime).getTime();
+                            sessionDuration = durMs > 0 ? formatDurationHuman(durMs) : null;
+                        }
+                        statusDetail = `Off: ${formatExactDateTimeShort(exactOfflineTime)}${sessionDuration ? ` · (${sessionDuration})` : ''}`;
+                    }
                 } else {
-                    status = 'offline';
-                    statusLabel = 'Offline';
+                    status = 'never';
+                    statusLabel = 'Never Signed In';
+                    statusDetail = 'No login session recorded';
                     dotColor = '#9ca3af';
                 }
             }
@@ -242,14 +377,18 @@ export function FacultyActivityContent({
                 ...f,
                 deptMeta,
                 totalActions: facultyLogs.length,
-                latestTimestamp,
-                latestRelative: formatRelativeTime(latestTimestamp),
+                exactLoginTime,
+                exactOfflineTime,
+                lastHeartbeatTime,
+                sessionDuration,
                 status,
                 statusLabel,
+                statusDetail,
                 dotColor,
+                lastIp: livePres?.ip_address || f.last_login_ip || latestActorLog?.ip_address || null,
             };
         });
-    }, [currentFaculty, enrichedLogs]);
+    }, [currentFaculty, enrichedLogs, livePresenceMap]);
 
 
     // ── Distinct Departments with Counts ───────────────────────
@@ -554,8 +693,8 @@ export function FacultyActivityContent({
 
     // Active counts
     const onlineNowCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'online').length, [facultyPresenceList]);
-    const activeTodayCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'today' || f.status === 'online' || f.status === 'recent').length, [facultyPresenceList]);
-    const offlineCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'offline').length, [facultyPresenceList]);
+    const activeTodayCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'online' || (f.exactLoginTime && new Date(f.exactLoginTime).toDateString() === new Date().toDateString())).length, [facultyPresenceList]);
+    const offlineCount = useMemo(() => facultyPresenceList.filter(f => f.status === 'offline' || f.status === 'logged_out').length, [facultyPresenceList]);
     const hallTicketsCount = useMemo(() => enrichedLogs.filter(l =>
         l.action_type === 'HALL_TICKET_GENERATE' ||
         l.action_type === 'HALL_TICKET_BATCH_EXPORT' ||
@@ -671,7 +810,7 @@ export function FacultyActivityContent({
                 padding: '14px 16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px',
+                gap: '12px',
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -715,6 +854,18 @@ export function FacultyActivityContent({
                             {activeTodayCount} Active Today
                         </span>
 
+                        <span style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '3px 9px',
+                            borderRadius: '12px',
+                            background: 'var(--surface-low)',
+                            color: 'var(--tx-muted)',
+                            border: '1px solid var(--border)',
+                        }}>
+                            {offlineCount} Offline
+                        </span>
+
                         {hallTicketsCount > 0 && (
                             <button
                                 type="button"
@@ -742,6 +893,40 @@ export function FacultyActivityContent({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Instant Force Refresh Button */}
+                        <button
+                            type="button"
+                            onClick={() => fetchLatest(true)}
+                            disabled={isManualRefreshing}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                background: 'var(--surface-low)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--tx-main)',
+                                borderRadius: '6px',
+                                padding: '4px 10px',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                cursor: isManualRefreshing ? 'wait' : 'pointer',
+                                transition: 'all 0.15s ease',
+                            }}
+                            title="Instantly poll latest real-time faculty presence and activity records"
+                        >
+                            <span
+                                className="material-icons-round"
+                                style={{
+                                    fontSize: '14px',
+                                    animation: isManualRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                                    color: 'var(--primary)',
+                                }}
+                            >
+                                sync
+                            </span>
+                            Refresh
+                        </button>
+
                         {/* Live Feed Heartbeat & Pause/Resume Toggle */}
                         <button
                             type="button"
@@ -759,15 +944,16 @@ export function FacultyActivityContent({
                                 fontWeight: 800,
                                 cursor: 'pointer',
                             }}
-                            title={liveSync ? 'Live real-time feed polling every 3.5s. Click to pause.' : 'Live feed paused. Click to resume auto-polling.'}
+                            title={liveSync ? 'Real-time live feed polling every 2.5s. Click to pause.' : 'Live feed paused. Click to resume auto-polling.'}
                         >
                             <span style={{
                                 width: '6px',
                                 height: '6px',
                                 borderRadius: '50%',
                                 background: liveSync ? '#10b981' : '#9ca3af',
+                                boxShadow: liveSync ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
                             }} />
-                            {liveSync ? 'LIVE FEED (3.5s)' : 'PAUSED'}
+                            {liveSync ? 'LIVE FEED (2.5s)' : 'PAUSED'}
                         </button>
                     </div>
                 </div>
@@ -775,12 +961,25 @@ export function FacultyActivityContent({
                 {/* Faculty Quick Cards Grid */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                    gap: '8px',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                    gap: '10px',
                 }}>
                     {facultyPresenceList.map(faculty => {
                         const isSelected = selectedFacultyId === faculty.id || selectedFacultyId === faculty.email;
                         const dept = faculty.deptMeta;
+                        const isOnline = faculty.status === 'online';
+
+                        // Build detailed tooltip with exact timestamps down to the second
+                        const tooltipDetails = [
+                            `Faculty: ${faculty.full_name}`,
+                            `Department: ${faculty.department || 'N/A'}`,
+                            `Status: ${faculty.statusLabel}`,
+                            `Exact Login: ${faculty.exactLoginTime ? formatExactFullWithSeconds(faculty.exactLoginTime) : 'Never logged in'}`,
+                            faculty.exactOfflineTime ? `Exact Offline: ${formatExactFullWithSeconds(faculty.exactOfflineTime)}` : null,
+                            faculty.sessionDuration ? `Session Duration: ${faculty.sessionDuration}` : null,
+                            faculty.lastIp ? `IP Address: ${faculty.lastIp}` : null,
+                            `Total Logged Actions: ${faculty.totalActions}`,
+                        ].filter(Boolean).join('\n');
 
                         return (
                             <div
@@ -794,87 +993,178 @@ export function FacultyActivityContent({
                                 }}
                                 style={{
                                     display: 'flex',
-                                    alignItems: 'center',
+                                    flexDirection: 'column',
                                     justifyContent: 'space-between',
-                                    padding: '10px 12px',
-                                    borderRadius: '10px',
-                                    background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-low)',
-                                    border: '1px solid ' + (isSelected ? 'var(--primary)' : 'var(--border)'),
+                                    padding: '12px 14px',
+                                    borderRadius: '12px',
+                                    background: isSelected 
+                                        ? 'rgba(59, 130, 246, 0.09)' 
+                                        : isOnline 
+                                            ? 'rgba(16, 185, 129, 0.04)' 
+                                            : 'var(--surface-low)',
+                                    border: isSelected 
+                                        ? '1.5px solid var(--primary)' 
+                                        : isOnline 
+                                            ? '1.5px solid rgba(16, 185, 129, 0.45)' 
+                                            : '1px solid var(--border)',
                                     cursor: 'pointer',
                                     transition: 'all 0.15s ease',
-                                    gap: '10px',
+                                    gap: '9px',
+                                    position: 'relative',
+                                    boxShadow: isOnline ? '0 2px 10px rgba(16, 185, 129, 0.08)' : 'none',
                                 }}
-                                title={`Filter by ${faculty.full_name}`}
+                                title={tooltipDetails}
                             >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                                    {/* Avatar with status indicator */}
-                                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '8px',
-                                            background: isSelected ? 'var(--primary)' : 'var(--surface)',
-                                            color: isSelected ? 'var(--bg)' : 'var(--tx-main)',
-                                            border: '1px solid var(--border)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '12px',
-                                            fontWeight: 800,
-                                        }}>
-                                            {((faculty.full_name || '?')[0]).toUpperCase()}
-                                        </div>
-                                        <span style={{
-                                            position: 'absolute',
-                                            bottom: '-2px',
-                                            right: '-2px',
-                                            width: '9px',
-                                            height: '9px',
-                                            borderRadius: '50%',
-                                            background: faculty.dotColor,
-                                            border: '2px solid var(--surface)',
-                                            boxShadow: faculty.status === 'online' ? '0 0 0 2px rgba(16, 185, 129, 0.4)' : 'none',
-                                        }} />
-                                    </div>
-
-                                    <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {faculty.full_name}
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                            <span style={{
-                                                fontSize: '9px',
+                                {/* Line 1: Avatar, Name, Dept Chip, and Action Count */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
+                                        <div style={{ position: 'relative', flexShrink: 0 }}>
+                                            <div style={{
+                                                width: '32px',
+                                                height: '32px',
+                                                borderRadius: '8px',
+                                                background: isSelected ? 'var(--primary)' : 'var(--surface)',
+                                                color: isSelected ? '#ffffff' : 'var(--tx-main)',
+                                                border: '1px solid var(--border)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '12px',
                                                 fontWeight: 800,
-                                                padding: '1px 5px',
-                                                borderRadius: '4px',
-                                                background: dept.bg,
-                                                color: dept.color,
                                             }}>
-                                                {dept.code}
-                                            </span>
+                                                {((faculty.full_name || '?')[0]).toUpperCase()}
+                                            </div>
+                                            {/* Pulse Dot */}
                                             <span style={{
-                                                fontSize: '10px',
-                                                fontWeight: faculty.status === 'online' ? 800 : 500,
-                                                color: faculty.status === 'online' ? '#10b981' : 'var(--tx-dim)',
+                                                position: 'absolute',
+                                                bottom: '-2px',
+                                                right: '-2px',
+                                                width: '9px',
+                                                height: '9px',
+                                                borderRadius: '50%',
+                                                background: faculty.dotColor,
+                                                border: '2px solid var(--surface)',
+                                                boxShadow: isOnline ? '0 0 0 2px rgba(16, 185, 129, 0.5)' : 'none',
+                                            }} />
+                                        </div>
+
+                                        <div style={{ minWidth: 0 }}>
+                                            <div style={{
+                                                fontSize: '12.5px',
+                                                fontWeight: 800,
+                                                color: 'var(--tx-main)',
                                                 whiteSpace: 'nowrap',
                                                 overflow: 'hidden',
-                                                textOverflow: 'ellipsis'
+                                                textOverflow: 'ellipsis',
                                             }}>
-                                                {faculty.status === 'online' ? '🟢 Online Now' : faculty.statusLabel}
-                                            </span>
+                                                {faculty.full_name}
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                                                <span style={{
+                                                    fontSize: '9px',
+                                                    fontWeight: 800,
+                                                    padding: '1px 5px',
+                                                    borderRadius: '4px',
+                                                    background: dept.bg,
+                                                    color: dept.color,
+                                                }}>
+                                                    {dept.code}
+                                                </span>
+                                            </div>
                                         </div>
+                                    </div>
+
+                                    {/* Action Logs Count Badge */}
+                                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                        <span style={{
+                                            fontSize: '10px',
+                                            fontWeight: 800,
+                                            padding: '2px 7px',
+                                            borderRadius: '6px',
+                                            background: isSelected ? 'var(--primary)' : 'var(--surface)',
+                                            color: isSelected ? '#ffffff' : 'var(--tx-muted)',
+                                            border: '1px solid var(--border)',
+                                        }}>
+                                            {faculty.totalActions} logs
+                                        </span>
                                     </div>
                                 </div>
 
-
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                {/* Line 2: Presence Status Badge & Session Duration */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap' }}>
                                     <span style={{
-                                        fontSize: '11px',
+                                        fontSize: '10.5px',
                                         fontWeight: 800,
-                                        color: isSelected ? 'var(--primary)' : 'var(--tx-muted)',
+                                        padding: '3px 8px',
+                                        borderRadius: '6px',
+                                        background: isOnline 
+                                            ? 'rgba(16, 185, 129, 0.15)' 
+                                            : faculty.status === 'logged_out' 
+                                                ? 'rgba(107, 114, 128, 0.12)' 
+                                                : faculty.status === 'never'
+                                                    ? 'rgba(156, 163, 175, 0.1)'
+                                                    : 'rgba(245, 158, 11, 0.1)',
+                                        color: isOnline 
+                                            ? '#059669' 
+                                            : faculty.status === 'logged_out' 
+                                                ? '#4b5563' 
+                                                : faculty.status === 'never'
+                                                    ? '#6b7280'
+                                                    : '#d97706',
+                                        border: isOnline 
+                                            ? '1px solid rgba(16, 185, 129, 0.35)' 
+                                            : '1px solid var(--border)',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
                                     }}>
-                                        {isSelected ? 'Active Filter' : `${faculty.totalActions} logs`}
+                                        <span style={{
+                                            width: '6px',
+                                            height: '6px',
+                                            borderRadius: '50%',
+                                            background: faculty.dotColor,
+                                        }} />
+                                        {faculty.statusLabel}
                                     </span>
+
+                                    {faculty.sessionDuration && (
+                                        <span style={{
+                                            fontSize: '10px',
+                                            fontWeight: 700,
+                                            color: isOnline ? '#059669' : 'var(--tx-muted)',
+                                        }}>
+                                            ⏱️ {faculty.sessionDuration}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Line 3: Exact Login and Offline Timestamps */}
+                                <div style={{
+                                    fontSize: '10px',
+                                    color: 'var(--tx-dim)',
+                                    fontWeight: 600,
+                                    borderTop: '1px solid var(--border)',
+                                    paddingTop: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '6px',
+                                    fontFamily: 'monospace',
+                                }}>
+                                    <span title={faculty.exactLoginTime ? `Exact login: ${formatExactFullWithSeconds(faculty.exactLoginTime)}` : 'No login recorded'}>
+                                        {faculty.exactLoginTime ? `🔑 In: ${formatExactTimeOnly(faculty.exactLoginTime)}` : '🔑 No session'}
+                                    </span>
+                                    {isOnline ? (
+                                        <span style={{ color: '#10b981', fontWeight: 800 }}>
+                                            ⚡ Active Now
+                                        </span>
+                                    ) : faculty.exactOfflineTime ? (
+                                        <span title={`Exact offline: ${formatExactFullWithSeconds(faculty.exactOfflineTime)}`}>
+                                            🚪 Off: {formatExactTimeOnly(faculty.exactOfflineTime)}
+                                        </span>
+                                    ) : (
+                                        <span>Never active</span>
+                                    )}
                                 </div>
                             </div>
                         );

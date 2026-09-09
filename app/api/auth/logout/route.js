@@ -25,6 +25,14 @@ export async function POST(req) {
                     role: staffSession?.role || 'faculty',
                 },
             });
+
+            try {
+                const { recordFacultyLogout } = await import('../../../../lib/presence-tracker');
+                recordFacultyLogout({
+                    faculty_id: body.faculty_id || staffSession?.sub || null,
+                    faculty_name: body.faculty_name || staffSession?.name || null,
+                });
+            } catch {}
         }
     } catch (err) {
         console.warn('[POST /api/auth/logout] audit logging notice:', err?.message || err);

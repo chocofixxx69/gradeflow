@@ -190,6 +190,17 @@ async function loginFaculty({ email, password }, req = null) {
                 login_at: nowIso,
             }
         });
+
+        // Update in-memory real-time presence tracker
+        try {
+            const { recordFacultyLogin } = await import('../../../../lib/presence-tracker');
+            recordFacultyLogin({
+                faculty_id: faculty.id,
+                faculty_name: faculty.full_name,
+                ip_address: clientIp,
+                user_agent: clientUa,
+            });
+        } catch {}
     } catch (auditErr) {
         console.warn('[loginFaculty] audit record notice:', auditErr?.message);
     }

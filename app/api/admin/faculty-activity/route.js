@@ -88,10 +88,17 @@ export async function GET(req) {
 
         if (aErr) throw aErr;
 
+        let livePresence = {};
+        try {
+            const { getAllFacultyPresence } = await import('../../../../lib/presence-tracker');
+            livePresence = getAllFacultyPresence() || {};
+        } catch {}
+
         return NextResponse.json({
             success: true,
             activity: activity || [],
             faculty: faculty || [],
+            presence: livePresence,
             timestamp: new Date().toISOString(),
         });
     } catch (err) {
