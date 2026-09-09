@@ -15,33 +15,56 @@ function fail(message, code = 'ERROR', status = 400) {
 
 export async function GET(req) {
     try {
-        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { searchParams } = new URL(req.url);
+        const queryEmail = searchParams.get('email')?.toLowerCase()?.trim();
+        const queryId = searchParams.get('faculty_id')?.trim();
+        const headerEmail = req.headers?.get?.('x-faculty-email')?.toLowerCase()?.trim();
+        const headerId = req.headers?.get?.('x-faculty-id')?.trim();
+
+        // Always prefer faculty role when accessing faculty settings
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin'], 'faculty');
         if (authError) return authError;
 
         const supabase = getAdminClient();
-        const facultyId = session?.sub || session?.id;
-        const facultyEmail = session?.email?.toLowerCase()?.trim();
+        const facultyId = queryId || headerId || session?.sub || session?.id;
+        const facultyEmail = queryEmail || headerEmail || session?.email?.toLowerCase()?.trim();
 
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId || '');
 
         // 1. Fetch faculty onboarding record
-        let query = supabase.from('faculty_onboarding').select('id, full_name, email, department, designation, employee_id, phone, status, last_login_at, last_login_ip, created_at');
+        let faculty = null;
         if (isUuid) {
-            query = query.eq('id', facultyId);
-        } else if (facultyEmail) {
-            query = query.eq('email', facultyEmail);
-        } else {
-            query = query.limit(1);
+            const { data, error } = await supabase
+                .from('faculty_onboarding')
+                .select('id, full_name, email, department, designation, employee_id, phone, status, last_login_at, last_login_ip, created_at')
+                .eq('id', facultyId)
+                .maybeSingle();
+            if (error) console.error('[GET /api/faculty/settings] Faculty fetch error by ID:', error);
+            faculty = data;
+        } else if (facultyEmail && facultyEmail !== 'admin@anjuman.com') {
+            const { data, error } = await supabase
+                .from('faculty_onboarding')
+                .select('id, full_name, email, department, designation, employee_id, phone, status, last_login_at, last_login_ip, created_at')
+                .ilike('email', facultyEmail)
+                .maybeSingle();
+            if (error) console.error('[GET /api/faculty/settings] Faculty fetch error by email:', error);
+            faculty = data;
         }
 
-        const { data: faculty, error: facultyErr } = await query.maybeSingle();
-        if (facultyErr) {
-            console.error('[GET /api/faculty/settings] Faculty fetch error:', facultyErr);
-            return fail('Failed to fetch faculty profile record.', 'DATABASE_ERROR', 500);
+        // Secondary fallback search by email if ID lookup did not find a record
+        if (!faculty && facultyEmail && facultyEmail !== 'admin@anjuman.com') {
+            const { data: byEmail } = await supabase
+                .from('faculty_onboarding')
+                .select('id, full_name, email, department, designation, employee_id, phone, status, last_login_at, last_login_ip, created_at')
+                .ilike('email', facultyEmail)
+                .maybeSingle();
+            if (byEmail) faculty = byEmail;
         }
 
         if (!faculty) {
-            if (session?.role === 'admin') {
+            // Only return admin profile if request is genuinely by an admin AND no faculty was requested
+            const isFacultyQuery = Boolean(queryEmail || queryId || headerEmail || headerId);
+            if (session?.role === 'admin' && !isFacultyQuery) {
                 return ok({
                     profile: {
                         id: 'admin',
@@ -52,14 +75,12 @@ export async function GET(req) {
                         employee_id: 'ADMIN-01',
                         phone: '',
                         status: 'approved',
+                        role: 'admin',
                         last_login_at: new Date().toISOString(),
                         last_login_ip: '127.0.0.1',
                         created_at: new Date().toISOString(),
                         photo_url: null,
                         office_location: 'Admin Directorate',
-                        theme: 'system',
-                        notifications: true,
-                        compact_mode: false
                     },
                     stats: { assignedClasses: 0, assignedSubjects: 0, assignments: [] }
                 });
@@ -129,23 +150,38 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { searchParams } = new URL(req.url);
+        const queryEmail = searchParams.get('email')?.toLowerCase()?.trim();
+        const queryId = searchParams.get('faculty_id')?.trim();
+        const headerEmail = req.headers?.get?.('x-faculty-email')?.toLowerCase()?.trim();
+        const headerId = req.headers?.get?.('x-faculty-id')?.trim();
+
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin'], 'faculty');
         if (authError) return authError;
 
         const supabase = getAdminClient();
-        const facultyId = session?.sub || session?.id;
-        const facultyEmail = session?.email?.toLowerCase()?.trim();
+        const facultyId = queryId || headerId || session?.sub || session?.id;
+        const facultyEmail = queryEmail || headerEmail || session?.email?.toLowerCase()?.trim();
 
         // 1. Locate existing faculty
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId || '');
         let query = supabase.from('faculty_onboarding').select('id, full_name, email, department, designation, employee_id, phone');
         if (isUuid) {
             query = query.eq('id', facultyId);
-        } else if (facultyEmail) {
-            query = query.eq('email', facultyEmail);
+        } else if (facultyEmail && facultyEmail !== 'admin@anjuman.com') {
+            query = query.ilike('email', facultyEmail);
         }
 
-        const { data: current, error: currentErr } = await query.maybeSingle();
+        let { data: current, error: currentErr } = await query.maybeSingle();
+        if (!current && facultyEmail && facultyEmail !== 'admin@anjuman.com') {
+            const { data: byEmail } = await supabase
+                .from('faculty_onboarding')
+                .select('id, full_name, email, department, designation, employee_id, phone')
+                .ilike('email', facultyEmail)
+                .maybeSingle();
+            if (byEmail) current = byEmail;
+        }
+
         if (currentErr || !current) {
             return fail('Faculty account profile not found.', 'NOT_FOUND', 404);
         }

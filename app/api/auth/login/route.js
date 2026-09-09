@@ -54,8 +54,16 @@ function successResponse(body, sessionPayload) {
     });
 
     const specificCookieName = sessionPayload.role === 'admin' ? ADMIN_SESSION_COOKIE : FACULTY_SESSION_COOKIE;
+    const oppositeCookieName = sessionPayload.role === 'admin' ? FACULTY_SESSION_COOKIE : ADMIN_SESSION_COOKIE;
     response.cookies.set(createSessionCookie(sessionPayload, specificCookieName));
     response.cookies.set(createSessionCookie(sessionPayload, STAFF_SESSION_COOKIE));
+    // Clear opposite role cookie to prevent session leakage
+    response.cookies.set({
+        name: oppositeCookieName,
+        value: '',
+        maxAge: 0,
+        path: '/',
+    });
     return response;
 }
 

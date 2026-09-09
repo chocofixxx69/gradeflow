@@ -16,7 +16,13 @@ function fail(message, status = 400, code = 'PASSWORD_ERROR') {
 
 export async function POST(req) {
     try {
-        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
+        const { searchParams } = new URL(req.url);
+        const queryEmail = searchParams.get('email')?.toLowerCase()?.trim();
+        const queryId = searchParams.get('faculty_id')?.trim();
+        const headerEmail = req.headers?.get?.('x-faculty-email')?.toLowerCase()?.trim();
+        const headerId = req.headers?.get?.('x-faculty-id')?.trim();
+
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin'], 'faculty');
         if (authError) return authError;
 
         const body = await req.json().catch(() => ({}));
@@ -35,18 +41,27 @@ export async function POST(req) {
         }
 
         const supabase = getAdminClient();
-        const facultyId = session?.sub || session?.id;
-        const facultyEmail = session?.email?.toLowerCase()?.trim();
+        const facultyId = queryId || headerId || session?.sub || session?.id;
+        const facultyEmail = queryEmail || headerEmail || session?.email?.toLowerCase()?.trim();
 
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId || '');
         let query = supabase.from('faculty_onboarding').select('id, full_name, email, password_hash, generated_access_key');
         if (isUuid) {
             query = query.eq('id', facultyId);
-        } else if (facultyEmail) {
-            query = query.eq('email', facultyEmail);
+        } else if (facultyEmail && facultyEmail !== 'admin@anjuman.com') {
+            query = query.ilike('email', facultyEmail);
         }
 
-        const { data: faculty, error: fetchErr } = await query.maybeSingle();
+        let { data: faculty, error: fetchErr } = await query.maybeSingle();
+        if (!faculty && facultyEmail && facultyEmail !== 'admin@anjuman.com') {
+            const { data: byEmail } = await supabase
+                .from('faculty_onboarding')
+                .select('id, full_name, email, password_hash, generated_access_key')
+                .ilike('email', facultyEmail)
+                .maybeSingle();
+            if (byEmail) faculty = byEmail;
+        }
+
         if (fetchErr || !faculty) {
             return fail('Faculty account not found.', 404, 'NOT_FOUND');
         }

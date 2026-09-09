@@ -87,13 +87,14 @@ function SettingsContent() {
     useEffect(() => {
         const facSession = localStorage.getItem('faculty_session');
         const stuSession = localStorage.getItem('student_session');
+        const admSession = localStorage.getItem('admin_session');
 
         if (facSession) {
             try {
                 const parsed = JSON.parse(facSession);
                 setSession(parsed);
                 setUserType('faculty');
-                loadFacultySettings();
+                loadFacultySettings(parsed);
             } catch (err) {
                 console.error('Failed to parse faculty session:', err);
                 setLoading(false);
@@ -108,42 +109,121 @@ function SettingsContent() {
                 console.error('Failed to parse student session:', err);
                 setLoading(false);
             }
+        } else if (admSession) {
+            try {
+                const parsed = JSON.parse(admSession);
+                setSession(parsed);
+                setUserType('admin');
+                loadAdminSettings(parsed);
+            } catch (err) {
+                console.error('Failed to parse admin session:', err);
+                setLoading(false);
+            }
         } else {
             setLoading(false);
         }
     }, []);
 
-    // 1. Fetch Faculty Settings via dedicated API
-    const loadFacultySettings = async () => {
+    // 1. Fetch Faculty Settings via dedicated API (strictly scoped to faculty)
+    const loadFacultySettings = async (fac) => {
         setLoading(true);
         try {
-            const res = await apiRequest('/api/faculty/settings');
+            const facEmail = fac?.email || session?.email || '';
+            const facId = fac?.id || session?.id || '';
+            const params = new URLSearchParams();
+            if (facEmail) params.set('email', facEmail);
+            if (facId) params.set('faculty_id', facId);
+            const qs = params.toString();
+            const url = `/api/faculty/settings${qs ? `?${qs}` : ''}`;
+
+            const res = await apiRequest(url);
             if (res && res.profile) {
                 const p = res.profile;
                 setProfile(p);
                 setStats(res.stats || { assignedClasses: 0, assignedSubjects: 0, assignments: [] });
-                setEditName(p.full_name || '');
-                setEditEmail(p.email || '');
+                setEditName(p.full_name || fac?.name || fac?.full_name || '');
+                setEditEmail(p.email || fac?.email || '');
                 setEditPhone(p.phone || '');
-                setEditDepartment(p.department || '');
+                setEditDepartment(p.department || fac?.department || '');
                 setEditDesignation(p.designation || 'Faculty Member');
                 setEditEmployeeId(p.employee_id || '');
                 setEditOfficeLocation(p.office_location || '');
                 setPhotoUrl(p.photo_url || null);
 
                 setInitialFormState({
-                    name: p.full_name || '',
+                    name: p.full_name || fac?.name || fac?.full_name || '',
                     phone: p.phone || '',
-                    department: p.department || '',
+                    department: p.department || fac?.department || '',
                     designation: p.designation || 'Faculty Member',
                     employeeId: p.employee_id || '',
                     officeLocation: p.office_location || '',
                     photo: p.photo_url || null,
                 });
+            } else if (fac) {
+                // Fallback to local session if profile endpoint was inaccessible
+                setProfile({
+                    full_name: fac.name || fac.full_name,
+                    email: fac.email,
+                    department: fac.department || 'Computer Science',
+                    designation: 'Faculty Member',
+                });
+                setEditName(fac.name || fac.full_name || '');
+                setEditEmail(fac.email || '');
+                setEditDepartment(fac.department || '');
             }
         } catch (err) {
             console.error('Failed to load faculty settings:', err);
-            showToast('Failed to load faculty profile settings.', 'error');
+            if (fac) {
+                setProfile({
+                    full_name: fac.name || fac.full_name,
+                    email: fac.email,
+                    department: fac.department || 'Computer Science',
+                    designation: 'Faculty Member',
+                });
+                setEditName(fac.name || fac.full_name || '');
+                setEditEmail(fac.email || '');
+                setEditDepartment(fac.department || '');
+            }
+            showToast('Failed to load full faculty profile from server.', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 2. Fetch Admin Settings
+    const loadAdminSettings = async (adm) => {
+        setLoading(true);
+        try {
+            const p = {
+                full_name: adm?.name || 'Administrator',
+                email: adm?.email || 'admin@anjuman.com',
+                department: 'Institutional Administration',
+                designation: 'System Administrator',
+                employee_id: 'ADMIN-01',
+                phone: '',
+                office_location: 'Admin Directorate',
+                role: 'admin'
+            };
+            setProfile(p);
+            setStats({ assignedClasses: 0, assignedSubjects: 0, assignments: [] });
+            setEditName(p.full_name);
+            setEditEmail(p.email);
+            setEditPhone('');
+            setEditDepartment(p.department);
+            setEditDesignation(p.designation);
+            setEditEmployeeId(p.employee_id);
+            setEditOfficeLocation(p.office_location);
+            setPhotoUrl(null);
+
+            setInitialFormState({
+                name: p.full_name,
+                phone: '',
+                department: p.department,
+                designation: p.designation,
+                employeeId: p.employee_id,
+                officeLocation: p.office_location,
+                photo: null,
+            });
         } finally {
             setLoading(false);
         }
@@ -186,13 +266,13 @@ function SettingsContent() {
     // Dirty state check
     const isDirty = useMemo(() => {
         if (!initialFormState) return false;
-        if (userType === 'faculty') {
+        if (userType === 'faculty' || userType === 'admin') {
             return (
                 editName !== initialFormState.name ||
                 editPhone !== initialFormState.phone ||
                 editDepartment !== initialFormState.department ||
                 editDesignation !== initialFormState.designation ||
-                editEmployeeId !== initialFormState.employeeId ||
+                (userType === 'faculty' && editEmployeeId !== initialFormState.employeeId) ||
                 editOfficeLocation !== initialFormState.officeLocation ||
                 photoPreview !== null
             );
@@ -243,12 +323,12 @@ function SettingsContent() {
     // Discard unsaved changes
     const handleDiscardChanges = () => {
         if (!initialFormState) return;
-        if (userType === 'faculty') {
+        if (userType === 'faculty' || userType === 'admin') {
             setEditName(initialFormState.name);
             setEditPhone(initialFormState.phone);
             setEditDepartment(initialFormState.department);
             setEditDesignation(initialFormState.designation);
-            setEditEmployeeId(initialFormState.employeeId);
+            setEditEmployeeId(initialFormState.employeeId || '');
             setEditOfficeLocation(initialFormState.officeLocation);
         } else {
             setEditName(initialFormState.name);
@@ -269,7 +349,15 @@ function SettingsContent() {
             const finalPhotoUrl = photoPreview !== null ? photoPreview : photoUrl;
 
             if (userType === 'faculty') {
-                const res = await apiRequest('/api/faculty/settings', {
+                const facEmail = session?.email || editEmail || '';
+                const facId = session?.id || profile?.id || '';
+                const params = new URLSearchParams();
+                if (facEmail) params.set('email', facEmail);
+                if (facId) params.set('faculty_id', facId);
+                const qs = params.toString();
+                const url = `/api/faculty/settings${qs ? `?${qs}` : ''}`;
+
+                const res = await apiRequest(url, {
                     method: 'PATCH',
                     body: JSON.stringify({
                         full_name: editName,
@@ -310,6 +398,35 @@ function SettingsContent() {
 
                     showToast('✓ Profile updated successfully!');
                 }
+            } else if (userType === 'admin') {
+                const updatedSession = {
+                    ...session,
+                    name: editName,
+                    full_name: editName,
+                    department: editDepartment,
+                    designation: editDesignation,
+                    photo_url: finalPhotoUrl
+                };
+                localStorage.setItem('admin_session', JSON.stringify(updatedSession));
+                window.dispatchEvent(new Event('storage'));
+                setProfile(prev => ({
+                    ...prev,
+                    full_name: editName,
+                    department: editDepartment,
+                    designation: editDesignation,
+                    photo_url: finalPhotoUrl,
+                    office_location: editOfficeLocation
+                }));
+                setInitialFormState({
+                    name: editName,
+                    phone: editPhone,
+                    department: editDepartment,
+                    designation: editDesignation,
+                    employeeId: editEmployeeId,
+                    officeLocation: editOfficeLocation,
+                    photo: finalPhotoUrl,
+                });
+                showToast('✓ Administrator profile updated!');
             } else {
                 // Student save
                 await apiRequest('/api/student/settings', {
@@ -379,7 +496,15 @@ function SettingsContent() {
 
         setPasswordLoading(true);
         try {
-            const res = await apiRequest('/api/faculty/settings/change-password', {
+            const facEmail = session?.email || editEmail || '';
+            const facId = session?.id || profile?.id || '';
+            const params = new URLSearchParams();
+            if (facEmail) params.set('email', facEmail);
+            if (facId) params.set('faculty_id', facId);
+            const qs = params.toString();
+            const url = `/api/faculty/settings/change-password${qs ? `?${qs}` : ''}`;
+
+            const res = await apiRequest(url, {
                 method: 'POST',
                 body: JSON.stringify({
                     currentPassword,
@@ -440,19 +565,20 @@ function SettingsContent() {
         }
         localStorage.removeItem('student_session');
         localStorage.removeItem('faculty_session');
+        localStorage.removeItem('admin_session');
         window.dispatchEvent(new Event('storage'));
-        router.push(userType === 'faculty' ? '/faculty/login' : '/auth');
+        router.push(userType === 'faculty' ? '/faculty/login' : (userType === 'admin' ? '/admin/gateway' : '/auth'));
     };
 
     // User initials helper
     const userInitials = useMemo(() => {
-        const name = (userType === 'student' ? session?.name : (profile?.full_name || session?.full_name)) || 'User';
+        const name = (userType === 'student' ? (profile?.name || session?.name) : (editName || profile?.full_name || session?.full_name || session?.name)) || 'User';
         const parts = name.trim().split(/\s+/);
         if (parts.length >= 2) {
             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
         }
         return name.slice(0, 2).toUpperCase();
-    }, [session, profile, userType]);
+    }, [session, profile, editName, userType]);
 
     // Active displayed photo
     const activePhoto = photoPreview || photoUrl;
@@ -553,7 +679,12 @@ function SettingsContent() {
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
                             <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>
-                                {userType === 'student' ? (profile?.name || session?.name || 'Student') : (editName || profile?.full_name || session?.full_name || 'Faculty Member')}
+                                {userType === 'student'
+                                    ? (profile?.name || session?.name || 'Student')
+                                    : (userType === 'admin'
+                                        ? (editName || profile?.full_name || session?.name || 'Administrator')
+                                        : (editName || profile?.full_name || session?.full_name || session?.name || 'Faculty Member')
+                                      )}
                             </h2>
                             <span
                                 style={{
@@ -569,8 +700,8 @@ function SettingsContent() {
                                     border: '1px solid var(--border)'
                                 }}
                             >
-                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981' }} />
-                                {userType === 'student' ? 'Student' : 'Faculty Member'}
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: userType === 'admin' ? '#2563EB' : '#10B981' }} />
+                                {userType === 'student' ? 'Student' : (userType === 'admin' ? 'Institutional Administrator' : 'Faculty Member')}
                             </span>
                         </div>
 
@@ -581,7 +712,12 @@ function SettingsContent() {
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>school</span>
-                                {userType === 'student' ? (editBranch || 'Engineering') : (editDepartment || 'Department of Computer Science')}
+                                {userType === 'student'
+                                    ? (editBranch || 'Engineering')
+                                    : (userType === 'admin'
+                                        ? (editDepartment || 'Institutional Administration')
+                                        : (editDepartment || 'Department of Computer Science')
+                                      )}
                             </span>
                             {editDesignation && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -869,6 +1005,37 @@ function SettingsContent() {
                                                 value={editOfficeLocation}
                                                 onChange={e => setEditOfficeLocation(e.target.value)}
                                                 placeholder="e.g. CS Block, 2nd Floor, Room 204"
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                {userType === 'admin' && (
+                                    <>
+                                        <div>
+                                            <Input
+                                                label="Department / Directorate"
+                                                value={editDepartment}
+                                                onChange={e => setEditDepartment(e.target.value)}
+                                                placeholder="Institutional Administration"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <Input
+                                                label="Designation / Administrative Role"
+                                                value={editDesignation}
+                                                onChange={e => setEditDesignation(e.target.value)}
+                                                placeholder="System Administrator"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <Input
+                                                label="Office / Directorate Location"
+                                                value={editOfficeLocation}
+                                                onChange={e => setEditOfficeLocation(e.target.value)}
+                                                placeholder="Admin Directorate, Main Block"
                                             />
                                         </div>
                                     </>

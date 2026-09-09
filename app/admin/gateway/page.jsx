@@ -55,6 +55,8 @@ export default function AdminLogin() {
                 return;
             }
 
+            localStorage.removeItem('faculty_session');
+            localStorage.removeItem('student_session');
             localStorage.setItem('admin_session', JSON.stringify(data.session));
             router.push('/admin/terminal');
         } catch (err) {

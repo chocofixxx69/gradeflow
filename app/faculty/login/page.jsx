@@ -50,6 +50,7 @@ export default function FacultyLogin() {
             }
 
             localStorage.removeItem('student_session');
+            localStorage.removeItem('admin_session');
             localStorage.setItem('faculty_session', JSON.stringify(data.session));
             window.dispatchEvent(new Event('storage'));
             router.push('/faculty/dashboard');
