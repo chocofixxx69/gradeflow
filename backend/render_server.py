@@ -5,6 +5,11 @@ import threading
 import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -28,10 +33,16 @@ def run_scraper_worker():
     print("  Ready to process requests from the portal...", flush=True)
     print("=" * 60, flush=True)
     
+    worker_env = os.environ.copy()
+    worker_env["PYTHONIOENCODING"] = "utf-8"
+    worker_env["PYTHONUTF8"] = "1"
+
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+
     while True:
         try:
             # Run the scraper queue securely
-            subprocess.run([sys.executable, "-m", "scraper.process_queue", "--quiet"], check=False)
+            subprocess.run([sys.executable, "-m", "scraper.process_queue", "--quiet"], check=False, env=worker_env, cwd=backend_dir)
         except Exception as e:
             print(f"[RenderWorker Error]: {e}", flush=True)
             
