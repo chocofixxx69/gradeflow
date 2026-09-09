@@ -35,15 +35,17 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     const [classesList, setClassesList] = useState([]);
     const [expandedFacultyId, setExpandedFacultyId] = useState(null);
 
-    // Subject Assignment Modal State (matching HOD / Accreditation Suite design)
+    // Subject Assignment Modal State (Multi-subject & Multi-class support)
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [assignTargetFaculty, setAssignTargetFaculty] = useState(null);
     const [assignBranch, setAssignBranch] = useState('CS');
     const [assignSemester, setAssignSemester] = useState('6');
     const [assignScheme, setAssignScheme] = useState('2022');
     const [assignScope, setAssignScope] = useState('class'); // 'class' | 'shared'
-    const [assignClassId, setAssignClassId] = useState('');
-    const [assignSubjectCode, setAssignSubjectCode] = useState('');
+    const [assignClassIds, setAssignClassIds] = useState([]);
+    const [assignSubjectCodes, setAssignSubjectCodes] = useState([]);
+    const [assignSubjectSearch, setAssignSubjectSearch] = useState('');
+    const [customSubjectsList, setCustomSubjectsList] = useState([]);
     const [assignCustomCode, setAssignCustomCode] = useState('');
     const [assignCustomName, setAssignCustomName] = useState('');
     const [manualSubjectMode, setManualSubjectMode] = useState(false);
@@ -182,9 +184,6 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                 const res = await apiRequest('/api/subjects', { query });
                 const subjects = res?.subjects || res?.data || (Array.isArray(res) ? res : []);
                 setAssignAvailableSubjects(subjects);
-                if (subjects.length > 0 && !assignSubjectCode && !manualSubjectMode) {
-                    setAssignSubjectCode(subjects[0].subject_code || subjects[0].code);
-                }
             } catch (err) {
                 console.error('Failed to load catalog subjects:', err);
                 setAssignError('Unable to load subjects for this branch and semester.');
@@ -194,7 +193,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         }
 
         fetchCatalogSubjects();
-    }, [showAssignModal, assignBranch, assignSemester, assignScheme, manualSubjectMode]);
+    }, [showAssignModal, assignBranch, assignSemester, assignScheme]);
 
     // Filter classes matching the modal's selected branch and semester
     const modalAvailableClasses = useMemo(() => {
@@ -215,6 +214,83 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         return classesList;
     }, [classesList, assignBranch, assignSemester]);
 
+    // Multi-class helpers
+    const toggleAssignClass = (classId) => {
+        setAssignClassIds(prev =>
+            prev.includes(classId) ? prev.filter(id => id !== classId) : [...prev, classId]
+        );
+    };
+
+    const handleSelectAllClasses = () => {
+        setAssignClassIds(modalAvailableClasses.map(c => c.id));
+    };
+
+    const handleClearAllClasses = () => {
+        setAssignClassIds([]);
+    };
+
+    // Multi-subject helpers
+    const toggleAssignSubject = (subjectCode) => {
+        const clean = (subjectCode || '').toUpperCase().trim();
+        if (!clean) return;
+        setAssignSubjectCodes(prev =>
+            prev.includes(clean) ? prev.filter(c => c !== clean) : [...prev, clean]
+        );
+    };
+
+    const filteredCatalogSubjects = useMemo(() => {
+        if (!assignSubjectSearch.trim()) return assignAvailableSubjects;
+        const q = assignSubjectSearch.trim().toLowerCase();
+        return assignAvailableSubjects.filter(s => {
+            const c = (s.subject_code || s.code || '').toLowerCase();
+            const n = (s.subject_name || s.name || '').toLowerCase();
+            return c.includes(q) || n.includes(q);
+        });
+    }, [assignAvailableSubjects, assignSubjectSearch]);
+
+    const handleSelectAllSubjects = () => {
+        const codes = filteredCatalogSubjects.map(s => (s.subject_code || s.code || '').toUpperCase().trim()).filter(Boolean);
+        setAssignSubjectCodes(prev => Array.from(new Set([...prev, ...codes])));
+    };
+
+    const handleClearAllSubjects = () => {
+        setAssignSubjectCodes([]);
+    };
+
+    const handleAddCustomSubject = () => {
+        const code = assignCustomCode.trim().toUpperCase();
+        const name = assignCustomName.trim() || code;
+        if (!code) return;
+        if (!customSubjectsList.some(s => s.code === code)) {
+            setCustomSubjectsList(prev => [...prev, { code, name }]);
+        }
+        setAssignCustomCode('');
+        setAssignCustomName('');
+    };
+
+    const handleRemoveCustomSubject = (codeToRemove) => {
+        setCustomSubjectsList(prev => prev.filter(s => s.code !== codeToRemove));
+    };
+
+    // Active subjects resolution
+    const activeSubjectCodes = useMemo(() => {
+        if (manualSubjectMode) {
+            const list = customSubjectsList.map(s => s.code);
+            const currentTyped = assignCustomCode.trim().toUpperCase();
+            if (currentTyped && !list.includes(currentTyped)) {
+                return [...list, currentTyped];
+            }
+            return list;
+        }
+        return assignSubjectCodes;
+    }, [manualSubjectMode, customSubjectsList, assignCustomCode, assignSubjectCodes]);
+
+    const activeTargetClassIds = useMemo(() => {
+        return assignScope === 'shared' ? [null] : assignClassIds;
+    }, [assignScope, assignClassIds]);
+
+    const totalAssignmentsCount = activeSubjectCodes.length * activeTargetClassIds.length;
+
     // 4. Handle Open Assign Modal
     const handleOpenAssignModal = (faculty = null) => {
         const target = faculty || (currentFacultyId ? facultyList.find(f => f.faculty_id === currentFacultyId) : facultyList[0]);
@@ -225,12 +301,14 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         setAssignScheme('2022');
         setAssignScope('class');
 
-        const initialClassId = classFilter && classFilter !== 'all'
-            ? classFilter
-            : (modalAvailableClasses.length > 0 ? modalAvailableClasses[0].id : '');
-        setAssignClassId(initialClassId);
+        const initialClassIds = classFilter && classFilter !== 'all'
+            ? [classFilter]
+            : (modalAvailableClasses.length > 0 ? [modalAvailableClasses[0].id] : []);
+        setAssignClassIds(initialClassIds);
 
-        setAssignSubjectCode('');
+        setAssignSubjectCodes([]);
+        setAssignSubjectSearch('');
+        setCustomSubjectsList([]);
         setAssignCustomCode('');
         setAssignCustomName('');
         setManualSubjectMode(false);
@@ -246,15 +324,13 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
             return;
         }
 
-        const finalSubjectCode = manualSubjectMode ? assignCustomCode.trim().toUpperCase() : assignSubjectCode.trim().toUpperCase();
-        if (!finalSubjectCode) {
-            setAssignError('Please select or enter a subject code.');
+        if (activeSubjectCodes.length === 0) {
+            setAssignError('Please select or enter at least one subject code.');
             return;
         }
 
-        const targetClassId = assignScope === 'class' ? assignClassId : null;
-        if (assignScope === 'class' && !targetClassId && modalAvailableClasses.length > 0) {
-            setAssignError('Please select which specific class section this faculty member teaches.');
+        if (assignScope === 'class' && assignClassIds.length === 0 && modalAvailableClasses.length > 0) {
+            setAssignError('Please select at least one class section for this faculty member.');
             return;
         }
 
@@ -264,11 +340,11 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         try {
             const payload = {
                 faculty_id: assignTargetFaculty.faculty_id,
-                subject_code: finalSubjectCode,
+                subject_codes: activeSubjectCodes,
                 branch: assignBranch,
                 semester: parseInt(assignSemester, 10),
                 scheme: assignScheme,
-                class_id: targetClassId ? targetClassId : null
+                class_ids: activeTargetClassIds
             };
 
             const res = await apiRequest('/api/admin/faculty-assignments', {
@@ -278,11 +354,19 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
             if (res) {
                 setShowAssignModal(false);
+                const scopeLabel = assignScope === 'shared'
+                    ? 'All Sections (Shared)'
+                    : `${assignClassIds.length} Section${assignClassIds.length === 1 ? '' : 's'}`;
+                setRefreshStatus({
+                    type: 'new',
+                    msg: `✓ Successfully mapped ${activeSubjectCodes.length} subject(s) across ${scopeLabel}!`
+                });
+                setTimeout(() => setRefreshStatus(null), 5000);
                 await loadPerformance();
             }
         } catch (err) {
-            console.error('Failed to assign subject:', err);
-            setAssignError(err.message || 'Failed to assign subject. Check for duplicate assignment.');
+            console.error('Failed to assign subjects:', err);
+            setAssignError(err.message || 'Failed to assign subjects. Check for duplicate assignments.');
         } finally {
             setAssignSubmitting(false);
         }
@@ -2041,12 +2125,37 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                     </button>
                                 </div>
 
-                                {/* Exact Division Picker if specific section */}
+                                {/* Multi-Class Division Picker if specific section */}
                                 {assignScope === 'class' && (
                                     <div style={{ marginTop: '4px' }}>
-                                        <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: '6px', textTransform: 'uppercase' }}>
-                                            Select Exact Class / Division:
-                                        </label>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>
+                                                Select Class Section(s):
+                                            </label>
+                                            {modalAvailableClasses.length > 0 && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                                        {assignClassIds.length} of {modalAvailableClasses.length} selected
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSelectAllClasses}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--primary, #0D4A47)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                                                    >
+                                                        Select All
+                                                    </button>
+                                                    <span style={{ color: 'var(--border)' }}>·</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleClearAllClasses}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {modalAvailableClasses.length === 0 ? (
                                             <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontStyle: 'italic', padding: '8px 0' }}>
                                                 No classes found for {assignBranch} Sem {assignSemester}. Create classes in Class Manager or select &quot;All Sections&quot;.
@@ -2054,21 +2163,22 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                         ) : (
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
                                                 {modalAvailableClasses.map(c => {
-                                                    const isSelected = assignClassId === c.id;
+                                                    const isSelected = assignClassIds.includes(c.id);
                                                     return (
                                                         <div
                                                             key={c.id}
-                                                            onClick={() => setAssignClassId(c.id)}
+                                                            onClick={() => toggleAssignClass(c.id)}
                                                             style={{
                                                                 padding: '10px 12px',
                                                                 borderRadius: '8px',
                                                                 border: isSelected ? '1.5px solid var(--primary, #0D4A47)' : '1px solid var(--border)',
-                                                                background: isSelected ? 'var(--surface)' : 'var(--surface-low)',
+                                                                background: isSelected ? 'rgba(13, 74, 71, 0.08)' : 'var(--surface-low)',
                                                                 cursor: 'pointer',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'space-between',
-                                                                gap: '8px'
+                                                                gap: '8px',
+                                                                transition: 'all 0.15s ease'
                                                             }}
                                                         >
                                                             <div>
@@ -2084,8 +2194,8 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                                                     {c.student_count ?? 0} Students {c.batch ? `· ${c.batch}` : ''}
                                                                 </div>
                                                             </div>
-                                                            <span className="material-icons-round" style={{ fontSize: '18px', color: isSelected ? 'var(--primary, #0D4A47)' : 'var(--tx-dim)' }}>
-                                                                {isSelected ? 'check_circle' : 'radio_button_unchecked'}
+                                                            <span className="material-icons-round" style={{ fontSize: '20px', color: isSelected ? 'var(--primary, #0D4A47)' : 'var(--tx-dim)' }}>
+                                                                {isSelected ? 'check_box' : 'check_box_outline_blank'}
                                                             </span>
                                                         </div>
                                                     );
@@ -2107,23 +2217,28 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                         }}>
                                             <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #0D4A47)' }}>verified</span>
                                             <span>
-                                                Evaluation strictly isolated to students enrolled in this chosen section.
+                                                Evaluation strictly isolated to students enrolled in the {assignClassIds.length} selected section{assignClassIds.length === 1 ? '' : 's'}.
                                             </span>
                                         </div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* 5. SUBJECT SELECTOR WITH TOGGLE */}
+                            {/* 5. MULTI-SUBJECT SELECTOR WITH TOGGLE */}
                             <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        Subject <span style={{ color: '#EF4444' }}>*</span>
-                                    </label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                            Subject(s) <span style={{ color: '#EF4444' }}>*</span>
+                                        </label>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, background: activeSubjectCodes.length > 0 ? 'var(--primary, #0D4A47)' : 'var(--surface-low)', color: activeSubjectCodes.length > 0 ? '#fff' : 'var(--tx-muted)', padding: '2px 8px', borderRadius: '10px' }}>
+                                            {activeSubjectCodes.length} selected
+                                        </span>
+                                    </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         {!manualSubjectMode && (
                                             <span style={{ fontSize: '11.5px', color: 'var(--tx-dim)', fontWeight: 700 }}>
-                                                {assignSubjectsLoading ? 'Loading syllabus...' : `${assignAvailableSubjects.length} courses available`}
+                                                {assignSubjectsLoading ? 'Loading syllabus...' : `${assignAvailableSubjects.length} courses in catalog`}
                                             </span>
                                         )}
                                         <button
@@ -2145,30 +2260,278 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                 </div>
 
                                 {manualSubjectMode ? (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                                        <Input
-                                            placeholder="Code (e.g. BCS601)"
-                                            value={assignCustomCode}
-                                            onChange={e => setAssignCustomCode(e.target.value.toUpperCase())}
-                                        />
-                                        <Input
-                                            placeholder="Subject Name (e.g. Cloud Computing)"
-                                            value={assignCustomName}
-                                            onChange={e => setAssignCustomName(e.target.value)}
-                                        />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr)) auto', gap: '8px', alignItems: 'center' }}>
+                                            <Input
+                                                placeholder="Code (e.g. BCS601)"
+                                                value={assignCustomCode}
+                                                onChange={e => setAssignCustomCode(e.target.value.toUpperCase())}
+                                            />
+                                            <Input
+                                                placeholder="Subject Name (e.g. Cloud Computing)"
+                                                value={assignCustomName}
+                                                onChange={e => setAssignCustomName(e.target.value)}
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="secondary"
+                                                onClick={handleAddCustomSubject}
+                                                disabled={!assignCustomCode.trim()}
+                                                style={{ height: '40px', padding: '0 14px', fontSize: '12px', fontWeight: 800 }}
+                                            >
+                                                + Add
+                                            </Button>
+                                        </div>
+
+                                        {customSubjectsList.length > 0 && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '8px', borderRadius: '8px', background: 'var(--surface-low)', border: '1px solid var(--border)' }}>
+                                                {customSubjectsList.map(cs => (
+                                                    <span
+                                                        key={cs.code}
+                                                        style={{
+                                                            fontSize: '11.5px',
+                                                            fontWeight: 700,
+                                                            padding: '4px 8px',
+                                                            borderRadius: '6px',
+                                                            background: 'var(--surface)',
+                                                            border: '1px solid var(--border)',
+                                                            color: 'var(--tx-main)',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px'
+                                                        }}
+                                                    >
+                                                        <span><strong>{cs.code}</strong> {cs.name}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveCustomSubject(cs.code)}
+                                                            style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
-                                    <Select
-                                        value={assignSubjectCode}
-                                        onChange={e => setAssignSubjectCode(e.target.value)}
-                                        options={[
-                                            { value: '', label: assignSubjectsLoading ? 'Loading courses...' : (assignAvailableSubjects.length > 0 ? 'Select a subject from catalog...' : 'No subjects in catalog — click "+ Enter custom code"') },
-                                            ...assignAvailableSubjects.map(s => ({
-                                                value: s.subject_code || s.code,
-                                                label: `${s.subject_code || s.code} - ${s.subject_name || s.name}`
-                                            }))
-                                        ]}
-                                    />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {/* Search & Bulk Select Controls */}
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <div style={{ position: 'relative', flex: 1 }}>
+                                                <span className="material-icons-round" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: 'var(--tx-dim)' }}>
+                                                    search
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search syllabus subjects (e.g. BCS601, Machine Learning)..."
+                                                    value={assignSubjectSearch}
+                                                    onChange={e => setAssignSubjectSearch(e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '7px 10px 7px 32px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid var(--border)',
+                                                        background: 'var(--surface)',
+                                                        fontSize: '12px',
+                                                        color: 'var(--tx-main)',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </div>
+                                            {filteredCatalogSubjects.length > 0 && (
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSelectAllSubjects}
+                                                        style={{
+                                                            padding: '6px 12px',
+                                                            borderRadius: '8px',
+                                                            border: '1px solid var(--border)',
+                                                            background: 'var(--surface-low)',
+                                                            color: 'var(--tx-main)',
+                                                            fontSize: '11px',
+                                                            fontWeight: 700,
+                                                            cursor: 'pointer',
+                                                            whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        Select All
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleClearAllSubjects}
+                                                        style={{
+                                                            padding: '6px 10px',
+                                                            borderRadius: '8px',
+                                                            border: '1px solid var(--border)',
+                                                            background: 'transparent',
+                                                            color: 'var(--tx-dim)',
+                                                            fontSize: '11px',
+                                                            fontWeight: 700,
+                                                            cursor: 'pointer',
+                                                            whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Selected Subjects Chips Preview */}
+                                        {assignSubjectCodes.length > 0 && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '6px 10px', borderRadius: '8px', background: 'var(--surface-low)', border: '1px solid var(--border)', maxHeight: '70px', overflowY: 'auto' }}>
+                                                {assignSubjectCodes.map(code => {
+                                                    const subObj = assignAvailableSubjects.find(s => (s.subject_code || s.code) === code);
+                                                    return (
+                                                        <span
+                                                            key={code}
+                                                            style={{
+                                                                fontSize: '11px',
+                                                                fontWeight: 700,
+                                                                padding: '2px 8px',
+                                                                borderRadius: '6px',
+                                                                background: 'rgba(13, 74, 71, 0.1)',
+                                                                border: '1px solid rgba(13, 74, 71, 0.25)',
+                                                                color: 'var(--primary, #0D4A47)',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px'
+                                                            }}
+                                                        >
+                                                            <span><strong>{code}</strong> {subObj?.name || subObj?.subject_name ? `· ${(subObj?.name || subObj?.subject_name).slice(0, 20)}...` : ''}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleAssignSubject(code)}
+                                                                style={{ background: 'none', border: 'none', color: 'var(--primary, #0D4A47)', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                                            </button>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Scrollable Course Checklist */}
+                                        <div style={{
+                                            maxHeight: '190px',
+                                            overflowY: 'auto',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)',
+                                            background: 'var(--surface)',
+                                            display: 'flex',
+                                            flexDirection: 'column'
+                                        }}>
+                                            {assignSubjectsLoading ? (
+                                                <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                                    Loading syllabus courses...
+                                                </div>
+                                            ) : filteredCatalogSubjects.length === 0 ? (
+                                                <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                                    {assignAvailableSubjects.length === 0
+                                                        ? 'No subjects found in catalog for this branch/semester. Click "+ Enter custom code" above.'
+                                                        : 'No courses match your search query.'}
+                                                </div>
+                                            ) : (
+                                                filteredCatalogSubjects.map(s => {
+                                                    const code = (s.subject_code || s.code || '').toUpperCase().trim();
+                                                    const name = s.subject_name || s.name;
+                                                    const credits = s.credits;
+                                                    const isSelected = assignSubjectCodes.includes(code);
+
+                                                    return (
+                                                        <div
+                                                            key={code}
+                                                            onClick={() => toggleAssignSubject(code)}
+                                                            style={{
+                                                                padding: '8px 12px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                gap: '10px',
+                                                                borderBottom: '1px solid var(--border)',
+                                                                background: isSelected ? 'rgba(13, 74, 71, 0.06)' : 'transparent',
+                                                                cursor: 'pointer',
+                                                                transition: 'background 0.15s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '18px', color: isSelected ? 'var(--primary, #0D4A47)' : 'var(--tx-dim)' }}>
+                                                                    {isSelected ? 'check_box' : 'check_box_outline_blank'}
+                                                                </span>
+                                                                <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: isSelected ? 'var(--primary, #0D4A47)' : 'var(--surface-low)', color: isSelected ? '#fff' : 'var(--tx-main)', letterSpacing: '0.03em' }}>
+                                                                    {code}
+                                                                </span>
+                                                                <span style={{ fontSize: '12px', color: 'var(--tx-main)', fontWeight: isSelected ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                    {name}
+                                                                </span>
+                                                            </div>
+                                                            {credits != null && (
+                                                                <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600, flexShrink: 0 }}>
+                                                                    {credits} Cr
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 6. REAL-TIME ASSIGNMENT SUMMARY CARD */}
+                            <div style={{
+                                padding: '12px 16px',
+                                borderRadius: '10px',
+                                background: totalAssignmentsCount > 0 ? 'rgba(13, 74, 71, 0.08)' : 'var(--surface-low)',
+                                border: totalAssignmentsCount > 0 ? '1.5px solid rgba(13, 74, 71, 0.3)' : '1px dashed var(--border)',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                transition: 'all 0.2s ease'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '8px',
+                                        background: totalAssignmentsCount > 0 ? 'var(--primary, #0D4A47)' : 'var(--surface)',
+                                        color: totalAssignmentsCount > 0 ? '#FFFFFF' : 'var(--tx-dim)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}>
+                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                                            {totalAssignmentsCount > 0 ? 'playlist_add_check' : 'info_outline'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                            {totalAssignmentsCount > 0
+                                                ? `${totalAssignmentsCount} Total Assignment${totalAssignmentsCount > 1 ? 's' : ''} to create`
+                                                : 'Select at least 1 subject and 1 class section'}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                            {assignScope === 'shared'
+                                                ? `${activeSubjectCodes.length} subject(s) across All Sections (Shared)`
+                                                : `${activeSubjectCodes.length} subject(s) × ${assignClassIds.length} class section(s)`}
+                                        </div>
+                                    </div>
+                                </div>
+                                {totalAssignmentsCount > 0 && (
+                                    <span style={{
+                                        fontSize: '12px',
+                                        fontWeight: 900,
+                                        background: 'var(--primary, #0D4A47)',
+                                        color: '#fff',
+                                        padding: '4px 12px',
+                                        borderRadius: '12px'
+                                    }}>
+                                        {totalAssignmentsCount}
+                                    </span>
                                 )}
                             </div>
 
@@ -2177,7 +2540,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                 display: 'flex',
                                 justifyContent: 'flex-end',
                                 gap: '10px',
-                                marginTop: '8px',
+                                marginTop: '4px',
                                 paddingTop: '12px',
                                 borderTop: '1px solid var(--border)'
                             }}>
@@ -2194,7 +2557,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                     variant="primary"
                                     type="submit"
                                     loading={assignSubmitting}
-                                    disabled={manualSubjectMode ? !assignCustomCode : !assignSubjectCode}
+                                    disabled={totalAssignmentsCount === 0}
                                     style={{
                                         borderRadius: '10px',
                                         padding: '10px 22px',
@@ -2203,7 +2566,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                         color: '#FFFFFF'
                                     }}
                                 >
-                                    ✔ Confirm Assignment
+                                    ✔ Confirm {totalAssignmentsCount > 1 ? `${totalAssignmentsCount} Assignments` : 'Assignment'}
                                 </Button>
                             </div>
                         </form>

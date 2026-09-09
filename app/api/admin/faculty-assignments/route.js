@@ -149,10 +149,27 @@ export async function POST(req) {
             }
         }
 
-        const subjectCode = typeof body.subject_code === 'string' ? body.subject_code.trim() : '';
+        // Support both multi (subject_codes, class_ids) and single (subject_code, class_id)
+        let subjectCodes = [];
+        if (Array.isArray(body.subject_codes) && body.subject_codes.length > 0) {
+            subjectCodes = body.subject_codes.map(s => String(s || '').trim().toUpperCase()).filter(Boolean);
+        } else if (typeof body.subject_code === 'string' && body.subject_code.trim()) {
+            subjectCodes = [body.subject_code.trim().toUpperCase()];
+        }
+
+        let classIds = [];
+        if (Array.isArray(body.class_ids) && body.class_ids.length > 0) {
+            classIds = body.class_ids.map(c => (c && String(c).trim()) ? String(c).trim() : null);
+        } else if (body.class_id !== undefined) {
+            classIds = [(body.class_id && String(body.class_id).trim()) ? String(body.class_id).trim() : null];
+        } else {
+            classIds = [null];
+        }
+
+        const isSingleRequest = !Array.isArray(body.subject_codes) && !Array.isArray(body.class_ids);
+
         const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : null;
         const scheme = typeof body.scheme === 'string' && body.scheme.trim() ? body.scheme.trim() : null;
-        const classId = typeof body.class_id === 'string' && body.class_id.trim() ? body.class_id.trim() : null;
 
         let semester = null;
         if (body.semester !== undefined && body.semester !== null && body.semester !== '') {
@@ -163,7 +180,7 @@ export async function POST(req) {
         }
 
         if (!facultyId) return fail('faculty_id is required.', 'VALIDATION_ERROR', 400);
-        if (!subjectCode) return fail('subject_code is required.', 'VALIDATION_ERROR', 400);
+        if (subjectCodes.length === 0) return fail('subject_code or subject_codes is required.', 'VALIDATION_ERROR', 400);
 
         const client = getAdminClient();
 
@@ -175,36 +192,67 @@ export async function POST(req) {
         if (facultyLookupError) throw facultyLookupError;
         if (!existingFaculty) return fail('faculty_id does not reference an existing faculty record.', 'FACULTY_NOT_FOUND', 404);
 
-        let existingDuplicateQuery = client
+        // Fetch existing assignments for this faculty to skip duplicates gracefully
+        const { data: existingAssignments, error: existingLookupError } = await client
             .from('faculty_subject_assignments')
-            .select('id')
-            .eq('faculty_id', facultyId)
-            .eq('subject_code', subjectCode);
-        existingDuplicateQuery = branch ? existingDuplicateQuery.eq('branch', branch) : existingDuplicateQuery.is('branch', null);
-        existingDuplicateQuery = semester !== null ? existingDuplicateQuery.eq('semester', semester) : existingDuplicateQuery.is('semester', null);
-        existingDuplicateQuery = scheme ? existingDuplicateQuery.eq('scheme', scheme) : existingDuplicateQuery.is('scheme', null);
-        existingDuplicateQuery = classId ? existingDuplicateQuery.eq('class_id', classId) : existingDuplicateQuery.is('class_id', null);
+            .select('id, subject_code, branch, semester, scheme, class_id')
+            .eq('faculty_id', facultyId);
+        if (existingLookupError) throw existingLookupError;
 
-        const { data: duplicate, error: duplicateLookupError } = await existingDuplicateQuery.maybeSingle();
-        if (duplicateLookupError) throw duplicateLookupError;
-        if (duplicate) {
-            return fail('This faculty is already assigned to this subject for the given scope.', 'DUPLICATE_ASSIGNMENT', 409);
+        const existingSigSet = new Set(
+            (existingAssignments || []).map(a =>
+                `${(a.subject_code || '').toUpperCase()}|${a.branch || ''}|${a.semester ?? ''}|${a.scheme || ''}|${a.class_id || ''}`
+            )
+        );
+
+        const recordsToInsert = [];
+        const skippedPairs = [];
+
+        for (const sCode of subjectCodes) {
+            for (const cId of classIds) {
+                const sig = `${sCode}|${branch || ''}|${semester ?? ''}|${scheme || ''}|${cId || ''}`;
+                if (existingSigSet.has(sig)) {
+                    skippedPairs.push({ subject_code: sCode, class_id: cId });
+                } else {
+                    existingSigSet.add(sig);
+                    recordsToInsert.push({
+                        faculty_id: facultyId,
+                        subject_code: sCode,
+                        branch,
+                        semester,
+                        scheme,
+                        class_id: cId
+                    });
+                }
+            }
         }
 
-        const { data, error } = await client
-            .from('faculty_subject_assignments')
-            .insert({ faculty_id: facultyId, subject_code: subjectCode, branch, semester, scheme, class_id: classId })
-            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at')
-            .single();
-
-        if (error) {
-            if (error.code === '23505') {
+        if (recordsToInsert.length === 0) {
+            if (isSingleRequest) {
                 return fail('This faculty is already assigned to this subject for the given scope.', 'DUPLICATE_ASSIGNMENT', 409);
             }
-            if (error.code === '23503') {
+            return ok({
+                success: true,
+                assignments: [],
+                totalCreated: 0,
+                totalSkipped: skippedPairs.length,
+                message: 'All selected subject and class assignments already exist for this faculty member.'
+            });
+        }
+
+        const { data: insertedRows, error: insertError } = await client
+            .from('faculty_subject_assignments')
+            .insert(recordsToInsert)
+            .select('id, faculty_id, subject_code, branch, semester, scheme, class_id, created_at');
+
+        if (insertError) {
+            if (insertError.code === '23505') {
+                return fail('One or more assignments duplicate an existing record.', 'DUPLICATE_ASSIGNMENT', 409);
+            }
+            if (insertError.code === '23503') {
                 return fail('faculty_id or class_id does not reference an existing row.', 'INVALID_REFERENCE', 400);
             }
-            throw error;
+            throw insertError;
         }
 
         // 1. Log in faculty_activity
@@ -216,19 +264,21 @@ export async function POST(req) {
             await client.from('faculty_activity').insert({
                 faculty_id: facultyId,
                 faculty_name: facultyName,
-                action_type: 'ASSIGN_SUBJECT',
+                action_type: isSingleRequest ? 'ASSIGN_SUBJECT' : 'ASSIGN_SUBJECT_BATCH',
                 sync_status: 'SUCCESS',
                 context_module: 'Faculty Portal > Teaching Load > Subject Mapping',
                 reason: 'Curricular course allocation and syllabus subject teaching load assignment for academic semester.',
                 method: 'Interactive Web UI',
-                details: `Assigned subject ${subjectCode}${branch ? ` (${branch})` : ''}${semester ? ` Sem ${semester}` : ''} to ${facultyName}`,
+                details: isSingleRequest
+                    ? `Assigned subject ${subjectCodes[0]}${branch ? ` (${branch})` : ''}${semester ? ` Sem ${semester}` : ''} to ${facultyName}`
+                    : `Assigned ${insertedRows.length} subject-class mapping(s) (${subjectCodes.join(', ')}) to ${facultyName}`,
                 metadata: {
-                    subject_code: subjectCode,
+                    subject_codes: subjectCodes,
                     branch,
                     semester,
                     scheme,
-                    class_id: classId,
-                    assignment_id: data?.id,
+                    class_ids: classIds,
+                    assignment_ids: insertedRows.map(r => r.id),
                     assigned_by: session?.email || 'System',
                     assigned_by_role: session?.role || 'admin',
                 },
@@ -242,20 +292,22 @@ export async function POST(req) {
         // 2. Log in audit_logs (Institutional Admin Audit Trail)
         try {
             await logServerAudit({
-                action: 'FACULTY_SUBJECT_ASSIGNED',
+                action: isSingleRequest ? 'FACULTY_SUBJECT_ASSIGNED' : 'FACULTY_SUBJECTS_BATCH_ASSIGNED',
                 actor: session?.email || existingFaculty?.email || facultyName,
                 actorRole: session?.role || 'admin',
                 severity: 'INFO',
                 entityType: 'faculty',
                 entityId: facultyId,
-                description: `Assigned subject ${subjectCode} (${branch || 'All Branches'} · Sem ${semester || 'All'} · Scheme ${scheme || 'All'}) to faculty ${facultyName}`,
+                description: isSingleRequest
+                    ? `Assigned subject ${subjectCodes[0]} (${branch || 'All Branches'} · Sem ${semester || 'All'} · Scheme ${scheme || 'All'}) to faculty ${facultyName}`
+                    : `Batch assigned ${insertedRows.length} subjects/classes (${subjectCodes.join(', ')}) to faculty ${facultyName}`,
                 metadata: {
-                    subject_code: subjectCode,
+                    subject_codes: subjectCodes,
                     branch,
                     semester,
                     scheme,
-                    class_id: classId,
-                    assignment_id: data?.id,
+                    class_ids: classIds,
+                    assignment_ids: insertedRows.map(r => r.id),
                 },
                 ipAddress,
                 userId: facultyId,
@@ -264,7 +316,17 @@ export async function POST(req) {
             console.warn('[POST /api/admin/faculty-assignments] Error inserting server audit:', audErr);
         }
 
-        return ok({ assignment: data });
+        if (isSingleRequest) {
+            return ok({ assignment: insertedRows[0], ...insertedRows[0] });
+        }
+
+        return ok({
+            success: true,
+            assignments: insertedRows,
+            totalCreated: insertedRows.length,
+            totalSkipped: skippedPairs.length,
+            message: `Successfully created ${insertedRows.length} assignment(s)${skippedPairs.length > 0 ? ` (${skippedPairs.length} already existed)` : ''}.`
+        });
     } catch (err) {
         console.error('[POST /api/admin/faculty-assignments]', err);
         return fail('Failed to create faculty assignment.', 'FACULTY_ASSIGNMENTS_ERROR', 500, { error: String(err?.message || err) });

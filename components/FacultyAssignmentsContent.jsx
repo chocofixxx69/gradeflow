@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest, clearApiCache } from '../lib/api/client';
-import { ConfirmDialog, SearchableSelect } from './ui';
+import { ConfirmDialog, SearchableSelect, Button, Input } from './ui';
 import { filterAndRank } from '../lib/search-utils';
 
 const BRANCH_ALIASES = {
@@ -71,6 +71,15 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState('');
     const [manualSubjectMode, setManualSubjectMode] = useState(false);
+    const [assignScope, setAssignScope] = useState('class'); // 'class' (specific sections) or 'shared' (all sections)
+    const [assignClassIds, setAssignClassIds] = useState([]);
+    const [assignSubjectCodes, setAssignSubjectCodes] = useState([]);
+    const [assignSubjectSearch, setAssignSubjectSearch] = useState('');
+    const [assignCustomCode, setAssignCustomCode] = useState('');
+    const [assignCustomName, setAssignCustomName] = useState('');
+    const [customSubjectsList, setCustomSubjectsList] = useState([]);
+    const [catalogSubjects, setCatalogSubjects] = useState([]);
+    const [loadingCatalogSubjects, setLoadingCatalogSubjects] = useState(false);
     const [form, setForm] = useState({
         faculty_id: preselectedFacultyId || '',
         branch: 'CS',
@@ -89,6 +98,30 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [showAssignModal]);
+
+    // Dynamic catalog subject loading for modal
+    useEffect(() => {
+        if (!showAssignModal) return;
+        let active = true;
+
+        async function fetchCatalog() {
+            setLoadingCatalogSubjects(true);
+            try {
+                const res = await apiRequest(`/api/subjects?branch=${form.branch || 'CS'}&semester=${form.semester || '6'}&scheme=${form.scheme || '2022'}`);
+                const list = res?.subjects || res?.data || (Array.isArray(res) ? res : []);
+                if (active) {
+                    setCatalogSubjects(list);
+                }
+            } catch (err) {
+                console.warn('Failed to load syllabus subjects in modal:', err);
+            } finally {
+                if (active) setLoadingCatalogSubjects(false);
+            }
+        }
+
+        fetchCatalog();
+        return () => { active = false; };
+    }, [showAssignModal, form.branch, form.semester, form.scheme]);
 
     // Delete state
     const [confirmingDelete, setConfirmingDelete] = useState(null);
@@ -208,28 +241,37 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
 
     // Filtered subjects available for assignment based on selected branch/semester/scheme in form
     const availableSubjectsForForm = useMemo(() => {
-        const filtered = subjectsList.filter(s => {
-            const branchMatch = matchesBranch(s.branch, form.branch);
-            const semMatch = !form.semester || String(s.semester) === String(form.semester);
-            const schemeMatch = !form.scheme || String(s.scheme) === String(form.scheme);
-            return branchMatch && semMatch && schemeMatch;
-        });
+        const pool = [...catalogSubjects];
+        const seenCodes = new Set(pool.map(s => (s.subject_code || s.code || '').trim().toUpperCase()).filter(Boolean));
 
-        // Deduplicate by uppercase subject_code
-        const seen = new Set();
-        const deduped = [];
-        for (const sub of filtered) {
-            const code = (sub.subject_code || '').trim().toUpperCase();
-            if (!code || seen.has(code)) continue;
-            seen.add(code);
-            deduped.push({
-                ...sub,
-                subject_code: code,
-            });
+        for (const sub of subjectsList) {
+            const code = (sub.subject_code || sub.code || '').trim().toUpperCase();
+            if (!code || seenCodes.has(code)) continue;
+            if (matchesBranch(sub.branch, form.branch) &&
+                (!form.semester || String(sub.semester) === String(form.semester)) &&
+                (!form.scheme || String(sub.scheme) === String(form.scheme))) {
+                seenCodes.add(code);
+                pool.push({
+                    ...sub,
+                    subject_code: code,
+                    subject_name: sub.subject_name || code,
+                    credits: sub.credits ?? 3
+                });
+            }
         }
 
-        return deduped.sort((a, b) => a.subject_code.localeCompare(b.subject_code));
-    }, [subjectsList, form.branch, form.semester, form.scheme]);
+        return pool.sort((a, b) => (a.subject_code || a.code || '').localeCompare(b.subject_code || b.code || ''));
+    }, [catalogSubjects, subjectsList, form.branch, form.semester, form.scheme]);
+
+    const filteredCatalogSubjects = useMemo(() => {
+        if (!assignSubjectSearch.trim()) return availableSubjectsForForm;
+        const q = assignSubjectSearch.trim().toLowerCase();
+        return availableSubjectsForForm.filter(s => {
+            const code = (s.subject_code || s.code || '').toLowerCase();
+            const name = (s.subject_name || s.name || '').toLowerCase();
+            return code.includes(q) || name.includes(q);
+        });
+    }, [availableSubjectsForForm, assignSubjectSearch]);
 
     // Details of currently chosen subject in form for visual badge/card preview
     const selectedSubjectDetails = useMemo(() => {
@@ -252,6 +294,74 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
             return bMatch && sMatch;
         });
     }, [classesList, form.branch, form.semester]);
+
+    // Multi-class helpers
+    const toggleAssignClass = (classId) => {
+        setAssignClassIds(prev =>
+            prev.includes(classId) ? prev.filter(id => id !== classId) : [...prev, classId]
+        );
+    };
+
+    const handleSelectAllClasses = () => {
+        setAssignClassIds(matchingClasses.map(c => c.id));
+    };
+
+    const handleClearAllClasses = () => {
+        setAssignClassIds([]);
+    };
+
+    // Multi-subject helpers
+    const toggleAssignSubject = (code) => {
+        const clean = (code || '').toUpperCase().trim();
+        if (!clean) return;
+        setAssignSubjectCodes(prev =>
+            prev.includes(clean) ? prev.filter(c => c !== clean) : [...prev, clean]
+        );
+    };
+
+    const handleSelectAllSubjects = () => {
+        const codes = filteredCatalogSubjects.map(s => (s.subject_code || s.code || '').toUpperCase().trim()).filter(Boolean);
+        setAssignSubjectCodes(Array.from(new Set([...assignSubjectCodes, ...codes])));
+    };
+
+    const handleClearAllSubjects = () => {
+        setAssignSubjectCodes([]);
+    };
+
+    const handleAddCustomSubject = () => {
+        const cleanCode = assignCustomCode.trim().toUpperCase();
+        if (!cleanCode) return;
+        if (!customSubjectsList.some(s => s.code === cleanCode)) {
+            setCustomSubjectsList(prev => [...prev, { code: cleanCode, name: assignCustomName.trim() || cleanCode }]);
+        }
+        if (!assignSubjectCodes.includes(cleanCode)) {
+            setAssignSubjectCodes(prev => [...prev, cleanCode]);
+        }
+        setAssignCustomCode('');
+        setAssignCustomName('');
+    };
+
+    const handleRemoveCustomSubject = (codeToRemove) => {
+        setCustomSubjectsList(prev => prev.filter(s => s.code !== codeToRemove));
+        setAssignSubjectCodes(prev => prev.filter(c => c !== codeToRemove));
+    };
+
+    const activeSubjectCodes = useMemo(() => {
+        if (manualSubjectMode) {
+            return Array.from(new Set([
+                ...customSubjectsList.map(s => s.code),
+                ...assignSubjectCodes
+            ]));
+        }
+        return assignSubjectCodes;
+    }, [manualSubjectMode, customSubjectsList, assignSubjectCodes]);
+
+    const totalAssignmentsCount = useMemo(() => {
+        const subsCount = activeSubjectCodes.length;
+        if (subsCount === 0) return 0;
+        if (assignScope === 'shared') return subsCount;
+        return subsCount * assignClassIds.length;
+    }, [activeSubjectCodes.length, assignScope, assignClassIds.length]);
 
     // Filtered assignments displayed in table
     const displayedAssignments = useMemo(() => {
@@ -299,29 +409,45 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
             setFormError('Please select a faculty member.');
             return;
         }
-        if (!form.subject_code) {
-            setFormError('Please select a subject.');
+        if (activeSubjectCodes.length === 0) {
+            setFormError('Please select or enter at least one subject.');
+            return;
+        }
+        if (assignScope === 'class' && assignClassIds.length === 0) {
+            setFormError('Please select at least one class section or switch to "All Sections (Shared)".');
             return;
         }
 
         setSubmitting(true);
         try {
-            await apiRequest('/api/admin/faculty-assignments', {
+            const targetClassIds = assignScope === 'shared' ? [null] : assignClassIds;
+            const res = await apiRequest('/api/admin/faculty-assignments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     faculty_id: form.faculty_id,
-                    subject_code: form.subject_code,
+                    subject_codes: activeSubjectCodes,
+                    class_ids: targetClassIds,
                     branch: form.branch || null,
                     semester: form.semester ? parseInt(form.semester, 10) : null,
                     scheme: form.scheme || null,
-                    class_id: form.class_id || null,
                 }),
             });
 
-            setSuccessMsg('Subject assigned to faculty successfully.');
-            setTimeout(() => setSuccessMsg(''), 4000);
+            const created = res?.totalCreated ?? (Array.isArray(res?.assignments) ? res.assignments.length : activeSubjectCodes.length);
+            const skipped = res?.totalSkipped ?? 0;
+            let msg = `Successfully assigned ${created} subject-class mapping(s) to faculty!`;
+            if (skipped > 0) {
+                msg += ` (${skipped} already existed and were preserved)`;
+            }
+            setSuccessMsg(msg);
+            setTimeout(() => setSuccessMsg(''), 5000);
             setShowAssignModal(false);
+            setAssignSubjectCodes([]);
+            setAssignClassIds([]);
+            setCustomSubjectsList([]);
+            setAssignCustomCode('');
+            setAssignCustomName('');
             setForm(prev => ({
                 ...prev,
                 subject_code: '',
@@ -569,7 +695,19 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                         </span>
                         {(loading || isRefreshing) ? 'Refreshing...' : 'Refresh'}
                     </button>
-                    <button style={s.btnPrimary} onClick={() => { setShowAssignModal(true); setFormError(''); }}>
+                    <button
+                        style={s.btnPrimary}
+                        onClick={() => {
+                            setShowAssignModal(true);
+                            setFormError('');
+                            setAssignSubjectCodes([]);
+                            setAssignClassIds([]);
+                            setCustomSubjectsList([]);
+                            setAssignCustomCode('');
+                            setAssignCustomName('');
+                            setAssignScope('class');
+                        }}
+                    >
                         <span className="material-icons-round" style={{ fontSize: '16px' }}>add_task</span>
                         Assign Subject to Faculty
                     </button>
@@ -859,8 +997,8 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                             background: 'var(--surface)',
                             border: '1px solid var(--border)',
                             borderRadius: '20px',
-                            width: 'min(100%, 620px)',
-                            maxHeight: 'min(92vh, 780px)',
+                            width: 'min(100%, 680px)',
+                            maxHeight: 'min(92vh, 840px)',
                             display: 'flex',
                             flexDirection: 'column',
                             boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08)',
@@ -900,7 +1038,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                         Assign Subject to Faculty
                                     </h2>
                                     <p style={{ fontSize: '12px', color: 'var(--tx-muted)', margin: '3px 0 0' }}>
-                                        Select the faculty member, curriculum scope, and course.
+                                        Map teaching attribution, curriculum scope, and division.
                                     </p>
                                 </div>
                             </div>
@@ -982,6 +1120,8 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                             onChange={e => {
                                                 const newBranch = e.target.value;
                                                 setForm(f => ({ ...f, branch: newBranch, subject_code: '' }));
+                                                setAssignSubjectCodes([]);
+                                                setAssignClassIds([]);
                                             }}
                                             required
                                         >
@@ -1006,6 +1146,8 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                             onChange={e => {
                                                 const newSem = e.target.value;
                                                 setForm(f => ({ ...f, semester: newSem, subject_code: '' }));
+                                                setAssignSubjectCodes([]);
+                                                setAssignClassIds([]);
                                             }}
                                             required
                                         >
@@ -1016,163 +1158,501 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                     </div>
                                 </div>
 
-                                {/* Scheme & Class Section */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                            Curriculum Scheme
-                                        </label>
-                                        <select
-                                            style={{ ...s.select, width: '100%' }}
-                                            value={form.scheme}
-                                            onChange={e => {
-                                                const newScheme = e.target.value;
-                                                setForm(f => ({ ...f, scheme: newScheme, subject_code: '' }));
-                                            }}
-                                        >
-                                            <option value="2022">2022 Scheme</option>
-                                            <option value="2025">2025 Scheme</option>
-                                            <option value="2021">2021 Scheme</option>
-                                            <option value="2018">2018 Scheme</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                            Class Section (Optional)
-                                        </label>
-                                        <select
-                                            style={{ ...s.select, width: '100%' }}
-                                            value={form.class_id}
-                                            onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))}
-                                        >
-                                            <option value="">All Class Sections</option>
-                                            {matchingClasses.map(c => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.name} {c.section ? `(Sec ${c.section})` : ''} {c.batch ? `· [${c.batch} Batch]` : ''} · Sem {c.semester}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                {/* Curriculum Scheme */}
+                                <div style={{ marginBottom: '16px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                                        Curriculum Scheme
+                                    </label>
+                                    <select
+                                        style={{ ...s.select, width: '100%' }}
+                                        value={form.scheme}
+                                        onChange={e => {
+                                            const newScheme = e.target.value;
+                                            setForm(f => ({ ...f, scheme: newScheme, subject_code: '' }));
+                                            setAssignSubjectCodes([]);
+                                        }}
+                                    >
+                                        <option value="2022">2022 Scheme</option>
+                                        <option value="2025">2025 Scheme</option>
+                                        <option value="2021">2021 Scheme</option>
+                                        <option value="2018">2018 Scheme</option>
+                                    </select>
                                 </div>
 
-                                {/* Subject Selection */}
-                                <div style={{ marginBottom: '16px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                                {/* Class Section Selection: Multi-Class Selector */}
+                                <div style={{ marginBottom: '18px', padding: '12px 14px', borderRadius: '12px', background: 'var(--surface-low)', border: '1px solid var(--border)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                            Subject <span style={{ color: 'var(--red)' }}>*</span>
+                                            Which Class / Section Does Faculty Teach? <span style={{ color: 'var(--red)' }}>*</span>
                                         </label>
+                                        <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 700 }}>
+                                            {matchingClasses.length} Sections in Sem {form.semester}
+                                        </span>
+                                    </div>
+
+                                    {/* Scope Radios */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAssignScope('class')}
+                                            style={{
+                                                padding: '10px 12px',
+                                                borderRadius: '10px',
+                                                border: assignScope === 'class' ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                                                background: assignScope === 'class' ? 'rgba(23, 75, 77, 0.08)' : 'var(--surface)',
+                                                textAlign: 'left',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '8px'
+                                            }}
+                                        >
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>Specific Section(s) Only</div>
+                                                <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>E.g. Sec A only, or Sec A + Sec B</div>
+                                            </div>
+                                            <span className="material-icons-round" style={{ fontSize: '18px', color: assignScope === 'class' ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                {assignScope === 'class' ? 'radio_button_checked' : 'radio_button_unchecked'}
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setAssignScope('shared')}
+                                            style={{
+                                                padding: '10px 12px',
+                                                borderRadius: '10px',
+                                                border: assignScope === 'shared' ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                                                background: assignScope === 'shared' ? 'rgba(23, 75, 77, 0.08)' : 'var(--surface)',
+                                                textAlign: 'left',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '8px'
+                                            }}
+                                        >
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>All Sections (Shared)</div>
+                                                <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>Teaches combined cohort</div>
+                                            </div>
+                                            <span className="material-icons-round" style={{ fontSize: '18px', color: assignScope === 'shared' ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                {assignScope === 'shared' ? 'radio_button_checked' : 'radio_button_unchecked'}
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    {/* Multi-Class Division Checklist if specific section */}
+                                    {assignScope === 'class' && (
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>
+                                                    Select Class Section(s):
+                                                </label>
+                                                {matchingClasses.length > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                                            {assignClassIds.length} of {matchingClasses.length} selected
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSelectAllClasses}
+                                                            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                                                        >
+                                                            Select All
+                                                        </button>
+                                                        <span style={{ color: 'var(--border)' }}>·</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleClearAllClasses}
+                                                            style={{ background: 'none', border: 'none', color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                                                        >
+                                                            Clear
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {matchingClasses.length === 0 ? (
+                                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+                                                    No class sections found for {form.branch} Sem {form.semester}. Select &quot;All Sections (Shared)&quot; or manage classes in Class Manager.
+                                                </div>
+                                            ) : (
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px' }}>
+                                                    {matchingClasses.map(c => {
+                                                        const isSelected = assignClassIds.includes(c.id);
+                                                        return (
+                                                            <div
+                                                                key={c.id}
+                                                                onClick={() => toggleAssignClass(c.id)}
+                                                                style={{
+                                                                    padding: '10px 12px',
+                                                                    borderRadius: '8px',
+                                                                    border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                                                                    background: isSelected ? 'rgba(23, 75, 77, 0.08)' : 'var(--surface)',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    gap: '8px',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                <div>
+                                                                    <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <span>{c.name}</span>
+                                                                        {c.section && (
+                                                                            <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'var(--primary)', color: '#fff', fontWeight: 800 }}>
+                                                                                Sec {c.section}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                                        {c.student_count ?? 0} Students {c.batch ? `· ${c.batch}` : ''}
+                                                                    </div>
+                                                                </div>
+                                                                <span className="material-icons-round" style={{ fontSize: '20px', color: isSelected ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                                    {isSelected ? 'check_box' : 'check_box_outline_blank'}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            <div style={{
+                                                marginTop: '10px',
+                                                padding: '8px 12px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(23, 75, 77, 0.06)',
+                                                border: '1px solid rgba(23, 75, 77, 0.15)',
+                                                fontSize: '11.5px',
+                                                color: 'var(--tx-main)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
+                                            }}>
+                                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>verified</span>
+                                                <span>
+                                                    Evaluation strictly isolated to students enrolled in the {assignClassIds.length} selected section{assignClassIds.length === 1 ? '' : 's'}.
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Multi-Subject Selector */}
+                                <div style={{ marginBottom: '18px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            {availableSubjectsForForm.length > 0 && (
-                                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)', background: 'rgba(23, 75, 77, 0.08)', padding: '2px 8px', borderRadius: '10px' }}>
-                                                    {availableSubjectsForForm.length} subjects found
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                Subject(s) <span style={{ color: 'var(--red)' }}>*</span>
+                                            </label>
+                                            <span style={{ fontSize: '11px', fontWeight: 800, background: activeSubjectCodes.length > 0 ? 'var(--primary)' : 'var(--surface-low)', color: activeSubjectCodes.length > 0 ? '#fff' : 'var(--tx-muted)', padding: '2px 8px', borderRadius: '10px' }}>
+                                                {activeSubjectCodes.length} selected
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {!manualSubjectMode && (
+                                                <span style={{ fontSize: '11.5px', color: 'var(--tx-dim)', fontWeight: 700 }}>
+                                                    {loadingCatalogSubjects ? 'Loading syllabus...' : `${availableSubjectsForForm.length} courses in catalog`}
                                                 </span>
                                             )}
-                                            {availableSubjectsForForm.length > 0 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setManualSubjectMode(m => !m);
-                                                        setForm(f => ({ ...f, subject_code: '' }));
-                                                    }}
-                                                    style={{
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        color: 'var(--primary)',
-                                                        cursor: 'pointer',
-                                                        fontSize: '11px',
-                                                        fontWeight: 700,
-                                                        textDecoration: 'underline',
-                                                        padding: 0,
-                                                    }}
-                                                >
-                                                    {manualSubjectMode ? '← Choose from catalog' : '+ Enter custom code'}
-                                                </button>
-                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setManualSubjectMode(!manualSubjectMode)}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    color: 'var(--primary)',
+                                                    fontSize: '11.5px',
+                                                    fontWeight: 800,
+                                                    cursor: 'pointer',
+                                                    textDecoration: 'underline'
+                                                }}
+                                            >
+                                                {manualSubjectMode ? '← Select from catalog' : '+ Enter custom code'}
+                                            </button>
                                         </div>
                                     </div>
 
-                                    {!manualSubjectMode && availableSubjectsForForm.length > 0 ? (
-                                        <div>
-                                            <SearchableSelect
-                                                options={availableSubjectsForForm.map(s => ({
-                                                    value: s.subject_code,
-                                                    label: `${s.subject_code} — ${s.subject_name}`,
-                                                    subtitle: `${s.branch} · Sem ${s.semester} · Scheme ${s.scheme} · ${s.credits || 3} credits`,
-                                                    badge: `Sem ${s.semester}`,
-                                                }))}
-                                                value={form.subject_code}
-                                                onChange={e => setForm(f => ({ ...f, subject_code: e.target.value }))}
-                                                placeholder="Select or search a subject from catalog..."
-                                                searchPlaceholder="Search by code, name, sem (e.g. BCS601, Cloud)..."
-                                            />
+                                    {manualSubjectMode ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr)) auto', gap: '8px', alignItems: 'center' }}>
+                                                <input
+                                                    style={s.input}
+                                                    placeholder="Code (e.g. BCS601)"
+                                                    value={assignCustomCode}
+                                                    onChange={e => setAssignCustomCode(e.target.value.toUpperCase())}
+                                                />
+                                                <input
+                                                    style={s.input}
+                                                    placeholder="Subject Name (e.g. Cloud Computing)"
+                                                    value={assignCustomName}
+                                                    onChange={e => setAssignCustomName(e.target.value)}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    style={s.btnSecondary}
+                                                    onClick={handleAddCustomSubject}
+                                                    disabled={!assignCustomCode.trim()}
+                                                >
+                                                    + Add
+                                                </button>
+                                            </div>
 
-                                            {selectedSubjectDetails && (
-                                                <div style={{
-                                                    marginTop: '10px',
-                                                    padding: '12px 16px',
-                                                    background: 'rgba(23, 75, 77, 0.04)',
-                                                    border: '1px solid rgba(23, 75, 77, 0.15)',
-                                                    borderRadius: '10px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    gap: '12px',
-                                                }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                                                        <span style={{
-                                                            background: 'var(--primary)',
-                                                            color: '#FFFFFF',
-                                                            padding: '3px 8px',
-                                                            borderRadius: '6px',
-                                                            fontSize: '12px',
-                                                            fontWeight: 800,
-                                                            fontFamily: 'monospace',
-                                                            letterSpacing: '0.03em',
-                                                            flexShrink: 0,
-                                                        }}>
-                                                            {selectedSubjectDetails.subject_code}
+                                            {customSubjectsList.length > 0 && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '8px', borderRadius: '8px', background: 'var(--surface-low)', border: '1px solid var(--border)' }}>
+                                                    {customSubjectsList.map(cs => (
+                                                        <span
+                                                            key={cs.code}
+                                                            style={{
+                                                                fontSize: '11.5px',
+                                                                fontWeight: 700,
+                                                                padding: '4px 8px',
+                                                                borderRadius: '6px',
+                                                                background: 'var(--surface)',
+                                                                border: '1px solid var(--border)',
+                                                                color: 'var(--tx-main)',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px'
+                                                            }}
+                                                        >
+                                                            <span><strong>{cs.code}</strong> {cs.name}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveCustomSubject(cs.code)}
+                                                                style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                                            </button>
                                                         </span>
-                                                        <div style={{ minWidth: 0 }}>
-                                                            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                {selectedSubjectDetails.subject_name}
-                                                            </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                                {selectedSubjectDetails.scheme || form.scheme} Scheme · Sem {selectedSubjectDetails.semester || form.semester} · {selectedSubjectDetails.branch || form.branch}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div style={{
-                                                        background: '#FFFFFF',
-                                                        border: '1px solid var(--border)',
-                                                        borderRadius: '6px',
-                                                        padding: '4px 8px',
-                                                        fontSize: '11px',
-                                                        fontWeight: 800,
-                                                        color: 'var(--primary)',
-                                                        whiteSpace: 'nowrap',
-                                                        flexShrink: 0,
-                                                    }}>
-                                                        {selectedSubjectDetails.credits || 3} Credits
-                                                    </div>
+                                                    ))}
                                                 </div>
                                             )}
                                         </div>
                                     ) : (
-                                        <div>
-                                            <input
-                                                style={{ ...s.input, width: '100%' }}
-                                                type="text"
-                                                placeholder="Enter subject code manually (e.g. BCS301)"
-                                                value={form.subject_code}
-                                                onChange={e => setForm(f => ({ ...f, subject_code: e.target.value.toUpperCase() }))}
-                                                required
-                                            />
-                                            {availableSubjectsForForm.length === 0 && (
-                                                <p style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '6px', margin: '6px 0 0' }}>
-                                                    No pre-cataloged subjects for {form.branch} Sem {form.semester} ({form.scheme} Scheme). Enter the official VTU subject code manually.
-                                                </p>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Search & Bulk Select Controls */}
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <div style={{ position: 'relative', flex: 1 }}>
+                                                    <span className="material-icons-round" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: 'var(--tx-dim)' }}>
+                                                        search
+                                                    </span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search syllabus subjects (e.g. BCS601, Cloud)..."
+                                                        value={assignSubjectSearch}
+                                                        onChange={e => setAssignSubjectSearch(e.target.value)}
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '7px 10px 7px 32px',
+                                                            borderRadius: '8px',
+                                                            border: '1px solid var(--border)',
+                                                            background: 'var(--surface)',
+                                                            fontSize: '12px',
+                                                            color: 'var(--tx-main)',
+                                                            outline: 'none',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                    />
+                                                </div>
+                                                {filteredCatalogSubjects.length > 0 && (
+                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSelectAllSubjects}
+                                                            style={{
+                                                                padding: '6px 12px',
+                                                                borderRadius: '8px',
+                                                                border: '1px solid var(--border)',
+                                                                background: 'var(--surface-low)',
+                                                                color: 'var(--tx-main)',
+                                                                fontSize: '11px',
+                                                                fontWeight: 700,
+                                                                cursor: 'pointer',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            Select All
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleClearAllSubjects}
+                                                            style={{
+                                                                padding: '6px 10px',
+                                                                borderRadius: '8px',
+                                                                border: '1px solid var(--border)',
+                                                                background: 'transparent',
+                                                                color: 'var(--tx-dim)',
+                                                                fontSize: '11px',
+                                                                fontWeight: 700,
+                                                                cursor: 'pointer',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            Clear
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Selected Subjects Chips Preview */}
+                                            {assignSubjectCodes.length > 0 && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '6px 10px', borderRadius: '8px', background: 'var(--surface-low)', border: '1px solid var(--border)', maxHeight: '70px', overflowY: 'auto' }}>
+                                                    {assignSubjectCodes.map(code => {
+                                                        const subObj = availableSubjectsForForm.find(s => (s.subject_code || s.code) === code);
+                                                        return (
+                                                            <span
+                                                                key={code}
+                                                                style={{
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 700,
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: 'rgba(23, 75, 77, 0.1)',
+                                                                    border: '1px solid rgba(23, 75, 77, 0.25)',
+                                                                    color: 'var(--primary)',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}
+                                                            >
+                                                                <span><strong>{code}</strong> {subObj?.subject_name ? `· ${subObj.subject_name.slice(0, 18)}...` : ''}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleAssignSubject(code)}
+                                                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, display: 'flex' }}
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                                                </button>
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
                                             )}
+
+                                            {/* Scrollable Course Checklist */}
+                                            <div style={{
+                                                maxHeight: '190px',
+                                                overflowY: 'auto',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface)',
+                                                display: 'flex',
+                                                flexDirection: 'column'
+                                            }}>
+                                                {loadingCatalogSubjects ? (
+                                                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                                        Loading syllabus courses...
+                                                    </div>
+                                                ) : filteredCatalogSubjects.length === 0 ? (
+                                                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                                        {availableSubjectsForForm.length === 0
+                                                            ? 'No subjects found in catalog for this branch/semester. Click "+ Enter custom code" above.'
+                                                            : 'No courses match your search query.'}
+                                                    </div>
+                                                ) : (
+                                                    filteredCatalogSubjects.map(s => {
+                                                        const code = (s.subject_code || s.code || '').toUpperCase().trim();
+                                                        const name = s.subject_name || s.name;
+                                                        const credits = s.credits;
+                                                        const isSelected = assignSubjectCodes.includes(code);
+
+                                                        return (
+                                                            <div
+                                                                key={code}
+                                                                onClick={() => toggleAssignSubject(code)}
+                                                                style={{
+                                                                    padding: '8px 12px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    gap: '10px',
+                                                                    borderBottom: '1px solid var(--border)',
+                                                                    background: isSelected ? 'rgba(23, 75, 77, 0.06)' : 'transparent',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'background 0.15s ease'
+                                                                }}
+                                                            >
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                                                    <span className="material-icons-round" style={{ fontSize: '18px', color: isSelected ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                                        {isSelected ? 'check_box' : 'check_box_outline_blank'}
+                                                                    </span>
+                                                                    <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: isSelected ? 'var(--primary)' : 'var(--surface-low)', color: isSelected ? '#fff' : 'var(--tx-main)', letterSpacing: '0.03em' }}>
+                                                                        {code}
+                                                                    </span>
+                                                                    <span style={{ fontSize: '12px', color: 'var(--tx-main)', fontWeight: isSelected ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                        {name}
+                                                                    </span>
+                                                                </div>
+                                                                {credits != null && (
+                                                                    <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600, flexShrink: 0 }}>
+                                                                        {credits} Cr
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
                                         </div>
+                                    )}
+                                </div>
+
+                                {/* Real-time Assignment Calculation Summary Card */}
+                                <div style={{
+                                    padding: '12px 16px',
+                                    borderRadius: '10px',
+                                    background: totalAssignmentsCount > 0 ? 'rgba(23, 75, 77, 0.08)' : 'var(--surface-low)',
+                                    border: totalAssignmentsCount > 0 ? '1.5px solid rgba(23, 75, 77, 0.3)' : '1px dashed var(--border)',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    transition: 'all 0.2s ease',
+                                    marginBottom: '4px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            background: totalAssignmentsCount > 0 ? 'var(--primary)' : 'var(--surface)',
+                                            color: totalAssignmentsCount > 0 ? '#FFFFFF' : 'var(--tx-dim)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                                                {totalAssignmentsCount > 0 ? 'playlist_add_check' : 'info_outline'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
+                                                {totalAssignmentsCount > 0
+                                                    ? `${totalAssignmentsCount} Total Assignment${totalAssignmentsCount > 1 ? 's' : ''} to create`
+                                                    : 'Select at least 1 subject and 1 class section'}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                {assignScope === 'shared'
+                                                    ? `${activeSubjectCodes.length} subject(s) across All Sections (Shared)`
+                                                    : `${activeSubjectCodes.length} subject(s) × ${assignClassIds.length} class section(s)`}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {totalAssignmentsCount > 0 && (
+                                        <span style={{
+                                            fontSize: '12px',
+                                            fontWeight: 900,
+                                            background: 'var(--primary)',
+                                            color: '#fff',
+                                            padding: '4px 12px',
+                                            borderRadius: '12px'
+                                        }}>
+                                            {totalAssignmentsCount}
+                                        </span>
                                     )}
                                 </div>
                             </form>
@@ -1201,8 +1681,12 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                             <button
                                 type="submit"
                                 form="faculty-assignment-form"
-                                style={s.btnPrimary}
-                                disabled={submitting}
+                                style={{
+                                    ...s.btnPrimary,
+                                    opacity: totalAssignmentsCount === 0 ? 0.6 : 1,
+                                    cursor: totalAssignmentsCount === 0 ? 'not-allowed' : 'pointer'
+                                }}
+                                disabled={submitting || totalAssignmentsCount === 0}
                             >
                                 {submitting ? (
                                     <>
@@ -1212,7 +1696,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                 ) : (
                                     <>
                                         <span className="material-icons-round" style={{ fontSize: '16px' }}>check</span>
-                                        Confirm Assignment
+                                        Confirm {totalAssignmentsCount > 1 ? `${totalAssignmentsCount} Assignments` : 'Assignment'}
                                     </>
                                 )}
                             </button>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../lib/server-session';
-import { getGradePoint, getGradeDetails, isFailedSubject } from '../../../lib/vtuGrades';
+import { getGradePoint, getGradeDetails, isFailedSubject, getSubjectsFor } from '../../../lib/vtuGrades';
 import { fetchCatalogIndex, resolveSubjectCredit, invalidateCatalogCache } from '../../../lib/subjectCreditResolver';
 import { isAuditCourse, normalizeBranch as normalizeBranchCode } from '../../../lib/vtuAcademicEngine';
 import { getAdminClient } from '../../../lib/analytics-data';
@@ -68,10 +68,12 @@ export async function GET(req) {
             return NextResponse.json({ success: false, subjects: [], error: 'Syllabus not found' });
         }
 
-        const subjects = (data || []).map(s => ({
+        let subjects = (data || []).map(s => ({
             id: s.id,
             code: s.subject_code,
             name: s.subject_name,
+            subject_code: s.subject_code,
+            subject_name: s.subject_name,
             credits: s.credits,
             semester: s.semester,
             scheme: s.scheme,
@@ -88,7 +90,7 @@ export async function GET(req) {
                     .limit(250);
 
                 if (realMarks && realMarks.length > 0) {
-                    const existingCodes = new Set(subjects.map(s => (s.code || '').toUpperCase().trim()));
+                    const existingCodes = new Set(subjects.map(s => (s.code || s.subject_code || '').toUpperCase().trim()));
                     realMarks.forEach(rm => {
                         const code = (rm.subject_code || '').trim().toUpperCase();
                         if (code && !existingCodes.has(code)) {
@@ -97,6 +99,8 @@ export async function GET(req) {
                                 id: `mark_${code}`,
                                 code,
                                 name: rm.subject_name || code,
+                                subject_code: code,
+                                subject_name: rm.subject_name || code,
                                 credits: rm.credits || 3,
                                 semester: parseInt(semester),
                                 scheme: reqScheme || '2022',
@@ -104,10 +108,34 @@ export async function GET(req) {
                             });
                         }
                     });
-                    subjects.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+                    subjects.sort((a, b) => (a.code || a.subject_code || '').localeCompare(b.code || b.subject_code || ''));
                 }
             } catch (e) {
                 console.warn('[GET /api/subjects] Real marks enrichment skipped:', e?.message);
+            }
+        }
+
+        // Fallback to official VTU syllabus catalog if DB has no records for this branch/sem
+        if (subjects.length === 0 && semester && semester !== 'all') {
+            try {
+                const officialList = getSubjectsFor(branch, semester, reqScheme || '2022') || [];
+                if (officialList.length > 0) {
+                    officialList.forEach(item => {
+                        subjects.push({
+                            id: `vtu_${item.code}`,
+                            code: item.code,
+                            name: item.name,
+                            subject_code: item.code,
+                            subject_name: item.name,
+                            credits: item.credits || 3,
+                            semester: parseInt(semester),
+                            scheme: reqScheme || '2022',
+                            branch
+                        });
+                    });
+                }
+            } catch (catalogErr) {
+                console.warn('[GET /api/subjects] Official catalog fallback error:', catalogErr);
             }
         }
 
