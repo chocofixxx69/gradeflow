@@ -161,6 +161,8 @@ function AdminPanelContent() {
         phone: '',
     });
     const [editingFaculty, setEditingFaculty] = useState(null);
+    const [editFacultyCustomDept, setEditFacultyCustomDept] = useState(false);
+    const [addFacultyCustomDept, setAddFacultyCustomDept] = useState(false);
     const [createdFacultyResult, setCreatedFacultyResult] = useState(null);
     const [confirmingSuspendFaculty, setConfirmingSuspendFaculty] = useState(null);
     const [facultySuspendReason, setFacultySuspendReason] = useState('');
@@ -1203,11 +1205,34 @@ function AdminPanelContent() {
     }, [baseScopedStudents, studentStatusFilter, sortField, sortDirection, search]);
 
     // ── Faculty Scope & Filtering ────────────────────────────
+    const ALL_ADMIN_DEPARTMENTS = useMemo(() => [
+        'Computer Science & Engineering',
+        'Computer Science & Engineering (Data Science)',
+        'AI & Machine Learning',
+        'Information Science & Engineering',
+        'Electronics & Communication Engineering',
+        'Electrical & Electronics Engineering',
+        'Mechanical Engineering',
+        'Civil Engineering',
+        'Robotics & Artificial Intelligence',
+        'Master of Computer Applications (MCA)',
+        'Master of Business Administration (MBA)',
+        'Basic Science & Humanities'
+    ], []);
+
     const availableFacultyDepts = useMemo(() => {
         return Array.from(
             new Set(requests.map(r => (r.department || '').trim()).filter(Boolean))
         ).sort();
     }, [requests]);
+
+    const departmentOptions = useMemo(() => {
+        const set = new Set(ALL_ADMIN_DEPARTMENTS);
+        (availableFacultyDepts || []).forEach(d => {
+            if (d && d.trim()) set.add(d.trim());
+        });
+        return Array.from(set);
+    }, [ALL_ADMIN_DEPARTMENTS, availableFacultyDepts]);
 
     const baseScopedFaculty = useMemo(() => {
         let list = requests;
@@ -4267,8 +4292,69 @@ function AdminPanelContent() {
                         
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                             <div>
-                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Department</label>
-                                <input style={c.input} placeholder="e.g. Computer Science" value={newFaculty.department} onChange={e => setNewFaculty(p => ({ ...p, department: e.target.value }))} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Department</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddFacultyCustomDept(p => !p)}
+                                        style={{
+                                            background: 'none', border: 'none', padding: 0, color: 'var(--primary)',
+                                            fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>
+                                            {addFacultyCustomDept ? 'list' : 'edit_note'}
+                                        </span>
+                                        {addFacultyCustomDept ? 'Select list' : 'Write custom'}
+                                    </button>
+                                </div>
+                                {addFacultyCustomDept ? (
+                                    <div>
+                                        <input
+                                            style={c.input}
+                                            placeholder="e.g. Computer Science"
+                                            value={newFaculty.department}
+                                            onChange={e => setNewFaculty(p => ({ ...p, department: e.target.value }))}
+                                            list="admin-new-faculty-dept-datalist"
+                                            autoFocus
+                                        />
+                                        <datalist id="admin-new-faculty-dept-datalist">
+                                            {departmentOptions.map(d => <option key={d} value={d} />)}
+                                        </datalist>
+                                    </div>
+                                ) : (
+                                    <select
+                                        style={{
+                                            ...c.input,
+                                            cursor: 'pointer',
+                                            appearance: 'none',
+                                            WebkitAppearance: 'none',
+                                            paddingRight: '36px',
+                                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23586C6D' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                                            backgroundRepeat: 'no-repeat',
+                                            backgroundPosition: 'calc(100% - 12px) center',
+                                            backgroundSize: '15px 15px'
+                                        }}
+                                        value={newFaculty.department}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val === '__CUSTOM__') {
+                                                setAddFacultyCustomDept(true);
+                                            } else {
+                                                setNewFaculty(p => ({ ...p, department: val }));
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Select Department...</option>
+                                        {departmentOptions.map(d => (
+                                            <option key={d} value={d}>{d}</option>
+                                        ))}
+                                        {newFaculty.department && !departmentOptions.includes(newFaculty.department) && (
+                                            <option value={newFaculty.department}>{newFaculty.department}</option>
+                                        )}
+                                        <option value="__CUSTOM__">✍️ Other / Write custom department...</option>
+                                    </select>
+                                )}
                             </div>
                             <div>
                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Designation</label>
@@ -4313,8 +4399,72 @@ function AdminPanelContent() {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                             <div>
-                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Department</label>
-                                <input style={c.input} value={editingFaculty.department || ''} onChange={e => setEditingFaculty(p => ({ ...p, department: e.target.value }))} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Department</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditFacultyCustomDept(p => !p)}
+                                        style={{
+                                            background: 'none', border: 'none', padding: 0, color: 'var(--primary)',
+                                            fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>
+                                            {editFacultyCustomDept ? 'list' : 'edit_note'}
+                                        </span>
+                                        {editFacultyCustomDept ? 'Select list' : 'Write custom'}
+                                    </button>
+                                </div>
+                                {editFacultyCustomDept ? (
+                                    <div>
+                                        <input
+                                            style={c.input}
+                                            value={editingFaculty.department || ''}
+                                            onChange={e => setEditingFaculty(p => ({ ...p, department: e.target.value }))}
+                                            list="admin-edit-faculty-dept-datalist"
+                                            placeholder="e.g. Computer Science & Engineering"
+                                            autoFocus
+                                        />
+                                        <datalist id="admin-edit-faculty-dept-datalist">
+                                            {departmentOptions.map(d => <option key={d} value={d} />)}
+                                        </datalist>
+                                    </div>
+                                ) : (
+                                    <select
+                                        style={{
+                                            ...c.input,
+                                            cursor: 'pointer',
+                                            appearance: 'none',
+                                            WebkitAppearance: 'none',
+                                            paddingRight: '36px',
+                                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23586C6D' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                                            backgroundRepeat: 'no-repeat',
+                                            backgroundPosition: 'calc(100% - 12px) center',
+                                            backgroundSize: '15px 15px'
+                                        }}
+                                        value={
+                                            departmentOptions.find(d => d.toLowerCase() === (editingFaculty.department || '').trim().toLowerCase()) ||
+                                            (editingFaculty.department || '')
+                                        }
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val === '__CUSTOM__') {
+                                                setEditFacultyCustomDept(true);
+                                            } else {
+                                                setEditingFaculty(p => ({ ...p, department: val }));
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Select Department...</option>
+                                        {departmentOptions.map(d => (
+                                            <option key={d} value={d}>{d}</option>
+                                        ))}
+                                        {editingFaculty.department && !departmentOptions.some(d => d.toLowerCase() === (editingFaculty.department || '').trim().toLowerCase()) && (
+                                            <option value={editingFaculty.department}>{editingFaculty.department}</option>
+                                        )}
+                                        <option value="__CUSTOM__">✍️ Other / Write custom department...</option>
+                                    </select>
+                                )}
                             </div>
                             <div>
                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Designation</label>
