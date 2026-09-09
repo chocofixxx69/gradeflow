@@ -173,9 +173,9 @@ function SubjectAnalyticsContent() {
     }, [availableSubjects, subjectCode]);
 
     // 2. Fetch subject analytics
-    const loadSubjectData = useCallback(async () => {
+    const loadSubjectData = useCallback(async (silent = false) => {
         if (!subjectCode) return null;
-        setLoading(true);
+        if (!silent) setLoading(true);
         try {
             const query = { subjectCode, branch, semester, _t: Date.now() };
             if (batch) query.batch = batch;
@@ -188,17 +188,26 @@ function SubjectAnalyticsContent() {
             console.error('Subject analytics error:', err);
             return null;
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [subjectCode, branch, semester, batch]);
 
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshBanner, setRefreshBanner] = useState(null);
     const handleRefresh = async () => {
+        setIsRefreshing(true);
         clearApiCache();
-        let newlyDiscoveredSems = [];
-        let newlyDiscoveredSubjects = [];
         try {
-            const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
+            const prevAppeared = analytics?.kpis?.appeared || 0;
+
+            const metaPromise = apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } })
+                .catch(e => { console.warn('Meta refresh note:', e); return null; });
+            const dataPromise = loadSubjectData(true);
+
+            const [freshMeta, res] = await Promise.all([metaPromise, dataPromise]);
+
+            let newlyDiscoveredSems = [];
+            let newlyDiscoveredSubjects = [];
             if (freshMeta) {
                 const prevSems = new Set(meta?.semesters || []);
                 newlyDiscoveredSems = (freshMeta.semesters || []).filter(s => !prevSems.has(s));
@@ -206,31 +215,29 @@ function SubjectAnalyticsContent() {
                 newlyDiscoveredSubjects = (freshMeta.subjects || []).filter(s => s.code && !prevSubjCodes.has(s.code));
                 setMeta(freshMeta);
             }
-        } catch (e) {
-            console.warn('Meta refresh note:', e);
-        }
 
-        const prevAppeared = analytics?.kpis?.appeared || 0;
-        const res = await loadSubjectData();
-        const newAppeared = res?.kpis?.appeared || 0;
-        const diff = newAppeared - prevAppeared;
+            const newAppeared = res?.kpis?.appeared || 0;
+            const diff = newAppeared - prevAppeared;
 
-        if (diff > 0 || newlyDiscoveredSems.length > 0 || newlyDiscoveredSubjects.length > 0) {
-            const parts = [];
-            if (diff > 0) parts.push(`+${diff} student mark entries`);
-            if (newlyDiscoveredSems.length > 0) parts.push(`Sem ${newlyDiscoveredSems.join(', ')} available`);
-            if (newlyDiscoveredSubjects.length > 0) parts.push(`+${newlyDiscoveredSubjects.length} subjects found`);
-            setRefreshBanner({
-                type: 'new',
-                text: `✓ New subject examination data detected: ${parts.join(' · ')} synced dynamically!`
-            });
-        } else {
-            setRefreshBanner({
-                type: 'current',
-                text: `✓ Live sync verified: All ${newAppeared} student outcomes for this subject are up to date.`
-            });
+            if (diff > 0 || newlyDiscoveredSems.length > 0 || newlyDiscoveredSubjects.length > 0) {
+                const parts = [];
+                if (diff > 0) parts.push(`+${diff} student mark entries`);
+                if (newlyDiscoveredSems.length > 0) parts.push(`Sem ${newlyDiscoveredSems.join(', ')} available`);
+                if (newlyDiscoveredSubjects.length > 0) parts.push(`+${newlyDiscoveredSubjects.length} subjects found`);
+                setRefreshBanner({
+                    type: 'new',
+                    text: `✓ New subject examination data detected: ${parts.join(' · ')} synced dynamically!`
+                });
+            } else {
+                setRefreshBanner({
+                    type: 'current',
+                    text: `✓ Live sync verified: All ${newAppeared} student outcomes for this subject are up to date.`
+                });
+            }
+            setTimeout(() => setRefreshBanner(null), 5000);
+        } finally {
+            setIsRefreshing(false);
         }
-        setTimeout(() => setRefreshBanner(null), 5000);
     };
 
     useEffect(() => {
@@ -427,9 +434,9 @@ function SubjectAnalyticsContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={handleRefresh} variant="primary" disabled={loading}>
-                        <span className={`material-icons-round ${loading ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
-                        {loading ? 'Refreshing...' : 'Refresh Data'}
+                    <Button onClick={handleRefresh} variant="primary" disabled={loading || isRefreshing}>
+                        <span className={`material-icons-round ${(loading || isRefreshing) ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
+                        {(loading || isRefreshing) ? 'Refreshing...' : 'Refresh Data'}
                     </Button>
                 </div>
             </div>

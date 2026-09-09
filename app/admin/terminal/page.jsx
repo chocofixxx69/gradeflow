@@ -426,7 +426,7 @@ function AdminPanelContent() {
     };
 
     const loadData = useCallback(async (isManual = false) => {
-        setLoading(true);
+        if (!isManual) setLoading(true);
         setLoadError('');
         const prevStudents = students.length;
         const prevMarks = stats.totalMarks;

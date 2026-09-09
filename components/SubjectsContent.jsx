@@ -61,10 +61,12 @@ export function SubjectsContent() {
   }, [fetchBranches]);
 
   const [refreshBanner, setRefreshBanner] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchSubjects = useCallback(async (isManual = false) => {
     if (!branch) return;
-    setLoading(true);
+    if (isManual) setIsRefreshing(true);
+    else setLoading(true);
     setError('');
     const prevCount = subjects.length;
     try {
@@ -100,6 +102,7 @@ export function SubjectsContent() {
       console.error('Subjects fetch error:', err);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, [scheme, branch, subjects.length]);
 
@@ -396,7 +399,7 @@ export function SubjectsContent() {
           <Button
             onClick={() => { fetchBranches(); fetchSubjects(true); }}
             variant="ghost"
-            disabled={loading}
+            disabled={loading || isRefreshing}
             title="Refresh subjects and branches from database"
           >
             <span
@@ -404,12 +407,12 @@ export function SubjectsContent() {
               style={{
                 fontSize: '17px',
                 marginRight: 'var(--space-2)',
-                animation: loading ? 'spin 1s linear infinite' : 'none'
+                animation: (loading || isRefreshing) ? 'spin 1s linear infinite' : 'none'
               }}
             >
               refresh
             </span>
-            {loading ? 'Refreshing...' : 'Refresh'}
+            {(loading || isRefreshing) ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button onClick={() => setShowBranchForm(true)} variant="ghost">
             <span className="material-icons-round" style={{ fontSize: '17px', marginRight: 'var(--space-2)' }}>account_tree</span>

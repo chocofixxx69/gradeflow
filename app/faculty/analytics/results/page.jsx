@@ -157,9 +157,9 @@ function ExamResultsHubContent() {
     }, []);
 
     // 2. Fetch Semester Analysis Data
-    const loadSemesterData = useCallback(async () => {
+    const loadSemesterData = useCallback(async (silent = false) => {
         if (!branch || !semester || !batch) return null;
-        setSemLoading(true);
+        if (!silent) setSemLoading(true);
         try {
             const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/semester-analysis', { query });
@@ -169,14 +169,14 @@ function ExamResultsHubContent() {
             console.error('Failed to load semester data:', err);
             return null;
         } finally {
-            setSemLoading(false);
+            if (!silent) setSemLoading(false);
         }
     }, [branch, semester, batch, section]);
 
     // 3. Fetch Batch Trajectory Data
-    const loadBatchTrajectory = useCallback(async () => {
+    const loadBatchTrajectory = useCallback(async (silent = false) => {
         if (!branch || !batch) return null;
-        setBatchLoading(true);
+        if (!silent) setBatchLoading(true);
         try {
             const query = { branch, batch, upToSemester, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/batch-report', { query });
@@ -186,14 +186,14 @@ function ExamResultsHubContent() {
             console.error('Failed to load batch report:', err);
             return null;
         } finally {
-            setBatchLoading(false);
+            if (!silent) setBatchLoading(false);
         }
     }, [branch, batch, upToSemester, section]);
 
     // 4. Fetch Reval Impact Data
-    const loadRevalData = useCallback(async () => {
+    const loadRevalData = useCallback(async (silent = false) => {
         if (!branch) return null;
-        setRevalLoading(true);
+        if (!silent) setRevalLoading(true);
         try {
             const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined, t: Date.now() };
             const res = await apiRequest('/api/faculty/analytics/reval-impact', { query });
@@ -203,7 +203,7 @@ function ExamResultsHubContent() {
             console.error('Failed to load reval data:', err);
             return null;
         } finally {
-            setRevalLoading(false);
+            if (!silent) setRevalLoading(false);
         }
     }, [branch, semester, batch, section]);
 
@@ -259,18 +259,6 @@ function ExamResultsHubContent() {
         try {
             let discoveredNewSem = false;
             let newlyFoundSems = [];
-            // Reload metadata with fresh=1 to dynamically discover any newly scraped semesters, batches, or classes
-            try {
-                const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
-                if (freshMeta) {
-                    const prevSems = new Set(meta?.semesters || []);
-                    newlyFoundSems = (freshMeta.semesters || []).filter(s => !prevSems.has(s));
-                    if (newlyFoundSems.length > 0) discoveredNewSem = true;
-                    setMeta(freshMeta);
-                }
-            } catch (err) {
-                console.warn('Metadata refresh notice:', err);
-            }
 
             const prevStudentCount = viewTab === 'semester'
                 ? (semData.students || []).length
@@ -278,17 +266,30 @@ function ExamResultsHubContent() {
                     ? (batchData.students || []).length
                     : (revalData.deltaRoster || []).length;
 
-            let newStudentCount = 0;
-            if (viewTab === 'semester') {
-                const res = await loadSemesterData();
-                newStudentCount = (res?.students || []).length;
-            } else if (viewTab === 'batch') {
-                const res = await loadBatchTrajectory();
-                newStudentCount = (res?.students || []).length;
-            } else {
-                const res = await loadRevalData();
-                newStudentCount = (res?.deltaRoster || []).length;
+            // Execute metadata check and data fetch in parallel for instant, zero-delay refresh
+            const metaPromise = apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } })
+                .catch(err => { console.warn('Metadata refresh notice:', err); return null; });
+
+            const dataPromise = viewTab === 'semester'
+                ? loadSemesterData(true)
+                : viewTab === 'batch'
+                    ? loadBatchTrajectory(true)
+                    : loadRevalData(true);
+
+            const [freshMeta, res] = await Promise.all([metaPromise, dataPromise]);
+
+            if (freshMeta) {
+                const prevSems = new Set(meta?.semesters || []);
+                newlyFoundSems = (freshMeta.semesters || []).filter(s => !prevSems.has(s));
+                if (newlyFoundSems.length > 0) discoveredNewSem = true;
+                setMeta(freshMeta);
             }
+
+            const newStudentCount = viewTab === 'semester'
+                ? (res?.students || []).length
+                : viewTab === 'batch'
+                    ? (res?.students || []).length
+                    : (res?.deltaRoster || []).length;
 
             const diff = newStudentCount - prevStudentCount;
             if (diff > 0 || discoveredNewSem) {

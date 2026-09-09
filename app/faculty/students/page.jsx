@@ -130,16 +130,11 @@ function StudentsDirectoryContent() {
     }, [meta.classes, meta.sections]);
 
     // 2. Fetch paginated students with strict sequencing & cancellation
-    const loadStudents = useCallback(async () => {
-        // Abort previous in-flight fetch
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
+    const loadStudents = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
+        const currentReqId = ++activeRequestIdRef.current;
         const controller = new AbortController();
         abortControllerRef.current = controller;
-
-        const currentReqId = ++activeRequestIdRef.current;
-        setLoading(true);
 
         try {
             const query = { page, limit };
@@ -172,30 +167,33 @@ function StudentsDirectoryContent() {
             }
             return null;
         } finally {
-            if (currentReqId === activeRequestIdRef.current) {
+            if (currentReqId === activeRequestIdRef.current && !silent) {
                 setLoading(false);
             }
         }
     }, [page, limit, branch, semester, batch, section, status, backlogsFilter, debouncedSearch]);
 
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshBanner, setRefreshBanner] = useState(null);
     const handleRefresh = async () => {
+        setIsRefreshing(true);
         clearApiCache();
         try {
+            const prevTotal = pagination.total || students.length;
+
+            const metaPromise = apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } })
+                .catch(e => { console.warn('Metadata refresh note:', e); return null; });
+            const dataPromise = loadStudents(true);
+
+            const [freshMeta, res] = await Promise.all([metaPromise, dataPromise]);
+
             let newlyFoundBatches = [];
-            try {
-                const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
-                if (freshMeta) {
-                    const prevBatches = new Set(meta?.batches || []);
-                    newlyFoundBatches = (freshMeta.batches || []).filter(b => !prevBatches.has(b));
-                    setMeta(freshMeta);
-                }
-            } catch (e) {
-                console.warn('Metadata refresh note:', e);
+            if (freshMeta) {
+                const prevBatches = new Set(meta?.batches || []);
+                newlyFoundBatches = (freshMeta.batches || []).filter(b => !prevBatches.has(b));
+                setMeta(freshMeta);
             }
 
-            const prevTotal = pagination.total || students.length;
-            const res = await loadStudents();
             const newTotal = res?.pagination?.total ?? (res?.students?.length || prevTotal);
             const diff = newTotal - prevTotal;
 
@@ -216,6 +214,8 @@ function StudentsDirectoryContent() {
             setTimeout(() => setRefreshBanner(null), 5000);
         } catch (e) {
             console.error('Refresh students error:', e);
+        } finally {
+            setIsRefreshing(false);
         }
     };
 
@@ -309,9 +309,9 @@ function StudentsDirectoryContent() {
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
                         Export PDF
                     </Button>
-                    <Button onClick={handleRefresh} variant="primary" disabled={loading}>
-                        <span className={`material-icons-round ${loading ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
-                        {loading ? 'Refreshing...' : 'Refresh'}
+                    <Button onClick={handleRefresh} variant="primary" disabled={loading || isRefreshing}>
+                        <span className={`material-icons-round ${(loading || isRefreshing) ? 'gf-spin' : ''}`} style={{ fontSize: '18px', marginRight: '6px' }}>sync</span>
+                        {(loading || isRefreshing) ? 'Refreshing...' : 'Refresh'}
                     </Button>
                 </div>
             </div>

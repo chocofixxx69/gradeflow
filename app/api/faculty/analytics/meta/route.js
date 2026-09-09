@@ -55,37 +55,36 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch classes, catalog, branches, and students in parallel
+        // 1. High-Performance Parallel Fetch: classes, catalog, branches, students, and recent marks simultaneously
         const [
             { data: rawClasses },
-            catalogSubjects,
+            cat1, cat2, cat3,
             { data: metaBranches },
-            rawStudents,
-            { count: totalMarksCount }
+            { data: rawStudents },
+            marks1, marks2, marks3
         ] = await Promise.all([
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
-            fetchAllPaginated('subject_catalog', 'subject_code, subject_name, semester, branch, scheme, credits', supabaseAdmin),
+            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(0, 999),
+            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(1000, 1999),
+            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(2000, 2999),
             supabaseAdmin.from('branches').select('code, label, is_active, sort_order').order('sort_order', { ascending: true }),
-            fetchDynamicStudents(supabaseAdmin, { select: 'branch, year, usn, lateral_entry, name, semester' }),
-            supabaseAdmin.from('subject_marks').select('*', { count: 'exact', head: true })
+            supabaseAdmin.from('students').select('branch, year, usn, lateral_entry, name, semester'),
+            supabaseAdmin.from('subject_marks').select('subject_code, subject_name, semester, credits, usn').order('id', { ascending: false }).range(0, 999),
+            supabaseAdmin.from('subject_marks').select('subject_code, subject_name, semester, credits, usn').order('id', { ascending: false }).range(1000, 1999),
+            supabaseAdmin.from('subject_marks').select('subject_code, subject_name, semester, credits, usn').order('id', { ascending: false }).range(2000, 2999)
         ]);
 
-        // 2. Fetch all real marks using fast parallel chunking
-        const pageSize = 1000;
-        const totalPages = Math.ceil((totalMarksCount || 0) / pageSize);
-        const marksPromises = [];
-        for (let p = 0; p < totalPages; p++) {
-            marksPromises.push(
-                supabaseAdmin
-                    .from('subject_marks')
-                    .select('subject_code, subject_name, semester, credits, usn')
-                    .order('id')
-                    .range(p * pageSize, (p + 1) * pageSize - 1)
-                    .then(res => res.data || [])
-            );
-        }
-        const marksChunks = await Promise.all(marksPromises);
-        const marksSubjects = marksChunks.flat();
+        const catalogSubjects = [
+            ...(cat1?.data || []),
+            ...(cat2?.data || []),
+            ...(cat3?.data || [])
+        ];
+
+        const marksSubjects = [
+            ...(marks1?.data || []),
+            ...(marks2?.data || []),
+            ...(marks3?.data || [])
+        ];
 
         // Map students for quick lookup
         const studentMap = new Map();

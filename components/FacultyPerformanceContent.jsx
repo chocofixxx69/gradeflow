@@ -102,22 +102,20 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
             setLoading(true);
         }
         try {
-            // If manual refresh, re-fetch metadata with fresh=1 to dynamically discover any new semesters or classes
-            if (isManual) {
-                try {
-                    const freshMeta = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
-                    if (freshMeta) setMeta(freshMeta);
-                } catch (e) {
-                    console.warn('Meta refresh note:', e);
-                }
-            }
-
             const query = { _t: Date.now() };
             if (branch) query.branch = branch;
             if (semester && semester !== 'all') query.semester = semester;
             if (classFilter && classFilter !== 'all') query.classId = classFilter;
 
-            const res = await apiRequest('/api/faculty/analytics/faculty-performance', { query });
+            // Fetch metadata and faculty performance in parallel for instant, zero-delay refresh
+            const metaPromise = isManual
+                ? apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } }).catch(e => { console.warn('Meta refresh note:', e); return null; })
+                : Promise.resolve(null);
+            const perfPromise = apiRequest('/api/faculty/analytics/faculty-performance', { query });
+
+            const [freshMeta, res] = await Promise.all([metaPromise, perfPromise]);
+            if (freshMeta) setMeta(freshMeta);
+
             if (res) {
                 const newFaculty = res.faculty || [];
                 const prevFacultyCount = facultyList.length;
@@ -159,7 +157,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                 setTimeout(() => setRefreshStatus(null), 5000);
             }
         } finally {
-            setLoading(false);
+            if (!isManual) setLoading(false);
             setRefreshing(false);
         }
     }, [branch, semester, classFilter, facultyList]);

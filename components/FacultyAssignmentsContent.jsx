@@ -93,6 +93,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
     // Delete state
     const [confirmingDelete, setConfirmingDelete] = useState(null);
     const [deleting, setDeleting] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Sync preselected faculty if passed
     useEffect(() => {
@@ -104,6 +105,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
 
     const fetchData = useCallback(async (isSilent = false, isManual = false) => {
         const silent = typeof isSilent === 'boolean' ? isSilent : false;
+        if (isManual) setIsRefreshing(true);
         if (!silent) setLoading(true);
         setError('');
         try {
@@ -152,6 +154,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
             if (!silent) setError(err.message || 'Failed to load faculty assignments.');
         } finally {
             if (!silent) setLoading(false);
+            setIsRefreshing(false);
         }
     }, [assignments.length]);
 
@@ -550,8 +553,8 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
                         style={s.btnSecondary}
-                        onClick={() => fetchData(false, true)}
-                        disabled={loading}
+                        onClick={() => fetchData(true, true)}
+                        disabled={loading || isRefreshing}
                         title="Refresh faculty assignments"
                     >
                         <span
@@ -559,12 +562,12 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                             style={{
                                 fontSize: '16px',
                                 color: 'var(--primary)',
-                                animation: loading ? 'spin 1s linear infinite' : 'none'
+                                animation: (loading || isRefreshing) ? 'spin 1s linear infinite' : 'none'
                             }}
                         >
                             refresh
                         </span>
-                        {loading ? 'Refreshing...' : 'Refresh'}
+                        {(loading || isRefreshing) ? 'Refreshing...' : 'Refresh'}
                     </button>
                     <button style={s.btnPrimary} onClick={() => { setShowAssignModal(true); setFormError(''); }}>
                         <span className="material-icons-round" style={{ fontSize: '16px' }}>add_task</span>

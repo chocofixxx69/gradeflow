@@ -37,14 +37,42 @@ export default function RootLayout({ children }) {
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
+                            function gfIsStaleBuildError(msg) {
+                                if (!msg) return false;
+                                return /ChunkLoadError|Loading chunk [\\d]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|error loading dynamically imported module/i.test(msg);
+                            }
+                            function gfRecoverFromStaleBuild() {
+                                try {
+                                    var key = 'gf_stale_build_reload_at';
+                                    var last = Number(sessionStorage.getItem(key) || 0);
+                                    var now = Date.now();
+                                    // One auto-reload per 15s per tab — heals a stale tab after a
+                                    // server/deploy restart without looping forever if something
+                                    // else is genuinely broken.
+                                    if (now - last < 15000) return;
+                                    sessionStorage.setItem(key, String(now));
+                                    window.location.reload();
+                                } catch (e) {
+                                    window.location.reload();
+                                }
+                            }
                             window.addEventListener('error', function(e) {
                                 if (e.filename && (e.filename.includes('chrome-extension://') || e.filename.includes('moz-extension://'))) {
                                     e.stopImmediatePropagation();
+                                    return;
+                                }
+                                if (gfIsStaleBuildError(e.message) || (e.error && gfIsStaleBuildError(e.error.message))) {
+                                    gfRecoverFromStaleBuild();
                                 }
                             }, true);
                             window.addEventListener('unhandledrejection', function(e) {
-                                if (e.reason && e.reason.stack && (e.reason.stack.includes('chrome-extension://') || e.reason.stack.includes('moz-extension://'))) {
+                                var msg = e.reason && (e.reason.message || e.reason.stack || String(e.reason));
+                                if (msg && (msg.includes('chrome-extension://') || msg.includes('moz-extension://'))) {
                                     e.stopImmediatePropagation();
+                                    return;
+                                }
+                                if (gfIsStaleBuildError(msg)) {
+                                    gfRecoverFromStaleBuild();
                                 }
                             }, true);
                         `

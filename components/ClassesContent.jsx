@@ -322,13 +322,15 @@ export function ClassesContent({ embedded = false }) {
     }, []);
 
     const fetchClasses = async (isManual = false) => {
-        setLoadingClasses(true);
+        if (!isManual) setLoadingClasses(true);
         setClassesError(null);
         try {
             clearApiCache();
             const prevCount = classes.length;
-            const res = await apiRequest(`/api/classes?_t=${Date.now()}`, { credentials: 'include' });
-            await fetchBranches();
+            const [res] = await Promise.all([
+                apiRequest(`/api/classes?_t=${Date.now()}`, { credentials: 'include' }),
+                fetchBranches()
+            ]);
             if (res) {
                 const newClasses = res.classes || [];
                 setClasses(newClasses);
