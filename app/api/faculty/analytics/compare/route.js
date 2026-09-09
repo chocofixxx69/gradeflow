@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs } from '@/lib/analytics-data';
-import { loadStudentRecords } from '@/lib/student-record';
+import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +42,7 @@ export async function GET(req) {
         // 1. Fetch profiles for these USNs
         const { data: rawStudents, error: stuErr } = await supabaseAdmin
             .from('students')
-            .select('id, usn, name, branch, semester, year, lateral_entry')
+            .select('id, usn, name, branch, semester, year, lateral_entry, scheme')
             .in('usn', usnList);
 
         if (stuErr) throw stuErr;
@@ -78,37 +78,33 @@ export async function GET(req) {
             remarksByUsn.set(r.student_usn, list);
         });
 
-        // 3. Process each student
-        const processedStudents = [];
+        // 3. Process each student using the canonical academic engine
+        // (lib/vtuAcademicEngine.js) — same SGPA/CGPA/backlog/credit source as
+        // the Student Lookup dashboard, so this comparison never drifts from it.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
         const studentSemSgpas = new Map(); // usn -> Map(sem -> sgpa)
         const allSubjectCodes = new Map(); // code -> { code, name, credits }
 
-        // One shared read of the canonical records for every student in the compare set.
-        const canonicalRecords = await loadStudentRecords(supabaseAdmin);
-
-        usnList.forEach(usn => {
+        const processedStudents = await Promise.all(usnList.map(async usn => {
             const studentObj = (rawStudents || []).find(s => s.usn === usn) || { usn, name: usn, branch: '—', semester: 1 };
             const uMarks = marksByUsn.get(usn) || [];
             const uRemarks = remarksByUsn.get(usn) || [];
 
-            const backlogInfo = computeBacklogs(uMarks);
-            const backlogCredits = backlogInfo.failedSubjects.reduce((sum, sub) => sum + (sub.credits || 3), 0);
+            const record = await calculateAcademicRecord(
+                uMarks,
+                { usn, branch: studentObj.branch, scheme: studentObj.scheme },
+                { catalogIndex }
+            );
+            const backlogCredits = record.activeBacklogSubjects.reduce((sum, sub) => sum + (sub.credits || 0), 0);
 
-            // Compute semester SGPAs
-            const semMarksMap = new Map();
-            uMarks.forEach(m => {
-                const sem = m.semester || 1;
-                const list = semMarksMap.get(sem) || [];
-                list.push(m);
-                semMarksMap.set(sem, list);
-
-                // Collect subject for matrix
-                const code = (m.subject_code || m.code || '').toUpperCase();
-                if (code && !allSubjectCodes.has(code)) {
-                    allSubjectCodes.set(code, {
-                        code,
-                        name: m.subject_name || code,
-                        credits: resolveSubjectCredits(m)
+            // Collect subjects for the cross-student matrix straight off the
+            // canonical (credit-resolved) record instead of raw mark rows.
+            Object.values(record.marksBySemester).flat().forEach(s => {
+                if (!allSubjectCodes.has(s.subjectCode)) {
+                    allSubjectCodes.set(s.subjectCode, {
+                        code: s.subjectCode,
+                        name: s.subjectName || s.subjectCode,
+                        credits: s.credits
                     });
                 }
             });
@@ -118,27 +114,13 @@ export async function GET(req) {
             let totalPoints = 0;
 
             for (let sem = 1; sem <= 8; sem++) {
-                const sList = semMarksMap.get(sem) || [];
+                const stat = record.semStats[sem];
                 const storedRemark = uRemarks.find(r => Number(r.semester) === sem);
 
-                if (sList.length > 0) {
-                    let semRegCr = 0;
-                    let semEarnedCr = 0;
-                    let semCrP = 0;
-                    sList.forEach(m => {
-                        const cr = resolveSubjectCredits(m);
-                        const isFail = isFailedSubject(m);
-                        const gp = scoreToGradePoint(m.total, m.grade);
-                        semRegCr += cr;
-                        if (!isFail) {
-                            semEarnedCr += cr;
-                            semCrP += (cr * gp);
-                        }
-                    });
-                    const sgpa = semRegCr > 0 ? Number((semCrP / semRegCr).toFixed(2)) : 0;
-                    semSgpas.set(sem, sgpa);
-                    totalCredits += semEarnedCr;
-                    totalPoints += semCrP;
+                if (stat) {
+                    semSgpas.set(sem, stat.sgpa);
+                    totalCredits += stat.earnedCredits;
+                    totalPoints += stat.gradePoints;
                 } else if (storedRemark?.sgpa) {
                     const sgpa = Number(Number(storedRemark.sgpa).toFixed(2));
                     semSgpas.set(sem, sgpa);
@@ -149,18 +131,14 @@ export async function GET(req) {
 
             studentSemSgpas.set(usn, semSgpas);
 
-            // CGPA comes from the canonical record. The local roll-up above divides
-            // grade points by EARNED credits, which for 2AB23CS006 gives 7.64 where
-            // VTU's formula over registered credits gives 7.45 - a fourth different
-            // answer for the same student. It is kept only for totalCredits below.
-            const canonical = canonicalRecords.get(usn) || null;
-            const cgpa = canonical?.cgpa ?? null;
+            // CGPA comes directly from the canonical record (VTU registered credits formula)
+            const cgpa = record.cgpa > 0 ? record.cgpa : (totalCredits > 0 ? Number((totalPoints / totalCredits).toFixed(2)) : null);
             const appeared = uMarks.length;
-            const failed = backlogInfo.totalBacklogs;
+            const failed = record.totalActiveBacklogs;
             const passed = Math.max(0, appeared - failed);
             const passRate = appeared > 0 ? Number(((passed / appeared) * 100).toFixed(1)) : 0;
 
-            processedStudents.push({
+            return {
                 usn,
                 name: studentObj.name || usn,
                 branch: studentObj.branch || '—',
@@ -172,8 +150,8 @@ export async function GET(req) {
                 failed,
                 passRate,
                 backlogCredits
-            });
-        });
+            };
+        }));
 
         // 4. Build aligned multi-line trajectory for Recharts
         const trajectory = [];

@@ -118,7 +118,6 @@ export async function GET(req) {
         // searchParams was read without ever being derived from the request, so every
         // call to this route threw ReferenceError before it reached the database.
         const { searchParams } = new URL(req.url);
-
         const rawBranch = searchParams.get('branch') || 'ALL';
         const branch = rawBranch === 'ALL' ? 'ALL' : (canonicalBranchCode(rawBranch) || rawBranch.toUpperCase().trim());
         const semParam = (searchParams.get('semester') || 'ALL').toUpperCase().trim();

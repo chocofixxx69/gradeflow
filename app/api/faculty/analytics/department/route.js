@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, computeBacklogs, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch } from '@/lib/semester-utils';
-import { scoreToGradePoint, resolveSubjectCredits } from '@/lib/export-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +34,10 @@ export async function GET(req) {
         const supabaseAdmin = getAdminClient();
 
         // 1. Fetch students in this department dynamically without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, { branch });
+        const rawStudents = await fetchDynamicStudents(supabaseAdmin, {
+            branch,
+            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
+        });
 
         let students = rawStudents || [];
         if (batch) {
@@ -52,30 +55,35 @@ export async function GET(req) {
 
         const usns = students.map(s => s.usn);
 
-        // 2. Fetch subject marks and remarks dynamically
-        const marks = await fetchDynamicMarks(supabaseAdmin, { usns, select: 'usn, semester, subject_code, internal, external, total, grade, passed' });
+        // 2. Fetch subject marks dynamically
+        const marks = await fetchDynamicMarks(supabaseAdmin, { usns, select: 'usn, semester, subject_code, subject_name, internal, external, total, grade, credits, passed' });
 
-        const { data: rawRemarks } = await supabaseAdmin
-            .from('academic_remarks')
-            .select('student_usn, semester, sgpa')
-            .in('student_usn', usns.slice(0, 300));
-
-        const remarks = rawRemarks || [];
-
-        // Group marks by semester & student
-        const semStudentMarks = {}; // sem -> usn -> [marks]
-        for (let s = 1; s <= 8; s++) semStudentMarks[s] = new Map();
-
+        const marksByUsn = new Map();
         marks.forEach(m => {
-            const sem = m.semester || 1;
-            if (semStudentMarks[sem]) {
-                const list = semStudentMarks[sem].get(m.usn) || [];
-                list.push(m);
-                semStudentMarks[sem].set(m.usn, list);
-            }
+            const list = marksByUsn.get(m.usn) || [];
+            list.push(m);
+            marksByUsn.set(m.usn, list);
         });
 
-        // 3. Compute per-semester performance
+        // 3. Compute each student's canonical academic record once — same engine
+        // (lib/vtuAcademicEngine.js) as the Student Lookup dashboard — then derive
+        // the department rollup from it below, so SGPA/backlogs here never drift
+        // from what faculty see on that page for the same student. This used to
+        // hand-roll its own per-semester SGPA using a credit resolver that trusted
+        // the (sometimes stale) subject_marks.credits column.
+        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+        const recordsByUsn = new Map();
+        await Promise.all(students.map(async s => {
+            const uMarks = marksByUsn.get(s.usn) || [];
+            if (uMarks.length === 0) return;
+            const record = await calculateAcademicRecord(uMarks, { usn: s.usn, branch: s.branch, scheme: s.scheme }, { catalogIndex });
+            recordsByUsn.set(s.usn, record);
+        }));
+
+        let allBacklogsCount = 0;
+        recordsByUsn.forEach(record => { allBacklogsCount += record.totalActiveBacklogs; });
+
+        // 4. Compute per-semester performance
         const semesterRows = [];
         let grandAppeared = 0;
         let grandPassed = 0;
@@ -84,48 +92,32 @@ export async function GET(req) {
         const baselineEnrollment = students.length;
 
         for (let sem = 1; sem <= 8; sem++) {
-            const studentMarksMap = semStudentMarks[sem];
-            const appearedUsns = Array.from(studentMarksMap.keys());
-            const appearedCount = appearedUsns.length;
-
-            if (appearedCount === 0) continue;
-
+            let appearedCount = 0;
             let semPassed = 0;
             let semFailed = 0;
             let sgpaSum = 0;
             let maxSgpa = 0;
             let minSgpa = 10;
 
-            appearedUsns.forEach(u => {
-                const uMarks = studentMarksMap.get(u) || [];
-                const hasFail = uMarks.some(isFailedSubject);
+            recordsByUsn.forEach(record => {
+                const stat = record.semStats[sem];
+                if (!stat) return;
+                appearedCount++;
 
-                if (hasFail) {
+                if (stat.backlogs > 0) {
                     semFailed++;
                 } else {
                     semPassed++;
                 }
 
-                // Compute SGPA for this student in this semester
-                let semRegCr = 0;
-                let semCrP = 0;
-                uMarks.forEach(m => {
-                    const cr = resolveSubjectCredits(m);
-                    const isF = isFailedSubject(m);
-                    const gp = scoreToGradePoint(m.total, m.grade);
-                    semRegCr += cr;
-                    if (!isF) semCrP += (cr * gp);
-                });
-
-                const storedRemark = remarks.find(r => r.student_usn === u && Number(r.semester) === sem);
-                const sgpa = semRegCr > 0 ? Number((semCrP / semRegCr).toFixed(2)) : (storedRemark?.sgpa ? Number(storedRemark.sgpa) : 0);
-
-                if (sgpa > 0) {
-                    sgpaSum += sgpa;
-                    if (sgpa > maxSgpa) maxSgpa = sgpa;
-                    if (sgpa < minSgpa) minSgpa = sgpa;
+                if (stat.sgpa > 0) {
+                    sgpaSum += stat.sgpa;
+                    if (stat.sgpa > maxSgpa) maxSgpa = stat.sgpa;
+                    if (stat.sgpa < minSgpa) minSgpa = stat.sgpa;
                 }
             });
+
+            if (appearedCount === 0) continue;
 
             const passRate = pct(semPassed, appearedCount);
             const avgSgpa = appearedCount > 0 && sgpaSum > 0 ? Number((sgpaSum / appearedCount).toFixed(2)) : 0;
@@ -152,9 +144,6 @@ export async function GET(req) {
             });
         }
 
-        // Overall Backlogs for department
-        const allBacklogs = computeBacklogs(marks);
-
         const payload = {
             department: branch,
             batch: batch || 'All Batches',
@@ -162,7 +151,7 @@ export async function GET(req) {
                 totalStudents: baselineEnrollment,
                 overallPassRate: pct(grandPassed, grandAppeared),
                 avgCGPA: grandSgpaCount > 0 ? Number((grandSgpaSum / grandSgpaCount).toFixed(2)) : 0,
-                totalBacklogs: allBacklogs.totalBacklogs
+                totalBacklogs: allBacklogsCount
             },
             semesters: semesterRows
         };
