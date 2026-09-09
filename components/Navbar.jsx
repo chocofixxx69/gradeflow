@@ -222,7 +222,20 @@ export default function Navbar() {
     }, [activeRole, user]);
 
 
-    const logout = useCallback(() => {
+    const logout = useCallback(async () => {
+        if (activeRole === 'faculty') {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        faculty_id: user?.id || null,
+                        faculty_name: user?.full_name || user?.name || user?.email || null,
+                    }),
+                });
+            } catch { /* ignored */ }
+        }
+
         localStorage.removeItem('student_session');
         localStorage.removeItem('faculty_session');
         localStorage.removeItem('admin_session');
@@ -234,7 +247,7 @@ export default function Navbar() {
         } else {
             router.push('/auth');
         }
-    }, [activeRole, router]);
+    }, [activeRole, router, user]);
 
     if (isHiddenRoute) return null;
 

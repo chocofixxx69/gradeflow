@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminClient } from '../../../../lib/analytics-data';
 import { requireStaff } from '../../../../lib/server-session';
+import { logFacultyActivityServer } from '../../../../lib/server-audit';
 
 const supabaseAdmin = getAdminClient();
 
@@ -87,6 +88,15 @@ export async function POST(req) {
                 }
             }
         }
+
+        // Audit log in faculty_activity
+        logFacultyActivityServer(req, {
+            action_type: 'CLASS_STUDENTS_TRANSFER',
+            context_module: 'Faculty Portal > Classes > Section Roster',
+            reason: 'Departmental student section reallocation or class re-balancing.',
+            details: `Transferred ${usnsToTransfer.length} student(s) (${mode.toUpperCase()}) to destination class`,
+            metadata: { source_class_id, target_class_id, count: usnsToTransfer.length, mode, sampleUsns: usnsToTransfer.slice(0, 10) }
+        }).catch(() => {});
 
         return NextResponse.json({
             success: true,

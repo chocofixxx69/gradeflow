@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../lib/server-session';
 import { getAdminClient } from '../../../lib/analytics-data';
+import { logFacultyActivityServer } from '../../../lib/server-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +102,15 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Failed to create class in database.' }, { status: 500 });
         }
 
+        // Audit log in faculty_activity
+        logFacultyActivityServer(req, {
+            action_type: 'CLASS_CREATE',
+            context_module: 'Faculty Portal > Classes & Structure',
+            reason: 'Academic class section establishment for semester curriculum delivery.',
+            details: `Created new academic class "${data.name}" (${data.branch} · Sem ${data.semester}${data.section ? ` · Sec ${data.section}` : ''} · Scheme ${data.scheme})`,
+            metadata: { class_id: data.id, name: data.name, branch: data.branch, semester: data.semester, section: data.section, scheme: data.scheme }
+        }).catch(() => {});
+
         return NextResponse.json({ success: true, class: data });
     } catch (err) {
         console.error('[POST /api/classes]', err);
@@ -154,6 +164,16 @@ export async function PUT(req) {
             }
         }
 
+        // Audit log in faculty_activity
+        const changedFields = Object.keys(updates).join(', ');
+        logFacultyActivityServer(req, {
+            action_type: 'CLASS_EDIT',
+            context_module: 'Faculty Portal > Classes & Structure',
+            reason: 'Academic class section configuration adjustment and roster maintenance.',
+            details: `Updated class "${data.name}" (modified: ${changedFields})`,
+            metadata: { class_id: id, class_name: data.name, updates }
+        }).catch(() => {});
+
         return NextResponse.json({
             success: true,
             class: {
@@ -179,8 +199,20 @@ export async function DELETE(req) {
         const { id } = await req.json().catch(() => ({}));
         if (!id) return NextResponse.json({ error: 'Class ID required.' }, { status: 400 });
 
+        // Retrieve class info for descriptive audit logging
+        const { data: clsToDelete } = await supabaseAdmin.from('classes').select('name, branch, semester, section').eq('id', id).maybeSingle();
+
         const { error } = await supabaseAdmin.from('classes').delete().eq('id', id);
         if (error) throw error;
+
+        // Audit log in faculty_activity
+        logFacultyActivityServer(req, {
+            action_type: 'CLASS_DELETE',
+            context_module: 'Faculty Portal > Classes & Structure',
+            reason: 'Decommissioning and permanent deletion of academic class section container.',
+            details: `Permanently deleted class "${clsToDelete?.name || id}" (${clsToDelete?.branch || ''} Sem ${clsToDelete?.semester || ''}${clsToDelete?.section ? ` Sec ${clsToDelete.section}` : ''})`,
+            metadata: { class_id: id, class_name: clsToDelete?.name }
+        }).catch(() => {});
 
         return NextResponse.json({ success: true });
     } catch (err) {

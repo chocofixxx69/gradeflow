@@ -5,6 +5,7 @@ import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
 import { getAdminClient } from '../../../lib/analytics-data';
 import { requireStaff } from '../../../lib/server-session';
 import { generateFormulaPassword, hashStudentPassword } from '../../../lib/student-auth';
+import { logFacultyActivityServer } from '../../../lib/server-audit';
 
 const supabaseAdmin = getAdminClient();
 
@@ -279,6 +280,20 @@ export async function POST(req) {
                     console.error('[POST /api/class-students] class_students insert error:', insErr);
                 }
             }
+
+            // Audit log in faculty_activity
+            const isBulk = newUsnsToInsert.length > 1;
+            const singleUsn = newUsnsToInsert.length === 1 ? newUsnsToInsert[0] : null;
+            logFacultyActivityServer(req, {
+                action_type: isBulk ? 'CLASS_BULK_IMPORT' : 'CLASS_ADD_STUDENT',
+                target_usn: singleUsn,
+                context_module: 'Faculty Portal > Classes > Section Roster',
+                reason: isBulk ? 'Batch student enrollment into class section.' : 'Individual student enrollment into class roster.',
+                details: isBulk 
+                    ? `Enrolled ${newUsnsToInsert.length} students into class cohort`
+                    : `Enrolled student ${singleUsn} into class roster`,
+                metadata: { class_id, count: newUsnsToInsert.length, usns: newUsnsToInsert.slice(0, 15) }
+            }).catch(() => {});
         }
 
         return NextResponse.json({ success: true, added: newUsnsToInsert.length || usns.length });
@@ -298,13 +313,25 @@ export async function DELETE(req) {
         const { class_id, usn } = body || {};
         if (!class_id || !usn) return NextResponse.json({ error: 'class_id and usn required.' }, { status: 400 });
 
+        const cleanUsn = usn.toUpperCase().trim();
         const { error } = await supabaseAdmin
             .from('class_students')
             .delete()
             .eq('class_id', class_id)
-            .eq('usn', usn.toUpperCase().trim());
+            .eq('usn', cleanUsn);
 
         if (error) throw error;
+
+        // Audit log in faculty_activity
+        logFacultyActivityServer(req, {
+            action_type: 'CLASS_REMOVE_STUDENT',
+            target_usn: cleanUsn,
+            context_module: 'Faculty Portal > Classes > Section Roster',
+            reason: 'Student roster de-enrollment due to section transfer or course drop.',
+            details: `Removed student ${cleanUsn} from class roster`,
+            metadata: { class_id, usn: cleanUsn }
+        }).catch(() => {});
+
         return NextResponse.json({ success: true });
     } catch (err) {
         console.error('[DELETE /api/class-students]', err);

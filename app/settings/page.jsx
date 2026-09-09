@@ -155,11 +155,23 @@ function SettingsContent() {
         }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        if (userType === 'faculty') {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        faculty_id: profile?.id || null,
+                        faculty_name: profile?.name || profile?.full_name || null,
+                    }),
+                });
+            } catch { /* ignored */ }
+        }
         localStorage.removeItem('student_session');
         localStorage.removeItem('faculty_session');
         window.dispatchEvent(new Event('storage'));
-        router.push('/auth');
+        router.push(userType === 'faculty' ? '/faculty/login' : '/auth');
     };
 
     const st = {

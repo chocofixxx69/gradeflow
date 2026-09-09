@@ -13,11 +13,11 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
 
 // ── Activity Logger ─────────────────────────────────────────
-async function logActivity(action_type, target = null) {
+async function logActivity(action_type, target = null, options = {}) {
     try {
-        const stored = typeof window !== 'undefined' ? localStorage.getItem('gradeflow_faculty') : null;
+        const stored = typeof window !== 'undefined' ? (localStorage.getItem('faculty_session') || localStorage.getItem('gradeflow_faculty') || localStorage.getItem('user_session')) : null;
         const fac = stored ? JSON.parse(stored) : null;
-        await recordFacultyAction(fac, action_type, target);
+        await recordFacultyAction(fac, action_type, target, options);
     } catch (e) {
         // Safe failover
     }
@@ -583,7 +583,12 @@ export function ClassesContent({ embedded = false }) {
         if (!editName.trim()) return;
         const r = await fetch('/api/classes', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedClass.id, name: editName }) });
         const j = await r.json();
-        if (j.success) { setSelectedClass(p => ({ ...p, name: editName })); setClasses(prev => prev.map(c => c.id === selectedClass.id ? { ...c, name: editName } : c)); setEditingName(false); }
+        if (j.success) { 
+            setSelectedClass(p => ({ ...p, name: editName })); 
+            setClasses(prev => prev.map(c => c.id === selectedClass.id ? { ...c, name: editName } : c)); 
+            setEditingName(false); 
+            logActivity('CLASS_EDIT', editName, { details: `Renamed class to "${editName}"` });
+        }
     };
 
     const toggleSelectAll = (studsList) => {

@@ -58,10 +58,10 @@ export function FacultyActivityContent({
         if (facultyList) setCurrentFaculty(facultyList);
     }, [facultyList]);
 
-    // Live real-time polling every 8 seconds
+    // Live real-time polling every 3.5 seconds
     useEffect(() => {
         if (!liveSync) return;
-        const intervalId = setInterval(async () => {
+        const fetchLatest = async () => {
             if (typeof document !== 'undefined' && document.hidden) return;
             try {
                 const res = await fetch('/api/admin/faculty-activity?limit=300');
@@ -72,8 +72,23 @@ export function FacultyActivityContent({
                     setLastSyncTime(Date.now());
                 }
             } catch { /* ignored */ }
-        }, 8000);
-        return () => clearInterval(intervalId);
+        };
+
+        const intervalId = setInterval(fetchLatest, 3500);
+
+        const handleFocusOrVisible = () => {
+            if (typeof document !== 'undefined' && !document.hidden) {
+                fetchLatest();
+            }
+        };
+        window.addEventListener('focus', handleFocusOrVisible);
+        document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+        return () => {
+            clearInterval(intervalId);
+            window.removeEventListener('focus', handleFocusOrVisible);
+            document.removeEventListener('visibilitychange', handleFocusOrVisible);
+        };
     }, [liveSync]);
 
     // ── Build Fast Lookup Maps ─────────────────────────────────
@@ -127,9 +142,17 @@ export function FacultyActivityContent({
             let statusLabel = 'Offline';
             let dotColor = '#9ca3af';
 
+            const sortedLogs = facultyLogs.length > 0 ? [...facultyLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) : [];
+            const latestLogAction = sortedLogs[0]?.action_type || '';
+            const isExplicitLogout = latestLogAction === 'FACULTY_LOGOUT' || latestLogAction === 'FACULTY_CHECKOUT';
+
             if (latestTimestamp) {
                 const diffMs = Date.now() - new Date(latestTimestamp).getTime();
-                if (diffMs <= 20 * 60 * 1000) {
+                if (isExplicitLogout) {
+                    status = 'offline';
+                    statusLabel = 'Logged Out';
+                    dotColor = '#9ca3af';
+                } else if (diffMs <= 20 * 60 * 1000) {
                     status = 'online';
                     statusLabel = 'Online Now';
                     dotColor = '#10b981';
@@ -258,10 +281,13 @@ export function FacultyActivityContent({
                 r => r.who?.department,
                 r => r.what?.title,
                 r => r.what?.code,
+                r => r.details,
+                r => r.what?.details,
                 r => r.target?.usn,
                 r => r.target?.studentName,
                 r => r.why?.reason,
-                r => r.where?.client
+                r => r.where?.clientEnv,
+                r => r.where?.ip,
             ]);
         }
 
@@ -670,7 +696,7 @@ export function FacultyActivityContent({
                                 fontWeight: 800,
                                 cursor: 'pointer',
                             }}
-                            title={liveSync ? 'Live real-time feed polling every 8s. Click to pause.' : 'Live feed paused. Click to resume auto-polling.'}
+                            title={liveSync ? 'Live real-time feed polling every 3.5s. Click to pause.' : 'Live feed paused. Click to resume auto-polling.'}
                         >
                             <span style={{
                                 width: '6px',
@@ -678,7 +704,7 @@ export function FacultyActivityContent({
                                 borderRadius: '50%',
                                 background: liveSync ? '#10b981' : '#9ca3af',
                             }} />
-                            {liveSync ? 'LIVE FEED (8s)' : 'PAUSED'}
+                            {liveSync ? 'LIVE FEED (3.5s)' : 'PAUSED'}
                         </button>
                     </div>
                 </div>

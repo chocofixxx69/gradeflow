@@ -5,6 +5,7 @@ import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAc
 import { readTable, SELECTS } from '@/lib/table-cache';
 import { getStudentRecord, invalidateStudentRecords } from '@/lib/student-record';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
+import { logFacultyActivityServer } from '@/lib/server-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -347,21 +348,32 @@ export async function PUT(req, { params }) {
             console.warn('[PUT /api/faculty/students/[usn]] update notice:', updErr.message);
         }
 
-        // Audit log in faculty_activity
-        try {
-            await supabaseAdmin.from('faculty_activity').insert({
-                faculty_id: session?.id || '00000000-0000-0000-0000-000000000000',
-                faculty_name: session?.name || session?.email || 'Staff Member',
-                target_usn: cleanUsn,
-                action_type: updates.year ? 'STUDENT_BATCH_REASSIGNED' : 'STUDENT_PROFILE_UPDATED',
-                details: updates.year 
-                    ? `Reassigned student ${cleanUsn} to Academic Batch ${updates.year}${body.reason ? ` (Reason: ${body.reason})` : ''}` 
-                    : `Updated profile details for student ${cleanUsn}`,
-                sync_status: 'SUCCESS'
-            });
-        } catch (e) {
-            // non-critical
+        // Audit log in faculty_activity with 5W1H governance context
+        let actionType = 'STUDENT_PROFILE_UPDATED';
+        let detailText = `Updated academic profile for student ${cleanUsn}`;
+
+        if (body.is_inactive !== undefined || body.is_suspended !== undefined) {
+            actionType = 'STUDENT_STATUS_TOGGLED';
+            detailText = `${updates.is_suspended ? 'Deactivated / Suspended' : 'Activated / Restored'} student ${cleanUsn} account`;
+        } else if (updates.year) {
+            actionType = 'STUDENT_BATCH_REASSIGNED';
+            detailText = `Reassigned student ${cleanUsn} to Academic Batch ${updates.year}${body.reason ? ` (Reason: ${body.reason})` : ''}`;
+        } else if (body.semester) {
+            actionType = 'STUDENT_PROFILE_UPDATED';
+            detailText = `Updated semester standing to Semester ${updates.semester} for student ${cleanUsn}${body.reason ? ` (Reason: ${body.reason})` : ''}`;
+        } else if (body.parent_name || body.parent_phone || body.parent_email || body.guardian_relation) {
+            actionType = 'STUDENT_PROFILE_UPDATED';
+            detailText = `Updated guardian details for student ${cleanUsn} (${body.parent_name || 'Guardian'})`;
         }
+
+        logFacultyActivityServer(req, {
+            action_type: actionType,
+            target_usn: cleanUsn,
+            context_module: 'Faculty Portal > Student Directory > Profile Dossier',
+            reason: body.reason || 'Continuous Internal Evaluation (CIE) verification and student dossier maintenance.',
+            details: detailText,
+            metadata: { updates, rawBody: body }
+        }).catch(() => {});
 
         // Every analytics page reads a cached copy of the warehouse; a student
         // mutation has to drop it or the change stays invisible for a minute.
