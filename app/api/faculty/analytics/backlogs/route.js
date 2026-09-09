@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
-import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
-import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
+import { loadStudentRecords } from '@/lib/student-record';
 import { filterAndRankStudents } from '@/lib/search-utils';
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -18,6 +21,7 @@ function fail(message, code = 'ERROR', status = 400) {
 }
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
@@ -27,32 +31,32 @@ export async function GET(req) {
         const batch = searchParams.get('batch') || '';
         const threshold = parseInt(searchParams.get('threshold') || '1', 10); // min backlogs to show
         const search = (searchParams.get('search') || '').trim().toLowerCase();
+        const fresh = searchParams.get('fresh') === '1';
 
         const cacheKey = `backlogs:${branch}:${batch}:${threshold}:${search}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students dynamically for this branch & batch without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, {
-            branch,
-            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
-        });
+        // 1. Fetch canonical records from shared warehouse read
+        const studentRecords = await loadStudentRecords(supabaseAdmin, { fresh });
 
-        let students = rawStudents || [];
+        let records = [...studentRecords.values()];
         if (branch && branch !== 'ALL') {
-            students = students.filter(s => matchesBranch(s, branch));
+            records = records.filter(r => matchesBranch(r.raw, branch));
         }
-        if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        if (batch && batch.toUpperCase() !== 'ALL') {
+            records = records.filter(r => matchesBatch(r.raw, batch));
         }
 
         if (search) {
-            students = filterAndRankStudents(students, search);
+            records = records.filter(r => (r.usn || '').toLowerCase().includes(search) || (r.name || '').toLowerCase().includes(search));
         }
 
-        if (students.length === 0) {
+        if (records.length === 0) {
             return ok({
                 summary: { totalCarriers: 0, totalArrearsSubjects: 0, totalArrearsCredits: 0, criticalCarriers: 0 },
                 ledger: [],
@@ -60,40 +64,16 @@ export async function GET(req) {
             });
         }
 
-        const usns = students.map(s => s.usn);
-
-        // 2. Fetch subject marks dynamically across all semesters
-        const marks = await fetchDynamicMarks(supabaseAdmin, {
-            usns,
-            select: 'usn, semester, subject_code, subject_name, credits, internal, external, total, grade, passed, is_backlog'
-        });
-
-        const marksByUsn = new Map();
-        marks.forEach(m => {
-            const list = marksByUsn.get(m.usn) || [];
-            list.push(m);
-            marksByUsn.set(m.usn, list);
-        });
-
-        // 3. Compute active arrears per student and aggregate subject failure counts,
-        // using the canonical academic engine (lib/vtuAcademicEngine.js) — the same
-        // credit/backlog source the Student Lookup dashboard uses, so this register
-        // never disagrees with what faculty see there for the same student.
-        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+        // 2. Compute active arrears per student and aggregate subject failure counts
+        // directly from the canonical record (already computed with vtuAcademicEngine)
         const ledger = [];
         const subjectFailCount = new Map(); // code -> { code, name, count, credits }
         let totalArrearsSubjectsCount = 0;
         let totalArrearsCreditsCount = 0;
         let criticalCarriersCount = 0;
 
-        await Promise.all(students.map(async s => {
-            const uMarks = marksByUsn.get(s.usn) || [];
-            const record = await calculateAcademicRecord(
-                uMarks,
-                { usn: s.usn, branch: s.branch, scheme: s.scheme },
-                { catalogIndex }
-            );
-            const activeBacklogs = record.activeBacklogSubjects;
+        records.forEach(record => {
+            const activeBacklogs = record.activeBacklogSubjects || [];
             const count = activeBacklogs.length;
 
             if (count >= threshold) {
@@ -103,10 +83,10 @@ export async function GET(req) {
                 if (count > 4) criticalCarriersCount++;
 
                 activeBacklogs.forEach(sub => {
-                    const code = (sub.subject_code || '').toUpperCase();
+                    const code = (sub.subjectCode || sub.subject_code || '').toUpperCase();
                     const existing = subjectFailCount.get(code) || {
                         code,
-                        name: sub.subject_name || code,
+                        name: sub.subjectName || sub.subject_name || code,
                         count: 0,
                         credits: sub.credits || 0,
                         semester: sub.semester || 1
@@ -116,23 +96,23 @@ export async function GET(req) {
                 });
 
                 ledger.push({
-                    usn: s.usn,
-                    name: s.name || s.usn,
-                    branch: s.branch,
-                    semester: s.semester || 1,
-                    isLE: isLateralEntry(s.usn, s.lateral_entry),
+                    usn: record.usn,
+                    name: record.name || record.usn,
+                    branch: record.raw?.branch || branch,
+                    semester: record.raw?.semester || 1,
+                    isLE: isLateralEntry(record.usn, record.raw?.lateral_entry),
                     totalBacklogs: count,
                     backlogCredits: totalCredits,
                     isCritical: count > 4,
                     failedSubjects: activeBacklogs.map(b => ({
-                        code: b.subject_code,
-                        name: b.subject_name,
+                        code: b.subjectCode || b.subject_code,
+                        name: b.subjectName || b.subject_name || b.subjectCode,
                         semester: b.semester,
                         credits: b.credits || 0
                     }))
                 });
             }
-        }));
+        });
 
         // Sort ledger by backlog count descending
         ledger.sort((a, b) => b.totalBacklogs - a.totalBacklogs || a.usn.localeCompare(b.usn));

@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
-import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
-import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
+import { matchesBatch, matchesBranch } from '@/lib/semester-utils';
+import { loadStudentRecords } from '@/lib/student-record';
+
+import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -19,6 +22,7 @@ function fail(message, code = 'ERROR', status = 400) {
 const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
@@ -26,25 +30,28 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
+        const fresh = searchParams.get('fresh') === '1';
 
         const cacheKey = `dept_overview:${branch}:${batch}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students in this department dynamically without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, {
-            branch,
-            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
-        });
+        // 1. Canonical per-student records from shared warehouse read
+        const studentRecords = await loadStudentRecords(supabaseAdmin, { fresh });
 
-        let students = rawStudents || [];
-        if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        let records = [...studentRecords.values()];
+        if (branch && branch !== 'ALL') {
+            records = records.filter(r => matchesBranch(r.raw, branch));
+        }
+        if (batch && batch.toUpperCase() !== 'ALL') {
+            records = records.filter(r => matchesBatch(r.raw, batch));
         }
 
-        if (students.length === 0) {
+        if (records.length === 0) {
             return ok({
                 department: branch,
                 batch: batch || 'All',
@@ -53,43 +60,16 @@ export async function GET(req) {
             });
         }
 
-        const usns = students.map(s => s.usn);
-
-        // 2. Fetch subject marks dynamically
-        const marks = await fetchDynamicMarks(supabaseAdmin, { usns, select: 'usn, semester, subject_code, subject_name, internal, external, total, grade, credits, passed' });
-
-        const marksByUsn = new Map();
-        marks.forEach(m => {
-            const list = marksByUsn.get(m.usn) || [];
-            list.push(m);
-            marksByUsn.set(m.usn, list);
-        });
-
-        // 3. Compute each student's canonical academic record once — same engine
-        // (lib/vtuAcademicEngine.js) as the Student Lookup dashboard — then derive
-        // the department rollup from it below, so SGPA/backlogs here never drift
-        // from what faculty see on that page for the same student. This used to
-        // hand-roll its own per-semester SGPA using a credit resolver that trusted
-        // the (sometimes stale) subject_marks.credits column.
-        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
-        const recordsByUsn = new Map();
-        await Promise.all(students.map(async s => {
-            const uMarks = marksByUsn.get(s.usn) || [];
-            if (uMarks.length === 0) return;
-            const record = await calculateAcademicRecord(uMarks, { usn: s.usn, branch: s.branch, scheme: s.scheme }, { catalogIndex });
-            recordsByUsn.set(s.usn, record);
-        }));
-
         let allBacklogsCount = 0;
-        recordsByUsn.forEach(record => { allBacklogsCount += record.totalActiveBacklogs; });
+        records.forEach(record => { allBacklogsCount += record.totalActiveBacklogs; });
 
-        // 4. Compute per-semester performance
+        // 2. Compute per-semester performance from canonical semStats
         const semesterRows = [];
         let grandAppeared = 0;
         let grandPassed = 0;
         let grandSgpaSum = 0;
         let grandSgpaCount = 0;
-        const baselineEnrollment = students.length;
+        const baselineEnrollment = records.length;
 
         for (let sem = 1; sem <= 8; sem++) {
             let appearedCount = 0;
@@ -99,7 +79,7 @@ export async function GET(req) {
             let maxSgpa = 0;
             let minSgpa = 10;
 
-            recordsByUsn.forEach(record => {
+            records.forEach(record => {
                 const stat = record.semStats[sem];
                 if (!stat) return;
                 appearedCount++;

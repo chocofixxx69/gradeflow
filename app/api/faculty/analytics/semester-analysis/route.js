@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient } from '@/lib/analytics-data';
+import { readTable, SELECTS } from '@/lib/table-cache';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, isLateralEntry, canonicalBranchCode } from '@/lib/semester-utils';
-import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
-import { fetchCatalogIndex, resolveSubjectCredit } from '@/lib/subjectCreditResolver';
+import { loadStudentRecords } from '@/lib/student-record';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
@@ -40,21 +40,27 @@ export async function GET(req) {
         const batch = searchParams.get('batch') || '';
         const classId = searchParams.get('classId') || '';
         const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
+        const fresh = searchParams.get('fresh') === '1';
 
-        const cacheKey = `sem_analysis_v4:${branch || 'ALL'}:${semester}:${batch}:${classId}:${section}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        const cacheKey = `sem_analysis_v5:${branch || 'ALL'}:${semester}:${batch}:${classId}:${section}`;
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch classes & class_students for dynamic section resolution
-        const [
-            { data: rawClasses },
-            { data: rawClassStudents }
-        ] = await Promise.all([
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch'),
-            supabaseAdmin.from('class_students').select('class_id, usn')
+        // Canonical per-student records (cached, shared warehouse read — see
+        // lib/student-record.js) plus classes/class_students for section
+        // resolution and subject_catalog for the "no marks yet" column fallback.
+        const [studentRecords, rawClasses, rawClassStudents, rawCatalog] = await Promise.all([
+            loadStudentRecords(supabaseAdmin, { fresh }),
+            readTable(supabaseAdmin, 'classes', SELECTS.classes, { orderCol: 'created_at', ascending: false }),
+            readTable(supabaseAdmin, 'class_students', SELECTS.class_students),
+            readTable(supabaseAdmin, 'subject_catalog', SELECTS.subject_catalog)
         ]);
+
+        // 1. Section resolution from class rosters
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
         const usnToSectionMap = new Map();
         const sortedClassStudents = [...(rawClassStudents || [])].sort((a, b) => {
@@ -71,44 +77,19 @@ export async function GET(req) {
             }
         });
 
-        // 2. Resolve student list based on classId or branch/batch/section
-        let studentUsns = [];
-        let studentsList = [];
-
+        // 2. Resolve the scoped student record list based on classId or branch/batch/section
+        let records = [];
         if (classId) {
-            const { data: csData } = await supabaseAdmin
-                .from('class_students')
-                .select('usn')
-                .eq('class_id', classId);
-            studentUsns = (csData || []).map(r => r.usn);
-
-            if (studentUsns.length > 0) {
-                const { data: stData } = await supabaseAdmin
-                    .from('students')
-                    .select('id, usn, name, branch, semester, year, lateral_entry, scheme')
-                    .in('usn', studentUsns);
-                studentsList = stData || [];
-            }
+            const classUsns = new Set((rawClassStudents || []).filter(cs => cs.class_id === classId).map(cs => cs.usn));
+            records = [...studentRecords.values()].filter(r => classUsns.has(r.usn));
         } else {
-            const stData = await fetchDynamicStudents(supabaseAdmin, {
-                branch: (!branch || branch === 'ALL') ? '' : branch,
-                select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
-            });
-            let filtered = stData || [];
-
-            if (batch && batch.toUpperCase() !== 'ALL') {
-                filtered = filtered.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
-            }
-
-            if (section && section !== 'ALL') {
-                filtered = filtered.filter(s => usnToSectionMap.get(s.usn) === section);
-            }
-
-            studentsList = filtered;
-            studentUsns = studentsList.map(s => s.usn);
+            records = [...studentRecords.values()];
+            if (branch && branch !== 'ALL') records = records.filter(r => (r.raw?.branch || '').toUpperCase().includes(branch) || r.identity.branch.code === branch);
+            if (batch && batch.toUpperCase() !== 'ALL') records = records.filter(r => matchesBatch(r.raw, batch));
+            if (section && section !== 'ALL') records = records.filter(r => usnToSectionMap.get(r.usn) === section);
         }
 
-        if (studentUsns.length === 0) {
+        if (records.length === 0) {
             return ok({
                 students: [],
                 subjects: [],
@@ -124,68 +105,33 @@ export async function GET(req) {
             });
         }
 
-        // 2. Fetch subject marks dynamically for these students in this semester
-        const allMarks = await fetchDynamicMarks(supabaseAdmin, { usns: studentUsns, semester });
-
-        // 3. Fetch catalog subjects for this branch and semester
-        let catQuery = supabaseAdmin.from('subject_catalog').select('*').eq('semester', semester);
-        if (branch && branch !== 'ALL') {
-            const b = branch.toUpperCase().trim();
-            if (b === 'AI' || b === 'AIML' || b === 'CI') catQuery = catQuery.or('branch.ilike.%AI%,branch.ilike.%CI%,branch.ilike.%AIML%');
-            else if (b === 'DS' || b === 'CD') catQuery = catQuery.or('branch.ilike.%DS%,branch.ilike.%CD%,branch.ilike.%DATA%');
-            else if (b === 'CS' || b === 'CSE') catQuery = catQuery.or('branch.ilike.%CS%,branch.ilike.%COMPUTER%');
-            else catQuery = catQuery.ilike('branch', `%${branch}%`);
-        }
-        const { data: catSubjects } = await catQuery;
-
-        const catalogMap = new Map();
-        (catSubjects || []).forEach(sub => {
-            catalogMap.set(sub.subject_code.toUpperCase(), sub);
-        });
-
-        // 4. Group marks by student USN
-        const marksByUsn = new Map();
-        (allMarks || []).forEach(m => {
-            const list = marksByUsn.get(m.usn) || [];
-            list.push(m);
-            marksByUsn.set(m.usn, list);
-        });
-
-        // When "All Batches" is selected without classId, only include students who appeared in this semester or are in/above it
+        // When "All Batches" is selected without classId, only include students who
+        // have this semester on record or are in/above it (raw declared semester —
+        // just a display heuristic, not an academic computation).
         if (!batch && !classId) {
-            studentsList = studentsList.filter(s => {
-                const uMarks = marksByUsn.get(s.usn) || [];
-                return uMarks.length > 0 || (s.semester && Number(s.semester) >= semester);
-            });
-            studentUsns = studentsList.map(s => s.usn);
+            records = records.filter(r => r.semStats[semester] || (r.raw?.semester && Number(r.raw.semester) >= semester));
         }
 
-        // 5. Determine unique subject columns from marks actually taken by this cohort.
-        // Credits are resolved from the live subject_catalog (via catalogIndex, the
-        // same authority the canonical academic engine uses below) rather than the
-        // mark row's own (sometimes stale) credits column.
-        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+        // 3. Determine unique subject columns for this semester straight off the
+        // students' own canonical marksBySemester — credits already resolved from
+        // the live subject_catalog by the academic engine, no separate lookup needed.
         const subjectCodeMap = new Map();
-        (allMarks || []).forEach(m => {
-            const code = (m.subject_code || m.code || '').toUpperCase();
-            if (code && !subjectCodeMap.has(code)) {
-                const cat = catalogMap.get(code);
-                const resolvedScheme = cat?.scheme || (code.startsWith('1') ? '2025' : '2022');
-                const resolvedBranch = (branch && branch !== 'ALL') ? branch : 'CS';
-                const resolved = resolveSubjectCredit(catalogIndex, { scheme: resolvedScheme, branch: resolvedBranch, semester, subject_code: code });
-                subjectCodeMap.set(code, {
-                    code,
-                    name: cat?.subject_name || m.subject_name || m.name || code,
-                    credits: Number(cat?.credits) || resolved.credits || 0
-                });
-            }
+        records.forEach(r => {
+            (r.marksBySemester[semester] || []).forEach(s => {
+                if (!subjectCodeMap.has(s.subjectCode)) {
+                    subjectCodeMap.set(s.subjectCode, { code: s.subjectCode, name: s.subjectName || s.subjectCode, credits: s.credits || 0 });
+                }
+            });
         });
 
-        // Fallback: If no marks exist yet for this semester, populate from catalog
+        // Fallback: if no marks exist yet for this semester, populate columns from catalog
         if (subjectCodeMap.size === 0) {
-            (catSubjects || []).forEach(s => {
-                const code = s.subject_code.toUpperCase();
-                if (!code.startsWith('1B') && !code.includes('XX')) {
+            const catSubjects = (rawCatalog || []).filter(s => Number(s.semester) === semester && (
+                !branch || branch === 'ALL' || (s.branch || '').toUpperCase().includes(branch)
+            ));
+            catSubjects.forEach(s => {
+                const code = (s.subject_code || '').toUpperCase();
+                if (code && !code.startsWith('1B') && !code.includes('XX')) {
                     subjectCodeMap.set(code, {
                         code,
                         name: s.subject_name || s.subject_code,
@@ -197,12 +143,10 @@ export async function GET(req) {
 
         const subjectCols = Array.from(subjectCodeMap.values()).sort((a, b) => a.code.localeCompare(b.code));
 
-        // 6. Process each student row using the canonical academic engine
-        // (lib/vtuAcademicEngine.js) — same SGPA/credits/grade-point source as
-        // the Student Lookup dashboard, so this gazette never disagrees with it
-        // for the same student. This used to hand-roll its own per-subject
-        // credit/GP math using a credit resolver that trusted the (sometimes
-        // stale) subject_marks.credits column instead of the live subject_catalog.
+        // 4. Process each student row straight off their already-computed canonical
+        // record (lib/vtuAcademicEngine.js via lib/student-record.js) — same
+        // SGPA/credits/grade-point source as the Student Lookup dashboard, so this
+        // gazette never disagrees with it for the same student.
         const studentsProcessed = [];
         const backlogRoster = [];
         let totalAppeared = 0;
@@ -210,7 +154,6 @@ export async function GET(req) {
         let totalFailed = 0;
         const classCounts = { FCD: 0, FC: 0, SC: 0, P: 0, F: 0 };
 
-        // Pre-create subject tally counters
         const tallyMap = new Map();
         subjectCols.forEach(s => {
             tallyMap.set(s.code, {
@@ -224,18 +167,13 @@ export async function GET(req) {
             });
         });
 
-        await Promise.all(studentsList.map(async student => {
-            const uMarks = marksByUsn.get(student.usn) || [];
-            const hasData = uMarks.length > 0;
+        records.forEach(record => {
+            const semSubjects = record.marksBySemester[semester] || [];
+            const hasData = semSubjects.length > 0;
             if (hasData) totalAppeared++;
 
-            const record = await calculateAcademicRecord(
-                uMarks,
-                { usn: student.usn, branch: student.branch, scheme: student.scheme },
-                { catalogIndex }
-            );
+            const subjectsByCode = new Map(semSubjects.map(s => [s.subjectCode, s]));
             const stat = record.semStats[semester];
-            const subjectsByCode = new Map((record.marksBySemester[semester] || []).map(s => [s.subjectCode, s]));
 
             let totalScoreSum = 0;
             let arrearsCount = stat?.backlogs ?? 0;
@@ -260,7 +198,6 @@ export async function GET(req) {
                         });
                     }
 
-                    // Accumulate in subject tally
                     if (subTally) {
                         subTally.appeared++;
                         if (s.isFailed) {
@@ -303,7 +240,6 @@ export async function GET(req) {
             const percentage = sgpa > 0 ? Number(Math.max(0, (sgpa - 0.75) * 10).toFixed(2)) : 0;
             const backlogCredits = totalRegisteredCr - totalEarnedCi;
 
-            // VTU Class Award
             let vtuClass = '—';
             let awardClass = '—';
             if (hasData) {
@@ -336,8 +272,8 @@ export async function GET(req) {
 
             if (arrearsCount > 0) {
                 backlogRoster.push({
-                    usn: student.usn,
-                    name: student.name || student.usn,
+                    usn: record.usn,
+                    name: record.name || record.usn,
                     arrearsCount,
                     backlogCredits,
                     failedSubjects: failedSubjectsForStudent
@@ -345,11 +281,11 @@ export async function GET(req) {
             }
 
             studentsProcessed.push({
-                usn: student.usn,
-                name: student.name || student.usn,
-                branch: student.branch || (student.usn.length >= 7 ? student.usn.substring(5, 7).toUpperCase() : '—'),
-                section: usnToSectionMap.get(student.usn) || '—',
-                isLE: isLateralEntry(student.usn, student.lateral_entry),
+                usn: record.usn,
+                name: record.name || record.usn,
+                branch: record.raw?.branch || (record.usn.length >= 7 ? record.usn.substring(5, 7).toUpperCase() : '—'),
+                section: usnToSectionMap.get(record.usn) || '—',
+                isLE: isLateralEntry(record.usn, record.raw?.lateral_entry),
                 hasData,
                 isPassed: Boolean(hasData && arrearsCount === 0),
                 totalRegisteredCr,
@@ -366,13 +302,11 @@ export async function GET(req) {
                 backlogCredits,
                 subjectDetails
             });
-        }));
+        });
 
-        // Sort students naturally by USN
         studentsProcessed.sort((a, b) => a.usn.localeCompare(b.usn));
         backlogRoster.sort((a, b) => b.arrearsCount - a.arrearsCount || a.usn.localeCompare(b.usn));
 
-        // Format subject tallies with pass percentage
         const subjectTallies = Array.from(tallyMap.values()).map(st => ({
             ...st,
             passRate: st.appeared > 0 ? Number(((st.passed / st.appeared) * 100).toFixed(1)) : 0
@@ -384,9 +318,9 @@ export async function GET(req) {
             students: studentsProcessed,
             subjects: subjectCols,
             summary: {
-                totalEnrolled: studentsList.length,
+                totalEnrolled: records.length,
                 totalAppeared,
-                totalNotAppeared: Math.max(0, studentsList.length - totalAppeared),
+                totalNotAppeared: Math.max(0, records.length - totalAppeared),
                 totalPassed,
                 totalFailed,
                 passPercentage,

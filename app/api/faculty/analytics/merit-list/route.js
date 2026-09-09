@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient } from '@/lib/analytics-data';
+import { readTable, SELECTS } from '@/lib/table-cache';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch } from '@/lib/semester-utils';
-import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
-import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
+import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
+import { loadStudentRecords } from '@/lib/student-record';
+
+import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -17,6 +21,7 @@ function fail(message, code = 'ERROR', status = 400) {
 }
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
@@ -28,22 +33,25 @@ export async function GET(req) {
         const semester = searchParams.get('semester') && searchParams.get('semester') !== 'all'
             ? parseInt(searchParams.get('semester'), 10)
             : null;
+        const fresh = searchParams.get('fresh') === '1';
 
         const cacheKey = `merit_list:${branch}:${batch}:${semester || 'all'}:${section || 'all'}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students, classes, and class_students dynamically
+        // 1. Fetch canonical records and class mapping in parallel
         const [
-            rawStudents,
-            { data: rawClasses },
-            { data: rawClassStudents }
+            studentRecords,
+            rawClasses,
+            rawClassStudents
         ] = await Promise.all([
-            fetchDynamicStudents(supabaseAdmin, { branch }),
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch'),
-            supabaseAdmin.from('class_students').select('class_id, usn')
+            loadStudentRecords(supabaseAdmin, { fresh }),
+            readTable(supabaseAdmin, 'classes', SELECTS.classes, { orderCol: 'created_at', ascending: false }),
+            readTable(supabaseAdmin, 'class_students', SELECTS.class_students)
         ]);
 
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
@@ -62,15 +70,18 @@ export async function GET(req) {
             }
         });
 
-        let students = rawStudents || [];
-        if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        let records = [...studentRecords.values()];
+        if (branch && branch !== 'ALL') {
+            records = records.filter(r => matchesBranch(r.raw, branch));
+        }
+        if (batch && batch.toUpperCase() !== 'ALL') {
+            records = records.filter(r => matchesBatch(r.raw, batch));
         }
         if (section && section !== 'ALL') {
-            students = students.filter(s => usnToSectionMap.get(s.usn) === section);
+            records = records.filter(r => usnToSectionMap.get(r.usn) === section);
         }
 
-        if (students.length === 0) {
+        if (records.length === 0) {
             return ok({
                 summary: { totalRanked: 0, highestScore: 0, avgScore: 0 },
                 podium: [],
@@ -78,43 +89,15 @@ export async function GET(req) {
             });
         }
 
-        const usns = students.map(s => s.usn);
+        // 2. Derive candidate entries directly from canonical record
+        const candidateList = records.map(record => {
+            const semSubjects = semester
+                ? (record.marksBySemester[semester] || [])
+                : Object.values(record.marksBySemester).flat();
 
-        // 2. Fetch marks dynamically. When `semester` is set, this already scopes
-        // marks to just that semester, so the canonical engine below naturally
-        // produces that semester's SGPA/backlogs from them.
-        const marks = await fetchDynamicMarks(supabaseAdmin, {
-            usns,
-            semester,
-            select: 'usn, semester, subject_code, subject_name, internal, external, total, grade, passed, credits'
-        });
+            if (semSubjects.length === 0) return null;
 
-        const marksByUsn = new Map();
-        marks.forEach(m => {
-            const list = marksByUsn.get(m.usn) || [];
-            list.push(m);
-            marksByUsn.set(m.usn, list);
-        });
-
-        // 3. GPA/credits/backlogs come exclusively from the canonical
-        // calculateAcademicRecord engine (lib/vtuAcademicEngine.js) — the same
-        // one the Leaderboard, student dashboard, and every admin analytics page
-        // use. This used to reimplement SGPA/CGPA from scratch here (its own
-        // totalPoints/totalCredits loop), which is exactly the kind of second
-        // calculation path that can silently drift from the canonical one and
-        // show a different GPA for the same student on two different pages.
-        // totalMarks (a simple raw sum, not a GPA) is still computed locally —
-        // that's not a competing calculation, just an honest arithmetic total
-        // used as the merit list's tiebreak criterion.
-        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
-
-        const candidateList = (await Promise.all(students.map(async s => {
-            const uMarks = marksByUsn.get(s.usn) || [];
-            if (uMarks.length === 0) return null;
-
-            const record = await calculateAcademicRecord(uMarks, { usn: s.usn, branch: s.branch, scheme: s.scheme }, { catalogIndex });
-
-            const totalMarks = uMarks.reduce((acc, m) => acc + (Number(m.total) || 0), 0);
+            const totalMarks = semSubjects.reduce((acc, m) => acc + (Number(m.total) || 0), 0);
             const finalGpa = semester
                 ? (record.semStats?.[semester]?.sgpa ?? 0)
                 : record.cgpa;
@@ -126,18 +109,18 @@ export async function GET(req) {
                 : record.totalActiveBacklogs;
 
             return {
-                usn: s.usn,
-                name: s.name || s.usn,
-                branch: s.branch,
-                section: usnToSectionMap.get(s.usn) || null,
-                isLE: Boolean(s.lateral_entry),
+                usn: record.usn,
+                name: record.name || record.usn,
+                branch: record.raw?.branch || branch,
+                section: usnToSectionMap.get(record.usn) || null,
+                isLE: isLateralEntry(record.usn, record.raw?.lateral_entry),
                 gpa: finalGpa,
                 totalMarks,
                 creditsEarned,
                 hasBacklogs: backlogCount > 0,
                 backlogCount,
             };
-        }))).filter(Boolean);
+        }).filter(Boolean);
 
         // 4. Sort with tie-breaking rules:
         // Priority 1: Clear students before backlog carriers

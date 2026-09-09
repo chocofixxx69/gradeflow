@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
-import { getAdminClient, fetchDynamicStudents, fetchDynamicMarks } from '@/lib/analytics-data';
+import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch, isLateralEntry } from '@/lib/semester-utils';
-import { calculateAcademicRecord } from '@/lib/vtuAcademicEngine';
-import { fetchCatalogIndex } from '@/lib/subjectCreditResolver';
+import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
+import { loadStudentRecords } from '@/lib/student-record';
+import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -17,6 +19,7 @@ function fail(message, code = 'ERROR', status = 400) {
 }
 
 export async function GET(req) {
+    noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
@@ -24,26 +27,29 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const branch = (searchParams.get('branch') || 'CS').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
-        const targetSemester = parseInt(searchParams.get('targetSemester') || '5', 10); // Typically Sem 3, 5, or 7
+        const targetSemester = parseInt(searchParams.get('targetSemester') || '5', 10);
+        const fresh = searchParams.get('fresh') === '1';
 
         const cacheKey = `eligibility:${branch}:${batch}:${targetSemester}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch students dynamically for this branch & batch without limits
-        const rawStudents = await fetchDynamicStudents(supabaseAdmin, {
-            branch,
-            select: 'id, usn, name, branch, semester, year, lateral_entry, scheme'
-        });
+        // 1. Fetch canonical records from shared warehouse read
+        const studentRecords = await loadStudentRecords(supabaseAdmin, { fresh });
 
-        let students = rawStudents || [];
-        if (batch) {
-            students = students.filter(s => matchesBatch(s.usn, batch, s.year, s.lateral_entry));
+        let records = [...studentRecords.values()];
+        if (branch && branch !== 'ALL') {
+            records = records.filter(r => matchesBranch(r.raw, branch));
+        }
+        if (batch && batch.toUpperCase() !== 'ALL') {
+            records = records.filter(r => matchesBatch(r.raw, batch));
         }
 
-        if (students.length === 0) {
+        if (records.length === 0) {
             return ok({
                 summary: { totalEvaluated: 0, eligibleCount: 0, detainedCount: 0, eligibilityRate: 0 },
                 eligibleStudents: [],
@@ -52,75 +58,42 @@ export async function GET(req) {
             });
         }
 
-        const usns = students.map(s => s.usn);
-
-        // 2. Fetch all subject marks dynamically prior to target semester
-        const allMarks = await fetchDynamicMarks(supabaseAdmin, {
-            usns,
-            select: 'usn, semester, subject_code, subject_name, credits, internal, external, total, grade, passed'
-        });
-        const rawMarks = (allMarks || []).filter(m => Number(m.semester) < targetSemester);
-
-        const marksByUsn = new Map();
-        (rawMarks || []).forEach(m => {
-            const list = marksByUsn.get(m.usn) || [];
-            list.push(m);
-            marksByUsn.set(m.usn, list);
-        });
-
-        // 3. Evaluate VTU Vertical Progression Rules using the canonical academic
-        // engine (lib/vtuAcademicEngine.js) — same SGPA/credits/backlogs source as
-        // the Student Lookup dashboard, so eligibility figures never drift from it.
-        const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+        // 2. Evaluate VTU Vertical Progression Rules using canonical academic record
         const eligibleStudents = [];
         const detainedStudents = [];
 
-        await Promise.all(students.map(async student => {
-            const uMarks = marksByUsn.get(student.usn) || [];
-            const record = await calculateAcademicRecord(
-                uMarks,
-                { usn: student.usn, branch: student.branch, scheme: student.scheme },
-                { catalogIndex }
-            );
-            const activeBacklogs = record.activeBacklogSubjects;
+        records.forEach(record => {
+            const activeBacklogs = record.activeBacklogSubjects || [];
             const totalBacklogs = activeBacklogs.length;
-            const isLE = isLateralEntry(student.usn, student.lateral_entry) || /[A-Z]{2,3}9\d{2}/i.test(student.usn);
+            const isLE = isLateralEntry(record.usn, record.raw?.lateral_entry) || /[A-Z]{2,3}9\d{2}/i.test(record.usn);
             const totalEarnedCredits = record.totalEarnedCredits;
             const year1EarnedCredits = (record.semStats[1]?.earnedCredits || 0) + (record.semStats[2]?.earnedCredits || 0);
 
             let isEligible = true;
             const reasons = [];
-            const currentStudentSem = Number(student.semester) || 0;
+            const currentStudentSem = Number(record.raw?.semester) || 0;
             const alreadyPassedGate = currentStudentSem > targetSemester;
 
-            // If the student has already progressed beyond the target gate semester,
-            // they have already satisfied this progression gate in a prior academic year.
             if (alreadyPassedGate) {
-                // For admission to 7th Semester (Rule 3), students carrying any 1st-year backlog are barred
                 if (targetSemester === 7) {
                     const sem1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
                     if (sem1And2Backlogs.length > 0 && !isLE) {
                         isEligible = false;
-                        reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
+                        reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subjectCode || s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
                     }
                 }
             }
-            // Rule 1: Admission to 3rd Semester (Year 2 entry)
-            // VTU Regulation: Student must earn a minimum of 20 credits in 1st Year and not carry > 4 backlogs
             else if (targetSemester === 3) {
                 if (year1EarnedCredits < 20 && !isLE) {
                     isEligible = false;
                     reasons.push(`Earned only ${year1EarnedCredits} credits in 1st Year (VTU Minimum Required to move to 2nd Year: 20 credits).`);
                 }
-
                 const year1Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
                 if (year1Backlogs.length > 4 && !isLE) {
                     isEligible = false;
                     reasons.push(`Carrying ${year1Backlogs.length} backlogs from 1st Year (Maximum allowed: 4).`);
                 }
             }
-            // Rule 2: Admission to 5th Semester (Year 3 entry)
-            // VTU Regulation: Not more than 4 backlogs from 1st and 2nd year combined
             else if (targetSemester === 5) {
                 const year1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 4);
                 if (year1And2Backlogs.length > 4) {
@@ -128,17 +101,13 @@ export async function GET(req) {
                     reasons.push(`Carrying ${year1And2Backlogs.length} backlogs from Semesters 1 to 4 (Maximum allowed: 4).`);
                 }
             }
-            // Rule 3: Admission to 7th Semester (Year 4 entry)
-            // VTU Regulation: ANY student carrying backlogs from 1st year CANNOT enter 7th Semester (all 1st-year subjects must be cleared).
-            // There is NO limit on backlogs from 2nd year and 3rd year to enter 4th year.
             else if (targetSemester === 7) {
                 const sem1And2Backlogs = activeBacklogs.filter(b => Number(b.semester) <= 2);
                 if (sem1And2Backlogs.length > 0 && !isLE) {
                     isEligible = false;
-                    reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
+                    reasons.push(`Carrying ${sem1And2Backlogs.length} uncleared backlog(s) from 1st Year (${sem1And2Backlogs.map(s => s.subjectCode || s.subject_code).join(', ')}). VTU Rule: Any student with 1st-year backlogs CANNOT be admitted to 7th Semester.`);
                 }
             }
-            // Generic fallback for any other semester
             else {
                 if (totalBacklogs > 4) {
                     isEligible = false;
@@ -146,37 +115,36 @@ export async function GET(req) {
                 }
             }
 
-            const studentReport = {
-                usn: student.usn,
-                name: student.name || student.usn,
-                branch: student.branch,
+            const studentItem = {
+                usn: record.usn,
+                name: record.name || record.usn,
+                branch: record.raw?.branch || branch,
+                currentSemester: currentStudentSem,
                 isLE,
                 totalEarnedCredits,
-                year1EarnedCredits,
-                activeBacklogsCount: totalBacklogs,
-                unclearedSubjects: activeBacklogs.map(b => ({
-                    code: b.subject_code,
-                    name: b.subject_name,
-                    semester: b.semester
+                year1Credits: year1EarnedCredits,
+                backlogCount: totalBacklogs,
+                backlogs: activeBacklogs.map(b => ({
+                    code: b.subjectCode || b.subject_code,
+                    name: b.subjectName || b.subject_name || b.subjectCode,
+                    semester: b.semester,
+                    credits: b.credits
                 })),
+                cgpa: record.cgpa || 0,
                 isEligible,
-                isDetained: !isEligible,
-                status: isEligible ? 'Eligible' : 'Detained',
-                detentionReasons: reasons
+                reasons
             };
 
             if (isEligible) {
-                eligibleStudents.push(studentReport);
+                eligibleStudents.push(studentItem);
             } else {
-                detainedStudents.push(studentReport);
+                detainedStudents.push(studentItem);
             }
-        }));
+        });
 
-        // Sort both lists by USN
         eligibleStudents.sort((a, b) => a.usn.localeCompare(b.usn));
-        detainedStudents.sort((a, b) => b.activeBacklogsCount - a.activeBacklogsCount || a.usn.localeCompare(b.usn));
 
-        const totalEvaluated = students.length;
+        const totalEvaluated = records.length;
         const eligibleCount = eligibleStudents.length;
         const detainedCount = detainedStudents.length;
         const eligibilityRate = totalEvaluated > 0 ? Number(((eligibleCount / totalEvaluated) * 100).toFixed(1)) : 0;
