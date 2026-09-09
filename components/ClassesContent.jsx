@@ -81,7 +81,7 @@ export function ClassesContent({ embedded = false }) {
         id: '',
         name: '',
         branch: 'CS',
-        semester: 3,
+        semester: 6,
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
@@ -125,10 +125,15 @@ export function ClassesContent({ embedded = false }) {
         });
     };
 
+    const latestClassSem = useMemo(() => {
+        const validSems = (classes || []).map(c => Number(c.semester)).filter(s => !isNaN(s) && s > 0);
+        return validSems.length > 0 ? Math.max(...validSems) : 6;
+    }, [classes]);
+
     const openCreateClassModal = () => {
         setNameIsManual(false);
         const initBranch = branches[0]?.code || 'CS';
-        const initSem = 3;
+        const initSem = latestClassSem;
         const initSec = 'A';
         const initBatch = '2023';
         setNewClass({
@@ -145,9 +150,9 @@ export function ClassesContent({ embedded = false }) {
     };
 
     const [newClass, setNewClass] = useState({
-        name: 'CS - Sem 3 - (Sec A) - 2023 Batch',
+        name: 'CS - Sem 6 - (Sec A) - 2023 Batch',
         branch: 'CS',
-        semester: 3,
+        semester: 6,
         scheme: '2022',
         section: 'A',
         faculty_id: 'all',
@@ -458,7 +463,7 @@ export function ClassesContent({ embedded = false }) {
             setNewClass({
                 name: '',
                 branch: 'CS',
-                semester: 3,
+                semester: latestClassSem,
                 scheme: '2022',
                 section: 'A',
                 faculty_id: 'all',
@@ -480,7 +485,7 @@ export function ClassesContent({ embedded = false }) {
             id: cls.id,
             name: cls.name || '',
             branch: cls.branch || 'CS',
-            semester: cls.semester || 3,
+            semester: cls.semester || latestClassSem || 1,
             scheme: cls.scheme || '2022',
             section: cls.section || 'A',
             faculty_id: cls.faculty_id || 'all',

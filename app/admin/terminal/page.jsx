@@ -8,8 +8,10 @@ import { ClassesContent } from '../../../components/ClassesContent';
 import { AuditLogContent } from '../../../components/AuditLogContent';
 import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
 import { FacultyAssignmentsContent } from '../../../components/FacultyAssignmentsContent';
+import { FacultyPerformanceContent } from '../../../components/FacultyPerformanceContent';
 import { FacultyActivityContent } from '../../../components/FacultyActivityContent';
 import { AdminVtuUrlsContent } from '../../../components/AdminVtuUrlsContent';
+import { SubjectsContent } from '../../../components/SubjectsContent';
 import { ConfirmDialog } from '../../../components/ui';
 import AdminAnalyticsPage from '../analytics/page.jsx';
 import { AnalyticsFiltersProvider } from '../analytics/AnalyticsFiltersContext';
@@ -23,6 +25,8 @@ const TAB_METADATA = {
     students: { label: 'Student Directory & Access Control', icon: 'school', shortLabel: 'Students' },
     classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
     assignments: { label: 'Faculty Subject Assignments & Mapping', icon: 'assignment_ind', shortLabel: 'Subject Assignments' },
+    teachingPerformance: { label: 'Faculty Teaching Performance & Attribution', icon: 'supervisor_account', shortLabel: 'Teaching Performance' },
+    subjects: { label: 'Subject Catalog & Credit Registry', icon: 'library_books', shortLabel: 'Subjects Catalog' },
     requests: { label: 'Faculty Access & Credentials', icon: 'verified_user', shortLabel: 'Faculty Access' },
     vtuUrls: { label: 'VTU Result Portal Configuration', icon: 'link', shortLabel: 'VTU URLs' },
     support: { label: 'Institutional Support Tickets', icon: 'support_agent', shortLabel: 'Support' },
@@ -1357,6 +1361,8 @@ function AdminPanelContent() {
         { id: 'students', label: 'Students', icon: 'school' },
         { id: 'classes', label: 'Classes', icon: 'groups' },
         { id: 'assignments', label: 'Subject Assignments', icon: 'assignment_ind' },
+        { id: 'teachingPerformance', label: 'Teaching Performance', icon: 'supervisor_account' },
+        { id: 'subjects', label: 'Subjects Catalog', icon: 'library_books' },
         { id: 'requests', label: 'Faculty Access', icon: 'verified_user' },
         { id: 'vtuUrls', label: 'VTU Result URLs', icon: 'link' },
         { id: 'support', label: 'Support & Issues', icon: 'support_agent' },
@@ -2986,6 +2992,10 @@ function AdminPanelContent() {
                 {tab === 'classes' && <ClassesContent embedded={true} />}
 
                 {tab === 'assignments' && <FacultyAssignmentsContent embedded={true} />}
+
+                {tab === 'teachingPerformance' && <FacultyPerformanceContent role="admin" embedded={true} onNavigateTab={switchTab} />}
+
+                {tab === 'subjects' && <SubjectsContent />}
 
                 {tab === 'support' && <SupportTicketsContent onStatsUpdate={(s) => setOpenTicketsCount(s?.open || 0)} />}
 

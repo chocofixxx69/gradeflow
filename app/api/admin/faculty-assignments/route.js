@@ -36,8 +36,38 @@ async function getSubjectCatalog(client) {
         client,
         'subject_code',
         true
-    );
-    _subjectsCache = subjects || [];
+    ) || [];
+
+    // Also supplement with distinct subjects from subject_marks to ensure active courses appear
+    try {
+        const { data: marks } = await client
+            .from('subject_marks')
+            .select('subject_code, subject_name, credits, semester')
+            .limit(1000);
+        if (marks && marks.length > 0) {
+            const seen = new Set(subjects.map(s => `${(s.subject_code || '').toUpperCase()}_${s.semester}`));
+            for (const m of marks) {
+                const code = (m.subject_code || '').trim().toUpperCase();
+                const key = `${code}_${m.semester}`;
+                if (code && !seen.has(key)) {
+                    seen.add(key);
+                    subjects.push({
+                        id: `mark_${code}_${m.semester}`,
+                        subject_code: code,
+                        subject_name: m.subject_name || code,
+                        branch: 'CS',
+                        semester: m.semester,
+                        scheme: '2022',
+                        credits: m.credits || 3
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[getSubjectCatalog] marks supplement skipped:', e?.message);
+    }
+
+    _subjectsCache = subjects;
     _subjectsCacheTime = Date.now();
     return _subjectsCache;
 }

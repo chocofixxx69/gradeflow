@@ -44,7 +44,7 @@ function SubjectAnalyticsContent() {
 
     // Scope Filters
     const [branch, setBranch] = useState(() => initialSaved.branch || 'CS');
-    const [semester, setSemester] = useState(() => Number(initialSaved.semester) || 1);
+    const [semester, setSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 1);
     const [subjectCode, setSubjectCode] = useState('');
     const [batch, setBatch] = useState(() => initialSaved.batch || '');
     

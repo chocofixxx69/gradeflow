@@ -2,9 +2,9 @@
 import AuthGuard from '../../../components/AuthGuard';
 import { SubjectsContent } from '../../../components/SubjectsContent';
 
-export default function SubjectsPage() {
+export default function AdminSubjectsPage() {
   return (
-    <AuthGuard role="faculty">
+    <AuthGuard role="admin">
       <SubjectsContent />
     </AuthGuard>
   );

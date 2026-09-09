@@ -86,7 +86,7 @@ export async function POST(req) {
             .insert({
                 name: name.trim(),
                 branch: branch || 'CS',
-                semester: parseInt(semester) || 3,
+                semester: parseInt(semester) || 1,
                 scheme: scheme || '2022',
                 faculty_id,
                 section: section ? section.trim().toUpperCase() : null,

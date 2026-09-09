@@ -45,7 +45,7 @@ function ExamResultsHubContent() {
 
     // Shared Scope Filters
     const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
-    const [semester, setSemester] = useState(() => Number(initialSaved.semester) || 3);
+    const [semester, setSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6);
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
     const [section, setSection] = useState('ALL');
     const [searchQuery, setSearchQuery] = useState('');
@@ -93,7 +93,7 @@ function ExamResultsHubContent() {
 
     const initialSemData = getCachedApiData('/api/faculty/analytics/semester-analysis', {
         branch: initialSaved.branch || 'CS',
-        semester: Number(initialSaved.semester) || 3,
+        semester: (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6,
         batch: initialSaved.batch || '2023'
     });
     const [semData, setSemData] = useState(() => initialSemData || {
@@ -106,11 +106,11 @@ function ExamResultsHubContent() {
     const [semLoading, setSemLoading] = useState(() => !initialSemData);
 
     // Tab 2: Batch Trajectory States
-    const [upToSemester, setUpToSemester] = useState(() => Number(initialSaved.semester) || 6);
+    const [upToSemester, setUpToSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6);
     const initialBatchData = getCachedApiData('/api/faculty/analytics/batch-report', {
         branch: initialSaved.branch || 'CS',
         batch: initialSaved.batch || '2023',
-        upToSemester: Number(initialSaved.semester) || 6
+        upToSemester: (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6
     });
     const [batchData, setBatchData] = useState(() => initialBatchData || {
         students: [],
@@ -141,7 +141,14 @@ function ExamResultsHubContent() {
         async function loadMeta() {
             try {
                 const res = await apiRequest('/api/faculty/analytics/meta', { query: { fresh: '1', t: Date.now() } });
-                if (res) setMeta(res);
+                if (res) {
+                    setMeta(res);
+                    if (res.semesters && res.semesters.length > 0) {
+                        const latest = res.semesters[res.semesters.length - 1];
+                        setSemester(prev => (prev === 'ALL' || !prev || prev === 3) ? latest : prev);
+                        setUpToSemester(prev => (!prev || prev === 3) ? latest : prev);
+                    }
+                }
             } catch (err) {
                 console.error('Failed to load meta:', err);
             }
@@ -197,7 +204,8 @@ function ExamResultsHubContent() {
     useEffect(() => {
         if (viewTab === 'semester') {
             if (semester === 'ALL') {
-                setSemester(3);
+                const latest = (meta.semesters && meta.semesters.length > 0) ? meta.semesters[meta.semesters.length - 1] : 6;
+                setSemester(latest);
                 return;
             }
             loadSemesterData();
@@ -206,7 +214,7 @@ function ExamResultsHubContent() {
         } else {
             loadRevalData();
         }
-    }, [viewTab, semester, loadSemesterData, loadBatchTrajectory, loadRevalData]);
+    }, [viewTab, semester, meta.semesters, loadSemesterData, loadBatchTrajectory, loadRevalData]);
 
     // Filtered lists
     const filteredSemesterStudents = useMemo(() => {

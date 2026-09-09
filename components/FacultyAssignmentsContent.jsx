@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { apiRequest } from '../lib/api/client';
 import { ConfirmDialog, SearchableSelect } from './ui';
 import { filterAndRank } from '../lib/search-utils';
@@ -46,6 +47,18 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // Dynamic latest semester calculation from existing classes
+    const latestSem = useMemo(() => {
+        if (!classesList?.length) return '6';
+        const sems = classesList.map(c => Number(c.semester)).filter(n => !isNaN(n) && n > 0);
+        return sems.length ? String(Math.max(...sems)) : '6';
+    }, [classesList]);
 
     // Filters
     const [search, setSearch] = useState('');
@@ -61,11 +74,21 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
     const [form, setForm] = useState({
         faculty_id: preselectedFacultyId || '',
         branch: 'CS',
-        semester: '3',
+        semester: '6',
         scheme: '2022',
         subject_code: '',
         class_id: '',
     });
+
+    // Close modal on Escape
+    useEffect(() => {
+        if (!showAssignModal) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setShowAssignModal(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showAssignModal]);
 
     // Delete state
     const [confirmingDelete, setConfirmingDelete] = useState(null);
@@ -776,27 +799,73 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 </div>
             </div>
 
-            {/* Create Assignment Modal */}
-            {showAssignModal && (
-                <div style={s.modalOverlay} onClick={() => setShowAssignModal(false)}>
-                    <div style={s.modalCard} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '22px' }}>
+            {/* Create Assignment Modal rendered via Portal for full viewport coverage */}
+            {mounted && showAssignModal && createPortal(
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        background: 'rgba(15, 23, 42, 0.65)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                        zIndex: 99999,
+                        display: 'grid',
+                        placeItems: 'center',
+                        padding: 'clamp(12px, 3vw, 24px)',
+                        overflowY: 'auto',
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setShowAssignModal(false);
+                    }}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="assign-modal-title"
+                >
+                    <div
+                        style={{
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '20px',
+                            width: 'min(100%, 620px)',
+                            maxHeight: 'min(92vh, 780px)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+                            overflow: 'hidden',
+                            margin: 'auto',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Sticky Modal Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            padding: '20px 24px 16px',
+                            borderBottom: '1px solid var(--border)',
+                            background: 'var(--surface)',
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 10,
+                        }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{
                                     width: '42px',
                                     height: '42px',
-                                    borderRadius: '10px',
+                                    borderRadius: '12px',
                                     background: 'rgba(23, 75, 77, 0.08)',
                                     color: 'var(--primary)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    flexShrink: 0
+                                    flexShrink: 0,
                                 }}>
                                     <span className="material-icons-round" style={{ fontSize: '22px' }}>assignment_ind</span>
                                 </div>
                                 <div>
-                                    <h2 style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>
+                                    <h2 id="assign-modal-title" style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>
                                         Assign Subject to Faculty
                                     </h2>
                                     <p style={{ fontSize: '12px', color: 'var(--tx-muted)', margin: '3px 0 0' }}>
@@ -808,9 +877,9 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                 type="button"
                                 onClick={() => setShowAssignModal(false)}
                                 style={{
-                                    background: '#FFFFFF',
+                                    background: 'transparent',
                                     border: '1px solid var(--border)',
-                                    borderRadius: '8px',
+                                    borderRadius: '10px',
                                     width: '32px',
                                     height: '32px',
                                     display: 'flex',
@@ -821,11 +890,11 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                     transition: 'all 0.15s ease',
                                 }}
                                 onMouseEnter={e => {
-                                    e.currentTarget.style.background = 'var(--bg)';
+                                    e.currentTarget.style.background = 'var(--surface-low)';
                                     e.currentTarget.style.color = 'var(--tx-main)';
                                 }}
                                 onMouseLeave={e => {
-                                    e.currentTarget.style.background = '#FFFFFF';
+                                    e.currentTarget.style.background = 'transparent';
                                     e.currentTarget.style.color = 'var(--tx-muted)';
                                 }}
                                 title="Close"
@@ -834,276 +903,292 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                             </button>
                         </div>
 
-                        {formError && (
-                            <div style={{ padding: '10px 14px', background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: '10px', color: 'var(--red)', fontSize: '12px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '16px' }}>error_outline</span>
-                                <span>{formError}</span>
-                            </div>
-                        )}
+                        {/* Scrollable Modal Body */}
+                        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+                            {formError && (
+                                <div style={{ padding: '10px 14px', background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: '10px', color: 'var(--red)', fontSize: '12px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '16px' }}>error_outline</span>
+                                    <span>{formError}</span>
+                                </div>
+                            )}
 
-                        <form onSubmit={handleCreateAssignment}>
-                            {/* Faculty Selection */}
-                            <div style={{ marginBottom: '16px' }}>
-                                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                    Faculty Member <span style={{ color: 'var(--red)' }}>*</span>
-                                </label>
-                                <select
-                                    style={{ ...s.select, width: '100%' }}
-                                    value={form.faculty_id}
-                                    onChange={e => setForm(f => ({ ...f, faculty_id: e.target.value }))}
-                                    required
-                                >
-                                    <option value="">Select Faculty...</option>
-                                    {facultyList.map(f => (
-                                        <option key={f.id} value={f.id}>
-                                            {f.full_name} ({f.email}) · {f.department || 'General Department'} {f.designation ? `(${f.designation})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                {selectedFacultyDetails && (
-                                    <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>verified</span>
-                                        <span>{selectedFacultyDetails.designation || 'Faculty Member'} · {selectedFacultyDetails.department || 'General Department'}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Branch & Semester */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                                <div>
+                            <form id="faculty-assignment-form" onSubmit={handleCreateAssignment}>
+                                {/* Faculty Selection */}
+                                <div style={{ marginBottom: '16px' }}>
                                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                        Branch <span style={{ color: 'var(--red)' }}>*</span>
+                                        Faculty Member <span style={{ color: 'var(--red)' }}>*</span>
                                     </label>
                                     <select
                                         style={{ ...s.select, width: '100%' }}
-                                        value={form.branch}
-                                        onChange={e => {
-                                            const newBranch = e.target.value;
-                                            setForm(f => ({ ...f, branch: newBranch, subject_code: '' }));
-                                        }}
+                                        value={form.faculty_id}
+                                        onChange={e => setForm(f => ({ ...f, faculty_id: e.target.value }))}
                                         required
                                     >
-                                        <option value="CS">Computer Science (CS)</option>
-                                        <option value="IS">Information Science (IS)</option>
-                                        <option value="AI">AI & ML (AI)</option>
-                                        <option value="DS">Data Science (DS)</option>
-                                        <option value="EC">Electronics & Comm (EC)</option>
-                                        <option value="EE">Electrical & Electronics (EE)</option>
-                                        <option value="ME">Mechanical (ME)</option>
-                                        <option value="CV">Civil (CV)</option>
-                                        <option value="RI">Robotics & AI (RI)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                        Semester <span style={{ color: 'var(--red)' }}>*</span>
-                                    </label>
-                                    <select
-                                        style={{ ...s.select, width: '100%' }}
-                                        value={form.semester}
-                                        onChange={e => {
-                                            const newSem = e.target.value;
-                                            setForm(f => ({ ...f, semester: newSem, subject_code: '' }));
-                                        }}
-                                        required
-                                    >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
-                                            <option key={n} value={String(n)}>Semester {n}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Scheme & Class Section */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                        Curriculum Scheme
-                                    </label>
-                                    <select
-                                        style={{ ...s.select, width: '100%' }}
-                                        value={form.scheme}
-                                        onChange={e => {
-                                            const newScheme = e.target.value;
-                                            setForm(f => ({ ...f, scheme: newScheme, subject_code: '' }));
-                                        }}
-                                    >
-                                        <option value="2022">2022 Scheme</option>
-                                        <option value="2025">2025 Scheme</option>
-                                        <option value="2021">2021 Scheme</option>
-                                        <option value="2018">2018 Scheme</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-                                        Class Section (Optional)
-                                    </label>
-                                    <select
-                                        style={{ ...s.select, width: '100%' }}
-                                        value={form.class_id}
-                                        onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))}
-                                    >
-                                        <option value="">All Class Sections</option>
-                                        {matchingClasses.map(c => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.name} {c.section ? `(Sec ${c.section})` : ''} {c.batch ? `· [${c.batch} Batch]` : ''} · Sem {c.semester}
+                                        <option value="">Select Faculty...</option>
+                                        {facultyList.map(f => (
+                                            <option key={f.id} value={f.id}>
+                                                {f.full_name} ({f.email}) · {f.department || 'General Department'} {f.designation ? `(${f.designation})` : ''}
                                             </option>
                                         ))}
                                     </select>
+                                    {selectedFacultyDetails && (
+                                        <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>verified</span>
+                                            <span>{selectedFacultyDetails.designation || 'Faculty Member'} · {selectedFacultyDetails.department || 'General Department'}</span>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
 
-                            {/* Subject Selection */}
-                            <div style={{ marginBottom: '22px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                        Subject <span style={{ color: 'var(--red)' }}>*</span>
-                                    </label>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {availableSubjectsForForm.length > 0 && (
-                                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)', background: 'rgba(23, 75, 77, 0.08)', padding: '2px 8px', borderRadius: '10px' }}>
-                                                {availableSubjectsForForm.length} subjects found
-                                            </span>
-                                        )}
-                                        {availableSubjectsForForm.length > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setManualSubjectMode(m => !m);
-                                                    setForm(f => ({ ...f, subject_code: '' }));
-                                                }}
-                                                style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    color: 'var(--primary)',
-                                                    cursor: 'pointer',
-                                                    fontSize: '11px',
-                                                    fontWeight: 700,
-                                                    textDecoration: 'underline',
-                                                    padding: 0,
-                                                }}
-                                            >
-                                                {manualSubjectMode ? '← Choose from catalog' : '+ Enter custom code'}
-                                            </button>
-                                        )}
+                                {/* Branch & Semester */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                                            Branch <span style={{ color: 'var(--red)' }}>*</span>
+                                        </label>
+                                        <select
+                                            style={{ ...s.select, width: '100%' }}
+                                            value={form.branch}
+                                            onChange={e => {
+                                                const newBranch = e.target.value;
+                                                setForm(f => ({ ...f, branch: newBranch, subject_code: '' }));
+                                            }}
+                                            required
+                                        >
+                                            <option value="CS">Computer Science (CS)</option>
+                                            <option value="IS">Information Science (IS)</option>
+                                            <option value="AI">AI & ML (AI)</option>
+                                            <option value="DS">Data Science (DS)</option>
+                                            <option value="EC">Electronics & Comm (EC)</option>
+                                            <option value="EE">Electrical & Electronics (EE)</option>
+                                            <option value="ME">Mechanical (ME)</option>
+                                            <option value="CV">Civil (CV)</option>
+                                            <option value="RI">Robotics & AI (RI)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                                            Semester <span style={{ color: 'var(--red)' }}>*</span>
+                                        </label>
+                                        <select
+                                            style={{ ...s.select, width: '100%' }}
+                                            value={form.semester}
+                                            onChange={e => {
+                                                const newSem = e.target.value;
+                                                setForm(f => ({ ...f, semester: newSem, subject_code: '' }));
+                                            }}
+                                            required
+                                        >
+                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                                                <option key={n} value={String(n)}>Semester {n}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 
-                                {!manualSubjectMode && availableSubjectsForForm.length > 0 ? (
+                                {/* Scheme & Class Section */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
                                     <div>
-                                        <SearchableSelect
-                                            options={availableSubjectsForForm.map(s => ({
-                                                value: s.subject_code,
-                                                label: `${s.subject_code} — ${s.subject_name}`,
-                                                subtitle: `${s.branch} · Sem ${s.semester} · Scheme ${s.scheme} · ${s.credits || 3} credits`,
-                                                badge: `Sem ${s.semester}`,
-                                            }))}
-                                            value={form.subject_code}
-                                            onChange={e => setForm(f => ({ ...f, subject_code: e.target.value }))}
-                                            placeholder="Select or search a subject from catalog..."
-                                            searchPlaceholder="Search by code, name, sem (e.g. BCS601, Cloud)..."
-                                        />
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                                            Curriculum Scheme
+                                        </label>
+                                        <select
+                                            style={{ ...s.select, width: '100%' }}
+                                            value={form.scheme}
+                                            onChange={e => {
+                                                const newScheme = e.target.value;
+                                                setForm(f => ({ ...f, scheme: newScheme, subject_code: '' }));
+                                            }}
+                                        >
+                                            <option value="2022">2022 Scheme</option>
+                                            <option value="2025">2025 Scheme</option>
+                                            <option value="2021">2021 Scheme</option>
+                                            <option value="2018">2018 Scheme</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                                            Class Section (Optional)
+                                        </label>
+                                        <select
+                                            style={{ ...s.select, width: '100%' }}
+                                            value={form.class_id}
+                                            onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))}
+                                        >
+                                            <option value="">All Class Sections</option>
+                                            {matchingClasses.map(c => (
+                                                <option key={c.id} value={c.id}>
+                                                    {c.name} {c.section ? `(Sec ${c.section})` : ''} {c.batch ? `· [${c.batch} Batch]` : ''} · Sem {c.semester}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
 
-                                        {selectedSubjectDetails && (
-                                            <div style={{
-                                                marginTop: '10px',
-                                                padding: '12px 16px',
-                                                background: 'rgba(23, 75, 77, 0.04)',
-                                                border: '1px solid rgba(23, 75, 77, 0.15)',
-                                                borderRadius: '10px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: '12px',
-                                            }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                                                    <span style={{
-                                                        background: 'var(--primary)',
-                                                        color: '#FFFFFF',
-                                                        padding: '3px 8px',
-                                                        borderRadius: '6px',
-                                                        fontSize: '12px',
-                                                        fontWeight: 800,
-                                                        fontFamily: 'monospace',
-                                                        letterSpacing: '0.03em',
-                                                        flexShrink: 0,
-                                                    }}>
-                                                        {selectedSubjectDetails.subject_code}
-                                                    </span>
-                                                    <div style={{ minWidth: 0 }}>
-                                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                            {selectedSubjectDetails.subject_name}
-                                                        </div>
-                                                        <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                            {selectedSubjectDetails.scheme || form.scheme} Scheme · Sem {selectedSubjectDetails.semester || form.semester} · {selectedSubjectDetails.branch || form.branch}
+                                {/* Subject Selection */}
+                                <div style={{ marginBottom: '16px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                            Subject <span style={{ color: 'var(--red)' }}>*</span>
+                                        </label>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {availableSubjectsForForm.length > 0 && (
+                                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)', background: 'rgba(23, 75, 77, 0.08)', padding: '2px 8px', borderRadius: '10px' }}>
+                                                    {availableSubjectsForForm.length} subjects found
+                                                </span>
+                                            )}
+                                            {availableSubjectsForForm.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setManualSubjectMode(m => !m);
+                                                        setForm(f => ({ ...f, subject_code: '' }));
+                                                    }}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: 'var(--primary)',
+                                                        cursor: 'pointer',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        textDecoration: 'underline',
+                                                        padding: 0,
+                                                    }}
+                                                >
+                                                    {manualSubjectMode ? '← Choose from catalog' : '+ Enter custom code'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {!manualSubjectMode && availableSubjectsForForm.length > 0 ? (
+                                        <div>
+                                            <SearchableSelect
+                                                options={availableSubjectsForForm.map(s => ({
+                                                    value: s.subject_code,
+                                                    label: `${s.subject_code} — ${s.subject_name}`,
+                                                    subtitle: `${s.branch} · Sem ${s.semester} · Scheme ${s.scheme} · ${s.credits || 3} credits`,
+                                                    badge: `Sem ${s.semester}`,
+                                                }))}
+                                                value={form.subject_code}
+                                                onChange={e => setForm(f => ({ ...f, subject_code: e.target.value }))}
+                                                placeholder="Select or search a subject from catalog..."
+                                                searchPlaceholder="Search by code, name, sem (e.g. BCS601, Cloud)..."
+                                            />
+
+                                            {selectedSubjectDetails && (
+                                                <div style={{
+                                                    marginTop: '10px',
+                                                    padding: '12px 16px',
+                                                    background: 'rgba(23, 75, 77, 0.04)',
+                                                    border: '1px solid rgba(23, 75, 77, 0.15)',
+                                                    borderRadius: '10px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    gap: '12px',
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                                        <span style={{
+                                                            background: 'var(--primary)',
+                                                            color: '#FFFFFF',
+                                                            padding: '3px 8px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            fontWeight: 800,
+                                                            fontFamily: 'monospace',
+                                                            letterSpacing: '0.03em',
+                                                            flexShrink: 0,
+                                                        }}>
+                                                            {selectedSubjectDetails.subject_code}
+                                                        </span>
+                                                        <div style={{ minWidth: 0 }}>
+                                                            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {selectedSubjectDetails.subject_name}
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                                {selectedSubjectDetails.scheme || form.scheme} Scheme · Sem {selectedSubjectDetails.semester || form.semester} · {selectedSubjectDetails.branch || form.branch}
+                                                            </div>
                                                         </div>
                                                     </div>
+                                                    <div style={{
+                                                        background: '#FFFFFF',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 8px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 800,
+                                                        color: 'var(--primary)',
+                                                        whiteSpace: 'nowrap',
+                                                        flexShrink: 0,
+                                                    }}>
+                                                        {selectedSubjectDetails.credits || 3} Credits
+                                                    </div>
                                                 </div>
-                                                <div style={{
-                                                    background: '#FFFFFF',
-                                                    border: '1px solid var(--border)',
-                                                    borderRadius: '6px',
-                                                    padding: '4px 8px',
-                                                    fontSize: '11px',
-                                                    fontWeight: 800,
-                                                    color: 'var(--primary)',
-                                                    whiteSpace: 'nowrap',
-                                                    flexShrink: 0,
-                                                }}>
-                                                    {selectedSubjectDetails.credits || 3} Credits
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <input
-                                            style={{ ...s.input, width: '100%' }}
-                                            type="text"
-                                            placeholder="Enter subject code manually (e.g. BCS301)"
-                                            value={form.subject_code}
-                                            onChange={e => setForm(f => ({ ...f, subject_code: e.target.value.toUpperCase() }))}
-                                            required
-                                        />
-                                        {availableSubjectsForForm.length === 0 && (
-                                            <p style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '6px', margin: '6px 0 0' }}>
-                                                No pre-cataloged subjects for {form.branch} Sem {form.semester} ({form.scheme} Scheme). Enter the official VTU subject code manually.
-                                            </p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-                                <button
-                                    type="button"
-                                    style={s.btnSecondary}
-                                    onClick={() => setShowAssignModal(false)}
-                                    disabled={submitting}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    style={s.btnPrimary}
-                                    disabled={submitting}
-                                >
-                                    {submitting ? (
-                                        <>
-                                            <span className="material-icons-round" style={{ animation: 'spin 1s infinite linear', fontSize: '16px' }}>sync</span>
-                                            Assigning...
-                                        </>
+                                            )}
+                                        </div>
                                     ) : (
-                                        <>
-                                            <span className="material-icons-round" style={{ fontSize: '16px' }}>check</span>
-                                            Confirm Assignment
-                                        </>
+                                        <div>
+                                            <input
+                                                style={{ ...s.input, width: '100%' }}
+                                                type="text"
+                                                placeholder="Enter subject code manually (e.g. BCS301)"
+                                                value={form.subject_code}
+                                                onChange={e => setForm(f => ({ ...f, subject_code: e.target.value.toUpperCase() }))}
+                                                required
+                                            />
+                                            {availableSubjectsForForm.length === 0 && (
+                                                <p style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '6px', margin: '6px 0 0' }}>
+                                                    No pre-cataloged subjects for {form.branch} Sem {form.semester} ({form.scheme} Scheme). Enter the official VTU subject code manually.
+                                                </p>
+                                            )}
+                                        </div>
                                     )}
-                                </button>
-                            </div>
-                        </form>
+                                </div>
+                            </form>
+                        </div>
+
+                        {/* Sticky Modal Footer */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: '10px',
+                            padding: '14px 24px',
+                            borderTop: '1px solid var(--border)',
+                            background: 'var(--surface)',
+                            position: 'sticky',
+                            bottom: 0,
+                            zIndex: 10,
+                        }}>
+                            <button
+                                type="button"
+                                style={s.btnSecondary}
+                                onClick={() => setShowAssignModal(false)}
+                                disabled={submitting}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                form="faculty-assignment-form"
+                                style={s.btnPrimary}
+                                disabled={submitting}
+                            >
+                                {submitting ? (
+                                    <>
+                                        <span className="material-icons-round" style={{ animation: 'spin 1s infinite linear', fontSize: '16px' }}>sync</span>
+                                        Assigning...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>check</span>
+                                        Confirm Assignment
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Unassign Confirmation */}
