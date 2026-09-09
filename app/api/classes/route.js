@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../lib/server-session';
 import { getAdminClient } from '../../../lib/analytics-data';
 
-const supabaseAdmin = getAdminClient();
-
 export const dynamic = 'force-dynamic';
 
 // GET — all classes with student count and faculty info
 export async function GET(req) {
     try {
+        const supabaseAdmin = getAdminClient();
         const [{ data: classes, error: cErr }, { data: facultyList, error: fErr }] = await Promise.all([
             supabaseAdmin
                 .from('classes')
@@ -47,7 +46,7 @@ export async function GET(req) {
         return NextResponse.json({ success: true, classes: result, faculty: facultyList || [] });
     } catch (err) {
         console.error('[GET /api/classes]', err);
-        return NextResponse.json({ error: 'Failed to fetch classes.' }, { status: 500 });
+        return NextResponse.json({ success: false, error: { message: err?.message || 'Failed to fetch classes.' } }, { status: 500 });
     }
 }
 
@@ -57,6 +56,7 @@ export async function POST(req) {
     if (authError) return authError;
 
     try {
+        const supabaseAdmin = getAdminClient();
         const body = await req.json().catch(() => ({}));
         let { name, branch, semester, scheme, faculty_id, section, batch, academic_year } = body || {};
 
@@ -114,6 +114,7 @@ export async function PUT(req) {
     if (authError) return authError;
 
     try {
+        const supabaseAdmin = getAdminClient();
         const { id, name, branch, semester, scheme, faculty_id, section, batch, academic_year } = await req.json().catch(() => ({}));
         if (!id) return NextResponse.json({ error: 'id required.' }, { status: 400 });
 
@@ -174,6 +175,7 @@ export async function DELETE(req) {
     if (authError) return authError;
 
     try {
+        const supabaseAdmin = getAdminClient();
         const { id } = await req.json().catch(() => ({}));
         if (!id) return NextResponse.json({ error: 'Class ID required.' }, { status: 400 });
 

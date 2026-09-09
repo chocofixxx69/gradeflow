@@ -322,20 +322,34 @@ export function ClassesContent({ embedded = false }) {
     }, []);
 
     const fetchClasses = async (isManual = false) => {
-        if (!isManual) setLoadingClasses(true);
+        const manual = isManual === true;
+        setLoadingClasses(true);
         setClassesError(null);
         try {
             clearApiCache();
             const prevCount = classes.length;
-            const [res] = await Promise.all([
-                apiRequest(`/api/classes?_t=${Date.now()}`, { credentials: 'include' }),
-                fetchBranches()
-            ]);
-            if (res) {
-                const newClasses = res.classes || [];
+            
+            // Try apiRequest first, with a direct fetch fallback for maximum resilience
+            let data = null;
+            try {
+                data = await apiRequest('/api/classes', { query: { _t: Date.now() } });
+            } catch (apiErr) {
+                console.warn('[ClassesContent] apiRequest failed, trying direct fetch fallback:', apiErr);
+                const raw = await fetch(`/api/classes?_t=${Date.now()}`, { cache: 'no-store', credentials: 'include' });
+                if (raw.ok) {
+                    data = await raw.json();
+                } else {
+                    throw apiErr;
+                }
+            }
+
+            if (data && data.success !== false) {
+                const newClasses = data.classes || [];
                 setClasses(newClasses);
-                if (res.faculty) setFacultyList(res.faculty);
-                if (isManual) {
+                if (data.faculty && data.faculty.length > 0) {
+                    setFacultyList(data.faculty);
+                }
+                if (manual) {
                     const diff = newClasses.length - prevCount;
                     if (diff > 0) {
                         setMsg(`✓ New data detected: +${diff} academic class(es) synced dynamically!`);
@@ -344,10 +358,15 @@ export function ClassesContent({ embedded = false }) {
                     }
                     setTimeout(() => setMsg(''), 4500);
                 }
+            } else {
+                throw new Error(data?.error?.message || data?.error || 'Failed to load classes.');
             }
+
+            // Sync branches in background without blocking class list
+            fetchBranches().catch(() => {});
         } catch (err) {
             console.error('Failed to fetch classes:', err);
-            setClassesError('Could not load classes. Please check your connection and retry.');
+            setClassesError(err?.message || 'Could not load classes. Please check your connection and retry.');
         } finally {
             setLoadingClasses(false);
         }
@@ -1289,7 +1308,7 @@ export function ClassesContent({ embedded = false }) {
                         <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--surface-low)', borderRadius: 'var(--radius-7)', border: '1px solid var(--border)' }}>
                             <span className="material-icons-round" style={{ fontSize: '40px', color: 'var(--red)', marginBottom: '12px', display: 'block' }}>error_outline</span>
                             <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--tx-main)', marginBottom: '8px' }}>{classesError}</div>
-                            <button onClick={fetchClasses} disabled={loadingClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                            <button onClick={() => fetchClasses(true)} disabled={loadingClasses} style={{ ...btn('primary'), padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                                 <span className="material-icons-round" style={{ fontSize: '18px', animation: loadingClasses ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
                                 {loadingClasses ? 'Retrying...' : 'Retry'}
                             </button>
