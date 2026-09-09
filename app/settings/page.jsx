@@ -40,7 +40,7 @@ function SettingsContent() {
     // Identity & Session States
     const [session, setSession] = useState(null);
     const [userType, setUserType] = useState(null); // 'faculty' | 'student'
-    const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'workload' | 'security' | 'preferences' | 'about'
+    const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'workload' | 'security' | 'about'
     const [loading, setLoading] = useState(true);
 
     // Profile Form States
@@ -60,11 +60,6 @@ function SettingsContent() {
     const [editBranch, setEditBranch] = useState('');
     const [recoveryPin, setRecoveryPin] = useState('');
 
-    // Preferences
-    const [theme, setTheme] = useState('system');
-    const [notifications, setNotifications] = useState(true);
-    const [compactMode, setCompactMode] = useState(false);
-
     // Password Security States
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -78,14 +73,14 @@ function SettingsContent() {
     // Action States
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
-    const [toast, setToast] = useState(null); // { type: 'success'|'error', message: '' }
+    const [toast, setToast] = useState(null); // { type: 'success'|'error'|'info', message: '' }
 
     // Track pristine state for Dirty/Unsaved Banner
     const [initialFormState, setInitialFormState] = useState(null);
 
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
-        setTimeout(() => setToast(null), 4500);
+        setTimeout(() => setToast(null), 4000);
     };
 
     // Load initial session and profile data
@@ -135,9 +130,6 @@ function SettingsContent() {
                 setEditEmployeeId(p.employee_id || '');
                 setEditOfficeLocation(p.office_location || '');
                 setPhotoUrl(p.photo_url || null);
-                setTheme(p.theme || 'system');
-                setNotifications(p.notifications ?? true);
-                setCompactMode(p.compact_mode ?? false);
 
                 setInitialFormState({
                     name: p.full_name || '',
@@ -147,9 +139,6 @@ function SettingsContent() {
                     employeeId: p.employee_id || '',
                     officeLocation: p.office_location || '',
                     photo: p.photo_url || null,
-                    theme: p.theme || 'system',
-                    notifications: p.notifications ?? true,
-                    compactMode: p.compact_mode ?? false,
                 });
             }
         } catch (err) {
@@ -205,10 +194,7 @@ function SettingsContent() {
                 editDesignation !== initialFormState.designation ||
                 editEmployeeId !== initialFormState.employeeId ||
                 editOfficeLocation !== initialFormState.officeLocation ||
-                photoPreview !== null ||
-                theme !== initialFormState.theme ||
-                notifications !== initialFormState.notifications ||
-                compactMode !== initialFormState.compactMode
+                photoPreview !== null
             );
         } else {
             return (
@@ -222,7 +208,7 @@ function SettingsContent() {
     }, [
         initialFormState, userType, editName, editPhone, editDepartment,
         editDesignation, editEmployeeId, editOfficeLocation, photoPreview,
-        theme, notifications, compactMode, editBranch, editEmail
+        editBranch, editEmail
     ]);
 
     // Handle avatar photo selection
@@ -264,9 +250,6 @@ function SettingsContent() {
             setEditDesignation(initialFormState.designation);
             setEditEmployeeId(initialFormState.employeeId);
             setEditOfficeLocation(initialFormState.officeLocation);
-            setTheme(initialFormState.theme);
-            setNotifications(initialFormState.notifications);
-            setCompactMode(initialFormState.compactMode);
         } else {
             setEditName(initialFormState.name);
             setEditBranch(initialFormState.branch);
@@ -296,9 +279,6 @@ function SettingsContent() {
                         employee_id: editEmployeeId,
                         office_location: editOfficeLocation,
                         photo_url: finalPhotoUrl,
-                        theme,
-                        notifications,
-                        compact_mode: compactMode,
                     })
                 });
 
@@ -326,12 +306,9 @@ function SettingsContent() {
                         employeeId: editEmployeeId,
                         officeLocation: editOfficeLocation,
                         photo: finalPhotoUrl,
-                        theme,
-                        notifications,
-                        compactMode,
                     });
 
-                    showToast('✓ Profile and preferences saved successfully!');
+                    showToast('✓ Profile updated successfully!');
                 }
             } else {
                 // Student save
@@ -480,6 +457,14 @@ function SettingsContent() {
     // Active displayed photo
     const activePhoto = photoPreview || photoUrl;
 
+    // Available tabs (Theme/Preferences removed as requested)
+    const TABS = useMemo(() => [
+        { id: 'profile', label: 'Profile & Identity', icon: 'person' },
+        ...(userType === 'faculty' ? [{ id: 'workload', label: 'Academic & Workload', icon: 'auto_stories' }] : []),
+        { id: 'security', label: 'Security & Password', icon: 'lock' },
+        { id: 'about', label: 'About & System', icon: 'info' }
+    ], [userType]);
+
     return (
         <div className="gf-page" style={{ maxWidth: '1060px', margin: '0 auto', paddingBottom: '100px' }}>
             {/* Header Area */}
@@ -488,7 +473,7 @@ function SettingsContent() {
                     <PageHeaderEyebrow>Account Settings</PageHeaderEyebrow>
                     <PageHeaderTitle>Institutional Profile & Settings</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Manage your professional identity, academic workload, security credentials, and application preferences.
+                        Manage your professional identity, academic workload, and security credentials.
                     </PageHeaderSubtitle>
                 </PageHeader>
             </div>
@@ -623,25 +608,24 @@ function SettingsContent() {
                 )}
             </div>
 
-            {/* Custom Tab Navigation */}
+            {/* Segmented Pill Tab Navigation (Fixes truncation & cutoffs) */}
             <div
                 style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    borderBottom: '1px solid var(--border)',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    padding: '6px',
                     marginBottom: '28px',
-                    overflowX: 'auto',
-                    paddingBottom: '2px'
+                    flexWrap: 'wrap',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
                 }}
             >
-                {[
-                    { id: 'profile', label: 'Profile & Identity', icon: 'person' },
-                    ...(userType === 'faculty' ? [{ id: 'workload', label: 'Academic & Teaching', icon: 'auto_stories' }] : []),
-                    { id: 'security', label: 'Security & Credentials', icon: 'lock' },
-                    { id: 'preferences', label: 'Display & Preferences', icon: 'tune' },
-                    { id: 'about', label: 'About & System', icon: 'info' }
-                ].map(tab => {
+                {TABS.map(tab => {
                     const isSelected = activeTab === tab.id;
                     return (
                         <button
@@ -652,20 +636,38 @@ function SettingsContent() {
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '8px',
-                                padding: '10px 18px',
-                                borderRadius: '8px 8px 0 0',
+                                padding: '10px 20px',
+                                borderRadius: '8px',
                                 border: 'none',
-                                borderBottom: isSelected ? '3px solid var(--primary)' : '3px solid transparent',
-                                background: isSelected ? 'var(--surface-low)' : 'transparent',
-                                color: isSelected ? 'var(--primary)' : 'var(--tx-muted)',
+                                background: isSelected ? 'var(--primary)' : 'transparent',
+                                color: isSelected ? '#FFFFFF' : 'var(--tx-muted)',
                                 fontWeight: isSelected ? 800 : 600,
-                                fontSize: '14px',
+                                fontSize: '13.5px',
                                 cursor: 'pointer',
                                 transition: 'all 0.15s ease',
-                                whiteSpace: 'nowrap'
+                                whiteSpace: 'nowrap',
+                                boxShadow: isSelected ? '0 2px 8px rgba(23, 75, 77, 0.25)' : 'none'
+                            }}
+                            onMouseEnter={e => {
+                                if (!isSelected) {
+                                    e.currentTarget.style.background = 'var(--surface-low)';
+                                    e.currentTarget.style.color = 'var(--primary)';
+                                }
+                            }}
+                            onMouseLeave={e => {
+                                if (!isSelected) {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = 'var(--tx-muted)';
+                                }
                             }}
                         >
-                            <span className="material-icons-round" style={{ fontSize: '18px', color: isSelected ? 'var(--primary)' : 'inherit' }}>
+                            <span
+                                className="material-icons-round"
+                                style={{
+                                    fontSize: '18px',
+                                    color: isSelected ? '#FFFFFF' : 'inherit'
+                                }}
+                            >
                                 {tab.icon}
                             </span>
                             {tab.label}
@@ -1279,96 +1281,7 @@ function SettingsContent() {
                 </div>
             )}
 
-            {/* Tab 4: Display & Preferences */}
-            {activeTab === 'preferences' && (
-                <div style={{ display: 'grid', gap: '24px' }}>
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Interface & Theme Preferences</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div style={{ display: 'grid', gap: '20px' }}>
-                                {/* Theme Selector */}
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px' }}>
-                                        Appearance Theme
-                                    </label>
-                                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                                        {[
-                                            { id: 'system', label: 'System Default', icon: 'settings_brightness' },
-                                            { id: 'light', label: 'Natural Light', icon: 'light_mode' },
-                                            { id: 'dark', label: 'Charcoal Dark', icon: 'dark_mode' }
-                                        ].map(t => (
-                                            <button
-                                                key={t.id}
-                                                type="button"
-                                                onClick={() => setTheme(t.id)}
-                                                style={{
-                                                    flex: 1,
-                                                    minWidth: '130px',
-                                                    padding: '14px',
-                                                    borderRadius: '10px',
-                                                    border: theme === t.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                                                    background: theme === t.id ? 'var(--surface-low)' : 'var(--surface)',
-                                                    cursor: 'pointer',
-                                                    textAlign: 'center',
-                                                    color: 'var(--tx-main)',
-                                                    fontWeight: 700,
-                                                    fontSize: '13px',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    alignItems: 'center',
-                                                    gap: '8px',
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                            >
-                                                <span className="material-icons-round" style={{ fontSize: '24px', color: theme === t.id ? 'var(--primary)' : 'var(--tx-muted)' }}>
-                                                    {t.icon}
-                                                </span>
-                                                {t.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div style={{ height: '1px', background: 'var(--border)' }} />
-
-                                {/* Compact Mode */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Compact Table Density</div>
-                                        <div style={{ fontSize: '12px', color: 'var(--tx-dim)' }}>Display more student and exam records per page with tighter row spacing.</div>
-                                    </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={compactMode}
-                                        onChange={e => setCompactMode(e.target.checked)}
-                                        style={{ width: '20px', height: '20px', accentColor: 'var(--primary)', cursor: 'pointer' }}
-                                    />
-                                </div>
-
-                                <div style={{ height: '1px', background: 'var(--border)' }} />
-
-                                {/* Notifications */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Exam & Scraper Notifications</div>
-                                        <div style={{ fontSize: '12px', color: 'var(--tx-dim)' }}>Receive real-time banners when university gazettes or marks are synchronized.</div>
-                                    </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications}
-                                        onChange={e => setNotifications(e.target.checked)}
-                                        style={{ width: '20px', height: '20px', accentColor: 'var(--primary)', cursor: 'pointer' }}
-                                    />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
-
-            {/* Tab 5: About & System */}
+            {/* Tab 4: About & System */}
             {activeTab === 'about' && (
                 <div style={{ display: 'grid', gap: '24px' }}>
                     <Card>
@@ -1536,7 +1449,7 @@ function SettingsContent() {
                         position: 'fixed',
                         top: '24px',
                         right: '24px',
-                        background: toast.type === 'error' ? '#991B1B' : 'var(--primary)',
+                        background: toast.type === 'error' ? '#991B1B' : (toast.type === 'info' ? '#3A6A6D' : 'var(--primary)'),
                         color: '#FFFFFF',
                         padding: '12px 20px',
                         borderRadius: '10px',
@@ -1551,7 +1464,7 @@ function SettingsContent() {
                     }}
                 >
                     <span className="material-icons-round" style={{ fontSize: '20px' }}>
-                        {toast.type === 'error' ? 'error' : 'check_circle'}
+                        {toast.type === 'error' ? 'error' : (toast.type === 'info' ? 'info' : 'check_circle')}
                     </span>
                     {toast.message}
                 </div>
