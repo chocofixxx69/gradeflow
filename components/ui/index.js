@@ -17,4 +17,5 @@ export {
     VALIDATION_MESSAGE_PRIORITY,
 } from './Foundation';
 export { ConfirmDialog } from './ConfirmDialog';
+export { HighlightMatch } from './HighlightMatch';
 export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableWrapper } from './Table';

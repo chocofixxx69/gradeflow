@@ -9,6 +9,7 @@ import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
+import { HighlightMatch } from '@/components/ui/HighlightMatch';
 
 export default function FacultyStudentsDirectoryPage() {
     return (
@@ -65,17 +66,21 @@ const activeBadgeStyle = {
     fontWeight: 900,
     background: 'var(--primary, #174B4D)',
     color: '#FFFFFF',
-    padding: '1px 5px',
+    padding: '1.5px 6px',
     borderRadius: '4px',
-    letterSpacing: '0.04em'
+    letterSpacing: '0.04em',
+    boxShadow: '0 1px 3px rgba(23, 75, 77, 0.25)',
+    display: 'inline-flex',
+    alignItems: 'center'
 };
 
 const getActiveSelectStyle = (isActive) => ({
     borderColor: isActive ? 'var(--primary, #174B4D)' : 'var(--border)',
-    background: isActive ? 'rgba(23, 75, 77, 0.05)' : 'var(--surface, #FFFFFF)',
-    fontWeight: isActive ? 700 : 500,
+    background: isActive ? 'var(--surface-low, #FDF6ED)' : 'var(--surface, #FFFFFF)',
+    fontWeight: isActive ? 800 : 500,
     color: isActive ? 'var(--primary, #174B4D)' : 'var(--tx-main)',
-    boxShadow: isActive ? '0 0 0 1px var(--primary, #174B4D)' : 'none',
+    boxShadow: isActive ? '0 0 0 1.5px var(--primary, #174B4D), 0 2px 5px rgba(23, 75, 77, 0.08)' : 'none',
+    borderRadius: '8px',
     transition: 'all 0.15s ease'
 });
 
@@ -492,7 +497,7 @@ function StudentsDirectoryContent() {
             )}
 
             {/* Filter Toolbar — Prominent Search, Logical Grouping, and Visible Active Highlights */}
-            <Card style={{ marginBottom: '20px' }}>
+            <Card style={{ marginBottom: '20px', borderTop: '3px solid var(--primary, #174B4D)', boxShadow: '0 2px 10px rgba(23, 75, 77, 0.05)' }}>
                 <CardContent style={{ padding: '18px 20px' }}>
                     {/* Top Row: Prominent Wide Search & Display Controls */}
                     <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '16px' }}>
@@ -500,7 +505,8 @@ function StudentsDirectoryContent() {
                             <Input
                                 label={
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                                        <span>Search Students</span>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #174B4D)' }}>search</span>
+                                        <span style={{ fontWeight: 700 }}>Search Students</span>
                                         {search && <span style={activeBadgeStyle}>SEARCH ACTIVE</span>}
                                     </span>
                                 }
@@ -514,16 +520,20 @@ function StudentsDirectoryContent() {
                                     }
                                 }}
                                 style={{
-                                    borderColor: search ? 'var(--primary)' : 'var(--border)',
-                                    background: search ? 'rgba(23, 75, 77, 0.04)' : 'var(--surface, #FFFFFF)',
-                                    fontWeight: search ? 700 : 400
+                                    borderColor: search ? 'var(--primary, #174B4D)' : 'var(--border)',
+                                    background: search ? 'var(--surface-low, #FDF6ED)' : 'var(--surface, #FFFFFF)',
+                                    color: search ? 'var(--primary, #174B4D)' : 'var(--tx-main)',
+                                    fontWeight: search ? 700 : 400,
+                                    boxShadow: search ? '0 0 0 1.5px var(--primary, #174B4D), 0 2px 4px rgba(23, 75, 77, 0.08)' : 'none',
+                                    borderRadius: '8px',
+                                    transition: 'all 0.15s ease'
                                 }}
                             />
                             <div style={{ position: 'absolute', right: '12px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '6px', zIndex: 2 }}>
                                 {isDebouncing && (
                                     <span
                                         className="material-icons-round"
-                                        style={{ fontSize: '18px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}
+                                        style={{ fontSize: '18px', color: 'var(--primary, #174B4D)', animation: 'spin 1s linear infinite' }}
                                         title="Searching directory..."
                                     >
                                         sync
@@ -554,7 +564,13 @@ function StudentsDirectoryContent() {
                         {/* Arrange / Sort */}
                         <div style={{ flex: '0 1 210px', minWidth: '170px' }}>
                             <Select
-                                label="Arrange / Sort"
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #174B4D)' }}>sort</span>
+                                        <span style={{ fontWeight: 700 }}>Arrange / Sort</span>
+                                        {(sortBy !== 'batch' || sortOrder !== 'desc') && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                    </span>
+                                }
                                 value={`${sortBy}:${sortOrder}`}
                                 onChange={e => {
                                     const [sb, so] = e.target.value.split(':');
@@ -562,6 +578,7 @@ function StudentsDirectoryContent() {
                                     setSortOrder(so);
                                     setPage(1);
                                 }}
+                                style={getActiveSelectStyle(sortBy !== 'batch' || sortOrder !== 'desc')}
                                 options={[
                                     { value: 'batch:desc', label: 'Batch (Newest First)' },
                                     { value: 'batch:asc', label: 'Batch (Oldest First)' },
@@ -577,12 +594,19 @@ function StudentsDirectoryContent() {
                         {/* Page Size */}
                         <div style={{ flex: '0 1 150px', minWidth: '130px' }}>
                             <Select
-                                label="Page Size"
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #174B4D)' }}>view_list</span>
+                                        <span style={{ fontWeight: 700 }}>Page Size</span>
+                                        {limit !== 25 && <span style={activeBadgeStyle}>CUSTOM</span>}
+                                    </span>
+                                }
                                 value={String(limit)}
                                 onChange={e => {
                                     setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value));
                                     setPage(1);
                                 }}
+                                style={getActiveSelectStyle(limit !== 25)}
                                 options={[
                                     { value: '25', label: '25 per page' },
                                     { value: '50', label: '50 per page' },
@@ -627,8 +651,9 @@ function StudentsDirectoryContent() {
                         <Select
                             label={
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>Department</span>
-                                    {branch && <span style={activeBadgeStyle}>Active</span>}
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>school</span>
+                                    <span style={{ fontWeight: 700 }}>Department</span>
+                                    {branch && <span style={activeBadgeStyle}>ACTIVE</span>}
                                 </span>
                             }
                             value={branch}
@@ -641,8 +666,9 @@ function StudentsDirectoryContent() {
                         <Select
                             label={
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>Semester</span>
-                                    {semester !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>layers</span>
+                                    <span style={{ fontWeight: 700 }}>Semester</span>
+                                    {semester !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
                                 </span>
                             }
                             value={semester}
@@ -654,7 +680,12 @@ function StudentsDirectoryContent() {
                         {/* Semester Match (conditional) */}
                         {semester !== 'all' && (
                             <Select
-                                label="Semester Match"
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>tune</span>
+                                        <span style={{ fontWeight: 700 }}>Semester Match</span>
+                                    </span>
+                                }
                                 value={semesterMode}
                                 onChange={e => handleFilterChange(setSemesterMode, e.target.value)}
                                 options={[
@@ -669,8 +700,9 @@ function StudentsDirectoryContent() {
                         <Select
                             label={
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>Batch</span>
-                                    {batch && <span style={activeBadgeStyle}>Active</span>}
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>event_note</span>
+                                    <span style={{ fontWeight: 700 }}>Batch</span>
+                                    {batch && <span style={activeBadgeStyle}>ACTIVE</span>}
                                 </span>
                             }
                             value={batch}
@@ -683,8 +715,9 @@ function StudentsDirectoryContent() {
                         <Select
                             label={
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>Section</span>
-                                    {section !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>groups</span>
+                                    <span style={{ fontWeight: 700 }}>Section</span>
+                                    {section !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
                                 </span>
                             }
                             value={section}
@@ -697,8 +730,9 @@ function StudentsDirectoryContent() {
                         <Select
                             label={
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>Backlogs Status</span>
-                                    {backlogsFilter !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>history_edu</span>
+                                    <span style={{ fontWeight: 700 }}>Backlogs Status</span>
+                                    {backlogsFilter !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
                                 </span>
                             }
                             value={backlogsFilter}
@@ -715,8 +749,9 @@ function StudentsDirectoryContent() {
                         <Select
                             label={
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>Entry Type</span>
-                                    {entry !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>badge</span>
+                                    <span style={{ fontWeight: 700 }}>Entry Type</span>
+                                    {entry !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
                                 </span>
                             }
                             value={entry}
@@ -731,8 +766,9 @@ function StudentsDirectoryContent() {
                             <Select
                                 label={
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                        <span>Class</span>
-                                        {classId && <span style={activeBadgeStyle}>Active</span>}
+                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>meeting_room</span>
+                                        <span style={{ fontWeight: 700 }}>Class</span>
+                                        {classId && <span style={activeBadgeStyle}>ACTIVE</span>}
                                     </span>
                                 }
                                 value={classId}
@@ -746,7 +782,8 @@ function StudentsDirectoryContent() {
                     {/* Batch Cohorts Quick Bar */}
                     {facets.batches?.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-low, #EAEAEA)', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary, #174B4D)' }}>calendar_month</span>
                                 Batch Cohorts:
                             </span>
                             <button
@@ -755,13 +792,26 @@ function StudentsDirectoryContent() {
                                 style={{
                                     padding: '5px 12px',
                                     borderRadius: '6px',
-                                    border: `1px solid ${!batch ? 'var(--primary)' : 'var(--border)'}`,
-                                    background: !batch ? 'var(--primary)' : 'var(--surface, #FFFFFF)',
+                                    border: `1.5px solid ${!batch ? 'var(--primary, #174B4D)' : 'var(--border)'}`,
+                                    background: !batch ? 'var(--primary, #174B4D)' : 'var(--surface, #FFFFFF)',
                                     color: !batch ? '#FFFFFF' : 'var(--tx-main)',
                                     fontSize: '11.5px',
                                     fontWeight: !batch ? 800 : 600,
                                     cursor: 'pointer',
+                                    boxShadow: !batch ? '0 2px 6px rgba(23, 75, 77, 0.25)' : 'none',
                                     transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (batch) {
+                                        e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)';
+                                        e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (batch) {
+                                        e.currentTarget.style.background = 'var(--surface, #FFFFFF)';
+                                        e.currentTarget.style.borderColor = 'var(--border)';
+                                    }
                                 }}
                             >
                                 All Batches
@@ -776,14 +826,26 @@ function StudentsDirectoryContent() {
                                         style={{
                                             padding: '5px 12px',
                                             borderRadius: '6px',
-                                            border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
-                                            background: isSelected ? 'var(--primary)' : 'var(--surface, #FFFFFF)',
+                                            border: `1.5px solid ${isSelected ? 'var(--primary, #174B4D)' : 'var(--border)'}`,
+                                            background: isSelected ? 'var(--primary, #174B4D)' : 'var(--surface, #FFFFFF)',
                                             color: isSelected ? '#FFFFFF' : 'var(--tx-main)',
                                             fontSize: '11.5px',
                                             fontWeight: isSelected ? 800 : 600,
                                             cursor: 'pointer',
-                                            boxShadow: isSelected ? '0 2px 6px rgba(23, 75, 77, 0.2)' : 'none',
+                                            boxShadow: isSelected ? '0 2px 6px rgba(23, 75, 77, 0.25)' : 'none',
                                             transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!isSelected) {
+                                                e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)';
+                                                e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!isSelected) {
+                                                e.currentTarget.style.background = 'var(--surface, #FFFFFF)';
+                                                e.currentTarget.style.borderColor = 'var(--border)';
+                                            }
                                         }}
                                     >
                                         {b.label}
@@ -800,12 +862,14 @@ function StudentsDirectoryContent() {
                             flexWrap: 'wrap',
                             gap: '8px',
                             alignItems: 'center',
-                            marginTop: '14px',
-                            paddingTop: '12px',
-                            borderTop: '1px solid var(--border-low, #EAEAEA)'
+                            marginTop: '16px',
+                            padding: '12px 14px',
+                            borderRadius: '8px',
+                            background: 'var(--surface-low, #FDF6ED)',
+                            border: '1px solid rgba(23, 75, 77, 0.18)'
                         }}>
-                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '14px' }}>filter_alt</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--primary, #174B4D)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '15px' }}>filter_alt</span>
                                 Active Filters ({activeChips.length}):
                             </span>
                             {activeChips.map(chip => (
@@ -821,16 +885,27 @@ function StudentsDirectoryContent() {
                                         padding: '4px 10px',
                                         borderRadius: '20px',
                                         cursor: 'pointer',
-                                        border: '1px solid var(--primary)',
-                                        background: 'rgba(23, 75, 77, 0.08)',
-                                        color: 'var(--primary)',
+                                        border: '1.5px solid var(--primary, #174B4D)',
+                                        background: '#FFFFFF',
+                                        color: 'var(--primary, #174B4D)',
                                         fontSize: '11.5px',
-                                        fontWeight: 700,
+                                        fontWeight: 800,
+                                        boxShadow: '0 1px 3px rgba(23, 75, 77, 0.1)',
                                         transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'var(--destructive-bg, #FFEBEE)';
+                                        e.currentTarget.style.borderColor = 'var(--destructive, #B91C1C)';
+                                        e.currentTarget.style.color = 'var(--destructive, #B91C1C)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = '#FFFFFF';
+                                        e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                        e.currentTarget.style.color = 'var(--primary, #174B4D)';
                                     }}
                                 >
                                     <span>{chip.label}</span>
-                                    <span className="material-icons-round" style={{ fontSize: '14px', opacity: 0.7 }}>close</span>
+                                    <span className="material-icons-round" style={{ fontSize: '14px', opacity: 0.8 }}>close</span>
                                 </button>
                             ))}
                             <button
@@ -841,18 +916,20 @@ function StudentsDirectoryContent() {
                                     border: 'none',
                                     color: 'var(--destructive, #B91C1C)',
                                     fontSize: '11.5px',
-                                    fontWeight: 700,
+                                    fontWeight: 800,
                                     cursor: 'pointer',
                                     textDecoration: 'underline',
-                                    padding: '4px 6px'
+                                    padding: '4px 8px',
+                                    marginLeft: 'auto'
                                 }}
                             >
-                                Clear All
+                                Clear All Filters
                             </button>
                         </div>
                     )}
                 </CardContent>
             </Card>
+
 
             {error && (
                 <Card style={{ marginBottom: '16px', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
@@ -866,7 +943,22 @@ function StudentsDirectoryContent() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
                     Found <strong>{loading ? '…' : pagination.total}</strong> student{pagination.total === 1 ? '' : 's'}
-                    {search ? <span> matching &ldquo;<strong style={{ color: 'var(--tx-main)' }}>{search}</strong>&rdquo;</span> : ' matching filters'}
+                    {search ? (
+                        <span>
+                            {' '}matching &ldquo;
+                            <mark style={{
+                                background: '#FEF3C7',
+                                color: 'var(--warm-highlight, #B45309)',
+                                borderBottom: '2px solid var(--warm-highlight, #B45309)',
+                                borderRadius: '3px',
+                                padding: '1px 6px',
+                                fontWeight: 800
+                            }}>
+                                {search}
+                            </mark>
+                            &rdquo;
+                        </span>
+                    ) : ' matching filters'}
                     {directoryTotal > 0 && pagination.total !== directoryTotal && (
                         <span style={{ color: 'var(--tx-dim)' }}> · {directoryTotal} in the directory</span>
                     )}
@@ -963,10 +1055,10 @@ function StudentsDirectoryContent() {
                                             <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
                                                 <Link
                                                     href={`/faculty/students/${s.usn}`}
-                                                    style={{ color: 'var(--primary)', textDecoration: 'none' }}
+                                                    style={{ color: 'var(--primary, #174B4D)', textDecoration: 'none' }}
                                                     className="gf-hover-underline"
                                                 >
-                                                    {s.usn}
+                                                    <HighlightMatch text={s.usn} query={search} />
                                                 </Link>
                                                 {s.lateral_entry && (
                                                     <span title="Lateral entry" style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '9px', fontWeight: 800 }}>
@@ -975,23 +1067,34 @@ function StudentsDirectoryContent() {
                                                 )}
                                                 {s.batch && (
                                                     <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', fontFamily: 'inherit' }}>
-                                                        {s.batch} batch
+                                                        <HighlightMatch text={`${s.batch} batch`} query={search} />
                                                     </div>
                                                 )}
                                             </td>
                                             <td style={{ padding: '12px 16px', fontWeight: 600 }}>
                                                 <Link href={`/faculty/students/${s.usn}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                                                    {s.name}
+                                                    <HighlightMatch text={s.name} query={search} />
                                                 </Link>
                                                 {s.is_inactive && (
-                                                    <span style={{ marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', background: 'var(--surface-low)', border: '1px solid var(--border)', fontSize: '10px', color: 'var(--tx-muted)' }}>
+                                                    <span style={{ marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', fontSize: '10px', color: 'var(--tx-muted)' }}>
                                                         Inactive
                                                     </span>
                                                 )}
 
                                             </td>
-                                            <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 700 }} title={s.branchLabel}>
-                                                {s.branch}
+                                            <td style={{ padding: '12px 16px' }} title={s.branchLabel}>
+                                                <span style={{
+                                                    padding: '3px 8px',
+                                                    borderRadius: '5px',
+                                                    background: 'rgba(23, 75, 77, 0.08)',
+                                                    color: 'var(--primary, #174B4D)',
+                                                    fontWeight: 700,
+                                                    fontSize: '11.5px',
+                                                    border: '1px solid rgba(23, 75, 77, 0.12)',
+                                                    display: 'inline-block'
+                                                }}>
+                                                    <HighlightMatch text={s.branch} query={search} />
+                                                </span>
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                                 <div
@@ -1001,8 +1104,18 @@ function StudentsDirectoryContent() {
                                                     Sem {s.semester}
                                                 </div>
                                                 {s.section ? (
-                                                    <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 800 }}>
-                                                        Sec {s.section}
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        marginTop: '2px',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px',
+                                                        background: 'rgba(58, 106, 109, 0.12)',
+                                                        color: 'var(--secondary, #3A6A6D)',
+                                                        fontSize: '10px',
+                                                        fontWeight: 800,
+                                                        border: '1px solid rgba(58, 106, 109, 0.2)'
+                                                    }}>
+                                                        Sec <HighlightMatch text={s.section} query={search} />
                                                     </span>
                                                 ) : (
                                                     <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-dim)', fontSize: '10px', fontWeight: 600 }}>
@@ -1017,7 +1130,7 @@ function StudentsDirectoryContent() {
                                                             <div style={{ fontWeight: 900, color: 'var(--tx-main)' }}>
                                                                 {Number.isFinite(sv.sgpa) && sv.sgpa > 0 ? sv.sgpa.toFixed(2) : '—'}
                                                             </div>
-                                                            <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: sv.backlogs > 0 ? '#EF4444' : '#10B981' }}>
+                                                            <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: sv.backlogs > 0 ? 'var(--destructive, #B91C1C)' : 'var(--success, #166534)' }}>
                                                                 {sv.backlogs > 0 ? `${sv.backlogs} backlog${sv.backlogs === 1 ? '' : 's'}` : 'clear'}
                                                             </div>
                                                             {sv.attemptCount > 1 && (
@@ -1034,22 +1147,62 @@ function StudentsDirectoryContent() {
                                                     )}
                                                 </td>
                                             )}
-                                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 900, color: s.cgpa >= 8.0 ? '#10B981' : s.cgpa >= 5.0 ? 'var(--primary)' : s.cgpa > 0 ? '#EF4444' : 'var(--tx-dim)' }}>
-                                                {s.cgpa !== null && s.cgpa > 0 ? s.cgpa.toFixed(2) : '—'}
+                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                {s.cgpa !== null && s.cgpa > 0 ? (
+                                                    <span style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '5px',
+                                                        fontWeight: 900,
+                                                        fontSize: '12px',
+                                                        background: s.cgpa >= 8.0 ? 'var(--success-bg, #E8F5E9)' : s.cgpa >= 5.0 ? 'rgba(23, 75, 77, 0.08)' : 'var(--destructive-bg, #FFEBEE)',
+                                                        color: s.cgpa >= 8.0 ? 'var(--success, #166534)' : s.cgpa >= 5.0 ? 'var(--primary, #174B4D)' : 'var(--destructive, #B91C1C)',
+                                                        border: `1px solid ${s.cgpa >= 8.0 ? 'var(--success-border, #A5D6A7)' : s.cgpa >= 5.0 ? 'rgba(23, 75, 77, 0.18)' : 'var(--destructive-border, #FFCDD2)'}`,
+                                                        display: 'inline-block'
+                                                    }}>
+                                                        {s.cgpa.toFixed(2)}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--tx-dim)', fontWeight: 600 }}>—</span>
+                                                )}
                                             </td>
                                             <td style={{ padding: '12px 16px' }}>
                                                 {hasBacklogs ? (
-                                                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', fontWeight: 800, fontSize: '11px' }}>
+                                                    <span style={{
+                                                        padding: '3px 9px',
+                                                        borderRadius: '6px',
+                                                        background: 'var(--destructive-bg, #FFEBEE)',
+                                                        color: 'var(--destructive, #B91C1C)',
+                                                        border: '1px solid var(--destructive-border, #FFCDD2)',
+                                                        fontWeight: 800,
+                                                        fontSize: '11px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>warning</span>
                                                         {s.total_backlogs} Subjects ({s.backlog_credits} Cr)
                                                     </span>
                                                 ) : (
-                                                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', fontWeight: 800, fontSize: '11px' }}>
+                                                    <span style={{
+                                                        padding: '3px 9px',
+                                                        borderRadius: '6px',
+                                                        background: 'var(--success-bg, #E8F5E9)',
+                                                        color: 'var(--success, #166534)',
+                                                        border: '1px solid var(--success-border, #A5D6A7)',
+                                                        fontWeight: 800,
+                                                        fontSize: '11px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>check_circle</span>
                                                         Clear
                                                     </span>
                                                 )}
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                                 <Link href={`/faculty/students/${s.usn}`}>
+
                                                     <Button size="sm" variant="ghost" iconStart="visibility">
                                                         View
                                                     </Button>
