@@ -161,10 +161,32 @@ export async function GET(req) {
         // ── One filterable row per student, wrapped around the canonical record ──
         const records = [...studentRecords.values()].map(record => {
             const classInfo = usnToClassMap.get(record.usn) || null;
+
+            // Academic batch determination:
+            // 1. If enrolled in a class with a declared batch (e.g. CSE - A 2023 with batch: '2023'), that class batch is authoritative.
+            // 2. If a lateral entry student (e.g. 2AB24... enrolled in 2nd year), their academic cohort is batchYear - 1 ('2023').
+            // 3. Otherwise, use their record's regular identity batch.
+            const isLateral = record.identity.lateral?.isLateral;
+            const usnBatchYear = record.identity.batch?.year;
+            const cohortYear = isLateral && usnBatchYear ? String(Number(usnBatchYear) - 1) : usnBatchYear;
+            const effectiveBatchYear = classInfo?.batch || cohortYear || usnBatchYear;
+            const effectiveBatchDigits = effectiveBatchYear ? String(effectiveBatchYear).replace(/[^0-9]/g, '') : '';
+            const effectiveBatchTwoDigit = effectiveBatchDigits.slice(-2);
+            const effectiveBatchLabel = effectiveBatchTwoDigit ? `${effectiveBatchTwoDigit} Batch (${effectiveBatchYear})` : (record.identity.batch?.label || 'Unknown Batch');
+
             return {
                 record,
                 usn: record.usn,
-                identity: record.identity,
+                identity: {
+                    ...record.identity,
+                    batch: {
+                        ...record.identity.batch,
+                        year: effectiveBatchYear,
+                        twoDigit: effectiveBatchTwoDigit,
+                        label: effectiveBatchLabel,
+                        source: classInfo?.batch ? 'class' : (isLateral ? 'lateral_cohort' : record.identity.batch?.source)
+                    }
+                },
                 recordedSemesters: record.recordedSemesters,
                 section: classInfo?.section || null,
                 classInfo,
@@ -179,9 +201,13 @@ export async function GET(req) {
         // ── One predicate per filter, so facets can re-run every filter but one ──
         const predicates = {
             branch: r => !branch || r.identity.branch.code === branch,
-            // Compared against the batch already resolved on the identity, so the
-            // filter and the facet counts can never read the USN differently.
-            batch: r => !batchTwoDigit || r.identity.batch.twoDigit === batchTwoDigit,
+            // Check student's effective batch, class batch, and raw USN batch
+            batch: r => {
+                if (!batchTwoDigit) return true;
+                return r.identity.batch.twoDigit === batchTwoDigit ||
+                       (r.classInfo?.batch && String(r.classInfo.batch).replace(/[^0-9]/g, '').slice(-2) === batchTwoDigit) ||
+                       (r.record.identity.batch?.twoDigit === batchTwoDigit);
+            },
             semester: r => {
                 if (!semester) return true;
                 if (semesterMode === 'current') return r.identity.standing.current === semester;
@@ -278,6 +304,7 @@ export async function GET(req) {
         const batchPool = applyAllExcept('batch');
         const semesterPool = applyAllExcept('semester');
         const sectionPool = applyAllExcept('section');
+        const classPool = applyAllExcept('classId');
         const statusPool = applyAllExcept('status');
         const entryPool = applyAllExcept('entry');
 
@@ -286,6 +313,14 @@ export async function GET(req) {
                 .sort((a, b) => b.count - a.count || String(a.value).localeCompare(String(b.value))),
             batches: countInto(batchPool, r => r.identity.batch.year, year => `${String(year).slice(-2)} Batch (${year})`)
                 .sort((a, b) => String(b.value).localeCompare(String(a.value))),
+            classes: countInto(
+                classPool.filter(r => r.classInfo?.classId),
+                r => r.classInfo.classId,
+                cid => {
+                    const c = classById.get(cid);
+                    return c ? `${c.name}${c.section ? ` (Sec ${c.section})` : ''}` : 'Class';
+                }
+            ).sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label))),
             semesters: countInto(
                 semesterPool,
                 r => semesterMode === 'current'
@@ -379,6 +414,8 @@ export async function GET(req) {
             return {
                 ...toSummary(rec),
                 id: s?.id || null,
+                batch: r.identity.batch.year,
+                batchLabel: r.identity.batch.label,
                 branchSource: id.branch.source,
                 year: s?.year ?? null,
                 email: s?.email || '—',

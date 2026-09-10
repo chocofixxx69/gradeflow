@@ -23,6 +23,7 @@ export default function FacultyStudentsDirectoryPage() {
 const EMPTY_FACETS = {
     branches: [],
     batches: [],
+    classes: [],
     semesters: [],
     sections: [],
     statuses: [],
@@ -30,22 +31,7 @@ const EMPTY_FACETS = {
     total: 0
 };
 
-/**
- * Per-row data-quality badges. The API attaches a `flags` array to every student
- * explaining why a figure on that row might not be solid — a stale standing column,
- * a semester with no records, a semester published across several exam rounds. The
- * row shows the number rather than hiding it, and says what is uncertain about it.
- */
-const FLAG_TONE = {
-    USN_INVALID: '#EF4444',
-    SGPA_CONFLICT: '#EF4444',
-    CREDIT_UNRESOLVED: '#EF4444',
-    STANDING_BEHIND: '#F59E0B',
-    SEMESTER_GAP: '#F59E0B',
-    YEAR_MISMATCH: '#F59E0B',
-    LATERAL_FLAG: '#F59E0B',
-    MULTI_ATTEMPT: '#3B82F6'
-};
+
 
 /**
  * Builds a dropdown's options from the live facet counts.
@@ -84,6 +70,7 @@ function StudentsDirectoryContent() {
     const [semesterMode, setSemesterMode] = useState('records');
     const [batch, setBatch] = useState('');
     const [section, setSection] = useState('all');
+    const [classId, setClassId] = useState('');
     const [status, setStatus] = useState('all');
     const [entry, setEntry] = useState('all');
     const [backlogsFilter, setBacklogsFilter] = useState('all');
@@ -107,8 +94,7 @@ function StudentsDirectoryContent() {
     const [facets, setFacets] = useState(EMPTY_FACETS);
     const [blockingFilters, setBlockingFilters] = useState([]);
     const [directoryTotal, setDirectoryTotal] = useState(0);
-    const [quality, setQuality] = useState({ flagged: 0, byCode: {} });
-    const [showFlagged, setShowFlagged] = useState(false);
+
     const [meta, setMeta] = useState(null);
 
     // Deep links from Data Health ("23 batch / CS" chips) land here pre-filtered.
@@ -123,11 +109,13 @@ function StudentsDirectoryContent() {
         const sem = searchParams.get('semester');
         const sec = searchParams.get('section');
         const ent = searchParams.get('entry');
+        const cid = searchParams.get('classId') || searchParams.get('class_id');
         if (b) setBatch(b);
         if (br) setBranch(br.toUpperCase());
         if (sem) setSemester(sem);
         if (sec) setSection(sec.toUpperCase());
         if (ent) setEntry(ent);
+        if (cid) setClassId(cid);
     }, [searchParams]);
 
     // Debounce search input by 300ms
@@ -183,6 +171,7 @@ function StudentsDirectoryContent() {
             }
             if (batch) query.batch = batch;
             if (section !== 'all') query.section = section;
+            if (classId) query.classId = classId;
             if (status !== 'all') query.status = status;
             if (entry !== 'all') query.entry = entry;
             if (backlogsFilter !== 'all') query.backlogsFilter = backlogsFilter;
@@ -199,7 +188,7 @@ function StudentsDirectoryContent() {
             setFacets(res?.facets || EMPTY_FACETS);
             setBlockingFilters(res?.blockingFilters || []);
             setDirectoryTotal(res?.meta?.totalStudents || 0);
-            setQuality(res?.quality || { flagged: 0, byCode: {} });
+
             return res;
         } catch (err) {
             if (err?.name === 'AbortError' || controller.signal.aborted) return null;
@@ -212,7 +201,7 @@ function StudentsDirectoryContent() {
         } finally {
             if (id === activeRequestIdRef.current && !silent) setLoading(false);
         }
-    }, [page, limit, sortBy, sortOrder, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
+    }, [page, limit, sortBy, sortOrder, branch, semester, semesterMode, batch, section, classId, status, entry, backlogsFilter, search]);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshBanner, setRefreshBanner] = useState(null);
@@ -276,6 +265,7 @@ function StudentsDirectoryContent() {
             case 'batch': setBatch(''); break;
             case 'semester': setSemester('all'); break;
             case 'section': setSection('all'); break;
+            case 'classId': setClassId(''); break;
             case 'status': setStatus('all'); break;
             case 'entry': setEntry('all'); break;
             case 'backlogsFilter': setBacklogsFilter('all'); break;
@@ -290,6 +280,7 @@ function StudentsDirectoryContent() {
         setSemesterMode('records');
         setBatch('');
         setSection('all');
+        setClassId('');
         setStatus('all');
         setEntry('all');
         setBacklogsFilter('all');
@@ -311,12 +302,16 @@ function StudentsDirectoryContent() {
         }
         if (batch) chips.push({ name: 'batch', label: `Batch ${batch}` });
         if (section !== 'all') chips.push({ name: 'section', label: section === 'UNASSIGNED' ? 'Unassigned section' : `Section ${section}` });
+        if (classId) {
+            const c = facets.classes?.find(cls => String(cls.value) === String(classId));
+            chips.push({ name: 'classId', label: c ? `Class: ${c.label}` : 'Class' });
+        }
         if (status !== 'all') chips.push({ name: 'status', label: status === 'active' ? 'Active only' : 'Inactive only' });
         if (entry !== 'all') chips.push({ name: 'entry', label: entry === 'lateral' ? 'Lateral entry only' : 'Regular intake only' });
         if (backlogsFilter !== 'all') chips.push({ name: 'backlogsFilter', label: backlogsFilter === 'clear' ? 'All clear' : 'Carrying backlogs' });
         if (search) chips.push({ name: 'search', label: `“${search}”` });
         return chips;
-    }, [facets.branches, branch, semester, semesterMode, batch, section, status, entry, backlogsFilter, search]);
+    }, [facets.branches, facets.classes, branch, semester, semesterMode, batch, section, classId, status, entry, backlogsFilter, search]);
 
     const semesterColumn = semester !== 'all' ? Number(semester) : null;
     const statusCount = (value) => facets.statuses.find(s => s.value === value)?.count ?? 0;
@@ -500,6 +495,14 @@ function StudentsDirectoryContent() {
                             onChange={e => handleFilterChange(setSection, e.target.value)}
                             options={facetOptions(facets.sections, section, { allValue: 'all', allLabel: 'All Sections' })}
                         />
+                        {facets.classes?.length > 0 && (
+                            <Select
+                                label="Class"
+                                value={classId}
+                                onChange={e => handleFilterChange(setClassId, e.target.value)}
+                                options={facetOptions(facets.classes, classId, { allValue: '', allLabel: 'All Classes' })}
+                            />
+                        )}
                         <Select
                             label="Entry Type"
                             value={entry}
@@ -684,37 +687,7 @@ function StudentsDirectoryContent() {
                 </div>
             </div>
 
-            {/* Data-quality banner — the same findings the Data Health sweep reports,
-                narrowed to the students currently on screen. */}
-            {quality.flagged > 0 && (
-                <Card style={{ marginBottom: '14px', borderColor: 'rgba(245, 158, 11, 0.35)' }}>
-                    <CardContent style={{ padding: '12px 18px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span className="material-icons-round" style={{ color: '#F59E0B', fontSize: '19px' }}>fact_check</span>
-                        <span style={{ fontSize: '12.5px', fontWeight: 700 }}>
-                            {quality.flagged} of {pagination.total} students in this selection carry a data-quality flag
-                        </span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {Object.entries(quality.byCode).sort((a, b) => b[1] - a[1]).map(([code, n]) => (
-                                <span key={code} style={{
-                                    padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 800,
-                                    background: 'var(--surface-low)', border: `1px solid ${FLAG_TONE[code] || 'var(--border)'}`,
-                                    color: FLAG_TONE[code] || 'var(--tx-muted)'
-                                }}>
-                                    {code.replace(/_/g, ' ')} · {n}
-                                </span>
-                            ))}
-                        </div>
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-                            <Button size="sm" variant={showFlagged ? 'primary' : 'ghost'} onClick={() => setShowFlagged(v => !v)}>
-                                {showFlagged ? 'Hide row details' : 'Show row details'}
-                            </Button>
-                            <Link href="/faculty/data-health">
-                                <Button size="sm" variant="secondary" iconEnd="arrow_forward">Data Health</Button>
-                            </Link>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
+
 
             {/* Students Table */}
             <Card style={{ overflow: 'hidden', marginBottom: '20px' }}>
@@ -815,30 +788,7 @@ function StudentsDirectoryContent() {
                                                         Inactive
                                                     </span>
                                                 )}
-                                                {s.flags?.length > 0 && (
-                                                    showFlagged ? (
-                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '5px' }}>
-                                                            {s.flags.map(f => (
-                                                                <span key={f.code} title={f.label} style={{
-                                                                    padding: '1px 6px', borderRadius: '4px', fontSize: '9.5px', fontWeight: 800,
-                                                                    background: 'var(--surface-low)',
-                                                                    border: `1px solid ${FLAG_TONE[f.code] || 'var(--border)'}`,
-                                                                    color: FLAG_TONE[f.code] || 'var(--tx-muted)'
-                                                                }}>
-                                                                    {f.label}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <span
-                                                            title={s.flags.map(f => f.label).join(' · ')}
-                                                            style={{ marginLeft: '8px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10px', fontWeight: 800, color: '#F59E0B', cursor: 'help' }}
-                                                        >
-                                                            <span className="material-icons-round" style={{ fontSize: '13px' }}>info</span>
-                                                            {s.flags.length}
-                                                        </span>
-                                                    )
-                                                )}
+
                                             </td>
                                             <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 700 }} title={s.branchLabel}>
                                                 {s.branch}
