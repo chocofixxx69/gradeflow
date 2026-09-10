@@ -42,8 +42,8 @@ const EMPTY_FACETS = {
  * its real count, including 0) so the control never silently jumps to a different
  * cohort underneath the user.
  */
-function facetOptions(facets, selected, { allValue, allLabel }) {
-    const total = facets.reduce((sum, f) => sum + f.count, 0);
+function facetOptions(facets, selected, { allValue, allLabel, customCount }) {
+    const total = customCount !== undefined ? customCount : facets.reduce((sum, f) => sum + f.count, 0);
     const options = [{ value: allValue, label: `${allLabel} (${total})` }];
 
     let selectedSeen = false;
@@ -59,6 +59,25 @@ function facetOptions(facets, selected, { allValue, allLabel }) {
 
     return options;
 }
+
+const activeBadgeStyle = {
+    fontSize: '9px',
+    fontWeight: 900,
+    background: 'var(--primary, #174B4D)',
+    color: '#FFFFFF',
+    padding: '1px 5px',
+    borderRadius: '4px',
+    letterSpacing: '0.04em'
+};
+
+const getActiveSelectStyle = (isActive) => ({
+    borderColor: isActive ? 'var(--primary, #174B4D)' : 'var(--border)',
+    background: isActive ? 'rgba(23, 75, 77, 0.05)' : 'var(--surface, #FFFFFF)',
+    fontWeight: isActive ? 700 : 500,
+    color: isActive ? 'var(--primary, #174B4D)' : 'var(--tx-main)',
+    boxShadow: isActive ? '0 0 0 1px var(--primary, #174B4D)' : 'none',
+    transition: 'all 0.15s ease'
+});
 
 function StudentsDirectoryContent() {
     const [loading, setLoading] = useState(true);
@@ -80,6 +99,7 @@ function StudentsDirectoryContent() {
     const [isDebouncing, setIsDebouncing] = useState(false);
 
     const [page, setPage] = useState(1);
+    const [jumpPageInput, setJumpPageInput] = useState('');
     const [limit, setLimit] = useState(25);
     const [sortBy, setSortBy] = useState('batch');
     const [sortOrder, setSortOrder] = useState('desc');
@@ -94,6 +114,21 @@ function StudentsDirectoryContent() {
     const [facets, setFacets] = useState(EMPTY_FACETS);
     const [blockingFilters, setBlockingFilters] = useState([]);
     const [directoryTotal, setDirectoryTotal] = useState(0);
+
+    const pageNumbers = useMemo(() => {
+        const total = pagination?.totalPages || 1;
+        const current = page;
+        if (total <= 7) {
+            return Array.from({ length: total }, (_, i) => i + 1);
+        }
+        if (current <= 4) {
+            return [1, 2, 3, 4, 5, '...', total];
+        }
+        if (current >= total - 3) {
+            return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+        }
+        return [1, '...', current - 1, current, current + 1, '...', total];
+    }, [pagination?.totalPages, page]);
 
     const [meta, setMeta] = useState(null);
 
@@ -456,107 +491,20 @@ function StudentsDirectoryContent() {
                 </div>
             )}
 
-            {/* Filter Toolbar — every option and count comes from the live dataset */}
+            {/* Filter Toolbar — Prominent Search, Logical Grouping, and Visible Active Highlights */}
             <Card style={{ marginBottom: '20px' }}>
-                <CardContent style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
-                        <Select
-                            label="Department"
-                            value={branch}
-                            onChange={e => handleFilterChange(setBranch, e.target.value)}
-                            options={facetOptions(facets.branches, branch, { allValue: '', allLabel: 'All Departments' })}
-                        />
-                        <Select
-                            label="Semester"
-                            value={semester}
-                            onChange={e => handleFilterChange(setSemester, e.target.value)}
-                            options={facetOptions(facets.semesters, semester, { allValue: 'all', allLabel: 'All Semesters' })}
-                        />
-                        {semester !== 'all' && (
-                            <Select
-                                label="Semester Match"
-                                value={semesterMode}
-                                onChange={e => handleFilterChange(setSemesterMode, e.target.value)}
-                                options={[
-                                    { value: 'records', label: 'Has records for it' },
-                                    { value: 'current', label: 'Currently studying it' }
-                                ]}
-                            />
-                        )}
-                        <Select
-                            label="Batch"
-                            value={batch}
-                            onChange={e => handleFilterChange(setBatch, e.target.value)}
-                            options={facetOptions(facets.batches, batch, { allValue: '', allLabel: 'All Batches' })}
-                        />
-                        <Select
-                            label="Section"
-                            value={section}
-                            onChange={e => handleFilterChange(setSection, e.target.value)}
-                            options={facetOptions(facets.sections, section, { allValue: 'all', allLabel: 'All Sections' })}
-                        />
-                        {facets.classes?.length > 0 && (
-                            <Select
-                                label="Class"
-                                value={classId}
-                                onChange={e => handleFilterChange(setClassId, e.target.value)}
-                                options={facetOptions(facets.classes, classId, { allValue: '', allLabel: 'All Classes' })}
-                            />
-                        )}
-                        <Select
-                            label="Entry Type"
-                            value={entry}
-                            onChange={e => handleFilterChange(setEntry, e.target.value)}
-                            options={(facets.entries?.length ? facets.entries : [{ value: 'all', label: 'All Entries', count: 0 }])
-                                .map(o => ({ value: o.value, label: o.value === 'all' ? `${o.label} (${o.count})` : `${o.label} · ${o.count}` }))}
-                        />
-                        <Select
-                            label="Backlogs Status"
-                            value={backlogsFilter}
-                            onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
-                            options={[
-                                { value: 'all', label: 'All Students' },
-                                { value: 'clear', label: 'All Clear (0 Arrears)' },
-                                { value: 'backlogs', label: 'Carrying Backlogs' }
-                            ]}
-                        />
-                        <Select
-                            label="Arrange / Sort"
-                            value={`${sortBy}:${sortOrder}`}
-                            onChange={e => {
-                                const [sb, so] = e.target.value.split(':');
-                                setSortBy(sb);
-                                setSortOrder(so);
-                                setPage(1);
-                            }}
-                            options={[
-                                { value: 'batch:desc', label: 'Batch (Newest First)' },
-                                { value: 'batch:asc', label: 'Batch (Oldest First)' },
-                                { value: 'usn:asc', label: 'USN (Ascending)' },
-                                { value: 'name:asc', label: 'Name (A to Z)' },
-                                { value: 'cgpa:desc', label: 'CGPA (Highest First)' },
-                                { value: 'backlogs:desc', label: 'Backlogs (Most First)' },
-                                { value: 'department:asc', label: 'Department (A to Z)' }
-                            ]}
-                        />
-                        <Select
-                            label="Page Size"
-                            value={String(limit)}
-                            onChange={e => {
-                                setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value));
-                                setPage(1);
-                            }}
-                            options={[
-                                { value: '25', label: '25 per page' },
-                                { value: '50', label: '50 per page' },
-                                { value: '100', label: '100 per page' },
-                                { value: 'all', label: `All (${directoryTotal || 627})` }
-                            ]}
-                        />
-                        <div style={{ position: 'relative' }}>
+                <CardContent style={{ padding: '18px 20px' }}>
+                    {/* Top Row: Prominent Wide Search & Display Controls */}
+                    <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '16px' }}>
+                        <div style={{ flex: '1 1 340px', minWidth: '280px', position: 'relative' }}>
                             <Input
-                                label="Search"
-                                placeholder="USN, Name, Email, Phone..."
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <span>Search Students</span>
+                                        {search && <span style={activeBadgeStyle}>SEARCH ACTIVE</span>}
+                                    </span>
+                                }
+                                placeholder="Search by Student USN, Full Name, Email, or Mobile..."
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
                                 onKeyDown={e => {
@@ -565,13 +513,18 @@ function StudentsDirectoryContent() {
                                         triggerSearchImmediately(e.target.value);
                                     }
                                 }}
+                                style={{
+                                    borderColor: search ? 'var(--primary)' : 'var(--border)',
+                                    background: search ? 'rgba(23, 75, 77, 0.04)' : 'var(--surface, #FFFFFF)',
+                                    fontWeight: search ? 700 : 400
+                                }}
                             />
-                            <div style={{ position: 'absolute', right: '10px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 2 }}>
+                            <div style={{ position: 'absolute', right: '12px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '6px', zIndex: 2 }}>
                                 {isDebouncing && (
                                     <span
                                         className="material-icons-round"
-                                        style={{ fontSize: '16px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}
-                                        title="Searching..."
+                                        style={{ fontSize: '18px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}
+                                        title="Searching directory..."
                                     >
                                         sync
                                     </span>
@@ -592,44 +545,268 @@ function StudentsDirectoryContent() {
                                         }}
                                         title="Clear search"
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>close</span>
                                     </button>
                                 )}
                             </div>
                         </div>
+
+                        {/* Arrange / Sort */}
+                        <div style={{ flex: '0 1 210px', minWidth: '170px' }}>
+                            <Select
+                                label="Arrange / Sort"
+                                value={`${sortBy}:${sortOrder}`}
+                                onChange={e => {
+                                    const [sb, so] = e.target.value.split(':');
+                                    setSortBy(sb);
+                                    setSortOrder(so);
+                                    setPage(1);
+                                }}
+                                options={[
+                                    { value: 'batch:desc', label: 'Batch (Newest First)' },
+                                    { value: 'batch:asc', label: 'Batch (Oldest First)' },
+                                    { value: 'usn:asc', label: 'USN (Ascending)' },
+                                    { value: 'name:asc', label: 'Name (A to Z)' },
+                                    { value: 'cgpa:desc', label: 'CGPA (Highest First)' },
+                                    { value: 'backlogs:desc', label: 'Backlogs (Most First)' },
+                                    { value: 'department:asc', label: 'Department (A to Z)' }
+                                ]}
+                            />
+                        </div>
+
+                        {/* Page Size */}
+                        <div style={{ flex: '0 1 150px', minWidth: '130px' }}>
+                            <Select
+                                label="Page Size"
+                                value={String(limit)}
+                                onChange={e => {
+                                    setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                                    setPage(1);
+                                }}
+                                options={[
+                                    { value: '25', label: '25 per page' },
+                                    { value: '50', label: '50 per page' },
+                                    { value: '100', label: '100 per page' },
+                                    { value: 'all', label: `All (${directoryTotal || 627})` }
+                                ]}
+                            />
+                        </div>
+
+                        {/* Reset Filters Shortcut (if any filter active) */}
+                        {activeChips.length > 0 && (
+                            <div style={{ paddingBottom: '2px' }}>
+                                <Button
+                                    size="md"
+                                    variant="ghost"
+                                    onClick={resetAll}
+                                    iconStart="restart_alt"
+                                    style={{
+                                        color: 'var(--destructive, #B91C1C)',
+                                        borderColor: 'var(--destructive-border, #FFCDD2)',
+                                        background: 'var(--destructive-bg, #FFEBEE)',
+                                        fontWeight: 700,
+                                        height: '40px'
+                                    }}
+                                >
+                                    Reset ({activeChips.length})
+                                </Button>
+                            </div>
+                        )}
                     </div>
 
+                    {/* Middle Section: Academic Filters Grid with Visible Active Highlighting */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+                        gap: '14px',
+                        alignItems: 'flex-end',
+                        paddingTop: '16px',
+                        borderTop: '1px solid var(--border-low, #EAEAEA)'
+                    }}>
+                        {/* Department */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>Department</span>
+                                    {branch && <span style={activeBadgeStyle}>Active</span>}
+                                </span>
+                            }
+                            value={branch}
+                            onChange={e => handleFilterChange(setBranch, e.target.value)}
+                            options={facetOptions(facets.branches, branch, { allValue: '', allLabel: 'All Departments' })}
+                            style={getActiveSelectStyle(Boolean(branch))}
+                        />
+
+                        {/* Semester */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>Semester</span>
+                                    {semester !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                </span>
+                            }
+                            value={semester}
+                            onChange={e => handleFilterChange(setSemester, e.target.value)}
+                            options={facetOptions(facets.semesters, semester, { allValue: 'all', allLabel: 'All Semesters', customCount: directoryTotal || 627 })}
+                            style={getActiveSelectStyle(semester !== 'all')}
+                        />
+
+                        {/* Semester Match (conditional) */}
+                        {semester !== 'all' && (
+                            <Select
+                                label="Semester Match"
+                                value={semesterMode}
+                                onChange={e => handleFilterChange(setSemesterMode, e.target.value)}
+                                options={[
+                                    { value: 'records', label: 'Has records for it' },
+                                    { value: 'current', label: 'Currently studying it' }
+                                ]}
+                                style={getActiveSelectStyle(true)}
+                            />
+                        )}
+
+                        {/* Batch */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>Batch</span>
+                                    {batch && <span style={activeBadgeStyle}>Active</span>}
+                                </span>
+                            }
+                            value={batch}
+                            onChange={e => handleFilterChange(setBatch, e.target.value)}
+                            options={facetOptions(facets.batches, batch, { allValue: '', allLabel: 'All Batches' })}
+                            style={getActiveSelectStyle(Boolean(batch))}
+                        />
+
+                        {/* Section */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>Section</span>
+                                    {section !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                </span>
+                            }
+                            value={section}
+                            onChange={e => handleFilterChange(setSection, e.target.value)}
+                            options={facetOptions(facets.sections, section, { allValue: 'all', allLabel: 'All Sections' })}
+                            style={getActiveSelectStyle(section !== 'all')}
+                        />
+
+                        {/* Backlogs Status */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>Backlogs Status</span>
+                                    {backlogsFilter !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                </span>
+                            }
+                            value={backlogsFilter}
+                            onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
+                            options={[
+                                { value: 'all', label: 'All Students' },
+                                { value: 'clear', label: 'All Clear (0 Arrears)' },
+                                { value: 'backlogs', label: 'Carrying Backlogs' }
+                            ]}
+                            style={getActiveSelectStyle(backlogsFilter !== 'all')}
+                        />
+
+                        {/* Entry Type */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>Entry Type</span>
+                                    {entry !== 'all' && <span style={activeBadgeStyle}>Active</span>}
+                                </span>
+                            }
+                            value={entry}
+                            onChange={e => handleFilterChange(setEntry, e.target.value)}
+                            options={(facets.entries?.length ? facets.entries : [{ value: 'all', label: 'All Entries', count: 0 }])
+                                .map(o => ({ value: o.value, label: o.value === 'all' ? `${o.label} (${o.count})` : `${o.label} · ${o.count}` }))}
+                            style={getActiveSelectStyle(entry !== 'all')}
+                        />
+
+                        {/* Class (conditional) */}
+                        {facets.classes?.length > 0 && (
+                            <Select
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                        <span>Class</span>
+                                        {classId && <span style={activeBadgeStyle}>Active</span>}
+                                    </span>
+                                }
+                                value={classId}
+                                onChange={e => handleFilterChange(setClassId, e.target.value)}
+                                options={facetOptions(facets.classes, classId, { allValue: '', allLabel: 'All Classes' })}
+                                style={getActiveSelectStyle(Boolean(classId))}
+                            />
+                        )}
+                    </div>
+
+                    {/* Batch Cohorts Quick Bar */}
                     {facets.batches?.length > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-low)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-low, #EAEAEA)', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 Batch Cohorts:
                             </span>
-                            {facets.batches.map(b => (
-                                <button
-                                    key={b.value}
-                                    type="button"
-                                    onClick={() => handleFilterChange(setBatch, batch === String(b.value) ? '' : String(b.value))}
-                                    style={{
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        border: `1px solid ${batch === String(b.value) ? 'var(--primary)' : 'var(--border)'}`,
-                                        background: batch === String(b.value) ? 'rgba(99, 102, 241, 0.12)' : 'var(--surface-low)',
-                                        color: batch === String(b.value) ? 'var(--primary)' : 'var(--tx-main)',
-                                        fontSize: '11.5px',
-                                        fontWeight: 700,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    {b.label}
-                                </button>
-                            ))}
+                            <button
+                                type="button"
+                                onClick={() => handleFilterChange(setBatch, '')}
+                                style={{
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${!batch ? 'var(--primary)' : 'var(--border)'}`,
+                                    background: !batch ? 'var(--primary)' : 'var(--surface, #FFFFFF)',
+                                    color: !batch ? '#FFFFFF' : 'var(--tx-main)',
+                                    fontSize: '11.5px',
+                                    fontWeight: !batch ? 800 : 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                All Batches
+                            </button>
+                            {facets.batches.map(b => {
+                                const isSelected = batch === String(b.value);
+                                return (
+                                    <button
+                                        key={b.value}
+                                        type="button"
+                                        onClick={() => handleFilterChange(setBatch, isSelected ? '' : String(b.value))}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                                            background: isSelected ? 'var(--primary)' : 'var(--surface, #FFFFFF)',
+                                            color: isSelected ? '#FFFFFF' : 'var(--tx-main)',
+                                            fontSize: '11.5px',
+                                            fontWeight: isSelected ? 800 : 600,
+                                            cursor: 'pointer',
+                                            boxShadow: isSelected ? '0 2px 6px rgba(23, 75, 77, 0.2)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {b.label}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
 
+                    {/* Active Filter Summary Tags Bar */}
                     {activeChips.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-low)' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tx-dim)' }}>
-                                Filtering by
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '8px',
+                            alignItems: 'center',
+                            marginTop: '14px',
+                            paddingTop: '12px',
+                            borderTop: '1px solid var(--border-low, #EAEAEA)'
+                        }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>filter_alt</span>
+                                Active Filters ({activeChips.length}):
                             </span>
                             {activeChips.map(chip => (
                                 <button
@@ -638,17 +815,40 @@ function StudentsDirectoryContent() {
                                     onClick={() => clearFilter(chip.name)}
                                     title={`Remove ${chip.label}`}
                                     style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                        padding: '4px 8px', borderRadius: '999px', cursor: 'pointer',
-                                        border: '1px solid var(--border)', background: 'var(--surface-low)',
-                                        color: 'var(--tx-main)', fontSize: '11px', fontWeight: 700
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 10px',
+                                        borderRadius: '20px',
+                                        cursor: 'pointer',
+                                        border: '1px solid var(--primary)',
+                                        background: 'rgba(23, 75, 77, 0.08)',
+                                        color: 'var(--primary)',
+                                        fontSize: '11.5px',
+                                        fontWeight: 700,
+                                        transition: 'all 0.15s ease'
                                     }}
                                 >
-                                    {chip.label}
-                                    <span className="material-icons-round" style={{ fontSize: '13px', color: 'var(--tx-dim)' }}>close</span>
+                                    <span>{chip.label}</span>
+                                    <span className="material-icons-round" style={{ fontSize: '14px', opacity: 0.7 }}>close</span>
                                 </button>
                             ))}
-                            <Button size="sm" variant="ghost" onClick={resetAll}>Reset all</Button>
+                            <button
+                                type="button"
+                                onClick={resetAll}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--destructive, #B91C1C)',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                    padding: '4px 6px'
+                                }}
+                            >
+                                Clear All
+                            </button>
                         </div>
                     )}
                 </CardContent>
@@ -864,42 +1064,207 @@ function StudentsDirectoryContent() {
                 </div>
             </Card>
 
-            {/* Pagination Controls */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
-                    {limit === 'all' ? (
-                        <span>Loaded <strong>All {students.length}</strong> students across the database</span>
-                    ) : (
-                        <span>
-                            Showing <strong>{pagination.total > 0 ? (page - 1) * Number(limit) + 1 : 0}</strong> to <strong>{Math.min(page * Number(limit), pagination.total)}</strong> of <strong>{pagination.total}</strong> students
-                        </span>
-                    )}
-                </div>
+            {/* Pagination Controls - Centered with Direct Number Buttons */}
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '14px',
+                marginTop: '20px',
+                padding: '16px 0',
+                borderTop: '1px solid var(--border-low, #EAEAEA)'
+            }}>
                 {limit !== 'all' && pagination.totalPages > 1 && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexWrap: 'wrap',
+                        gap: '6px'
+                    }}>
+                        {/* Previous Button */}
                         <Button
                             size="sm"
                             variant="secondary"
                             disabled={page <= 1 || loading}
                             onClick={() => setPage(prev => Math.max(1, prev - 1))}
                             iconStart="chevron_left"
+                            style={{ height: '36px', padding: '0 12px' }}
                         >
                             Previous
                         </Button>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: '13px', fontWeight: 700 }}>
-                            Page {page} of {pagination.totalPages}
-                        </span>
+
+                        {/* Direct Numbered Page Buttons */}
+                        {pageNumbers.map((p, idx) => {
+                            if (p === '...') {
+                                const isFirstEllipsis = idx === 1;
+                                const jumpTarget = isFirstEllipsis ? Math.max(1, page - 5) : Math.min(pagination.totalPages, page + 5);
+                                return (
+                                    <button
+                                        key={`ellipsis-${idx}`}
+                                        type="button"
+                                        onClick={() => setPage(jumpTarget)}
+                                        title={`Jump ${isFirstEllipsis ? 'back' : 'forward'} 5 pages`}
+                                        style={{
+                                            minWidth: '36px',
+                                            height: '36px',
+                                            padding: '0 6px',
+                                            borderRadius: '8px',
+                                            border: '1px solid transparent',
+                                            background: 'transparent',
+                                            color: 'var(--tx-muted)',
+                                            fontSize: '13px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)';
+                                            e.currentTarget.style.borderColor = 'var(--border)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'transparent';
+                                            e.currentTarget.style.borderColor = 'transparent';
+                                        }}
+                                    >
+                                        ...
+                                    </button>
+                                );
+                            }
+
+                            const isCurrent = p === page;
+                            return (
+                                <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => setPage(p)}
+                                    disabled={loading}
+                                    aria-current={isCurrent ? 'page' : undefined}
+                                    style={{
+                                        minWidth: '36px',
+                                        height: '36px',
+                                        padding: '0 10px',
+                                        borderRadius: '8px',
+                                        border: isCurrent ? '1px solid var(--primary)' : '1px solid var(--border)',
+                                        background: isCurrent ? 'var(--primary)' : 'var(--surface, #FFFFFF)',
+                                        color: isCurrent ? '#FFFFFF' : 'var(--tx-main)',
+                                        fontSize: '13px',
+                                        fontWeight: isCurrent ? 800 : 600,
+                                        cursor: isCurrent ? 'default' : 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: isCurrent ? '0 2px 6px rgba(23, 75, 77, 0.25)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!isCurrent) {
+                                            e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)';
+                                            e.currentTarget.style.borderColor = 'var(--primary)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!isCurrent) {
+                                            e.currentTarget.style.background = 'var(--surface, #FFFFFF)';
+                                            e.currentTarget.style.borderColor = 'var(--border)';
+                                        }
+                                    }}
+                                >
+                                    {p}
+                                </button>
+                            );
+                        })}
+
+                        {/* Next Button */}
                         <Button
                             size="sm"
                             variant="secondary"
                             disabled={page >= pagination.totalPages || loading}
                             onClick={() => setPage(prev => Math.min(pagination.totalPages, prev + 1))}
                             iconEnd="chevron_right"
+                            style={{ height: '36px', padding: '0 12px' }}
                         >
                             Next
                         </Button>
                     </div>
                 )}
+
+                {/* Sub-bar: Showing count and Quick Page Jump Input */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '20px',
+                    fontSize: '13px',
+                    color: 'var(--tx-muted)',
+                    flexWrap: 'wrap'
+                }}>
+                    <div>
+                        {limit === 'all' ? (
+                            <span>Loaded <strong>All {students.length}</strong> students across the database</span>
+                        ) : (
+                            <span>
+                                Showing <strong>{pagination.total > 0 ? (page - 1) * Number(limit) + 1 : 0}</strong> to <strong>{Math.min(page * Number(limit), pagination.total)}</strong> of <strong>{pagination.total}</strong> students
+                            </span>
+                        )}
+                    </div>
+
+                    {limit !== 'all' && pagination.totalPages > 1 && (
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                const target = parseInt(jumpPageInput, 10);
+                                if (Number.isFinite(target) && target >= 1 && target <= pagination.totalPages) {
+                                    setPage(target);
+                                    setJumpPageInput('');
+                                }
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                            <span style={{ fontSize: '12px' }}>Go to page:</span>
+                            <input
+                                type="number"
+                                min="1"
+                                max={pagination.totalPages}
+                                value={jumpPageInput}
+                                onChange={(e) => setJumpPageInput(e.target.value)}
+                                placeholder={String(page)}
+                                style={{
+                                    width: '54px',
+                                    height: '28px',
+                                    padding: '2px 6px',
+                                    textAlign: 'center',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface, #FFFFFF)',
+                                    color: 'var(--tx-main)',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    outline: 'none'
+                                }}
+                            />
+                            <button
+                                type="submit"
+                                style={{
+                                    height: '28px',
+                                    padding: '0 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface-low, #FDF6ED)',
+                                    color: 'var(--primary)',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Go
+                            </button>
+                        </form>
+                    )}
+                </div>
             </div>
         </div>
     );
