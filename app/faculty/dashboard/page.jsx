@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
+import { validateUsn, sanitizeUsn } from '../../../lib/vtu-usn-validator';
 import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, SearchableSelect, Select } from '../../../components/ui';
 import { createFacultyAssignment, deleteFacultyAssignment } from '../../../lib/api/admin-management';
 import styles from './FacultyDashboard.module.css';
@@ -94,6 +95,8 @@ function FacultyDashboardView({
         Object.entries(marks).find(([, subjects]) => subjects.some((subject) => (subject.subject_code || subject.code) === (mark.subject_code || mark.code))) || ['?', []]
     )[0];
 
+    const usnValidation = useMemo(() => validateUsn(usn), [usn]);
+
     const GradeBadge = ({ grade }) => {
         const tone = getGradeBadgeTone(grade);
         const displayText = grade || '—';
@@ -173,9 +176,14 @@ function FacultyDashboardView({
                         hideLabel
                         placeholder="Enter Student USN (e.g. 2AB23CS043)"
                         value={usn}
-                        onChange={(event) => setUsn?.(event.target.value.toUpperCase())}
+                        onChange={(event) => {
+                            const raw = event.target.value;
+                            const cleaned = raw.toUpperCase().replace(/[\s\-_.,/]/g, '');
+                            setUsn?.(cleaned);
+                        }}
                         onKeyDown={(event) => event.key === 'Enter' && lookupStudent?.(usn)}
                         onClear={() => setUsn?.('')}
+                        error={usn && !usnValidation.isValid && !usnValidation.suggestion ? usnValidation.error : undefined}
                     />
                     <Button iconStart="search" onClick={() => lookupStudent?.(usn)} loading={loading}>
                         {loading ? 'Searching...' : 'Lookup'}
@@ -189,6 +197,88 @@ function FacultyDashboardView({
                         {scraping ? 'Stop' : selectedPortalUrl === 'ALL' ? 'Fetch VTU' : 'Fetch Portal'}
                     </Button>
                 </Inline>
+
+                {/* Real-time Validation / Did You Mean Assistant */}
+                {usn && usnValidation.suggestion && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px 14px',
+                        background: 'rgba(180, 83, 9, 0.08)',
+                        border: '1px solid var(--amber-border, #FFE082)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--amber, #B45309)', fontWeight: 600 }}>
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>lightbulb</span>
+                            <span>Did you mean <strong>{usnValidation.suggestion}</strong>? ({usnValidation.error})</span>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => {
+                                setUsn?.(usnValidation.suggestion);
+                                lookupStudent?.(usnValidation.suggestion);
+                            }}
+                        >
+                            Apply & Search
+                        </Button>
+                    </div>
+                )}
+
+                {usn && !usnValidation.isValid && !usnValidation.suggestion && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '8px 12px',
+                        background: 'var(--red-bg, #FFEBEE)',
+                        border: '1px solid var(--red-border, #FFCDD2)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--red, #B91C1C)'
+                    }}>
+                        <span className="material-icons-round" style={{ fontSize: '16px' }}>error_outline</span>
+                        <span>{usnValidation.error}</span>
+                    </div>
+                )}
+
+                {usn && usnValidation.isValid && usnValidation.segments && (
+                    <div style={{
+                        marginTop: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        flexWrap: 'wrap',
+                        fontSize: '11px',
+                        fontWeight: 700
+                    }}>
+                        <span style={{ color: 'var(--success, #166534)', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--success-bg, #E8F5E9)', padding: '3px 8px', borderRadius: '4px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '14px' }}>check_circle</span>
+                            Valid VTU USN
+                        </span>
+                        <span style={{ background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', padding: '3px 7px', borderRadius: '4px', color: 'var(--tx-muted)' }}>
+                            Region: <strong>{usnValidation.segments.region}</strong>
+                        </span>
+                        <span style={{ background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', padding: '3px 7px', borderRadius: '4px', color: 'var(--tx-muted)' }}>
+                            College: <strong>{usnValidation.segments.college}</strong>
+                        </span>
+                        <span style={{ background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', padding: '3px 7px', borderRadius: '4px', color: 'var(--tx-muted)' }}>
+                            Year: <strong>20{usnValidation.segments.year}</strong>
+                        </span>
+                        <span style={{ background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', padding: '3px 7px', borderRadius: '4px', color: 'var(--tx-muted)' }}>
+                            Branch: <strong>{usnValidation.segments.branch}</strong>
+                        </span>
+                        <span style={{ background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', padding: '3px 7px', borderRadius: '4px', color: 'var(--tx-muted)' }}>
+                            Roll: <strong>#{usnValidation.segments.roll}</strong>
+                        </span>
+                    </div>
+                )}
 
                 {/* Targeted Portal Selector for Fast Reval/Backlog Verification */}
                 <div className={styles.targetPortalBar}>
@@ -1128,14 +1218,22 @@ function FacultyDashboardContent() {
     }, [showBacklogModal]);
 
     const lookupStudent = async (targetUsn, silent = false) => {
-        if (!targetUsn || targetUsn.length < 5) {
-            if (!silent) setMessage('Please enter a valid USN.');
+        if (!targetUsn) {
+            if (!silent) setMessage('Please enter a USN.');
             return;
         }
 
+        const usnCheck = validateUsn(targetUsn);
+        if (!usnCheck.isValid) {
+            if (!silent) {
+                const hint = usnCheck.suggestion ? ` Did you mean ${usnCheck.suggestion}?` : '';
+                setMessage(`Invalid USN: ${usnCheck.error}${hint}`);
+            }
+            return;
+        }
+
+        const cleanUSN = usnCheck.sanitized;
         // If it's a new USN search, clear previous student data immediately
-        const cleanUSN = targetUsn.toUpperCase().trim();
-        // Clear previous student data to ensure fresh calculation on every lookup
         setStudent(null);
         setMarks({});
         setSgpas({});
@@ -1188,12 +1286,19 @@ function FacultyDashboardContent() {
     const fetchFromVTU = async () => {
         // PRIORITIZE the input box USN if provided, otherwise fallback to loaded student
         const targetUsn = usn?.trim() || student?.usn;
-        if (!targetUsn || targetUsn.length < 5) {
+        if (!targetUsn) {
             setMessage('Please enter a valid USN to fetch.');
             return;
         }
 
-        const cleanUSN = targetUsn.toUpperCase().trim();
+        const usnCheck = validateUsn(targetUsn);
+        if (!usnCheck.isValid) {
+            const hint = usnCheck.suggestion ? ` Did you mean ${usnCheck.suggestion}?` : '';
+            setMessage(`Cannot fetch VTU: ${usnCheck.error}${hint}`);
+            return;
+        }
+
+        const cleanUSN = usnCheck.sanitized;
         const admissionYear = parseInt(cleanUSN.substring(3, 5), 10) || 22;
         const targetScheme = student?.scheme || (admissionYear >= 25 ? '2025' : '2022');
 
