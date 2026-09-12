@@ -8,6 +8,55 @@ import { isFailedSubject, resolveCanonicalGrade } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
 
+const BRANCH_DISPLAY_MAP = {
+    'CS': 'Computer Science & Engineering (CSE)',
+    'CSE': 'Computer Science & Engineering (CSE)',
+    'COMPUTER SCIENCE': 'Computer Science & Engineering (CSE)',
+    'COMPUTER SCIENCE & ENGINEERING': 'Computer Science & Engineering (CSE)',
+    'COMPUTER SCIENCE & ENGINEERING (CSE)': 'Computer Science & Engineering (CSE)',
+    'DS': 'Data Science (DS)',
+    'CD': 'Data Science (DS)',
+    'DATA SCIENCE': 'Data Science (DS)',
+    'COMPUTER SCIENCE & ENGINEERING (DATA SCIENCE)': 'Data Science (DS)',
+    'EC': 'Electronics & Communication (ECE)',
+    'ECE': 'Electronics & Communication (ECE)',
+    'ELECTRONICS & COMMUNICATION': 'Electronics & Communication (ECE)',
+    'ELECTRONICS & COMMUNICATION (ECE)': 'Electronics & Communication (ECE)',
+    'EE': 'Electrical & Electronics (EEE)',
+    'EEE': 'Electrical & Electronics (EEE)',
+    'ELECTRICAL & ELECTRONICS': 'Electrical & Electronics (EEE)',
+    'ELECTRICAL & ELECTRONICS (EEE)': 'Electrical & Electronics (EEE)',
+    'CV': 'Civil Engineering',
+    'CIVIL': 'Civil Engineering',
+    'CIVIL ENGINEERING': 'Civil Engineering',
+    'ME': 'Mechanical Engineering',
+    'MECH': 'Mechanical Engineering',
+    'MECHANICAL ENGINEERING': 'Mechanical Engineering',
+    'AI': 'AI & Machine Learning (AIML)',
+    'AIML': 'AI & Machine Learning (AIML)',
+    'ARTIFICIAL INTELLIGENCE': 'AI & Machine Learning (AIML)',
+    'AI & MACHINE LEARNING (AIML)': 'AI & Machine Learning (AIML)',
+    'RI': 'Robotics & Artificial Intelligence (RAI)',
+    'RAI': 'Robotics & Artificial Intelligence (RAI)',
+    'ROBOTICS & ARTIFICIAL INTELLIGENCE (RAI)': 'Robotics & Artificial Intelligence (RAI)',
+};
+
+function formatBranchDisplay(rawBranch, usn) {
+    if (rawBranch && rawBranch !== '—') {
+        const key = rawBranch.trim().toUpperCase();
+        if (BRANCH_DISPLAY_MAP[key]) return BRANCH_DISPLAY_MAP[key];
+        for (const [k, label] of Object.entries(BRANCH_DISPLAY_MAP)) {
+            if (key === k || key.startsWith(k) || key.includes(`(${k})`)) return label;
+        }
+        return rawBranch;
+    }
+    if (usn) {
+        const code = (extractBranchFromUsn(usn) || '').toUpperCase();
+        if (BRANCH_DISPLAY_MAP[code]) return BRANCH_DISPLAY_MAP[code];
+    }
+    return '—';
+}
+
 // Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
 // start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
 export const maxDuration = 60;
@@ -36,9 +85,12 @@ export async function GET(req) {
             return fail('subjectCode is required.', 'MISSING_SUBJECT_CODE', 400);
         }
 
+        const fresh = searchParams.get('fresh') === '1';
         const cacheKey = `subject_analytics:${subjectCode}:${branch}:${semester}:${batch}:${entryFilter}`;
-        const cached = getCached(cacheKey);
-        if (cached) return ok(cached);
+        if (!fresh) {
+            const cached = getCached(cacheKey);
+            if (cached) return ok(cached);
+        }
 
         const supabaseAdmin = getAdminClient();
 
@@ -66,14 +118,19 @@ export async function GET(req) {
 
         const marks = rawMarks || [];
 
-        // 3. Fetch student records safely in chunks to filter by branch and batch
-        const usns = Array.from(new Set(marks.map(m => m.usn)));
-        let studentMap = new Map();
+        // 3. Load institutional student directory directly for fast, exhaustive metadata coverage
+        const { data: allStudents } = await supabaseAdmin
+            .from('students')
+            .select('usn, name, branch, branch_code, year, lateral_entry');
 
-        if (usns.length > 0) {
-            const stData = await fetchByChunks('students', 'usn, name, branch, year, lateral_entry', 'usn', usns, supabaseAdmin, 100);
-            (stData || []).forEach(s => studentMap.set(s.usn, s));
-        }
+        const studentMap = new Map();
+        (allStudents || []).forEach(s => {
+            if (s.usn) {
+                const upperUsn = s.usn.toUpperCase().trim();
+                studentMap.set(upperUsn, s);
+                studentMap.set(s.usn, s);
+            }
+        });
 
         // Compute batch and branch distribution with explicit regular vs lateral breakdown
         const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
@@ -83,7 +140,8 @@ export async function GET(req) {
         let inBranchMarksCount = 0;
 
         marks.forEach(m => {
-            const student = studentMap.get(m.usn);
+            const normUsn = (m.usn || '').toUpperCase().trim();
+            const student = studentMap.get(normUsn) || studentMap.get(m.usn);
             const cohort = student ? getStudentAcademicBatch(student) : getStudentAcademicBatch(m.usn);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
             const b = canonicalBranchCode(student?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(student?.branch) || 'CS';
@@ -138,7 +196,8 @@ export async function GET(req) {
 
         // Apply filters (branch, academic cohort batch, and entry type)
         let filteredMarks = marks.filter(m => {
-            const student = studentMap.get(m.usn);
+            const normUsn = (m.usn || '').toUpperCase().trim();
+            const student = studentMap.get(normUsn) || studentMap.get(m.usn);
             if (!student) {
                 return matchesBranch(m.usn, branch);
             }
@@ -257,7 +316,8 @@ export async function GET(req) {
         let curRank = 1;
         let lastScore = null;
         const studentRoster = sortedMarks.map((m, idx) => {
-            const st = studentMap.get(m.usn);
+            const normUsn = (m.usn || '').toUpperCase().trim();
+            const st = studentMap.get(normUsn) || studentMap.get(m.usn);
             const score = Number(m.total) || 0;
             if (idx === 0) {
                 curRank = 1;
@@ -274,11 +334,21 @@ export async function GET(req) {
             const admissionYear = cohort?.admissionYear || (extractBatchFromUsn(m.usn)?.fullYear) || String(st?.year || '');
             const cohortYear = cohort?.fullYear || (batch || '2023');
 
+            // Authentic student name resolution: never raw USN if real name exists in DB or mark
+            let resolvedName = m.usn;
+            if (st?.name && st.name.trim() !== '' && st.name.trim().toUpperCase() !== normUsn) {
+                resolvedName = st.name.trim();
+            } else if (m.student_name && m.student_name.trim() !== '' && m.student_name.trim().toUpperCase() !== normUsn) {
+                resolvedName = m.student_name.trim();
+            }
+
+            const resolvedBranch = formatBranchDisplay(st?.branch || branch, m.usn);
+
             return {
                 rank: curRank,
                 usn: m.usn,
-                name: st?.name || m.usn,
-                branch: st?.branch || branch || '—',
+                name: resolvedName,
+                branch: resolvedBranch,
                 internal: m.internal,
                 external: m.external,
                 total: m.total,

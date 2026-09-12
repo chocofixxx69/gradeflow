@@ -92,7 +92,13 @@ export async function GET(req) {
         ]);
 
         const facultyMap = new Map((rawFaculty || []).map(f => [f.id, f]));
-        const studentMap = new Map((rawStudents || []).map(s => [s.usn, s]));
+        const studentMap = new Map();
+        (rawStudents || []).forEach(s => {
+            if (s.usn) {
+                studentMap.set(s.usn, s);
+                studentMap.set(s.usn.toUpperCase().trim(), s);
+            }
+        });
 
         // Group enrolled USNs by class ID
         const usnsByClass = new Map();
@@ -223,10 +229,11 @@ export async function GET(req) {
 
                     if (studentSgpa > highestSgpa) {
                         highestSgpa = studentSgpa;
-                        const sInfo = studentMap.get(usn);
+                        const normUsn = String(usn || '').toUpperCase().trim();
+                        const sInfo = studentMap.get(normUsn) || studentMap.get(usn);
                         topperObj = {
                             usn,
-                            name: sInfo?.name || usn,
+                            name: (sInfo?.name && sInfo.name.trim() !== '') ? sInfo.name.trim() : usn,
                             sgpa: studentSgpa
                         };
                     }

@@ -93,7 +93,10 @@ export async function GET(req) {
         // Map students for quick lookup
         const studentMap = new Map();
         (rawStudents || []).forEach(s => {
-            if (s.usn) studentMap.set(s.usn, s);
+            if (s.usn) {
+                studentMap.set(s.usn, s);
+                studentMap.set(s.usn.toUpperCase().trim(), s);
+            }
         });
 
         // 3. Derive distinct batches dynamically from database students, marks, and classes
@@ -108,7 +111,8 @@ export async function GET(req) {
         });
 
         (marksSubjects || []).forEach(m => {
-            const st = studentMap.get(m.usn);
+            const normUsn = (m.usn || '').toUpperCase().trim();
+            const st = studentMap.get(normUsn) || studentMap.get(m.usn);
             const cohort = st ? getStudentAcademicBatch(st) : extractBatchFromUsn(m.usn);
             if (cohort) batchSet.add(cohort.fullYear);
         });
@@ -232,7 +236,8 @@ export async function GET(req) {
             const sem = Number(m.semester) || 1;
             const key = `${code}|${sem}`;
 
-            const st = studentMap.get(m.usn);
+            const normUsn = (m.usn || '').toUpperCase().trim();
+            const st = studentMap.get(normUsn) || studentMap.get(m.usn);
             const cohort = st ? getStudentAcademicBatch(st) : getStudentAcademicBatch(m.usn);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
             const b = canonicalBranchCode(st?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(st?.branch) || 'CS';

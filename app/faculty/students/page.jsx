@@ -123,21 +123,6 @@ function StudentsDirectoryContent() {
     const [blockingFilters, setBlockingFilters] = useState([]);
     const [directoryTotal, setDirectoryTotal] = useState(0);
 
-    const pageNumbers = useMemo(() => {
-        const total = pagination?.totalPages || 1;
-        const current = page;
-        if (total <= 7) {
-            return Array.from({ length: total }, (_, i) => i + 1);
-        }
-        if (current <= 4) {
-            return [1, 2, 3, 4, 5, '...', total];
-        }
-        if (current >= total - 3) {
-            return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
-        }
-        return [1, '...', current - 1, current, current + 1, '...', total];
-    }, [pagination?.totalPages, page]);
-
     const [meta, setMeta] = useState(null);
 
     // Deep links from Data Health ("23 batch / CS" chips) land here pre-filtered.
