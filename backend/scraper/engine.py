@@ -53,6 +53,28 @@ def _is_subject_code(code: str) -> bool:
     if len(code) < 3 or len(code) > 10: return False
     return any(c.isalpha() for c in code) and any(c.isdigit() for c in code)
 
+def is_audit_course(code: str) -> bool:
+    if not code: return False
+    c = code.strip().upper()
+    return (
+        c.startswith('BPEK') or
+        c.startswith('BNSK') or
+        c.startswith('BYOK') or
+        c.startswith('BIKS') or
+        c.startswith('1BPEK') or
+        c.startswith('1BNSK') or
+        c.startswith('1BYOK') or
+        c in ('22IDT159', '22PRJL29', '22CIR38', '22CIR48', '22GC36')
+    )
+
+def is_cie_only_course(code: str) -> bool:
+    if not code: return False
+    c = code.strip().upper()
+    if is_audit_course(c): return True
+    if c.endswith('586') or c.endswith('685'): return True
+    if c == 'BSCK307' or c.startswith('1BICO') or c.startswith('1BSKS'): return True
+    return False
+
 def _extract_sem(code: str) -> int:
     m = re.search(r'[A-Z]+(\d)\d', code.upper())
     if m: return int(m.group(1))
@@ -140,29 +162,26 @@ def _parse_row(texts):
     result_str = " ".join(non_nums) if non_nums else grade
     raw_res = (result_str or '').strip().upper()
     is_res_fail = bool(re.search(r'\b(F|FAIL|FAILED)\b', raw_res))
-    is_ext_fail = (ext_m > 0 and ext_m < 18)
+    is_cie_only = is_cie_only_course(code)
+    is_ext_fail = (not is_cie_only and ext_m < 18)
     is_tot_fail = (tot_m > 0 and tot_m < 40)
-    is_true_pass = (tot_m >= 40 and (ext_m >= 18 or ext_m == 0) and not is_res_fail)
+    is_true_pass = (tot_m >= 40 and (is_cie_only or ext_m >= 18) and not is_res_fail)
 
     if parsed_grade in ("W", "X", "NE"):
         final_grade = parsed_grade
     elif parsed_grade in ABSENT_MARKS:
         final_grade = "A"
+    elif is_res_fail or is_ext_fail or is_tot_fail or parsed_grade in ("F", "FAIL"):
+        final_grade = "F"
     elif is_true_pass:
         final_grade = "P"
-    elif parsed_grade == "F" or parsed_grade == "FAIL" or is_res_fail or is_ext_fail or is_tot_fail:
-        final_grade = "F"
     elif parsed_grade in PASS_GRADES and not (is_ext_fail or is_tot_fail or is_res_fail):
         final_grade = "P"
     elif parsed_grade == "A":
-        if ext_m == 0 and tot_m < 40:
-            final_grade = "A"
-        elif tot_m >= 40 and (ext_m >= 18 or ext_m == 0):
+        if is_true_pass and tot_m >= 70:
             final_grade = "P"
         else:
-            final_grade = "A" if ext_m == 0 else "F"
-    elif tot_m >= 40 and (ext_m >= 18 or ext_m == 0) and not is_res_fail:
-        final_grade = "P"
+            final_grade = "A"
     else:
         final_grade = "F"
         
@@ -453,10 +472,16 @@ def deduce_scheme_from_usn(usn: str) -> str:
             pass
     return "2022"
 
-def _get_true_grade_point(grade, tot_m, ext_m=None):
+def _get_true_grade_point(grade, tot_m, ext_m=None, code=None):
     g = grade.strip().upper() if grade else "F"
     if g in ("F", "A", "AB", "ABSENT", "X", "NE"):
         return 0
+    if code and not is_cie_only_course(code) and ext_m is not None:
+        try:
+            if float(ext_m) < 18:
+                return 0
+        except (ValueError, TypeError):
+            pass
     if tot_m >= 90: return 10
     if tot_m >= 80: return 9
     if tot_m >= 70: return 8
@@ -550,7 +575,7 @@ def _save_db(usn, name, sem, url, subs):
             g = s.get("grade", "F").strip().upper()
             if g in exclude_grades: continue
 
-            pts = _get_true_grade_point(g, s.get("total", 0), ext_m=s.get("external", None))
+            pts = _get_true_grade_point(g, s.get("total", 0), ext_m=s.get("external", None), code=s.get("subject_code"))
             cr = s.get("credits")
             if cr is None: continue
 
@@ -639,7 +664,7 @@ def _recalculate_remarks(usn):
             for m in s_marks:
                 g = m.get("grade", "F").strip().upper()
                 if g in exclude_grades: continue
-                pts = _get_true_grade_point(g, m.get("total", 0), ext_m=m.get("see_marks", m.get("external", None)))
+                pts = _get_true_grade_point(g, m.get("total", 0), ext_m=m.get("see_marks", m.get("external", None)), code=m.get("subject_code"))
                 cr, _source = resolve_credits(catalog_index, scheme, branch_code, s, m.get("subject_code"))
                 if cr is None: continue
                 tc += cr

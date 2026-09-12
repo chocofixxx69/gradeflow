@@ -59,19 +59,42 @@ def get_official_credit(code, scheme='2022', branch=None, semester=None, catalog
 
     return None
 
-def get_grade_point(total, grade=None, ext=None):
+def is_audit_course(code: str) -> bool:
+    if not code: return False
+    c = str(code).strip().upper()
+    return (
+        c.startswith('BPEK') or c.startswith('BNSK') or c.startswith('BYOK') or
+        c.startswith('BIKS') or c.startswith('1BPEK') or c.startswith('1BNSK') or
+        c.startswith('1BYOK') or c in ('22IDT159', '22PRJL29', '22CIR38', '22CIR48', '22GC36')
+    )
+
+def is_cie_only_course(code: str) -> bool:
+    if not code: return False
+    c = str(code).strip().upper()
+    if is_audit_course(c): return True
+    if c.endswith('586') or c.endswith('685'): return True
+    if c == 'BSCK307' or c.startswith('1BICO') or c.startswith('1BSKS'): return True
+    return False
+
+def get_grade_point(total, grade=None, ext=None, code=None):
     raw_grade = (grade or '').strip().upper()
     if raw_grade in ['F', 'A', 'AB', 'ABSENT', 'FAIL', 'NP']:
         return 0
+    if code and not is_cie_only_course(code) and ext is not None:
+        try:
+            if float(ext) < 18:
+                return 0
+        except:
+            pass
     if total is not None:
         try:
             t = round(float(total))
             if t < 40:
                 return 0
-            if ext is not None:
+            if not is_cie_only_course(code) and ext is not None:
                 try:
                     e = float(ext)
-                    if 0 < e < 18:
+                    if e < 18:
                         return 0
                 except:
                     pass
@@ -221,7 +244,7 @@ def main():
 
             tot = sub['total']
             ext = sub['external']
-            gp = get_grade_point(tot, g, ext)
+            gp = get_grade_point(tot, g, ext, code=c)
 
             total_cr += cr
             total_pts += gp * cr

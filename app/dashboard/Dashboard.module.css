@@ -25,7 +25,7 @@
 .profileHeader,
 .semesterHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
@@ -408,14 +408,15 @@
 /* Modal */
 .modalOverlay {
   align-items: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   inset: 0;
   justify-content: center;
-  padding: max(var(--space-5), env(safe-area-inset-top)) max(var(--space-5), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
+  padding: var(--space-4);
   position: fixed;
-  z-index: var(--z-modal);
+  z-index: 99999;
 }
 
 .modal {

@@ -30,6 +30,23 @@ def fetch_all(table, select="*"):
         offset += page_size
     return rows
 
+def is_audit_course(code: str) -> bool:
+    if not code: return False
+    c = str(code).strip().upper()
+    return (
+        c.startswith('BPEK') or c.startswith('BNSK') or c.startswith('BYOK') or
+        c.startswith('BIKS') or c.startswith('1BPEK') or c.startswith('1BNSK') or
+        c.startswith('1BYOK') or c in ('22IDT159', '22PRJL29', '22CIR38', '22CIR48', '22GC36')
+    )
+
+def is_cie_only_course(code: str) -> bool:
+    if not code: return False
+    c = str(code).strip().upper()
+    if is_audit_course(c): return True
+    if c.endswith('586') or c.endswith('685'): return True
+    if c == 'BSCK307' or c.startswith('1BICO') or c.startswith('1BSKS'): return True
+    return False
+
 print("Auditing & fixing backlog flags across all subject_marks rows in Supabase...")
 marks = fetch_all("subject_marks", "*")
 print(f"Total subject_marks rows in DB: {len(marks)}")
@@ -38,6 +55,7 @@ fixed_count = 0
 
 for m in marks:
     m_id = m.get("id")
+    code = (m.get("subject_code") or "").strip().upper()
     g = (m.get("grade") or "").strip().upper()
     tot = int(m.get("total") or 0)
     ext = int(m.get("external") or 0)
@@ -46,15 +64,17 @@ for m in marks:
 
     # VTU Fail Condition:
     # 1. Grade is F/A/FAIL/ABSENT
-    # 2. External < 18 (when external exam taken)
+    # 2. External < 18 (unless CIE-only course)
     # 3. Total < 40 (when total > 0)
     # 4. Result contains whole-word F or FAIL
+    is_cie_only = is_cie_only_course(code)
     is_res_fail = bool(re.search(r'\b(F|FAIL|FAILED)\b', res)) if res else False
-    is_true_pass = (tot >= 40 and (ext >= 18 or ext == 0) and not is_res_fail)
+    is_ext_fail = (not is_cie_only and ext < 18)
+    is_true_pass = (tot >= 40 and (is_cie_only or ext >= 18) and not is_res_fail)
 
     should_be_backlog = not is_true_pass and (
         g in ("F", "A", "FAIL", "ABSENT", "X", "NE", "NP", "DX") or
-        (ext > 0 and ext < 18) or
+        is_ext_fail or
         (tot > 0 and tot < 40) or
         is_res_fail
     )

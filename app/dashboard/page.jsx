@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
@@ -35,6 +36,20 @@ function StudentDashboardView({
     student,
     totalSubjects,
 }) {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!showBacklogModal) return;
+        const origOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = origOverflow;
+        };
+    }, [showBacklogModal]);
+
     const GradeBadge = ({ grade }) => {
         const tone = getGradeBadgeTone(grade);
         const displayText = grade || '—';
@@ -280,6 +295,13 @@ function StudentDashboardView({
                         <div className={styles.records}>
                             {sortedSemesters.map(([sem, subjects]) => {
                                 const open = isExpanded(sem);
+                                const stat = semStats[sem] || {};
+                                const semSgpa = Number(sgpas[sem] || stat.sgpa || 0);
+                                const semBacklogs = subjects.filter(s => s.isFailed || isFailedSubject(s));
+                                const backlogCount = stat.backlogs != null ? stat.backlogs : semBacklogs.length;
+                                const hasBacklog = backlogCount > 0;
+                                const backlogCodes = semBacklogs.map(b => b.subjectCode || b.subject_code || b.code).filter(Boolean).join(', ');
+
                                 return (
                                     <article key={sem} className={styles.semesterCard}>
                                         <div
@@ -288,7 +310,6 @@ function StudentDashboardView({
                                             style={{
                                                 cursor: 'pointer',
                                                 userSelect: 'none',
-                                                borderRadius: 'var(--radius-3)',
                                             }}
                                             role="button"
                                             tabIndex={0}
@@ -318,12 +339,21 @@ function StudentDashboardView({
                                                     {sem}
                                                 </div>
                                                 <div>
-                                                    <h3 className={styles.semesterTitle}>Semester {sem}</h3>
-                                                    <p className={styles.meta}>{subjects.length} Subjects Listed</p>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <h3 className={styles.semesterTitle} style={{ margin: 0 }}>Semester {sem}</h3>
+                                                        {hasBacklog && (
+                                                            <Badge tone="danger" size="sm">
+                                                                {backlogCount} {backlogCount === 1 ? 'Backlog' : 'Backlogs'}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <p className={styles.meta} style={{ margin: 0 }}>
+                                                        {subjects.length} Subjects Listed{hasBacklog && backlogCodes ? ` · ${backlogCodes}` : ''}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div className={styles.semesterActions}>
-                                                <Badge tone="info" size="sm">SGPA: {(sgpas[sem] || 0).toFixed(2)}</Badge>
+                                                <Badge tone="info" size="sm">SGPA: {semSgpa > 0 ? semSgpa.toFixed(2) : (sgpas[sem] ? Number(sgpas[sem]).toFixed(2) : '0.00')}</Badge>
                                                 <Button
                                                     variant="secondary"
                                                     density="compact"
@@ -338,7 +368,7 @@ function StudentDashboardView({
                                                                 branch: student.branch || '',
                                                                 scheme: student.scheme || '2022',
                                                                 semesterMarks: { [sem]: subjects },
-                                                                cgpa: sgpas[sem]
+                                                                cgpa: semSgpa
                                                             });
                                                         } catch (err) {
                                                             setPdfMsg('Error generating semester PDF: ' + err.message);
@@ -381,7 +411,7 @@ function StudentDashboardView({
                                                         </thead>
                                                         <tbody>
                                                             {subjects.map((m, idx) => {
-                                                                const isPass = m.isPassed && !m.isFailed;
+                                                                const isPass = m.isPassed && !m.isFailed && !isFailedSubject(m);
                                                                 return (
                                                                     <tr key={m.id || idx}>
                                                                         <th scope="row" className={styles.code}>{m.subjectCode || m.subject_code || m.code || '—'}</th>
@@ -407,7 +437,6 @@ function StudentDashboardView({
 
                                                 <div className={styles.mobileSubjectList}>
                                                     {subjects.map((m, idx) => {
-                                                        const isPass = m.isPassed && !m.isFailed;
                                                         return (
                                                             <div key={m.id || idx} className={styles.mobileSubjectCard}>
                                                                 <div className={styles.mobileSubjectHeader}>
@@ -485,7 +514,7 @@ function StudentDashboardView({
                 )}
             </div>
 
-            {showBacklogModal && (
+            {showBacklogModal && mounted && createPortal(
                 <div className={styles.modalOverlay} role="presentation" onClick={closeBacklogModal}>
                     <section
                         id="backlog-modal"
@@ -520,7 +549,8 @@ function StudentDashboardView({
                             </div>
                         </div>
                     </section>
-                </div>
+                </div>,
+                document.body
             )}
         </>
     );
