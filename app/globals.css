@@ -1366,3 +1366,41 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
   }
 }
 
+/* ── TABLE PAGINATION FOOTER (Centered Navigation) ── */
+.gf-table-pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-low);
+}
+
+.gf-table-pagination-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.gf-table-pagination-spacer {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .gf-table-pagination {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .gf-table-pagination-spacer {
+    display: none !important;
+  }
+}
+

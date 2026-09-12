@@ -848,10 +848,10 @@ function InstitutionalIntelligenceContent() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
-                    <PageHeaderEyebrow>Institutional Analytics</PageHeaderEyebrow>
-                    <PageHeaderTitle>Comparative Intelligence Suite</PageHeaderTitle>
+                    <PageHeaderEyebrow>Comparative Analytics</PageHeaderEyebrow>
+                    <PageHeaderTitle>Performance Comparison</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Cross-sectional department trends, dynamic class-to-class benchmarking, section comparisons, and student trajectory analysis.
+                        Department trends, class benchmarks, section comparisons, and student trajectory analysis.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>

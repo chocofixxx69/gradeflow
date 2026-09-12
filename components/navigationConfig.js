@@ -7,28 +7,27 @@ export const NAV_CONFIG = {
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   faculty: [
-    { key: 'dashboard', label: 'Dashboard', href: '/faculty/dashboard', icon: 'space_dashboard', group: 'Faculty Home' },
+    { key: 'dashboard', label: 'Dashboard', href: '/faculty/dashboard', icon: 'space_dashboard', group: 'Home' },
 
-    // Class Operations
-    { key: 'classes', label: 'Classes', href: '/faculty/classes', icon: 'groups', group: 'Class Operations' },
-    { key: 'students', label: 'Students', href: '/faculty/students', icon: 'badge', group: 'Class Operations' },
+    // Classes & Students
+    { key: 'classes', label: 'Classes', href: '/faculty/classes', icon: 'groups', group: 'Classes & Students' },
+    { key: 'students', label: 'Students', href: '/faculty/students', icon: 'badge', group: 'Classes & Students' },
 
-    // Academic Analytics Hubs
-    { key: 'resultsHub', label: 'Exam & Result Sheets', href: '/faculty/analytics/results', icon: 'table_chart', group: 'Academic Analytics' },
-    { key: 'meritHub', label: 'Rankings & Merit Center', href: '/faculty/analytics/merit', icon: 'military_tech', group: 'Academic Analytics' },
-    { key: 'complianceHub', label: 'Risk & Compliance', href: '/faculty/analytics/compliance', icon: 'fact_check', group: 'Academic Analytics' },
-    { key: 'intelligenceHub', label: 'Comparative Intelligence', href: '/faculty/analytics/intelligence', icon: 'insights', group: 'Academic Analytics' },
-    { key: 'reports', label: 'Department Reports', href: '/faculty/reports', icon: 'analytics', group: 'Academic Analytics' },
+    // Results & Analytics
+    { key: 'resultsHub', label: 'Result Sheets', href: '/faculty/analytics/results', icon: 'table_chart', group: 'Results & Analytics' },
+    { key: 'meritHub', label: 'Rankings & Toppers', href: '/faculty/analytics/merit', icon: 'military_tech', group: 'Results & Analytics' },
+    { key: 'complianceHub', label: 'Backlogs & Eligibility', href: '/faculty/analytics/compliance', icon: 'fact_check', group: 'Results & Analytics' },
+    { key: 'intelligenceHub', label: 'Performance Comparison', href: '/faculty/analytics/intelligence', icon: 'insights', group: 'Results & Analytics' },
+    { key: 'reports', label: 'Department Reports', href: '/faculty/reports', icon: 'analytics', group: 'Results & Analytics' },
 
-    // Teaching & Curriculum
-    { key: 'subjectAnalytics', label: 'Subject Analytics', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Curriculum' },
-    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Curriculum' },
-    { key: 'subjects', label: 'Subjects Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Curriculum' },
+    // Teaching & Courses
+    { key: 'subjectAnalytics', label: 'Subject Performance', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Courses' },
+    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Courses' },
+    { key: 'subjects', label: 'Subject Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Courses' },
 
-    // Each kept out of Teaching & Curriculum (exam-administration tasks, not
-    // teaching) and out of each other — standalone, single-item sections.
-    { key: 'hallTickets', label: 'Hall Tickets', href: '/faculty/hall-tickets', icon: 'confirmation_number', group: 'Hall Tickets' },
-    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/faculty/vtu-urls', icon: 'link', group: 'VTU Result URLs' },
+    // Exam Tools
+    { key: 'hallTickets', label: 'Hall Tickets', href: '/faculty/hall-tickets', icon: 'confirmation_number', group: 'Exam Tools' },
+    { key: 'vtuUrls', label: 'VTU Result Links', href: '/faculty/vtu-urls', icon: 'link', group: 'Exam Tools' },
 
     // Account
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
@@ -39,8 +38,8 @@ export const NAV_CONFIG = {
     { key: 'examSessions', label: 'Exam Sessions', href: '/admin/exam-sessions', icon: 'event', group: 'Institution' },
     { key: 'facultyAssignments', label: 'Faculty Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },
     { key: 'facultyPerformance', label: 'Teaching Performance', href: '/admin/faculty-performance', icon: 'supervisor_account', group: 'Institution' },
-    { key: 'subjects', label: 'Subjects Catalog', href: '/admin/subjects', icon: 'library_books', group: 'Institution' },
-    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/admin/vtu-urls', icon: 'link', group: 'Institution' },
+    { key: 'subjects', label: 'Subject Catalog', href: '/admin/subjects', icon: 'library_books', group: 'Institution' },
+    { key: 'vtuUrls', label: 'VTU Result Links', href: '/admin/vtu-urls', icon: 'link', group: 'Institution' },
     { key: 'analytics', label: 'Analytics', href: '/admin/analytics', icon: 'analytics', group: 'Institution' },
     { key: 'auditLog', label: 'Audit Log', href: '/admin/audit-log', icon: 'history', group: 'Governance' },
   ],
@@ -95,16 +94,16 @@ export const ROUTE_LABELS = {
   '/faculty': 'Faculty',
   '/faculty/dashboard': 'Dashboard',
   '/faculty/classes': 'Classes',
-  '/faculty/students': 'Students Directory',
-  '/faculty/subjects': 'Subjects Catalog',
+  '/faculty/students': 'Students',
+  '/faculty/subjects': 'Subject Catalog',
   '/faculty/reports': 'Department Reports',
-  '/faculty/analytics/results': 'Exam & Result Sheets Hub',
-  '/faculty/analytics/merit': 'Rankings & Merit Center',
-  '/faculty/analytics/compliance': 'Academic Risk & Compliance Center',
-  '/faculty/analytics/intelligence': 'Comparative Intelligence Suite',
+  '/faculty/analytics/results': 'Result Sheets',
+  '/faculty/analytics/merit': 'Rankings & Toppers',
+  '/faculty/analytics/compliance': 'Backlogs & Eligibility',
+  '/faculty/analytics/intelligence': 'Performance Comparison',
   '/faculty/analytics/semester-analysis': 'Semester Analysis Gazette',
   '/faculty/analytics/batch-report': 'Multi-Semester Batch Report',
-  '/faculty/analytics/subject': 'Subject Analytics',
+  '/faculty/analytics/subject': 'Subject Performance',
   '/faculty/analytics/compare': 'Student Comparator',
   '/faculty/analytics/faculty-performance': 'Teaching Performance',
   '/faculty/analytics/eligibility': 'Eligibility Register',
@@ -115,8 +114,8 @@ export const ROUTE_LABELS = {
   '/faculty/analytics/backlogs': 'Standing Backlogs',
   '/faculty/analytics/cohort-trends': 'Cohort Trends',
   '/faculty/analytics/sections-compare': 'Sections Comparison',
-  '/faculty/hall-tickets': 'Hall Ticket Generator',
-  '/faculty/vtu-urls': 'VTU Result URLs',
+  '/faculty/hall-tickets': 'Hall Tickets',
+  '/faculty/vtu-urls': 'VTU Result Links',
   '/faculty/internal': 'Faculty Administration',
   '/faculty/login': 'Faculty Login',
   '/faculty/register': 'Faculty Registration',
@@ -126,8 +125,8 @@ export const ROUTE_LABELS = {
   '/admin/faculty-assignments': 'Faculty Assignments',
   '/admin/faculty-performance': 'Teaching Performance',
   '/admin/teaching-performance': 'Teaching Performance',
-  '/admin/subjects': 'Subjects Catalog',
-  '/admin/vtu-urls': 'VTU Result URLs',
+  '/admin/subjects': 'Subject Catalog',
+  '/admin/vtu-urls': 'VTU Result Links',
   '/admin/analytics': 'Analytics',
   '/admin/audit-log': 'Audit Log',
   '/admin/gateway': 'Admin Gateway',

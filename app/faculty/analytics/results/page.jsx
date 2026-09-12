@@ -598,10 +598,10 @@ function ExamResultsHubContent() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
-                    <PageHeaderEyebrow>Institutional Examination Services</PageHeaderEyebrow>
-                    <PageHeaderTitle>Exam &amp; Result Sheets Hub</PageHeaderTitle>
+                    <PageHeaderEyebrow>Examinations</PageHeaderEyebrow>
+                    <PageHeaderTitle>Result Sheets</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Unified exam-cycle operations: Single-semester gazette, cumulative multi-semester trajectories, and revaluation impact.
+                        Semester gazette, multi-semester batch results, and revaluation score changes.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>

@@ -380,10 +380,10 @@ function AcademicComplianceContent() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
-                    <PageHeaderEyebrow>Institutional Compliance</PageHeaderEyebrow>
-                    <PageHeaderTitle>Academic Risk &amp; Progression Center</PageHeaderTitle>
+                    <PageHeaderEyebrow>Academic Status</PageHeaderEyebrow>
+                    <PageHeaderTitle>Backlogs &amp; Eligibility</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Deterministic audit for VTU Vertical Progression, credit carryover limits, and standing arrears.
+                        Audit VTU vertical progression rules, credit carryover limits, and standing backlogs.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>

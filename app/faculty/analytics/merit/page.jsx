@@ -457,10 +457,10 @@ function RankingsAndMeritContent() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
-                    <PageHeaderEyebrow>Institutional Recognition</PageHeaderEyebrow>
-                    <PageHeaderTitle>Rankings &amp; Merit Center</PageHeaderTitle>
+                    <PageHeaderEyebrow>Academic Merit</PageHeaderEyebrow>
+                    <PageHeaderTitle>Rankings &amp; Toppers</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Unified honor roll, official notice-board merit register, and interactive class leaderboards.
+                        Department merit lists, rank registers, and class leaderboards.
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>

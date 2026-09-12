@@ -1268,22 +1268,8 @@ function StudentsDirectoryContent() {
                     </table>
                 </div>
 
-                {/* Pagination — inside the table card, attached to the rows it pages.
-                    It used to float loose under the card, where it read as part of the
-                    page footer instead of as a control for this table, and on a wide
-                    screen the buttons sat a metre away from the row count. */}
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '14px',
-                        flexWrap: 'wrap',
-                        padding: '12px 16px',
-                        borderTop: '1px solid var(--border)',
-                        background: 'var(--surface-low)'
-                    }}
-                >
+                {/* Pagination — inside the table card, with page navigation centered in the middle */}
+                <div className="gf-table-pagination">
                     <div style={{ fontSize: '12.5px', color: 'var(--tx-muted)', fontWeight: 600 }}>
                         {limit === 'all' ? (
                             <span>Showing <strong style={{ color: 'var(--tx-main)' }}>all {students.length}</strong> matching students</span>
@@ -1300,8 +1286,8 @@ function StudentsDirectoryContent() {
                         )}
                     </div>
 
-                    {limit !== 'all' && pagination.totalPages > 1 && (
-                        <nav aria-label="Student directory pages" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    {limit !== 'all' && pagination.totalPages > 1 ? (
+                        <nav aria-label="Student directory pages" className="gf-table-pagination-nav">
                             <PagerButton
                                 label="First page"
                                 icon="first_page"
@@ -1356,7 +1342,11 @@ function StudentsDirectoryContent() {
                                 onClick={() => setPage(pagination.totalPages)}
                             />
                         </nav>
+                    ) : (
+                        <div />
                     )}
+
+                    <div className="gf-table-pagination-spacer" />
                 </div>
             </Card>
         </div>
