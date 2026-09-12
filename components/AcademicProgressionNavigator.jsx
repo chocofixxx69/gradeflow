@@ -15,7 +15,10 @@ export default function AcademicProgressionNavigator({
     const progressionData = useMemo(() => {
         if (!sortedSemesters || sortedSemesters.length === 0) return [];
 
-        return sortedSemesters.map(([semStr, subjects], index) => {
+        // Always sort chronologically ascending (SEM 1, SEM 2, SEM 3...) for accurate trajectory deltas
+        const chronological = [...sortedSemesters].sort((a, b) => Number(a[0]) - Number(b[0]));
+
+        return chronological.map(([semStr, subjects], index) => {
             const semNum = Number(semStr);
             const stat = semStats[semStr] || {};
             const sgpa = Number(sgpas[semStr] || stat.sgpa || 0);
@@ -36,7 +39,7 @@ export default function AcademicProgressionNavigator({
                 delta = 'Baseline';
                 deltaType = 'baseline';
             } else {
-                const prevSemStr = sortedSemesters[index - 1][0];
+                const prevSemStr = chronological[index - 1][0];
                 const prevStat = semStats[prevSemStr] || {};
                 const prevSgpa = Number(sgpas[prevSemStr] || prevStat.sgpa || 0);
                 const diff = sgpa - prevSgpa;

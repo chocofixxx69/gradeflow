@@ -425,13 +425,25 @@ function FacultyDashboardView({
                         semStats={semStats}
                         sgpas={sgpas}
                         onSelectSemester={(semStr) => {
+                            if (viewMode !== 'cards') {
+                                setViewMode('cards');
+                            }
                             if (!expandedSemesters.includes(semStr)) {
                                 setExpandedSemesters(prev => [...prev, semStr]);
                             }
                             setTimeout(() => {
                                 const el = document.getElementById(`sem-card-${semStr}`);
-                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }, 50);
+                                if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    el.style.transition = 'outline 0.3s ease, box-shadow 0.3s ease';
+                                    el.style.outline = '2px solid var(--primary)';
+                                    el.style.boxShadow = '0 0 16px rgba(59, 130, 246, 0.3)';
+                                    setTimeout(() => {
+                                        el.style.outline = 'none';
+                                        el.style.boxShadow = 'none';
+                                    }, 1800);
+                                }
+                            }, 80);
                         }}
                     />
 
