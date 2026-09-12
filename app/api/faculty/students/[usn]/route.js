@@ -111,30 +111,25 @@ export async function GET(req, { params }) {
         const cleanUsn = rawUsn.toUpperCase().trim();
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch student master profile
-        const { data: student, error: stuErr } = await supabaseAdmin
-            .from('students')
-            .select('*')
-            .eq('usn', cleanUsn)
-            .maybeSingle();
-
-        if (stuErr) throw stuErr;
-
-        // Resolve branch from student record or USN (most authoritative)
-        const studentBranch = normalizeBranch(student?.branch, cleanUsn) ||
-            canonicalBranchCode(extractBranchFromUsn(cleanUsn)) || 'CS';
-
-        // 2. Fetch subject marks, academic remarks and the subject catalog in parallel.
+        // Student profile, subject marks, academic remarks and the subject catalog
+        // are all independent of each other (none needs another's result), so they
+        // run as one batch instead of blocking on the profile fetch first.
         //
         // The standalone `results` query that used to sit here was never read - the
         // exam name each mark needs already comes through the `results(exam_name)`
         // join below, and every SGPA on this page is computed from the marks - so it
         // was a per-page round trip for nothing.
         const [
+            { data: student, error: stuErr },
             { data: rawMarks },
             { data: rawRemarks },
             catalogRows
         ] = await Promise.all([
+            supabaseAdmin
+                .from('students')
+                .select('*')
+                .eq('usn', cleanUsn)
+                .maybeSingle(),
             supabaseAdmin
                 .from('subject_marks')
                 .select('*, results(exam_name)')
@@ -148,6 +143,12 @@ export async function GET(req, { params }) {
                 .order('semester', { ascending: true }),
             readTable(supabaseAdmin, 'subject_catalog', SELECTS.subject_catalog)
         ]);
+
+        if (stuErr) throw stuErr;
+
+        // Resolve branch from student record or USN (most authoritative)
+        const studentBranch = normalizeBranch(student?.branch, cleanUsn) ||
+            canonicalBranchCode(extractBranchFromUsn(cleanUsn)) || 'CS';
 
         const marks = rawMarks || [];
 

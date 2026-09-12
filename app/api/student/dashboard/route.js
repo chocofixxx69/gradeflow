@@ -23,12 +23,24 @@ export async function GET(req) {
 
         const { usn } = session;
 
-        // Fetch student profile
-        let { data: studentProfile, error: pErr } = await supabaseAdmin
-            .from('students')
-            .select('*')
-            .eq('usn', usn)
-            .maybeSingle();
+        // Student profile, subject marks, academic remarks, results and the credit
+        // catalog are all independent of each other (none needs another's result),
+        // so they run as one batch instead of blocking on the profile fetch first.
+        // Only the manual-marks table needs studentId from the profile, so it has
+        // to wait - see below.
+        const [
+            { data: studentProfile, error: pErr },
+            { data: resultMarks },
+            { data: remarks },
+            { data: resultRows },
+            catalogIndex
+        ] = await Promise.all([
+            supabaseAdmin.from('students').select('*').eq('usn', usn).maybeSingle(),
+            supabaseAdmin.from('subject_marks').select('id, usn, subject_code, subject_name, internal, external, total, grade, credits, semester, passed, is_backlog, is_makeup, announced_date, results(exam_name)').eq('usn', usn),
+            supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa, backlog_count, is_all_clear').eq('student_usn', usn),
+            supabaseAdmin.from('results').select('id, usn, semester, sgpa, total_credits').eq('usn', usn),
+            fetchCatalogIndex(supabaseAdmin)
+        ]);
 
         if (pErr) throw pErr;
 
@@ -50,20 +62,9 @@ export async function GET(req) {
 
         const studentId = studentProfile?.id;
 
-        // Fetch manual marks, subject marks, academic remarks, and results in parallel
-        const [
-            { data: studentMarks },
-            { data: resultMarks },
-            { data: remarks },
-            { data: resultRows },
-            catalogIndex
-        ] = await Promise.all([
-            studentId ? supabaseAdmin.from('marks').select('id, student_id, subject_code, subject_name, cie_marks, see_marks, total_marks, grade, credits, semester, sync_source, announced_date').eq('student_id', studentId) : { data: [] },
-            supabaseAdmin.from('subject_marks').select('id, usn, subject_code, subject_name, internal, external, total, grade, credits, semester, passed, is_backlog, is_makeup, announced_date, results(exam_name)').eq('usn', usn),
-            supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa, backlog_count, is_all_clear').eq('student_usn', usn),
-            supabaseAdmin.from('results').select('id, usn, semester, sgpa, total_credits').eq('usn', usn),
-            fetchCatalogIndex(supabaseAdmin)
-        ]);
+        const { data: studentMarks } = studentId
+            ? await supabaseAdmin.from('marks').select('id, student_id, subject_code, subject_name, cie_marks, see_marks, total_marks, grade, credits, semester, sync_source, announced_date').eq('student_id', studentId)
+            : { data: [] };
 
         // Standardize & combine marks pool
         const pool = [];
