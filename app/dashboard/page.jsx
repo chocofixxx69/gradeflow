@@ -208,9 +208,10 @@ function StudentDashboardView({
                     semStats={semStats}
                     sgpas={sgpas}
                     onSelectSemester={(semStr) => {
-                        if (!expandedSemesters.includes(semStr)) {
-                            setExpandedSemesters(prev => [...prev, semStr]);
-                        }
+                        setExpandedSemesters(prev => ({
+                            ...prev,
+                            [semStr]: true
+                        }));
                         setTimeout(() => {
                             const el = document.getElementById(`student-sem-card-${semStr}`);
                             if (el) {

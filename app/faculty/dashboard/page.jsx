@@ -511,9 +511,10 @@ function FacultyDashboardView({
                             if (viewMode !== 'cards') {
                                 setViewMode('cards');
                             }
-                            if (!expandedSemesters.includes(semStr)) {
-                                setExpandedSemesters(prev => [...prev, semStr]);
-                            }
+                            setExpandedSemesters(prev => ({
+                                ...prev,
+                                [semStr]: true
+                            }));
                             setTimeout(() => {
                                 const el = document.getElementById(`sem-card-${semStr}`);
                                 if (el) {
