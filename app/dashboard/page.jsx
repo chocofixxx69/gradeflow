@@ -213,8 +213,17 @@ function StudentDashboardView({
                         }
                         setTimeout(() => {
                             const el = document.getElementById(`student-sem-card-${semStr}`);
-                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 50);
+                            if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                el.style.transition = 'outline 0.3s ease, box-shadow 0.3s ease';
+                                el.style.outline = '2px solid var(--primary)';
+                                el.style.boxShadow = '0 0 16px rgba(59, 130, 246, 0.3)';
+                                setTimeout(() => {
+                                    el.style.outline = 'none';
+                                    el.style.boxShadow = 'none';
+                                }, 1800);
+                            }
+                        }, 80);
                     }}
                 />
 
@@ -321,7 +330,7 @@ function StudentDashboardView({
                                 const backlogCodes = semBacklogs.map(b => b.subjectCode || b.subject_code || b.code).filter(Boolean).join(', ');
 
                                 return (
-                                    <article key={sem} className={styles.semesterCard}>
+                                    <article key={sem} id={`student-sem-card-${sem}`} className={styles.semesterCard}>
                                         <div
                                             className={styles.semesterHeader}
                                             onClick={() => toggleSemester(sem)}
