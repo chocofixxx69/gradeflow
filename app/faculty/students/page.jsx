@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 import { EntryTag } from '@/components/ui/EntryTag';
+import { HighlightMatch } from '@/components/ui/HighlightMatch';
 
 export default function FacultyStudentsDirectoryPage() {
     return (
@@ -45,8 +46,8 @@ const EMPTY_FACETS = {
  * its real count, including 0) so the control never silently jumps to a different
  * cohort underneath the user.
  */
-function facetOptions(facets, selected, { allValue, allLabel }) {
-    const total = facets.reduce((sum, f) => sum + f.count, 0);
+function facetOptions(facets, selected, { allValue, allLabel, customCount }) {
+    const total = customCount !== undefined ? customCount : facets.reduce((sum, f) => sum + f.count, 0);
     const options = [{ value: allValue, label: `${allLabel} (${total})` }];
 
     let selectedSeen = false;
@@ -62,6 +63,29 @@ function facetOptions(facets, selected, { allValue, allLabel }) {
 
     return options;
 }
+
+const activeBadgeStyle = {
+    fontSize: '9px',
+    fontWeight: 900,
+    background: 'var(--primary, #174B4D)',
+    color: '#FFFFFF',
+    padding: '1.5px 6px',
+    borderRadius: '4px',
+    letterSpacing: '0.04em',
+    boxShadow: '0 1px 3px rgba(23, 75, 77, 0.25)',
+    display: 'inline-flex',
+    alignItems: 'center'
+};
+
+const getActiveSelectStyle = (isActive) => ({
+    borderColor: isActive ? 'var(--primary, #174B4D)' : 'var(--border)',
+    background: isActive ? 'var(--surface-low, #FDF6ED)' : 'var(--surface, #FFFFFF)',
+    fontWeight: isActive ? 800 : 500,
+    color: isActive ? 'var(--primary, #174B4D)' : 'var(--tx-main)',
+    boxShadow: isActive ? '0 0 0 1.5px var(--primary, #174B4D), 0 2px 5px rgba(23, 75, 77, 0.08)' : 'none',
+    borderRadius: '8px',
+    transition: 'all 0.15s ease'
+});
 
 function StudentsDirectoryContent() {
     const [loading, setLoading] = useState(true);
@@ -83,6 +107,7 @@ function StudentsDirectoryContent() {
     const [isDebouncing, setIsDebouncing] = useState(false);
 
     const [page, setPage] = useState(1);
+    const [jumpPageInput, setJumpPageInput] = useState('');
     const [limit, setLimit] = useState(25);
     const [sortBy, setSortBy] = useState('batch');
     const [sortOrder, setSortOrder] = useState('desc');
@@ -97,6 +122,21 @@ function StudentsDirectoryContent() {
     const [facets, setFacets] = useState(EMPTY_FACETS);
     const [blockingFilters, setBlockingFilters] = useState([]);
     const [directoryTotal, setDirectoryTotal] = useState(0);
+
+    const pageNumbers = useMemo(() => {
+        const total = pagination?.totalPages || 1;
+        const current = page;
+        if (total <= 7) {
+            return Array.from({ length: total }, (_, i) => i + 1);
+        }
+        if (current <= 4) {
+            return [1, 2, 3, 4, 5, '...', total];
+        }
+        if (current >= total - 3) {
+            return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+        }
+        return [1, '...', current - 1, current, current + 1, '...', total];
+    }, [pagination?.totalPages, page]);
 
     const [meta, setMeta] = useState(null);
 
@@ -524,115 +564,21 @@ function StudentsDirectoryContent() {
                 </div>
             )}
 
-            {/* Filter Toolbar — every option and count comes from the live dataset */}
-            <Card style={{ marginBottom: '20px' }}>
-                <CardContent style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
-                        <Select
-                            label="Department"
-                            value={branch}
-                            onChange={e => handleFilterChange(setBranch, e.target.value)}
-                            options={facetOptions(facets.branches, branch, { allValue: '', allLabel: 'All Departments' })}
-                        />
-                        <Select
-                            label="Semester"
-                            value={semester}
-                            onChange={e => handleFilterChange(setSemester, e.target.value)}
-                            options={facetOptions(facets.semesters, semester, { allValue: 'all', allLabel: 'All Semesters' })}
-                        />
-                        {semester !== 'all' && (
-                            <Select
-                                label="Semester Match"
-                                value={semesterMode}
-                                onChange={e => handleFilterChange(setSemesterMode, e.target.value)}
-                                options={[
-                                    { value: 'records', label: 'Has records for it' },
-                                    { value: 'current', label: 'Currently studying it' }
-                                ]}
-                            />
-                        )}
-                        <Select
-                            label="Batch"
-                            value={batch}
-                            onChange={e => handleFilterChange(setBatch, e.target.value)}
-                            options={facetOptions(facets.batches, batch, { allValue: '', allLabel: 'All Batches' })}
-                        />
-                        <Select
-                            label={realSections.length === 0 ? "Section (None Created)" : "Section"}
-                            value={section}
-                            disabled={realSections.length === 0 && (facets.sections || []).length <= 1}
-                            onChange={e => handleFilterChange(setSection, e.target.value)}
-                            options={facetOptions(facets.sections, section, {
-                                allValue: 'all',
-                                allLabel: realSections.length === 0
-                                    ? 'No Sections (Whole Cohort)'
-                                    : realSections.length === 1
-                                        ? `Single Section (Sec ${realSections[0].value})`
-                                        : 'All Sections'
-                            })}
-                        />
-                        {facets.classes?.length > 0 && (
-                            <Select
-                                label="Class"
-                                value={classId}
-                                onChange={e => handleFilterChange(setClassId, e.target.value)}
-                                options={facetOptions(facets.classes, classId, { allValue: '', allLabel: 'All Classes' })}
-                            />
-                        )}
-                        <Select
-                            label="Entry Type"
-                            value={entry}
-                            onChange={e => handleFilterChange(setEntry, e.target.value)}
-                            options={(facets.entries?.length ? facets.entries : [{ value: 'all', label: 'All Entries', count: 0 }])
-                                .map(o => ({ value: o.value, label: o.value === 'all' ? `${o.label} (${o.count})` : `${o.label} · ${o.count}` }))}
-                        />
-                        <Select
-                            label="Backlogs Status"
-                            value={backlogsFilter}
-                            onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
-                            options={[
-                                { value: 'all', label: 'All Students' },
-                                { value: 'clear', label: 'All Clear (0 Arrears)' },
-                                { value: 'backlogs', label: 'Carrying Backlogs' }
-                            ]}
-                        />
-                        <Select
-                            label="Arrange / Sort"
-                            value={`${sortBy}:${sortOrder}`}
-                            onChange={e => {
-                                const [sb, so] = e.target.value.split(':');
-                                setSortBy(sb);
-                                setSortOrder(so);
-                                setPage(1);
-                            }}
-                            options={[
-                                { value: 'batch:desc', label: 'Batch (Newest First)' },
-                                { value: 'batch:asc', label: 'Batch (Oldest First)' },
-                                { value: 'usn:asc', label: 'USN (Ascending)' },
-                                { value: 'name:asc', label: 'Name (A to Z)' },
-                                { value: 'cgpa:desc', label: 'CGPA (Highest First)' },
-                                { value: 'backlogs:desc', label: 'Backlogs (Most First)' },
-                                { value: 'department:asc', label: 'Department (A to Z)' }
-                            ]}
-                        />
-                        <Select
-                            label="Page Size"
-                            value={String(limit)}
-                            onChange={e => {
-                                setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value));
-                                setPage(1);
-                            }}
-                            options={[
-                                { value: '25', label: '25 per page' },
-                                { value: '50', label: '50 per page' },
-                                { value: '100', label: '100 per page' },
-                                { value: 'all', label: `All (${directoryTotal || 627})` }
-                            ]}
-                        />
-                        <div style={{ position: 'relative' }}>
+            {/* Filter Toolbar — Prominent Search, Logical Grouping, and Visible Active Highlights */}
+            <Card style={{ marginBottom: '20px', borderTop: '3px solid var(--primary, #174B4D)', boxShadow: '0 2px 10px rgba(23, 75, 77, 0.05)' }}>
+                <CardContent style={{ padding: '18px 20px' }}>
+                    {/* Top Row: Prominent Wide Search & Display Controls */}
+                    <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '16px' }}>
+                        <div style={{ flex: '1 1 340px', minWidth: '280px', position: 'relative' }}>
                             <Input
-                                label="Search"
-                                placeholder="USN, Name, Email, Phone..."
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #174B4D)' }}>search</span>
+                                        <span style={{ fontWeight: 700 }}>Search Students</span>
+                                        {search && <span style={activeBadgeStyle}>SEARCH ACTIVE</span>}
+                                    </span>
+                                }
+                                placeholder="Search by Student USN, Full Name, Email, or Mobile..."
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
                                 onKeyDown={e => {
@@ -641,13 +587,22 @@ function StudentsDirectoryContent() {
                                         triggerSearchImmediately(e.target.value);
                                     }
                                 }}
+                                style={{
+                                    borderColor: search ? 'var(--primary, #174B4D)' : 'var(--border)',
+                                    background: search ? 'var(--surface-low, #FDF6ED)' : 'var(--surface, #FFFFFF)',
+                                    color: search ? 'var(--primary, #174B4D)' : 'var(--tx-main)',
+                                    fontWeight: search ? 700 : 400,
+                                    boxShadow: search ? '0 0 0 1.5px var(--primary, #174B4D), 0 2px 4px rgba(23, 75, 77, 0.08)' : 'none',
+                                    borderRadius: '8px',
+                                    transition: 'all 0.15s ease'
+                                }}
                             />
-                            <div style={{ position: 'absolute', right: '10px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 2 }}>
+                            <div style={{ position: 'absolute', right: '12px', bottom: '9px', display: 'flex', alignItems: 'center', gap: '6px', zIndex: 2 }}>
                                 {isDebouncing && (
                                     <span
                                         className="material-icons-round"
-                                        style={{ fontSize: '16px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}
-                                        title="Searching..."
+                                        style={{ fontSize: '18px', color: 'var(--primary, #174B4D)', animation: 'spin 1s linear infinite' }}
+                                        title="Searching directory..."
                                     >
                                         sync
                                     </span>
@@ -668,44 +623,322 @@ function StudentsDirectoryContent() {
                                         }}
                                         title="Clear search"
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>close</span>
+                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>close</span>
                                     </button>
                                 )}
                             </div>
                         </div>
-                    </div>
 
-                    {facets.batches?.length > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-low)', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Batch Cohorts:
-                            </span>
-                            {facets.batches.map(b => (
-                                <button
-                                    key={b.value}
-                                    type="button"
-                                    onClick={() => handleFilterChange(setBatch, batch === String(b.value) ? '' : String(b.value))}
+                        {/* Arrange / Sort */}
+                        <div style={{ flex: '0 1 210px', minWidth: '170px' }}>
+                            <Select
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #174B4D)' }}>sort</span>
+                                        <span style={{ fontWeight: 700 }}>Arrange / Sort</span>
+                                        {(sortBy !== 'batch' || sortOrder !== 'desc') && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                    </span>
+                                }
+                                value={`${sortBy}:${sortOrder}`}
+                                onChange={e => {
+                                    const [sb, so] = e.target.value.split(':');
+                                    setSortBy(sb);
+                                    setSortOrder(so);
+                                    setPage(1);
+                                }}
+                                style={getActiveSelectStyle(sortBy !== 'batch' || sortOrder !== 'desc')}
+                                options={[
+                                    { value: 'batch:desc', label: 'Batch (Newest First)' },
+                                    { value: 'batch:asc', label: 'Batch (Oldest First)' },
+                                    { value: 'usn:asc', label: 'USN (Ascending)' },
+                                    { value: 'name:asc', label: 'Name (A to Z)' },
+                                    { value: 'cgpa:desc', label: 'CGPA (Highest First)' },
+                                    { value: 'backlogs:desc', label: 'Backlogs (Most First)' },
+                                    { value: 'department:asc', label: 'Department (A to Z)' }
+                                ]}
+                            />
+                        </div>
+
+                        {/* Page Size */}
+                        <div style={{ flex: '0 1 150px', minWidth: '130px' }}>
+                            <Select
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary, #174B4D)' }}>view_list</span>
+                                        <span style={{ fontWeight: 700 }}>Page Size</span>
+                                        {limit !== 25 && <span style={activeBadgeStyle}>CUSTOM</span>}
+                                    </span>
+                                }
+                                value={String(limit)}
+                                onChange={e => {
+                                    setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                                    setPage(1);
+                                }}
+                                style={getActiveSelectStyle(limit !== 25)}
+                                options={[
+                                    { value: '25', label: '25 per page' },
+                                    { value: '50', label: '50 per page' },
+                                    { value: '100', label: '100 per page' },
+                                    { value: 'all', label: `All (${directoryTotal || 627})` }
+                                ]}
+                            />
+                        </div>
+
+                        {/* Reset Filters Shortcut (if any filter active) */}
+                        {activeChips.length > 0 && (
+                            <div style={{ paddingBottom: '2px' }}>
+                                <Button
+                                    size="md"
+                                    variant="ghost"
+                                    onClick={resetAll}
+                                    iconStart="restart_alt"
                                     style={{
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        border: `1px solid ${batch === String(b.value) ? 'var(--primary)' : 'var(--border)'}`,
-                                        background: batch === String(b.value) ? 'rgba(99, 102, 241, 0.12)' : 'var(--surface-low)',
-                                        color: batch === String(b.value) ? 'var(--primary)' : 'var(--tx-main)',
-                                        fontSize: '11.5px',
+                                        color: 'var(--destructive, #B91C1C)',
+                                        borderColor: 'var(--destructive-border, #FFCDD2)',
+                                        background: 'var(--destructive-bg, #FFEBEE)',
                                         fontWeight: 700,
-                                        cursor: 'pointer'
+                                        height: '40px'
                                     }}
                                 >
-                                    {b.label}
-                                </button>
-                            ))}
+                                    Reset ({activeChips.length})
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Middle Section: Academic Filters Grid with Visible Active Highlighting */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+                        gap: '14px',
+                        alignItems: 'flex-end',
+                        paddingTop: '16px',
+                        borderTop: '1px solid var(--border-low, #EAEAEA)'
+                    }}>
+                        {/* Department */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>school</span>
+                                    <span style={{ fontWeight: 700 }}>Department</span>
+                                    {branch && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                </span>
+                            }
+                            value={branch}
+                            onChange={e => handleFilterChange(setBranch, e.target.value)}
+                            options={facetOptions(facets.branches, branch, { allValue: '', allLabel: 'All Departments' })}
+                            style={getActiveSelectStyle(Boolean(branch))}
+                        />
+
+                        {/* Semester */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>layers</span>
+                                    <span style={{ fontWeight: 700 }}>Semester</span>
+                                    {semester !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                </span>
+                            }
+                            value={semester}
+                            onChange={e => handleFilterChange(setSemester, e.target.value)}
+                            options={facetOptions(facets.semesters, semester, { allValue: 'all', allLabel: 'All Semesters', customCount: directoryTotal || 627 })}
+                            style={getActiveSelectStyle(semester !== 'all')}
+                        />
+
+                        {/* Semester Match (conditional) */}
+                        {semester !== 'all' && (
+                            <Select
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>tune</span>
+                                        <span style={{ fontWeight: 700 }}>Semester Match</span>
+                                    </span>
+                                }
+                                value={semesterMode}
+                                onChange={e => handleFilterChange(setSemesterMode, e.target.value)}
+                                options={[
+                                    { value: 'records', label: 'Has records for it' },
+                                    { value: 'current', label: 'Currently studying it' }
+                                ]}
+                                style={getActiveSelectStyle(true)}
+                            />
+                        )}
+
+                        {/* Batch */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>event_note</span>
+                                    <span style={{ fontWeight: 700 }}>Batch</span>
+                                    {batch && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                </span>
+                            }
+                            value={batch}
+                            onChange={e => handleFilterChange(setBatch, e.target.value)}
+                            options={facetOptions(facets.batches, batch, { allValue: '', allLabel: 'All Batches' })}
+                            style={getActiveSelectStyle(Boolean(batch))}
+                        />
+
+                        {/* Section */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>groups</span>
+                                    <span style={{ fontWeight: 700 }}>Section</span>
+                                    {section !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                </span>
+                            }
+                            value={section}
+                            onChange={e => handleFilterChange(setSection, e.target.value)}
+                            options={facetOptions(facets.sections, section, { allValue: 'all', allLabel: 'All Sections' })}
+                            style={getActiveSelectStyle(section !== 'all')}
+                        />
+
+                        {/* Backlogs Status */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>history_edu</span>
+                                    <span style={{ fontWeight: 700 }}>Backlogs Status</span>
+                                    {backlogsFilter !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                </span>
+                            }
+                            value={backlogsFilter}
+                            onChange={e => handleFilterChange(setBacklogsFilter, e.target.value)}
+                            options={[
+                                { value: 'all', label: 'All Students' },
+                                { value: 'clear', label: 'All Clear (0 Arrears)' },
+                                { value: 'backlogs', label: 'Carrying Backlogs' }
+                            ]}
+                            style={getActiveSelectStyle(backlogsFilter !== 'all')}
+                        />
+
+                        {/* Entry Type */}
+                        <Select
+                            label={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>badge</span>
+                                    <span style={{ fontWeight: 700 }}>Entry Type</span>
+                                    {entry !== 'all' && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                </span>
+                            }
+                            value={entry}
+                            onChange={e => handleFilterChange(setEntry, e.target.value)}
+                            options={(facets.entries?.length ? facets.entries : [{ value: 'all', label: 'All Entries', count: 0 }])
+                                .map(o => ({ value: o.value, label: o.value === 'all' ? `${o.label} (${o.count})` : `${o.label} · ${o.count}` }))}
+                            style={getActiveSelectStyle(entry !== 'all')}
+                        />
+
+                        {/* Class (conditional) */}
+                        {facets.classes?.length > 0 && (
+                            <Select
+                                label={
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>meeting_room</span>
+                                        <span style={{ fontWeight: 700 }}>Class</span>
+                                        {classId && <span style={activeBadgeStyle}>ACTIVE</span>}
+                                    </span>
+                                }
+                                value={classId}
+                                onChange={e => handleFilterChange(setClassId, e.target.value)}
+                                options={facetOptions(facets.classes, classId, { allValue: '', allLabel: 'All Classes' })}
+                                style={getActiveSelectStyle(Boolean(classId))}
+                            />
+                        )}
+                    </div>
+
+                    {/* Batch Cohorts Quick Bar */}
+                    {facets.batches?.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-low, #EAEAEA)', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary, #174B4D)' }}>calendar_month</span>
+                                Batch Cohorts:
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => handleFilterChange(setBatch, '')}
+                                style={{
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    border: `1.5px solid ${!batch ? 'var(--primary, #174B4D)' : 'var(--border)'}`,
+                                    background: !batch ? 'var(--primary, #174B4D)' : 'var(--surface, #FFFFFF)',
+                                    color: !batch ? '#FFFFFF' : 'var(--tx-main)',
+                                    fontSize: '11.5px',
+                                    fontWeight: !batch ? 800 : 600,
+                                    cursor: 'pointer',
+                                    boxShadow: !batch ? '0 2px 6px rgba(23, 75, 77, 0.25)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (batch) {
+                                        e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)';
+                                        e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (batch) {
+                                        e.currentTarget.style.background = 'var(--surface, #FFFFFF)';
+                                        e.currentTarget.style.borderColor = 'var(--border)';
+                                    }
+                                }}
+                            >
+                                All Batches
+                            </button>
+                            {facets.batches.map(b => {
+                                const isSelected = batch === String(b.value);
+                                return (
+                                    <button
+                                        key={b.value}
+                                        type="button"
+                                        onClick={() => handleFilterChange(setBatch, isSelected ? '' : String(b.value))}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            border: `1.5px solid ${isSelected ? 'var(--primary, #174B4D)' : 'var(--border)'}`,
+                                            background: isSelected ? 'var(--primary, #174B4D)' : 'var(--surface, #FFFFFF)',
+                                            color: isSelected ? '#FFFFFF' : 'var(--tx-main)',
+                                            fontSize: '11.5px',
+                                            fontWeight: isSelected ? 800 : 600,
+                                            cursor: 'pointer',
+                                            boxShadow: isSelected ? '0 2px 6px rgba(23, 75, 77, 0.25)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!isSelected) {
+                                                e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)';
+                                                e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!isSelected) {
+                                                e.currentTarget.style.background = 'var(--surface, #FFFFFF)';
+                                                e.currentTarget.style.borderColor = 'var(--border)';
+                                            }
+                                        }}
+                                    >
+                                        {b.label}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
 
+                    {/* Active Filter Summary Tags Bar */}
                     {activeChips.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-low)' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tx-dim)' }}>
-                                Filtering by
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '8px',
+                            alignItems: 'center',
+                            marginTop: '16px',
+                            padding: '12px 14px',
+                            borderRadius: '8px',
+                            background: 'var(--surface-low, #FDF6ED)',
+                            border: '1px solid rgba(23, 75, 77, 0.18)'
+                        }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--primary, #174B4D)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="material-icons-round" style={{ fontSize: '15px' }}>filter_alt</span>
+                                Active Filters ({activeChips.length}):
                             </span>
                             {activeChips.map(chip => (
                                 <button
@@ -714,21 +947,57 @@ function StudentsDirectoryContent() {
                                     onClick={() => clearFilter(chip.name)}
                                     title={`Remove ${chip.label}`}
                                     style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                        padding: '4px 8px', borderRadius: '999px', cursor: 'pointer',
-                                        border: '1px solid var(--border)', background: 'var(--surface-low)',
-                                        color: 'var(--tx-main)', fontSize: '11px', fontWeight: 700
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 10px',
+                                        borderRadius: '20px',
+                                        cursor: 'pointer',
+                                        border: '1.5px solid var(--primary, #174B4D)',
+                                        background: '#FFFFFF',
+                                        color: 'var(--primary, #174B4D)',
+                                        fontSize: '11.5px',
+                                        fontWeight: 800,
+                                        boxShadow: '0 1px 3px rgba(23, 75, 77, 0.1)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'var(--destructive-bg, #FFEBEE)';
+                                        e.currentTarget.style.borderColor = 'var(--destructive, #B91C1C)';
+                                        e.currentTarget.style.color = 'var(--destructive, #B91C1C)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = '#FFFFFF';
+                                        e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                        e.currentTarget.style.color = 'var(--primary, #174B4D)';
                                     }}
                                 >
-                                    {chip.label}
-                                    <span className="material-icons-round" style={{ fontSize: '13px', color: 'var(--tx-dim)' }}>close</span>
+                                    <span>{chip.label}</span>
+                                    <span className="material-icons-round" style={{ fontSize: '14px', opacity: 0.8 }}>close</span>
                                 </button>
                             ))}
-                            <Button size="sm" variant="ghost" onClick={resetAll}>Reset all</Button>
+                            <button
+                                type="button"
+                                onClick={resetAll}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--destructive, #B91C1C)',
+                                    fontSize: '11.5px',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                    padding: '4px 8px',
+                                    marginLeft: 'auto'
+                                }}
+                            >
+                                Clear All Filters
+                            </button>
                         </div>
                     )}
                 </CardContent>
             </Card>
+
 
             {error && (
                 <Card style={{ marginBottom: '16px', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
@@ -742,7 +1011,22 @@ function StudentsDirectoryContent() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
                     Found <strong>{loading ? '…' : pagination.total}</strong> student{pagination.total === 1 ? '' : 's'}
-                    {search ? <span> matching &ldquo;<strong style={{ color: 'var(--tx-main)' }}>{search}</strong>&rdquo;</span> : ' matching filters'}
+                    {search ? (
+                        <span>
+                            {' '}matching &ldquo;
+                            <mark style={{
+                                background: '#FEF3C7',
+                                color: 'var(--warm-highlight, #B45309)',
+                                borderBottom: '2px solid var(--warm-highlight, #B45309)',
+                                borderRadius: '3px',
+                                padding: '1px 6px',
+                                fontWeight: 800
+                            }}>
+                                {search}
+                            </mark>
+                            &rdquo;
+                        </span>
+                    ) : ' matching filters'}
                     {directoryTotal > 0 && pagination.total !== directoryTotal && (
                         <span style={{ color: 'var(--tx-dim)' }}> · {directoryTotal} in the directory</span>
                     )}
@@ -839,27 +1123,24 @@ function StudentsDirectoryContent() {
                                             <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
                                                 <Link
                                                     href={`/faculty/students/${s.usn}`}
-                                                    style={{ color: 'var(--primary)', textDecoration: 'none' }}
+                                                    style={{ color: 'var(--primary, #174B4D)', textDecoration: 'none' }}
                                                     className="gf-hover-underline"
                                                 >
-                                                    {s.usn}
+                                                    <HighlightMatch text={s.usn} query={search} />
                                                 </Link>
                                                 {s.lateral_entry && <EntryTag lateral compact style={{ marginLeft: '6px' }} />}
                                                 {s.batch && (
                                                     <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', fontFamily: 'inherit' }}>
-                                                        {s.batch} batch
-                                                        {/* A lateral entrant's USN year is one later than the batch they
-                                                            graduate with; show both so the mismatch never looks like a bug. */}
-                                                        {s.admissionBatch && s.admissionBatch !== s.batch ? ` · adm. ${s.admissionBatch}` : ''}
+                                                        <HighlightMatch text={`${s.batch} batch${s.admissionBatch && s.admissionBatch !== s.batch ? ` · adm. ${s.admissionBatch}` : ''}`} query={search} />
                                                     </div>
                                                 )}
                                             </td>
                                             <td style={{ padding: '12px 16px', fontWeight: 600 }}>
                                                 <Link href={`/faculty/students/${s.usn}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                                                    {s.name}
+                                                    <HighlightMatch text={s.name} query={search} />
                                                 </Link>
                                                 {s.is_inactive && (
-                                                    <span style={{ marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', background: 'var(--surface-low)', border: '1px solid var(--border)', fontSize: '10px', color: 'var(--tx-muted)' }}>
+                                                    <span style={{ marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border)', fontSize: '10px', color: 'var(--tx-muted)' }}>
                                                         Inactive
                                                     </span>
                                                 )}
@@ -868,8 +1149,19 @@ function StudentsDirectoryContent() {
                                                     {s.phone && s.phone !== '—' && <span>• {s.phone}</span>}
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 700 }} title={s.branchLabel}>
-                                                {s.branch}
+                                            <td style={{ padding: '12px 16px' }} title={s.branchLabel}>
+                                                <span style={{
+                                                    padding: '3px 8px',
+                                                    borderRadius: '5px',
+                                                    background: 'rgba(23, 75, 77, 0.08)',
+                                                    color: 'var(--primary, #174B4D)',
+                                                    fontWeight: 700,
+                                                    fontSize: '11.5px',
+                                                    border: '1px solid rgba(23, 75, 77, 0.12)',
+                                                    display: 'inline-block'
+                                                }}>
+                                                    <HighlightMatch text={s.branch} query={search} />
+                                                </span>
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                                 <div
@@ -879,8 +1171,18 @@ function StudentsDirectoryContent() {
                                                     Sem {s.semester}
                                                 </div>
                                                 {s.section ? (
-                                                    <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 800 }}>
-                                                        Sec {s.section}
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        marginTop: '2px',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px',
+                                                        background: 'rgba(58, 106, 109, 0.12)',
+                                                        color: 'var(--secondary, #3A6A6D)',
+                                                        fontSize: '10px',
+                                                        fontWeight: 800,
+                                                        border: '1px solid rgba(58, 106, 109, 0.2)'
+                                                    }}>
+                                                        Sec <HighlightMatch text={s.section} query={search} />
                                                     </span>
                                                 ) : (
                                                     <span style={{ display: 'inline-block', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'var(--surface-low)', color: 'var(--tx-dim)', fontSize: '10px', fontWeight: 600 }}>
@@ -895,7 +1197,7 @@ function StudentsDirectoryContent() {
                                                             <div style={{ fontWeight: 900, color: 'var(--tx-main)' }}>
                                                                 {Number.isFinite(sv.sgpa) && sv.sgpa > 0 ? sv.sgpa.toFixed(2) : '—'}
                                                             </div>
-                                                            <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: sv.backlogs > 0 ? '#EF4444' : '#10B981' }}>
+                                                            <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: sv.backlogs > 0 ? 'var(--destructive, #B91C1C)' : 'var(--success, #166534)' }}>
                                                                 {sv.backlogs > 0 ? `${sv.backlogs} backlog${sv.backlogs === 1 ? '' : 's'}` : 'clear'}
                                                             </div>
                                                             {sv.attemptCount > 1 && (
@@ -912,22 +1214,62 @@ function StudentsDirectoryContent() {
                                                     )}
                                                 </td>
                                             )}
-                                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 900, color: s.cgpa >= 8.0 ? '#10B981' : s.cgpa >= 5.0 ? 'var(--primary)' : s.cgpa > 0 ? '#EF4444' : 'var(--tx-dim)' }}>
-                                                {s.cgpa !== null && s.cgpa > 0 ? s.cgpa.toFixed(2) : '—'}
+                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                {s.cgpa !== null && s.cgpa > 0 ? (
+                                                    <span style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '5px',
+                                                        fontWeight: 900,
+                                                        fontSize: '12px',
+                                                        background: s.cgpa >= 8.0 ? 'var(--success-bg, #E8F5E9)' : s.cgpa >= 5.0 ? 'rgba(23, 75, 77, 0.08)' : 'var(--destructive-bg, #FFEBEE)',
+                                                        color: s.cgpa >= 8.0 ? 'var(--success, #166534)' : s.cgpa >= 5.0 ? 'var(--primary, #174B4D)' : 'var(--destructive, #B91C1C)',
+                                                        border: `1px solid ${s.cgpa >= 8.0 ? 'var(--success-border, #A5D6A7)' : s.cgpa >= 5.0 ? 'rgba(23, 75, 77, 0.18)' : 'var(--destructive-border, #FFCDD2)'}`,
+                                                        display: 'inline-block'
+                                                    }}>
+                                                        {s.cgpa.toFixed(2)}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--tx-dim)', fontWeight: 600 }}>—</span>
+                                                )}
                                             </td>
                                             <td style={{ padding: '12px 16px' }}>
                                                 {hasBacklogs ? (
-                                                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', fontWeight: 800, fontSize: '11px' }}>
+                                                    <span style={{
+                                                        padding: '3px 9px',
+                                                        borderRadius: '6px',
+                                                        background: 'var(--destructive-bg, #FFEBEE)',
+                                                        color: 'var(--destructive, #B91C1C)',
+                                                        border: '1px solid var(--destructive-border, #FFCDD2)',
+                                                        fontWeight: 800,
+                                                        fontSize: '11px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>warning</span>
                                                         {s.total_backlogs} Subjects ({s.backlog_credits} Cr)
                                                     </span>
                                                 ) : (
-                                                    <span style={{ padding: '3px 9px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', fontWeight: 800, fontSize: '11px' }}>
+                                                    <span style={{
+                                                        padding: '3px 9px',
+                                                        borderRadius: '6px',
+                                                        background: 'var(--success-bg, #E8F5E9)',
+                                                        color: 'var(--success, #166534)',
+                                                        border: '1px solid var(--success-border, #A5D6A7)',
+                                                        fontWeight: 800,
+                                                        fontSize: '11px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>check_circle</span>
                                                         Clear
                                                     </span>
                                                 )}
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                                 <Link href={`/faculty/students/${s.usn}`}>
+
                                                     <Button size="sm" variant="ghost" iconStart="visibility">
                                                         View
                                                     </Button>

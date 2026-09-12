@@ -214,8 +214,11 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
         };
         window.addEventListener('focus', handleFocus);
 
-        // 4. Polling heartbeat every 15 seconds
+        // 4. Polling heartbeat every 15 seconds - skipped while the tab is
+        // backgrounded; focus/storage/custom-event listeners above already
+        // catch up immediately when it becomes relevant again.
         const timer = setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) return;
             fetchData(true);
         }, 15000);
 

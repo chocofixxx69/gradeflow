@@ -500,6 +500,7 @@ function HallTicketsContent() {
         if (timetable.length === 0) issues.push('No exam subjects added to the timetable.');
         timetable.forEach((row, idx) => {
             if (!row.date?.trim()) issues.push(`Row ${idx + 1}: missing exam date.`);
+            if (!row.time?.trim()) issues.push(`Row ${idx + 1}: missing exam time slot.`);
             if (!row.subjectCode?.trim()) issues.push(`Row ${idx + 1}: missing subject code.`);
         });
         const codeCounts = {};
@@ -765,14 +766,14 @@ function HallTicketsContent() {
 
                     doc.setFont('times', 'normal');
                     doc.setFontSize(7.5);
-                    doc.text(exam.date, marginX + colDateW / 2, rowTop + 3.4, { align: 'center' });
-                    doc.text(exam.time, marginX + colDateW + colTimeW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.text(exam.date || '', marginX + colDateW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.text(exam.time || '', marginX + colDateW + colTimeW / 2, rowTop + 3.4, { align: 'center' });
 
                     doc.setFont('courier', 'bold');
-                    doc.text(exam.subjectCode, marginX + colDateW + colTimeW + colCodeW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.text(exam.subjectCode || '', marginX + colDateW + colTimeW + colCodeW / 2, rowTop + 3.4, { align: 'center' });
 
                     doc.setFont('times', 'bold');
-                    doc.text(exam.subjectName, marginX + colDateW + colTimeW + colCodeW + colNameW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.text(exam.subjectName || '', marginX + colDateW + colTimeW + colCodeW + colNameW / 2, rowTop + 3.4, { align: 'center' });
                 });
 
                 // Photo Placeholder text inside photo box (vertically centered)

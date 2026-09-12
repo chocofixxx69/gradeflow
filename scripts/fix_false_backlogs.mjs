@@ -1,5 +1,5 @@
 import { getAdminClient } from '../lib/analytics-data.js';
-import { getGradeFromScore } from '../lib/vtuAcademicEngine.js';
+import { getGradeFromScore, isCieOnlyCourse } from '../lib/vtuAcademicEngine.js';
 
 async function main() {
     console.log('=== FIXING FALSE BACKLOGS ACROSS SUPABASE ===\n');
@@ -29,9 +29,10 @@ async function main() {
         if (!isFlaggedFail) return false;
         const tot = Number(m.total) || 0;
         const ext = m.external !== null && m.external !== undefined ? Number(m.external) : null;
+        const isCieOnly = isCieOnlyCourse(m.subject_code);
         // VTU passing rule:
-        // Aggregate total >= 40 AND either external >= 18 OR external is 0 (internal/project/audit subject)
-        if (tot >= 40 && (ext === null || ext >= 18 || ext === 0)) {
+        // Aggregate total >= 40 AND either external >= 18 OR subject is genuinely a CIE-only course
+        if (tot >= 40 && (isCieOnly || (ext !== null && ext >= 18))) {
             return true;
         }
         return false;

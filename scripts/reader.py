@@ -9,6 +9,23 @@ def clean_text(text):
         return ""
     return re.sub(r'\s+', ' ', str(text)).strip()
 
+def is_audit_course(code: str) -> bool:
+    if not code: return False
+    c = str(code).strip().upper()
+    return (
+        c.startswith('BPEK') or c.startswith('BNSK') or c.startswith('BYOK') or
+        c.startswith('BIKS') or c.startswith('1BPEK') or c.startswith('1BNSK') or
+        c.startswith('1BYOK') or c in ('22IDT159', '22PRJL29', '22CIR38', '22CIR48', '22GC36')
+    )
+
+def is_cie_only_course(code: str) -> bool:
+    if not code: return False
+    c = str(code).strip().upper()
+    if is_audit_course(c): return True
+    if c.endswith('586') or c.endswith('685'): return True
+    if c == 'BSCK307' or c.startswith('1BICO') or c.startswith('1BSKS'): return True
+    return False
+
 # NOTE: this script only extracts what's literally printed on the uploaded PDF.
 # It has no DB access (no USN -> scheme/branch -> subject_catalog lookup is
 # possible from a stateless subprocess), so it cannot resolve credits against
@@ -197,6 +214,9 @@ def extract_vtu_data(pdf_path_or_stream):
                         if tot_val == 0 and (int_val > 0 or ext_val > 0):
                             tot_val = int_val + ext_val
 
+                        is_cie_only = is_cie_only_course(code)
+                        is_fail = tot_val < 40 or (not is_cie_only and ext_val < 18)
+
                         all_subjects.append({
                             "code": code,
                             "name": clean_text(name),
@@ -204,7 +224,7 @@ def extract_vtu_data(pdf_path_or_stream):
                             "internal": int_val,
                             "external": ext_val,
                             "total": tot_val,
-                            "grade": grade or ("F" if tot_val < 40 else "P"),
+                            "grade": grade or ("F" if is_fail else "P"),
                             "semester": page_sem
                         })
 

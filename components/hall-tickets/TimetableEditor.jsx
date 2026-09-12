@@ -38,41 +38,89 @@ function normalizeTimeRange(raw) {
 
     const parts = str.split(/\s*(?:to|-)\s*/i);
     if (parts.length === 2) {
-        function parsePart(p, defaultPeriod) {
+        function parsePart(p) {
             const cleaned = p.trim().toLowerCase();
-            let period = cleaned.includes('pm') ? 'pm' : cleaned.includes('am') ? 'am' : defaultPeriod;
+            let period = cleaned.includes('pm') ? 'pm' : cleaned.includes('am') ? 'am' : null;
             const numMatch = cleaned.match(/(\d{1,2})(?:[:.](\d{1,2}))?/);
             if (!numMatch) return null;
             let h = parseInt(numMatch[1], 10);
             let m = numMatch[2] ? parseInt(numMatch[2], 10) : 0;
             if (isNaN(h)) return null;
-            if (!period) {
-                period = (h >= 1 && h <= 7) ? 'pm' : 'am';
+
+            if (h >= 13 && h <= 23) {
+                h -= 12;
+                period = 'pm';
+            } else if (h === 0) {
+                h = 12;
+                period = 'am';
             }
-            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+            return { h, m, period };
         }
 
-        let p2Period = parts[1].toLowerCase().includes('pm') ? 'pm' : parts[1].toLowerCase().includes('am') ? 'am' : null;
-        let p1Period = parts[0].toLowerCase().includes('pm') ? 'pm' : parts[0].toLowerCase().includes('am') ? 'am' : p2Period;
-        
-        const t1 = parsePart(parts[0], p1Period);
-        const t2 = parsePart(parts[1], p2Period || (t1 && t1.includes('am') ? 'am' : 'pm'));
-        if (t1 && t2) {
-            return `${t1} to ${t2}`;
+        const p1 = parsePart(parts[0]);
+        const p2 = parsePart(parts[1]);
+        if (!p1 || !p2) return str;
+
+        if (!p1.period && !p2.period) {
+            p1.period = (p1.h >= 8 && p1.h <= 11) ? 'am' : 'pm';
+            if (p2.h === 12 || (p2.h >= 1 && p2.h <= 7)) {
+                p2.period = 'pm';
+            } else {
+                p2.period = 'am';
+            }
+        } else if (p2.period && !p1.period) {
+            if (p2.period === 'am') {
+                p1.period = 'am';
+            } else {
+                p1.period = (p1.h >= 8 && p1.h <= 11) ? 'am' : 'pm';
+            }
+        } else if (p1.period && !p2.period) {
+            if (p1.period === 'am') {
+                p2.period = (p2.h === 12 || (p2.h >= 1 && p2.h <= 7)) ? 'pm' : 'am';
+            } else {
+                p2.period = 'pm';
+            }
         }
+
+        const formatSlot = (item) => `${String(item.h).padStart(2, '0')}:${String(item.m).padStart(2, '0')} ${item.period}`;
+        return `${formatSlot(p1)} to ${formatSlot(p2)}`;
     }
 
     return str;
 }
 
-function toISO(ddmmyyyy) {
-    const m = String(ddmmyyyy || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+function timeToMinutes(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 9999;
+    const m = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
+    if (!m) return 9999;
+    let h = parseInt(m[1], 10);
+    const min = m[2] ? parseInt(m[2], 10) : 0;
+    let period = m[3] ? m[3].toLowerCase() : null;
+    if (!period) {
+        period = (h === 12 || (h >= 1 && h <= 7)) ? 'pm' : 'am';
+    }
+    if (period === 'pm' && h < 12) h += 12;
+    if (period === 'am' && h === 12) h = 0;
+    return h * 60 + min;
+}
+
+function toISO(raw) {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
     return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
 }
 
-function toDisplay(iso) {
-    const m = String(iso || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+function toDisplay(raw) {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    const m = s.match(/^(\d{4})[/-](\d{2})[/-](\d{2})$/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    const m2 = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (m2) return `${m2[1]}/${m2[2]}/${m2[3]}`;
+    return s;
 }
 
 function abbreviate(name) {
@@ -128,9 +176,48 @@ export default function TimetableEditor({
         return byCode.get(c) || byFamily.get(electiveFamilyKey(c)) || null;
     };
 
+    const [customRowFlags, setCustomRowFlags] = useState({});
+
     const handleUpdateRow = (index, field, value) => {
         const updated = [...timetable];
         updated[index] = { ...updated[index], [field]: value };
+        onChange(updated);
+    };
+
+    const handleTimeSelectChange = (idx, value) => {
+        if (value === '__custom__') {
+            setCustomRowFlags(prev => ({ ...prev, [idx]: true }));
+            const updated = [...timetable];
+            const current = updated[idx] || {};
+            updated[idx] = {
+                ...current,
+                isCustom: true,
+                time: current.time || '09:00 am to 10:00 am'
+            };
+            onChange(updated);
+        } else {
+            setCustomRowFlags(prev => ({ ...prev, [idx]: false }));
+            const updated = [...timetable];
+            const current = updated[idx] || {};
+            updated[idx] = {
+                ...current,
+                time: value,
+                isCustom: false
+            };
+            onChange(updated);
+        }
+    };
+
+    const handleResetToPreset = (idx) => {
+        setCustomRowFlags(prev => ({ ...prev, [idx]: false }));
+        const updated = [...timetable];
+        const current = updated[idx] || {};
+        const fallback = STANDARD_TIME_SLOTS.includes(current.time) ? current.time : '09:00 am to 10:00 am';
+        updated[idx] = {
+            ...current,
+            time: fallback,
+            isCustom: false
+        };
         onChange(updated);
     };
 
@@ -180,13 +267,22 @@ export default function TimetableEditor({
             date: lastRow?.date || new Date().toISOString().split('T')[0].split('-').reverse().join('/'),
             time: '10:00 am to 11:00 am',
             subjectCode: '',
-            subjectName: ''
+            subjectName: '',
+            isCustom: false
         };
         onChange([...timetable, nextRow]);
     };
 
     const handleRemoveRow = (index) => {
         if (timetable.length <= 1) return;
+        setCustomRowFlags(prev => {
+            const next = {};
+            timetable.forEach((_, i) => {
+                if (i < index && prev[i] !== undefined) next[i] = prev[i];
+                else if (i > index && prev[i] !== undefined) next[i - 1] = prev[i];
+            });
+            return next;
+        });
         const updated = timetable.filter((_, i) => i !== index);
         onChange(updated);
     };
@@ -194,10 +290,11 @@ export default function TimetableEditor({
     // Sorts rows by date then start time, so the printed ticket reads in the
     // order candidates actually sit the papers.
     const handleSortByDate = () => {
+        setCustomRowFlags({});
         const sorted = [...timetable].sort((a, b) => {
             const d = toISO(a.date).localeCompare(toISO(b.date));
             if (d !== 0) return d;
-            return String(a.time || '').localeCompare(String(b.time || ''));
+            return timeToMinutes(a.time) - timeToMinutes(b.time);
         });
         onChange(sorted);
     };
@@ -350,7 +447,7 @@ export default function TimetableEditor({
                 horizontal scroll, ever. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {timetable.map((row, idx) => {
-                    const isStandard = STANDARD_TIME_SLOTS.includes(row.time);
+                    const isCustom = customRowFlags[idx] ?? row.isCustom ?? (Boolean(row.time) && !STANDARD_TIME_SLOTS.includes(row.time));
                     // Fixed-height label (room for the longest 2-line label in this
                     // set, e.g. "SUBJECT CODE (EDITABLE)") so every field's input
                     // starts at the same y regardless of whether its own label
@@ -408,120 +505,157 @@ export default function TimetableEditor({
                                 <div>
                                     <label style={fieldLabel}>Time Slot</label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                            <select
-                                                value={isStandard ? row.time : '__custom__'}
-                                                onChange={(e) => {
-                                                    const v = e.target.value;
-                                                    if (v === '__custom__') {
-                                                        handleUpdateRow(idx, 'time', row.time && !isStandard ? row.time : '09:00 am to 10:00 am');
-                                                    } else {
-                                                        handleUpdateRow(idx, 'time', v);
-                                                    }
-                                                }}
-                                                style={{
-                                                    width: '100%',
-                                                    padding: '5px 8px',
-                                                    borderRadius: '6px',
-                                                    border: '1px solid var(--border)',
-                                                    background: 'var(--surface)',
-                                                    color: 'var(--tx-main)',
-                                                    fontSize: '11.5px',
-                                                    fontWeight: 600,
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                <optgroup label="Morning IA Slots">
-                                                    <option value="09:00 am to 10:00 am">09:00 am to 10:00 am</option>
-                                                    <option value="09:30 am to 10:30 am">09:30 am to 10:30 am</option>
-                                                    <option value="10:00 am to 11:00 am">10:00 am to 11:00 am</option>
-                                                    <option value="10:00 am to 11:30 am">10:00 am to 11:30 am</option>
-                                                    <option value="11:00 am to 12:00 pm">11:00 am to 12:00 pm</option>
-                                                    <option value="11:30 am to 12:30 pm">11:30 am to 12:30 pm</option>
-                                                </optgroup>
-                                                <optgroup label="Afternoon IA Slots">
-                                                    <option value="01:30 pm to 02:30 pm">01:30 pm to 02:30 pm</option>
-                                                    <option value="02:00 pm to 03:00 pm">02:00 pm to 03:00 pm</option>
-                                                    <option value="02:00 pm to 03:30 pm">02:00 pm to 03:30 pm</option>
-                                                    <option value="02:30 pm to 03:30 pm">02:30 pm to 03:30 pm</option>
-                                                    <option value="03:00 pm to 04:00 pm">03:00 pm to 04:00 pm</option>
-                                                </optgroup>
-                                                <optgroup label="3-Hour Examination Slots">
-                                                    <option value="09:30 am to 12:30 pm">09:30 am to 12:30 pm</option>
-                                                    <option value="02:00 pm to 05:00 pm">02:00 pm to 05:00 pm</option>
-                                                </optgroup>
-                                                <option value="__custom__">⚙️ Custom time (type or pick)...</option>
-                                            </select>
-                                            {!isStandard && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <select
+                                            value={isCustom ? '__custom__' : (STANDARD_TIME_SLOTS.includes(row.time) ? row.time : '__custom__')}
+                                            onChange={(e) => handleTimeSelectChange(idx, e.target.value)}
+                                            style={{
+                                                width: '100%',
+                                                padding: '5px 8px',
+                                                borderRadius: '6px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface)',
+                                                color: 'var(--tx-main)',
+                                                fontSize: '11.5px',
+                                                fontWeight: 600,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <optgroup label="Morning IA Slots">
+                                                <option value="09:00 am to 10:00 am">09:00 am to 10:00 am</option>
+                                                <option value="09:30 am to 10:30 am">09:30 am to 10:30 am</option>
+                                                <option value="10:00 am to 11:00 am">10:00 am to 11:00 am</option>
+                                                <option value="10:00 am to 11:30 am">10:00 am to 11:30 am</option>
+                                                <option value="11:00 am to 12:00 pm">11:00 am to 12:00 pm</option>
+                                                <option value="11:30 am to 12:30 pm">11:30 am to 12:30 pm</option>
+                                            </optgroup>
+                                            <optgroup label="Afternoon IA Slots">
+                                                <option value="01:30 pm to 02:30 pm">01:30 pm to 02:30 pm</option>
+                                                <option value="02:00 pm to 03:00 pm">02:00 pm to 03:00 pm</option>
+                                                <option value="02:00 pm to 03:30 pm">02:00 pm to 03:30 pm</option>
+                                                <option value="02:30 pm to 03:30 pm">02:30 pm to 03:30 pm</option>
+                                                <option value="03:00 pm to 04:00 pm">03:00 pm to 04:00 pm</option>
+                                            </optgroup>
+                                            <optgroup label="3-Hour Examination Slots">
+                                                <option value="09:30 am to 12:30 pm">09:30 am to 12:30 pm</option>
+                                                <option value="02:00 pm to 05:00 pm">02:00 pm to 05:00 pm</option>
+                                            </optgroup>
+                                            <option value="__custom__">⚙️ Custom time (type or pick)...</option>
+                                        </select>
+                                        {isCustom && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                                                     <input
                                                         type="text"
-                                                        value={row.time}
+                                                        autoFocus
+                                                        value={row.time || ''}
                                                         placeholder="e.g. 09:30 am to 10:30 am"
                                                         onChange={(e) => handleUpdateRow(idx, 'time', e.target.value)}
                                                         onBlur={(e) => handleUpdateRow(idx, 'time', normalizeTimeRange(e.target.value))}
                                                         style={{
                                                             width: '100%',
-                                                            padding: '4px 8px',
+                                                            padding: '4px 22px 4px 8px',
                                                             borderRadius: '6px',
                                                             border: '1.5px solid var(--primary)',
                                                             background: 'var(--surface)',
                                                             color: 'var(--tx-main)',
                                                             fontSize: '11px',
-                                                            fontWeight: 600
+                                                            fontWeight: 600,
+                                                            boxSizing: 'border-box'
                                                         }}
                                                     />
-                                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: '9.5px', color: 'var(--tx-dim)' }}>Quick:</span>
+                                                    {row.time && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleUpdateRow(idx, 'time', '09:00 am to 10:00 am')}
+                                                            onClick={() => handleUpdateRow(idx, 'time', '')}
+                                                            title="Clear"
                                                             style={{
-                                                                background: 'rgba(59, 130, 246, 0.08)',
-                                                                border: '1px solid rgba(59, 130, 246, 0.2)',
-                                                                borderRadius: '4px',
-                                                                padding: '1px 5px',
-                                                                fontSize: '9.5px',
-                                                                color: 'var(--primary)',
-                                                                cursor: 'pointer'
+                                                                position: 'absolute',
+                                                                right: '4px',
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                color: 'var(--tx-muted)',
+                                                                fontSize: '11px',
+                                                                padding: '2px',
+                                                                lineHeight: 1
                                                             }}
                                                         >
-                                                            9-10 AM
+                                                            ✕
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleUpdateRow(idx, 'time', '09:30 am to 10:30 am')}
-                                                            style={{
-                                                                background: 'rgba(59, 130, 246, 0.08)',
-                                                                border: '1px solid rgba(59, 130, 246, 0.2)',
-                                                                borderRadius: '4px',
-                                                                padding: '1px 5px',
-                                                                fontSize: '9.5px',
-                                                                color: 'var(--primary)',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            9:30-10:30 AM
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleUpdateRow(idx, 'time', '02:30 pm to 03:30 pm')}
-                                                            style={{
-                                                                background: 'rgba(59, 130, 246, 0.08)',
-                                                                border: '1px solid rgba(59, 130, 246, 0.2)',
-                                                                borderRadius: '4px',
-                                                                padding: '1px 5px',
-                                                                fontSize: '9.5px',
-                                                                color: 'var(--primary)',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            2:30-3:30 PM
-                                                        </button>
-                                                    </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
+                                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '9.5px', color: 'var(--tx-dim)' }}>Quick:</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUpdateRow(idx, 'time', '09:00 am to 10:00 am')}
+                                                        style={{
+                                                            background: row.time === '09:00 am to 10:00 am' ? 'var(--primary)' : 'rgba(59, 130, 246, 0.08)',
+                                                            color: row.time === '09:00 am to 10:00 am' ? '#FFFFFF' : 'var(--primary)',
+                                                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                            borderRadius: '4px',
+                                                            padding: '1px 5px',
+                                                            fontSize: '9.5px',
+                                                            cursor: 'pointer',
+                                                            fontWeight: 600
+                                                        }}
+                                                    >
+                                                        9-10 AM
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUpdateRow(idx, 'time', '09:30 am to 10:30 am')}
+                                                        style={{
+                                                            background: row.time === '09:30 am to 10:30 am' ? 'var(--primary)' : 'rgba(59, 130, 246, 0.08)',
+                                                            color: row.time === '09:30 am to 10:30 am' ? '#FFFFFF' : 'var(--primary)',
+                                                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                            borderRadius: '4px',
+                                                            padding: '1px 5px',
+                                                            fontSize: '9.5px',
+                                                            cursor: 'pointer',
+                                                            fontWeight: 600
+                                                        }}
+                                                    >
+                                                        9:30-10:30 AM
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUpdateRow(idx, 'time', '02:30 pm to 03:30 pm')}
+                                                        style={{
+                                                            background: row.time === '02:30 pm to 03:30 pm' ? 'var(--primary)' : 'rgba(59, 130, 246, 0.08)',
+                                                            color: row.time === '02:30 pm to 03:30 pm' ? '#FFFFFF' : 'var(--primary)',
+                                                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                            borderRadius: '4px',
+                                                            padding: '1px 5px',
+                                                            fontSize: '9.5px',
+                                                            cursor: 'pointer',
+                                                            fontWeight: 600
+                                                        }}
+                                                    >
+                                                        2:30-3:30 PM
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleResetToPreset(idx)}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: 'var(--tx-dim)',
+                                                            textDecoration: 'underline',
+                                                            fontSize: '9.5px',
+                                                            cursor: 'pointer',
+                                                            marginLeft: 'auto',
+                                                            padding: '1px 2px'
+                                                        }}
+                                                        title="Switch back to preset dropdown"
+                                                    >
+                                                        Presets
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
+                                </div>
                                 {/* Catalog Subject Dropdown: choosing from here auto-fills code & short name */}
                                 <div>
                                     <label style={fieldLabel}>Catalog Subject <span style={{ textTransform: 'none', fontWeight: 500 }}>(populates code &amp; name)</span></label>

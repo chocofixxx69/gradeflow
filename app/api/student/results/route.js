@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStudent } from '../../../../lib/server-session';
 import { computeBacklogs, getAdminClient } from '../../../../lib/analytics-data';
 import { fetchCatalogIndex, resolveSubjectCredit, buildCatalogIndex } from '../../../../lib/subjectCreditResolver';
-import { isAuditCourse, normalizeBranch } from '../../../../lib/vtuAcademicEngine';
+import { isAuditCourse, normalizeBranch, normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
 import { fetchAllPaginated } from '../../../../lib/supabase-utils';
 import { canonicalBranchCode, extractBranchFromUsn } from '../../../../lib/semester-utils';
 
@@ -148,6 +148,7 @@ export async function GET(req) {
                 // subject_marks.credits value (written once at scrape time) is never
                 // trusted; see lib/subjectCreditResolver.js for why.
                 const resolved = resolveCredits(code, semester);
+                const norm = normalizeSubjectResult(m, studentScheme, studentBranch, semester, catalogIndex);
                 allMarks.push({
                     id: m.id,
                     subject_code: code,
@@ -155,7 +156,7 @@ export async function GET(req) {
                     cie_marks: m.cie_marks ?? m.internal ?? 0,
                     see_marks: m.see_marks ?? m.external ?? 0,
                     total_marks: m.total_marks ?? m.total ?? 0,
-                    grade: (m.grade || '').trim().toUpperCase(),
+                    grade: norm.grade,
                     credits: resolved.credits,
                     credit_source: resolved.source,
                     semester,
@@ -164,7 +165,7 @@ export async function GET(req) {
                     exam_date: m.announced_date || m.results?.exam_name || 'N/A',
                     exam_name: m.announced_date || m.results?.exam_name || 'Scraped Record',
                     source: 'scraper',
-                    is_backlog: m.is_backlog || false
+                    is_backlog: norm.isFailed
                 });
             });
         }

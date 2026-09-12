@@ -18,4 +18,5 @@ export {
 } from './Foundation';
 export { ConfirmDialog } from './ConfirmDialog';
 export { EntryTag, DiplomaTag } from './EntryTag';
+export { HighlightMatch } from './HighlightMatch';
 export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableWrapper } from './Table';
