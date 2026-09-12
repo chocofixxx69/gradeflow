@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStudent } from '../../../../lib/server-session';
 import { computeBacklogs, getAdminClient } from '../../../../lib/analytics-data';
-import { getStudentRecord } from '../../../../lib/student-record';
+import { getStudentRecordDirect } from '../../../../lib/student-record';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
 
@@ -119,7 +119,7 @@ export async function GET(req) {
         // not keep current - for 2AB23CS006 they claimed a semester-6 SGPA of 7.56
         // against marks that give 6.72 - so a student was shown a CGPA their own mark
         // sheet contradicted. See lib/student-record.js.
-        const canonical = await getStudentRecord(supabaseAdmin, usn);
+        const canonical = await getStudentRecordDirect(supabaseAdmin, usn);
         const cgpa = canonical?.cgpa ?? 0;
         const backlogsInfo = computeBacklogs(pool);
 

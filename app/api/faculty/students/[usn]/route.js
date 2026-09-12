@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, invalidateAnalyticsCache } from '@/lib/analytics-data';
 import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
 import { readTable, SELECTS } from '@/lib/table-cache';
-import { getStudentRecord, invalidateStudentRecords } from '@/lib/student-record';
+import { getStudentRecordDirect, invalidateStudentRecords } from '@/lib/student-record';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 import { logFacultyActivityServer } from '@/lib/server-audit';
 
@@ -146,7 +146,7 @@ export async function GET(req, { params }) {
         // per semester, which for 2AB23CS006 produced a CGPA of 7.56 from a stale
         // semester-6 SGPA of 7.56 while this very page's mark sheet showed 6.72 for
         // that semester. Nothing here recomputes anything any more.
-        const record = await getStudentRecord(supabaseAdmin, cleanUsn);
+        const record = await getStudentRecordDirect(supabaseAdmin, cleanUsn);
         if (!record) return fail('Student not found.', 'STUDENT_NOT_FOUND', 404);
 
         // Exam round per mark, for the "Exam Session" column — provenance the engine
