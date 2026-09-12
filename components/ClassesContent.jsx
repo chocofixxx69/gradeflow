@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { filterAndRank, filterAndRankStudents } from '../lib/search-utils';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
-import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF, exportConsolidatedReportCSV } from '../lib/export-utils';
 import { ConfirmDialog } from './ui';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -258,7 +257,8 @@ export function ClassesContent({ embedded = false }) {
         await loadSemesterExportData(parsed);
     };
 
-    const handleGeneratePdf = () => {
+    const handleGeneratePdf = async () => {
+        const { exportConsolidatedReportPDF, exportClassReportPDF } = await import('../lib/export-utils');
         if (exportType === 'consolidated') {
             exportConsolidatedReportPDF({
                 selectedClass,
@@ -282,7 +282,8 @@ export function ClassesContent({ embedded = false }) {
         setShowExportModal(false);
     };
 
-    const handleGenerateCsv = () => {
+    const handleGenerateCsv = async () => {
+        const { exportConsolidatedReportCSV, exportClassReportCSV } = await import('../lib/export-utils');
         if (exportType === 'consolidated') {
             exportConsolidatedReportCSV({
                 selectedClass,
@@ -1030,7 +1031,10 @@ export function ClassesContent({ embedded = false }) {
                                 <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={openPdfExportModal}>
                                     <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
                                 </button>
-                                <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
+                                <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={async () => {
+                                    const { exportClassReportCSV } = await import('../lib/export-utils');
+                                    exportClassReportCSV({ selectedClass, students, subjectToppers });
+                                }}>
                                     <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
                                 </button>
                                 <button

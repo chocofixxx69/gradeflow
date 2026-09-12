@@ -127,8 +127,12 @@ export function useAdminAnalytics(filters) {
         loadOverview();
 
         // Rollups only change when a scrape lands, so poll at LIVE.SLOW cadence
-        // and also catch up immediately when the tab regains focus.
-        const intervalId = setInterval(() => loadOverview({ refresh: true }), LIVE.SLOW);
+        // and also catch up immediately when the tab regains focus. Skip the tick
+        // while backgrounded - a hidden tab has no one watching the refresh.
+        const intervalId = setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            loadOverview({ refresh: true });
+        }, LIVE.SLOW);
         const handleVisibility = () => {
             if (document.visibilityState === 'visible') loadOverview({ refresh: true });
         };

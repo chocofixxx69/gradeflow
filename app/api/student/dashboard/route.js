@@ -4,6 +4,7 @@ import { computeBacklogs, getAdminClient } from '../../../../lib/analytics-data'
 import { getStudentRecordDirect } from '../../../../lib/student-record';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
+import { fetchCatalogIndex } from '../../../../lib/subjectCreditResolver';
 
 const supabaseAdmin = getAdminClient();
 
@@ -51,12 +52,14 @@ export async function GET(req) {
             { data: studentMarks },
             { data: resultMarks },
             { data: remarks },
-            { data: resultRows }
+            { data: resultRows },
+            catalogIndex
         ] = await Promise.all([
             studentId ? supabaseAdmin.from('marks').select('id, student_id, subject_code, subject_name, cie_marks, see_marks, total_marks, grade, credits, semester, sync_source, announced_date').eq('student_id', studentId) : { data: [] },
             supabaseAdmin.from('subject_marks').select('id, usn, subject_code, subject_name, internal, external, total, grade, credits, semester, passed, is_backlog, is_makeup, announced_date, results(exam_name)').eq('usn', usn),
             supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa, backlog_count, is_all_clear').eq('student_usn', usn),
-            supabaseAdmin.from('results').select('id, usn, semester, sgpa, total_credits').eq('usn', usn)
+            supabaseAdmin.from('results').select('id, usn, semester, sgpa, total_credits').eq('usn', usn),
+            fetchCatalogIndex(supabaseAdmin)
         ]);
 
         // Standardize & combine marks pool
@@ -73,7 +76,7 @@ export async function GET(req) {
 
         if (studentMarks) {
             studentMarks.forEach(m => {
-                const norm = normalizeSubjectResult(m, scheme, branch, m.semester);
+                const norm = normalizeSubjectResult(m, scheme, branch, m.semester, catalogIndex);
                 pool.push({
                     id: m.id,
                     subject_code: norm.subjectCode,
@@ -93,7 +96,7 @@ export async function GET(req) {
 
         if (resultMarks) {
             resultMarks.forEach(m => {
-                const norm = normalizeSubjectResult(m, scheme, branch, m.semester);
+                const norm = normalizeSubjectResult(m, scheme, branch, m.semester, catalogIndex);
                 pool.push({
                     id: m.id,
                     subject_code: norm.subjectCode,

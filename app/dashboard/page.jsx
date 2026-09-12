@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
+import AcademicProgressionNavigator from '../../components/AcademicProgressionNavigator';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject, getGradeRank } from '../../lib/vtuGrades';
 import { LIVE } from '../../lib/api/live';
@@ -199,6 +200,21 @@ function StudentDashboardView({
                         </div>
                     </div>
                 </section>
+
+                <AcademicProgressionNavigator
+                    sortedSemesters={sortedSemesters}
+                    semStats={semStats}
+                    sgpas={sgpas}
+                    onSelectSemester={(semStr) => {
+                        if (!expandedSemesters.includes(semStr)) {
+                            setExpandedSemesters(prev => [...prev, semStr]);
+                        }
+                        setTimeout(() => {
+                            const el = document.getElementById(`student-sem-card-${semStr}`);
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 50);
+                    }}
+                />
 
                 {semesterCount > 0 ? (
                     <section className={styles.section} aria-labelledby="student-records-title">
@@ -670,7 +686,7 @@ function DashboardContent() {
                 });
                 const sgpa = totalCr > 0 ? +(weightedGP / totalCr).toFixed(2) : 0;
                 semSGPAs[sem] = sgpa;
-                semStatsMap[sem] = { sgpa, earnedCredits: earnedCr, registeredCredits: totalCr, backlogs, subjectCount: subjects.length };
+                semStatsMap[sem] = { sgpa, earnedCredits: earnedCr, totalCredits: totalCr, gradePoints: weightedGP, backlogs, subjectCount: subjects.length };
             });
 
             setStudent(profile);
@@ -712,6 +728,7 @@ function DashboardContent() {
     // ── Keep results current after a scrape lands, without a manual reload ──
     useEffect(() => {
         const refreshSilently = () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
             const stuSession = localStorage.getItem('student_session');
             if (!stuSession) return;
             try {

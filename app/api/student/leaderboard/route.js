@@ -516,21 +516,26 @@ export async function GET(req) {
         const currentUserSem = semesterList.find(s => s.usn === currentUsn);
         const currentUserSub = subjectLeaderboard.find(s => s.usn === currentUsn);
 
-        // Precompute all semester ranks and SGPAs for current user
-        const userSemesters = {};
-        for (const sem of availableSemesters) {
-            const semLeaderboard = allSemestersLeaderboard[sem] || [];
-            const userEntry = semLeaderboard.find(s => s.usn === currentUsn);
-            if (userEntry) {
-                userSemesters[sem] = {
-                    semester: sem,
-                    rank: userEntry.rank,
-                    sgpa: userEntry.sgpa,
-                    credits: userEntry.credits,
-                    hasAppeared: userEntry.hasAppeared
-                };
-            }
-        }
+        // app/leaderboard/page.jsx only ever reads semesters[targetSemester], never
+        // another semester's - so only that one entry is built.
+        const currentUserSemesterEntry = currentUserSem ? {
+            semester: targetSem,
+            rank: currentUserSem.rank,
+            sgpa: currentUserSem.sgpa,
+            credits: currentUserSem.credits,
+            hasAppeared: currentUserSem.hasAppeared
+        } : null;
+
+        // The per-subject student roster on availableSubjects[] exists to build
+        // subjectLeaderboard above; the client only reads the 4 metadata fields below
+        // from availableSubjects itself (the selected subject's roster ships
+        // separately, already ranked, as subjectLeaderboard).
+        const availableSubjectsLight = availableSubjects.map(s => ({
+            subject_code: s.subject_code,
+            subject_name: s.subject_name,
+            semester: s.semester,
+            enrolledCount: s.enrolledCount
+        }));
 
         return ok({
             batch: cohortConfig.code,
@@ -540,7 +545,7 @@ export async function GET(req) {
             lateralCount,
             targetSemester: targetSem,
             availableSemesters,
-            availableSubjects,
+            availableSubjects: availableSubjectsLight,
             currentSubject: currentSubjectInfo,
             currentUser: {
                 usn: currentUsn,
@@ -552,11 +557,37 @@ export async function GET(req) {
                 semesterSGPA: currentUserSem?.sgpa || null,
                 subjectRank: currentUserSub?.rank || null,
                 subjectTotal: currentUserSub?.total || null,
-                semesters: userSemesters
+                semesters: currentUserSemesterEntry ? { [targetSem]: currentUserSemesterEntry } : {}
             },
-            overallLeaderboard: overallLeaderboard.map(s => ({ ...s, isCurrentUser: s.usn === currentUsn })),
-            semesterLeaderboard: semesterList,
-            allSemestersLeaderboard,
+            // branch/earnedCredits/regCredits are needed above for ranking and tie
+            // breaking but aren't read by page.jsx or export-utils.js past this point.
+            overallLeaderboard: overallLeaderboard.map(s => ({
+                usn: s.usn,
+                name: s.name,
+                isLateral: s.isLateral,
+                cgpa: s.cgpa,
+                semestersTracked: s.semestersTracked,
+                totalBacklogs: s.totalBacklogs,
+                rank: s.rank,
+                isCurrentUser: s.usn === currentUsn
+            })),
+            semesterLeaderboard: semesterList.map(s => ({
+                usn: s.usn,
+                name: s.name,
+                isLateral: s.isLateral,
+                sgpa: s.sgpa,
+                credits: s.credits,
+                hasAppeared: s.hasAppeared,
+                statusText: s.statusText,
+                rank: s.rank,
+                isCurrentUser: s.isCurrentUser
+            })),
+            // allSemestersLeaderboard (every semester's full ranked roster) is gone
+            // from the response: page.jsx picks selectedSemester and always refetches
+            // with it as `semester`, so activeSemester === targetSemester on the client
+            // always holds, and semesterLeaderboard above is already that one slice.
+            // getOrComputeCohortData still computes/caches every semester server-side
+            // so the shared 60s cohort cache can answer a different target next request.
             subjectLeaderboard
         });
     } catch (err) {

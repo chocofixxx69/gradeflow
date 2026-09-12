@@ -6,6 +6,7 @@ import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
+import AcademicProgressionNavigator from '../../../components/AcademicProgressionNavigator';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
 import { validateUsn, sanitizeUsn } from '../../../lib/vtu-usn-validator';
 import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, SearchableSelect, Select } from '../../../components/ui';
@@ -419,6 +420,21 @@ function FacultyDashboardView({
                         </ResponsiveGrid>
                     </section>
 
+                    <AcademicProgressionNavigator
+                        sortedSemesters={sortedSemesters}
+                        semStats={semStats}
+                        sgpas={sgpas}
+                        onSelectSemester={(semStr) => {
+                            if (!expandedSemesters.includes(semStr)) {
+                                setExpandedSemesters(prev => [...prev, semStr]);
+                            }
+                            setTimeout(() => {
+                                const el = document.getElementById(`sem-card-${semStr}`);
+                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 50);
+                        }}
+                    />
+
                     <section className={styles.section} aria-labelledby="faculty-records-title">
                         <div className={styles.sectionHeader}>
                             <div>
@@ -503,7 +519,7 @@ function FacultyDashboardView({
                                              const backlogCodes = semBacklogs.map(b => b.subjectCode || b.subject_code || b.code).filter(Boolean).join(', ');
 
                                              return (
-                                                 <article key={sem} className={styles.semesterCard}>
+                                                 <article key={sem} id={`sem-card-${sem}`} className={styles.semesterCard}>
                                                      <div
                                                          className={styles.semesterHeader}
                                                          onClick={() => toggleSemester(sem)}
