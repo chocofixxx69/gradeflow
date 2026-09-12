@@ -6,11 +6,26 @@ import { useRouter } from 'next/navigation';
 import { filterAndRank, filterAndRankStudents } from '../lib/search-utils';
 import { parseClassUsns } from '../lib/class-usn-import';
 import { recordFacultyAction } from '../lib/api/faculty-action';
-import { exportClassReportPDF, exportClassReportCSV, exportConsolidatedReportPDF, exportConsolidatedReportCSV } from '../lib/export-utils';
+// lib/export-utils.js statically pulls in jsPDF, jspdf-autotable and the base64
+// institutional crest — roughly half a megabyte that used to be in this page's
+// first-load bundle even though none of it runs until someone clicks Export.
+// Loaded on demand instead; every caller below is already an async handler.
+const loadExportUtils = () => import('../lib/export-utils');
+import { downloadCSV, downloadWorkbook } from '../lib/workbook-export';
+import { isFailedSubject } from '../lib/vtuGrades';
 import { ConfirmDialog } from './ui';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
+
+// Dynamic batch intake years starting at least from 2036 (or current year + 10) down to 2018
+const CURRENT_YEAR = new Date().getFullYear();
+const MAX_BATCH_YEAR = Math.max(2036, CURRENT_YEAR + 10);
+const MIN_BATCH_YEAR = 2018;
+const BATCH_INTAKE_YEARS = Array.from(
+    { length: MAX_BATCH_YEAR - MIN_BATCH_YEAR + 1 },
+    (_, i) => String(MAX_BATCH_YEAR - i)
+);
 
 // ── Activity Logger ─────────────────────────────────────────
 async function logActivity(action_type, target = null, options = {}) {
@@ -258,7 +273,8 @@ export function ClassesContent({ embedded = false }) {
         await loadSemesterExportData(parsed);
     };
 
-    const handleGeneratePdf = () => {
+    const handleGeneratePdf = async () => {
+        const { exportConsolidatedReportPDF, exportClassReportPDF } = await loadExportUtils();
         if (exportType === 'consolidated') {
             exportConsolidatedReportPDF({
                 selectedClass,
@@ -282,7 +298,8 @@ export function ClassesContent({ embedded = false }) {
         setShowExportModal(false);
     };
 
-    const handleGenerateCsv = () => {
+    const handleGenerateCsv = async () => {
+        const { exportConsolidatedReportCSV, exportClassReportCSV } = await loadExportUtils();
         if (exportType === 'consolidated') {
             exportConsolidatedReportCSV({
                 selectedClass,
@@ -311,6 +328,120 @@ export function ClassesContent({ embedded = false }) {
             });
         }
         setShowExportModal(false);
+    };
+
+    /**
+     * A real .xlsx of the class report — one sheet per section of the report,
+     * numbers written as numbers.
+     *
+     * The CSV export now opens correctly in Excel (UTF-8 BOM + CRLF, see
+     * lib/workbook-export.js), but a class report is five different tables and a
+     * CSV can only ever be one flat sheet. This is the version faculty actually
+     * want when they say "open it in Excel".
+     */
+    const handleGenerateExcel = async () => {
+        if (!selectedClass) return;
+        setExcelBusy(true);
+        try {
+            const cleanName = selectedClass.name || 'Class';
+            const semForExport = exportType === 'consolidated' ? exportSemester : (selectedClass.semester ?? null);
+
+            const marksByUsn = {};
+            (allMarks || []).forEach(m => {
+                if (semForExport != null && exportType === 'consolidated' && Number(m.semester) !== Number(semForExport)) return;
+                if (!marksByUsn[m.usn]) marksByUsn[m.usn] = {};
+                marksByUsn[m.usn][m.subject_code] = m;
+            });
+
+            const subList = (classSubjects && classSubjects.length > 0)
+                ? classSubjects
+                : Array.from(new Set((allMarks || []).map(m => m.subject_code))).filter(Boolean).map(code => ({ code, name: code }));
+
+            const rosterRows = (students || []).map((st, idx) => {
+                const canonical = semForExport != null ? st.semester_data?.[semForExport] : null;
+                return [
+                    idx + 1,
+                    st.usn,
+                    st.name || '',
+                    st.lateral_entry ? 'Lateral (Diploma)' : 'Regular',
+                    st.semester ?? '',
+                    st.has_data && st.cgpa != null ? Number(st.cgpa) : null,
+                    canonical?.sgpa ? Number(canonical.sgpa) : null,
+                    st.total_backlogs ?? 0,
+                    st.has_data ? (st.total_backlogs > 0 ? 'Carrying backlogs' : 'All clear') : 'No results yet'
+                ];
+            });
+
+            const subjectRows = subList.map((sub, idx) => {
+                let appeared = 0, passed = 0, failed = 0, highest = null;
+                (students || []).forEach(st => {
+                    const sm = marksByUsn[st.usn]?.[sub.code];
+                    if (!sm) return;
+                    appeared++;
+                    if (isFailedSubject(sm)) failed++; else passed++;
+                    const total = Number(sm.total);
+                    if (Number.isFinite(total) && (highest === null || total > highest)) highest = total;
+                });
+                return [
+                    idx + 1,
+                    sub.code,
+                    sub.name || sub.code,
+                    facultyMap[sub.code] || '',
+                    appeared,
+                    passed,
+                    failed,
+                    appeared > 0 ? Number(((passed / appeared) * 100).toFixed(2)) : 0,
+                    highest
+                ];
+            });
+
+            const matrixRows = (students || []).map((st, idx) => ([
+                idx + 1,
+                st.usn,
+                st.name || '',
+                ...subList.map(sub => {
+                    const sm = marksByUsn[st.usn]?.[sub.code];
+                    const total = Number(sm?.total);
+                    return Number.isFinite(total) ? total : null;
+                })
+            ]));
+
+            const appeared = (students || []).filter(st => st.has_data).length;
+            const clear = (students || []).filter(st => st.has_data && (st.total_backlogs ?? 0) === 0).length;
+
+            await downloadWorkbook([
+                {
+                    name: 'Class Roster',
+                    preamble: [
+                        [`CLASS PERFORMANCE REPORT — ${cleanName}`],
+                        ['Branch', selectedClass.branch || '', 'Semester', selectedClass.semester ?? '', 'Scheme', selectedClass.scheme || '', 'Batch', selectedClass.batch || ''],
+                        ['Students', students?.length || 0, 'With results', appeared, 'All clear', clear, 'Generated', new Date().toLocaleString()],
+                        []
+                    ],
+                    headers: ['#', 'USN', 'Name', 'Entry', 'Semester', 'CGPA', 'SGPA', 'Backlogs', 'Status'],
+                    numberFormats: { CGPA: '0.00', SGPA: '0.00' },
+                    rows: rosterRows
+                },
+                {
+                    name: 'Subject Analysis',
+                    headers: ['#', 'Subject Code', 'Subject Name', 'Faculty', 'Appeared', 'Passed', 'Failed', 'Pass %', 'Highest'],
+                    numberFormats: { 'Pass %': '0.00' },
+                    rows: subjectRows
+                },
+                {
+                    name: 'Marks Matrix',
+                    headers: ['#', 'USN', 'Name', ...subList.map(sub => `${sub.code}`)],
+                    rows: matrixRows
+                }
+            ], `${cleanName.replace(/\s+/g, '_')}_Class_Report`);
+
+            setShowExportModal(false);
+        } catch (err) {
+            console.error('Excel export error:', err);
+            setMsg('Excel export failed: ' + (err.message || 'Unknown error'));
+        } finally {
+            setExcelBusy(false);
+        }
     };
 
     const [classesError, setClassesError] = useState(null);
@@ -733,17 +864,16 @@ export function ClassesContent({ embedded = false }) {
     };
 
     const [csvPreview, setCsvPreview] = useState([]);
+    const [excelBusy, setExcelBusy] = useState(false);
 
     const downloadCsvTemplate = () => {
-        const csvContent = "USN,Name,Semester,Branch\n2AB23CS001,Mohammed Ainan Armar,3,CS\n2AB23CS002,Sample Student 2,3,CS";
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'sample_class_roster.csv');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Same BOM/CRLF writer as every other CSV in the app, so a template edited
+        // and saved in Excel round-trips back through the importer unchanged.
+        downloadCSV([
+            ['USN', 'Name', 'Semester', 'Branch'],
+            ['2AB23CS001', 'Mohammed Ainan Armar', 3, 'CS'],
+            ['2AB23CS002', 'Sample Student 2', 3, 'CS']
+        ], 'sample_class_roster.csv');
     };
 
     const handleCsvFile = (e) => {
@@ -903,14 +1033,11 @@ export function ClassesContent({ embedded = false }) {
     const avgCgpa = withCgpa.length ? (withCgpa.reduce((s, st) => s + (st.cgpa || 0), 0) / withCgpa.length).toFixed(2) : '—';
     const classTopper = top10[0] || null;
 
-    // Batches that exist, plus a rolling window around today for classes being created
-    // ahead of an intake. The literal 2020-2026 list this replaced would have started
-    // omitting the current intake in 2027.
-    const currentYear = new Date().getFullYear();
+    // Batches that exist, plus all intake years up to at least 2036
     const availableClassBatches = Array.from(new Set([
         ...classes.map(c => c.batch).filter(Boolean).map(String),
-        ...Array.from({ length: 8 }, (_, i) => String(currentYear + 1 - i))
-    ])).sort().reverse();
+        ...BATCH_INTAKE_YEARS
+    ])).sort((a, b) => b.localeCompare(a));
 
     const availableClassSections = Array.from(new Set([
         'A', 'B', 'C', 'D', 'E', 'F', 'General',
@@ -1030,8 +1157,24 @@ export function ClassesContent({ embedded = false }) {
                                 <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={openPdfExportModal}>
                                     <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--red)' }}>picture_as_pdf</span>Export PDF
                                 </button>
-                                <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => exportClassReportCSV({ selectedClass, students, subjectToppers })}>
-                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_view</span>Export CSV
+                                <button
+                                    style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={handleGenerateExcel}
+                                    disabled={excelBusy}
+                                    title="Opens directly in Excel — one sheet per section, numbers stay numeric"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>grid_on</span>
+                                    {excelBusy ? 'Building…' : 'Export Excel'}
+                                </button>
+                                <button
+                                    style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={async () => {
+                                        const { exportClassReportCSV } = await loadExportUtils();
+                                        exportClassReportCSV({ selectedClass, students, allMarks, subjects: classSubjects, subjectToppers });
+                                    }}
+                                    title="UTF-8 CSV with a byte-order mark — double-click opens it into columns in Excel"
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--tx-muted)' }}>table_view</span>Export CSV
                                 </button>
                                 <button
                                     style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -1546,7 +1689,7 @@ export function ClassesContent({ embedded = false }) {
                                     <div style={{ display: 'flex', gap: '6px' }}>
                                         <select
                                             style={{ ...S.sel, minWidth: '100px' }}
-                                            value={['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(newClass.batch) ? newClass.batch : 'custom'}
+                                            value={BATCH_INTAKE_YEARS.includes(newClass.batch) ? newClass.batch : 'custom'}
                                             onChange={e => {
                                                 if (e.target.value !== 'custom') {
                                                     handleNewClassChange({ batch: e.target.value });
@@ -1555,15 +1698,15 @@ export function ClassesContent({ embedded = false }) {
                                                 }
                                             }}
                                         >
-                                            {['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map(b => (
+                                            {BATCH_INTAKE_YEARS.map(b => (
                                                 <option key={b} value={b}>{b}</option>
                                             ))}
                                             <option value="custom">Other…</option>
                                         </select>
-                                        {!['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(newClass.batch) && (
+                                        {!BATCH_INTAKE_YEARS.includes(newClass.batch) && (
                                             <input
                                                 style={{ ...S.input, flex: 1 }}
-                                                placeholder="Batch"
+                                                placeholder="Batch (e.g. 2036)"
                                                 autoFocus
                                                 value={newClass.batch}
                                                 onChange={e => handleNewClassChange({ batch: e.target.value })}
@@ -1694,7 +1837,7 @@ export function ClassesContent({ embedded = false }) {
                                     <div style={{ display: 'flex', gap: '6px' }}>
                                         <select
                                             style={{ ...S.sel, minWidth: '100px' }}
-                                            value={['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(editClassForm.batch) ? editClassForm.batch : 'custom'}
+                                            value={BATCH_INTAKE_YEARS.includes(editClassForm.batch) ? editClassForm.batch : 'custom'}
                                             onChange={e => {
                                                 if (e.target.value !== 'custom') {
                                                     setEditClassForm(p => ({ ...p, batch: e.target.value }));
@@ -1703,15 +1846,15 @@ export function ClassesContent({ embedded = false }) {
                                                 }
                                             }}
                                         >
-                                            {['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map(b => (
+                                            {BATCH_INTAKE_YEARS.map(b => (
                                                 <option key={b} value={b}>{b}</option>
                                             ))}
                                             <option value="custom">Other…</option>
                                         </select>
-                                        {!['2026', '2025', '2024', '2023', '2022', '2021', '2020'].includes(editClassForm.batch) && (
+                                        {!BATCH_INTAKE_YEARS.includes(editClassForm.batch) && (
                                             <input
                                                 style={{ ...S.input, flex: 1 }}
-                                                placeholder="Batch"
+                                                placeholder="Batch (e.g. 2036)"
                                                 autoFocus
                                                 value={editClassForm.batch || ''}
                                                 onChange={e => setEditClassForm(p => ({ ...p, batch: e.target.value }))}
@@ -2124,6 +2267,14 @@ export function ClassesContent({ embedded = false }) {
 
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
                             <button style={btn('ghost')} onClick={() => setShowExportModal(false)}>Cancel</button>
+                            <button
+                                style={{ ...btn('ghost'), border: '1px solid var(--border)', background: 'var(--surface-low)', color: 'var(--tx-main)' }}
+                                onClick={handleGenerateExcel}
+                                disabled={excelBusy}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>grid_on</span>
+                                {excelBusy ? 'Building…' : 'Download Excel'}
+                            </button>
                             <button
                                 style={{ ...btn('ghost'), border: '1px solid var(--border)', background: 'var(--surface-low)', color: 'var(--tx-main)' }}
                                 onClick={handleGenerateCsv}

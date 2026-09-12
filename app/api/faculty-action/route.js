@@ -4,8 +4,10 @@ import { getAdminClient } from '../../../lib/analytics-data';
 
 export async function POST(req) {
     try {
+        const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
+        if (authError) return authError;
+
         const body = await req.json().catch(() => ({}));
-        const { session } = requireStaff(req, ['faculty', 'admin']);
 
         const facultyId = session?.sub || body.facultyId || body.faculty_id || null;
         const facultyName = session?.name || session?.email || body.facultyName || body.faculty_name || 'Faculty Member';

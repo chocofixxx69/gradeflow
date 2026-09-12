@@ -7,7 +7,8 @@ import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
 import { validateUsn, sanitizeUsn } from '../../../lib/vtu-usn-validator';
-import { Badge, Button, ConfirmDialog, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, SearchableSelect, Select } from '../../../components/ui';
+import { Badge, Button, ConfirmDialog, Divider, EmptyState, EntryTag, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, SearchableSelect, Select } from '../../../components/ui';
+import { fmtGpa, fmtNum, resultFileName } from '../../../lib/format';
 import { createFacultyAssignment, deleteFacultyAssignment } from '../../../lib/api/admin-management';
 import styles from './FacultyDashboard.module.css';
 
@@ -38,6 +39,8 @@ function FacultyDashboardView({
     cgpa = 0,
     closeBacklogModal,
     deleteStudent,
+    entry = null,
+    lookupIssue = null,
     failCount = 0,
     fetchFromVTU,
     handlePDF,
@@ -87,7 +90,8 @@ function FacultyDashboardView({
         if (!normalized) return 'info';
         if (normalized.includes('found') || normalized.includes('success') || normalized.includes('present in database') || normalized.includes('scanned successfully')) return 'success';
         if (normalized.includes('warning') || normalized.includes('timed out')) return 'warning';
-        if (normalized.includes('error') || normalized.includes('failed') || normalized.includes('network') || normalized.includes('unable')) return 'error';
+        if (normalized.includes('error') || normalized.includes('failed') || normalized.includes('network') || normalized.includes('unable')
+            || normalized.includes('invalid usn') || normalized.includes('no student record')) return 'error';
         return 'info';
     })();
 
@@ -337,6 +341,63 @@ function FacultyDashboardView({
                 )}
             </section>
 
+            {/* Lookup outcome: a USN that is malformed, or well-formed but unknown to
+                the institution. Previously the API answered with a synthetic profile
+                and the dashboard rendered an empty transcript as though the student
+                existed — the single most misleading state on this page. */}
+            {!student && lookupIssue && (
+                <section className={styles.section} aria-live="polite">
+                    <div style={{
+                        display: 'flex',
+                        gap: '16px',
+                        alignItems: 'flex-start',
+                        padding: '20px 22px',
+                        borderRadius: 'var(--radius-3)',
+                        border: '1px solid var(--red-border, #FFCDD2)',
+                        background: 'var(--red-bg, #FFF5F5)'
+                    }}>
+                        <span className="material-icons-round" aria-hidden="true" style={{ fontSize: '28px', color: 'var(--red, #B91C1C)' }}>
+                            {lookupIssue.reason === 'INVALID_USN' ? 'report' : 'person_search'}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: 'var(--red, #B91C1C)', letterSpacing: '-0.01em' }}>
+                                {lookupIssue.reason === 'INVALID_USN' ? 'INVALID USN' : 'STUDENT NOT FOUND'}
+                            </h2>
+                            <p style={{ margin: '6px 0 0', fontSize: '13.5px', color: 'var(--tx-main)', fontWeight: 600, lineHeight: 1.55 }}>
+                                {lookupIssue.message}
+                            </p>
+                            <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                Searched for <strong style={{ fontFamily: 'monospace', color: 'var(--tx-main)' }}>{lookupIssue.usn}</strong>
+                                {lookupIssue.reason === 'INVALID_USN' ? ' · Expected the VTU format, e.g. 2AB23CS043' : ' · The USN is well-formed but no record exists in this institution'}
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
+                                {lookupIssue.suggestion && (
+                                    <Button
+                                        size="sm"
+                                        variant="primary"
+                                        iconStart="auto_fix_high"
+                                        onClick={() => {
+                                            setUsn?.(lookupIssue.suggestion);
+                                            lookupStudent?.(lookupIssue.suggestion);
+                                        }}
+                                    >
+                                        Search {lookupIssue.suggestion} instead
+                                    </Button>
+                                )}
+                                {lookupIssue.reason === 'NOT_FOUND' && (
+                                    <Button size="sm" variant="secondary" iconStart="cloud_download" onClick={() => fetchFromVTU?.()} disabled={scraping}>
+                                        Fetch from VTU portal
+                                    </Button>
+                                )}
+                                <Button size="sm" variant="ghost" iconStart="backspace" onClick={() => { setUsn?.(''); setMessage?.(''); }}>
+                                    Clear
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            )}
+
             {student ? (
                 <>
                     <section className={styles.section} aria-labelledby="faculty-profile-title">
@@ -346,7 +407,26 @@ function FacultyDashboardView({
                             </div>
                             <div>
                                 <h2 id="faculty-profile-title" className={styles.sectionTitle}>{student.name || student.usn}</h2>
-                                <p className={styles.meta}>{student.usn} · {student.branch || 'Unassigned'}</p>
+                                <p className={styles.meta}>
+                                    {student.usn} · {student.branchLabel || student.branch || 'Unassigned'}
+                                    {student.batchLabel ? ` · ${student.batchLabel}` : ''}
+                                </p>
+                                {/* Lateral entry in VTU is the diploma route. Faculty used to have
+                                    to read it out of the 4xx serial in the USN; now it is stated,
+                                    along with the fact that semesters 1-2 never existed for them. */}
+                                {entry && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                        <EntryTag lateral={entry.isLateral} showRegular />
+                                        {entry.isLateral && (
+                                            <span style={{ fontSize: '11.5px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                                Admitted directly into semester {entry.firstSemester} · semesters 1 &amp; 2 not applicable
+                                                {student.admissionBatch && student.admissionBatch !== student.batch
+                                                    ? ` · admitted ${student.admissionBatch}, graduates with ${student.batch}`
+                                                    : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <div className={styles.profileActions}>
                                 <Button
@@ -374,11 +454,16 @@ function FacultyDashboardView({
                         <ResponsiveGrid size="sm" className={styles.statsGrid} aria-label="Student Academic Metrics">
                             <div className={styles.statCard}>
                                 <div className={styles.statLabel}>Current CGPA</div>
-                                <div className={styles.statValue}>{cgpa > 0 ? cgpa.toFixed(2) : '—'}</div>
+                                <div className={styles.statValue}>{fmtGpa(cgpa)}</div>
                             </div>
                             <div className={styles.statCard}>
                                 <div className={styles.statLabel}>Semesters Tracked</div>
                                 <div className={styles.statValue}>{sortedSemesters.length}</div>
+                                {entry?.isLateral && (
+                                    <div style={{ fontSize: '10.5px', color: 'var(--tx-muted)', fontWeight: 600, marginTop: '4px' }}>
+                                        of 6 (diploma entry)
+                                    </div>
+                                )}
                             </div>
                             <div className={styles.statCard}>
                                 <div className={styles.statLabel}>Subjects Logged</div>
@@ -419,7 +504,7 @@ function FacultyDashboardView({
                                     {allExpanded ? 'Collapse All' : 'Expand All'}
                                 </Button>
                                 {sortedSemesters.map(([sem]) => (
-                                    <Badge key={sem} tone="info" size="sm">S{sem}: {(sgpas[sem] || 0).toFixed(2)}</Badge>
+                                    <Badge key={sem} tone="info" size="sm">S{sem}: {fmtNum(sgpas[sem], 2, '—')}</Badge>
                                 ))}
                             </div>
                         </div>
@@ -443,9 +528,9 @@ function FacultyDashboardView({
                                                 return (
                                                     <tr key={sem}>
                                                         <th scope="row"><strong>Semester {sem}</strong></th>
-                                                        <td className={styles.center}>{stat.sgpa.toFixed(2)}</td>
+                                                        <td className={styles.center}>{fmtNum(stat.sgpa)}</td>
                                                         <td className={styles.center}>{stat.earnedCredits}</td>
-                                                        <td className={styles.center}>{stat.gradePoints.toFixed(2)}</td>
+                                                        <td className={styles.center}>{fmtNum(stat.gradePoints)}</td>
                                                         <td className={styles.center}>
                                                             <Badge tone={stat.backlogs > 0 ? 'danger' : 'success'} size="sm">
                                                                 {stat.backlogs === 0 ? 'Clear' : stat.backlogs}
@@ -504,7 +589,7 @@ function FacultyDashboardView({
                                                         </div>
                                                     </div>
                                                     <div className={styles.semesterActions}>
-                                                        <Badge tone="info" size="sm">SGPA: {(sgpas[sem] || 0).toFixed(2)}</Badge>
+                                                        <Badge tone="info" size="sm">SGPA: {fmtNum(sgpas[sem], 2, '—')}</Badge>
                                                         <Button
                                                             variant="secondary"
                                                             density="compact"
@@ -519,7 +604,10 @@ function FacultyDashboardView({
                                                                         branch: student.branch || '',
                                                                         scheme: student.scheme || '2022',
                                                                         semesterMarks: { [sem]: subjects },
-                                                                        cgpa: sgpas[sem]
+                                                                        cgpa: sgpas[sem],
+                                                                        isLateralEntry: Boolean(entry?.isLateral),
+                                                                        // "5th Sem Result - 2AB23CS043.pdf"
+                                                                        fileName: resultFileName({ semester: sem, usn: student.usn })
                                                                     });
                                                                 } catch (err) {
                                                                     setMessage('Error generating semester PDF: ' + err.message);
@@ -905,6 +993,11 @@ function FacultyDashboardContent() {
     const [semStats, setSemStats] = useState({});
     const [cgpa, setCgpa] = useState(0);
     const [message, setMessage] = useState('');
+    // Set when a lookup resolves to "this USN is malformed" or "this USN is not in
+    // the database" — the two outcomes the dashboard used to render as a blank
+    // student profile. Cleared on every new lookup.
+    const [lookupIssue, setLookupIssue] = useState(null);
+    const [entry, setEntry] = useState(null);
     const [pdfLoading, setPdfLoading] = useState(false);
     const [scraping, setScraping] = useState(false);
     const [scrapeProgress, setScrapeProgress] = useState('');
@@ -1227,7 +1320,15 @@ function FacultyDashboardContent() {
         if (!usnCheck.isValid) {
             if (!silent) {
                 const hint = usnCheck.suggestion ? ` Did you mean ${usnCheck.suggestion}?` : '';
-                setMessage(`Invalid USN: ${usnCheck.error}${hint}`);
+                setMessage(`Invalid USN: ${usnCheck.error || 'Expected the VTU format, e.g. 2AB23CS043.'}${hint}`);
+                setLookupIssue({
+                    reason: 'INVALID_USN',
+                    usn: usnCheck.sanitized || String(targetUsn).toUpperCase(),
+                    message: usnCheck.error || 'This is not a valid VTU University Seat Number.',
+                    suggestion: usnCheck.suggestion || null
+                });
+                setStudent(null);
+                setEntry(null);
             }
             return;
         }
@@ -1241,12 +1342,33 @@ function FacultyDashboardContent() {
         setCgpa(0);
         setServerBacklogs(null);
         setServerActiveBacklogsCount(null);
+        setEntry(null);
+        setLookupIssue(null);
 
         if (!silent) setLoading(true);
         setMessage('');
 
         try {
             const resData = await apiRequest('/api/faculty/dashboard', { query: { search_usn: cleanUSN, _t: Date.now() } });
+
+            // The API now answers "not found" explicitly instead of returning a
+            // stand-in profile. Surface it as its own state so faculty can tell an
+            // unknown USN apart from a student whose results have not been scraped.
+            if (resData?.found === false) {
+                setLookupIssue({
+                    reason: resData.reason || 'NOT_FOUND',
+                    usn: resData.usn || cleanUSN,
+                    message: resData.message || `No student record found for ${cleanUSN}.`,
+                    suggestion: resData.suggestion || null
+                });
+                if (!silent) {
+                    setMessage(resData.reason === 'INVALID_USN'
+                        ? `Invalid USN: ${resData.message}`
+                        : resData.message || `No student record found for ${cleanUSN}.`);
+                }
+                return;
+            }
+
             const profile = resData?.profile || { usn: cleanUSN, name: cleanUSN };
 
             // Use the server-pre-computed academic record — no client-side Supabase call needed.
@@ -1264,13 +1386,17 @@ function FacultyDashboardContent() {
             setCgpa(cgpaValue);
             setServerBacklogs(resData?.activeBacklogSubjects || null);
             setServerActiveBacklogsCount(resData?.totalActiveBacklogs ?? null);
+            setEntry(resData?.entry || null);
 
             // Audit Log
             await recordFacultyAction(faculty, 'VIEW_RECORD', cleanUSN);
 
             if (!silent) {
                 const subjectCount = resData?.totalSubjects ?? Object.values(marksBySemester).flat().length;
-                setMessage(`Found ${profile.name || cleanUSN} - ${subjectCount} subjects processed.`);
+                const entryNote = resData?.entry?.isLateral ? ' · Lateral entry (Diploma)' : '';
+                setMessage(subjectCount > 0
+                    ? `Found ${profile.name || cleanUSN} - ${subjectCount} subjects processed.${entryNote}`
+                    : `Found ${profile.name || cleanUSN}, but no results are on record yet. Use "Fetch VTU" to pull them.${entryNote}`);
             }
 
         } catch (err) {
@@ -1426,13 +1552,24 @@ function FacultyDashboardContent() {
         setPdfLoading(true);
         try {
             const { generateResultPDF } = await import('../../../lib/generatePDF');
+            const semesters = Object.keys(marks).map(Number).filter(Boolean).sort((a, b) => a - b);
+            const onlySemester = semesters.length === 1 ? semesters[0] : null;
             await generateResultPDF({
                 studentName: student.name || student.usn,
                 usn: student.usn,
                 branch: student.branch || '',
                 scheme: student.scheme || '2022',
+                batch: student.batchLabel || student.batch || '',
                 semesterMarks: marks,
                 cgpa,
+                isLateralEntry: Boolean(entry?.isLateral),
+                // A single-semester record downloads as "6th Sem Result - <USN>.pdf";
+                // a multi-semester one as "Consolidated Result - <USN>.pdf".
+                fileName: resultFileName({
+                    semester: onlySemester,
+                    usn: student.usn,
+                    suffix: onlySemester ? 'Result' : 'Consolidated Result'
+                })
             });
         } catch (err) { setMessage('PDF Error: ' + err.message); console.error(err); } finally { setPdfLoading(false); }
     };
@@ -1458,6 +1595,8 @@ function FacultyDashboardContent() {
             cgpa={cgpa}
             closeBacklogModal={closeBacklogModal}
             deleteStudent={requestDeleteStudent}
+            entry={entry}
+            lookupIssue={lookupIssue}
             failCount={failCount}
             fetchFromVTU={fetchFromVTU}
             handlePDF={handlePDF}

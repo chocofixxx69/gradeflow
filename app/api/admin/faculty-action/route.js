@@ -17,9 +17,7 @@ function generateAccessKey() {
 export async function POST(req) {
     try {
         const { session, error: authError } = requireAdmin(req);
-        if (authError && process.env.NODE_ENV === 'production') {
-            return authError;
-        }
+        if (authError) return authError;
 
         const body = await req.json().catch(() => ({}));
         const { action, id, ids, reason } = body || {};

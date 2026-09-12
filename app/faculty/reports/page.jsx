@@ -7,6 +7,7 @@ import AuthGuard from '../../../components/AuthGuard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
+import { fmtNum, fmtPercent } from '@/lib/format';
 
 // ── Activity Logger ─────────────────────────────────────────
 async function logActivity(faculty, action_type, target = null) {
@@ -621,7 +622,7 @@ function ReportsContent() {
                                             <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                                             <div style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)' }}>{s.usn}</div>
                                         </div>
-                                        <div style={{ fontWeight: 900, fontSize: '16px', color: s.cgpa >= 7.5 ? '#10B981' : s.cgpa >= 5 ? 'var(--tx-main)' : '#F59E0B' }}>{s.cgpa.toFixed(2)}</div>
+                                        <div style={{ fontWeight: 900, fontSize: '16px', color: s.cgpa >= 7.5 ? '#10B981' : s.cgpa >= 5 ? 'var(--tx-main)' : '#F59E0B' }}>{fmtNum(s.cgpa)}</div>
                                     </div>
                                 ))}
                             </div>
@@ -954,7 +955,7 @@ function ReportsContent() {
                                                                 {statusLabel}
                                                             </span>
                                                             <span style={{ fontSize: '18px', fontWeight: 900, color: accentColor }}>
-                                                                {passRate.toFixed(1)}%
+                                                                {fmtPercent(passRate, 1, '0.0%')}
                                                             </span>
                                                         </div>
                                                         <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px', fontWeight: 600 }}>
@@ -1104,7 +1105,7 @@ function ReportsContent() {
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--surface-low)', padding: '6px 14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
                                                         <div style={{ textAlign: 'right' }}>
                                                             <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Aggregate Pass</div>
-                                                            <div style={{ fontSize: '16px', fontWeight: 900, color: rateColor }}>{passRate.toFixed(1)}%</div>
+                                                            <div style={{ fontSize: '16px', fontWeight: 900, color: rateColor }}>{fmtPercent(passRate, 1, '0.0%')}</div>
                                                         </div>
                                                     </div>
                                                 </div>

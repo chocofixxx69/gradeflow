@@ -510,13 +510,21 @@ def _save_db(usn, name, sem, url, subs):
     try:
         scheme = _get_student_scheme(usn)
         branch = _parse_branch(usn)
-        updates = {"usn": usn, "semester": sem, "scheme": scheme}
+        branch_code = _parse_branch_code(usn)
+        default_email = f"{usn.strip().lower()}@anjuman.edu.in"
+        updates = {
+            "usn": usn,
+            "semester": sem,
+            "scheme": scheme,
+            "email": default_email
+        }
         if branch: updates["branch"] = branch
+        if branch_code: updates["branch_code"] = branch_code
         if name and name.strip() and name.strip().upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
             updates["name"] = name.strip()
 
         try:
-            cur_s = supabase.table("students").select("semester, name").eq("usn", usn).limit(1).execute()
+            cur_s = supabase.table("students").select("semester, name, email").eq("usn", usn).limit(1).execute()
             if cur_s.data and len(cur_s.data) > 0:
                 old_sem = cur_s.data[0].get("semester") or 0
                 if old_sem > sem:
@@ -525,6 +533,9 @@ def _save_db(usn, name, sem, url, subs):
                     existing_name = cur_s.data[0]["name"]
                     if existing_name.upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
                         updates["name"] = existing_name
+                existing_email = cur_s.data[0].get("email")
+                if existing_email:
+                    updates["email"] = existing_email
         except Exception:
             pass
 

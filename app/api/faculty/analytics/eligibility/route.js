@@ -7,6 +7,17 @@ import { loadStudentRecords } from '@/lib/student-record';
 import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
+
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
@@ -65,7 +76,10 @@ export async function GET(req) {
         records.forEach(record => {
             const activeBacklogs = record.activeBacklogSubjects || [];
             const totalBacklogs = activeBacklogs.length;
-            const isLE = isLateralEntry(record.usn, record.raw?.lateral_entry) || /[A-Z]{2,3}9\d{2}/i.test(record.usn);
+            // Diploma/lateral entrants never sat semesters 1-2, so none of the
+            // first-year credit or backlog gates below can apply to them.
+            const isLE = (record.identity?.lateral?.isLateral ?? isLateralEntry(record.usn, record.raw?.lateral_entry))
+                || /[A-Z]{2,3}9\d{2}/i.test(record.usn);
             const totalEarnedCredits = record.totalEarnedCredits;
             const year1EarnedCredits = (record.semStats[1]?.earnedCredits || 0) + (record.semStats[2]?.earnedCredits || 0);
 

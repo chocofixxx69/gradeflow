@@ -11,6 +11,10 @@ const supabaseAdmin = getAdminClient();
 
 export const dynamic = 'force-dynamic';
 
+// Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
+// start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
+export const maxDuration = 60;
+
 // GET — students in a class, joined with their CGPA/backlog data
 export async function GET(req) {
     const { session, error: authError } = requireStaff(req);

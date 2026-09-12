@@ -184,7 +184,7 @@ function AdminPanelContent() {
         primary_region: 'South Asia (VTU-HQ)',
     });
     const [settingsSecurity, setSettingsSecurity] = useState({
-        system_access_token: 'GF-ADMIN-PROD',
+        system_access_token: '',
         session_expiry_hours: 24,
     });
     const [settingsLoading, setSettingsLoading] = useState(false);
@@ -3349,7 +3349,7 @@ function AdminPanelContent() {
                                                     style={{ ...c.searchInput, flex: 1, minWidth: '200px', fontWeight: 800, letterSpacing: '0.05em' }}
                                                     value={tokenInput}
                                                     onChange={e => setTokenInput(e.target.value.toUpperCase())}
-                                                    placeholder="Enter new token (e.g. GF-ADMIN-PROD)"
+                                                    placeholder="Enter a new strong system access token"
                                                 />
                                                 <button
                                                     onClick={handleGenerateToken}

@@ -4,9 +4,13 @@ import { getAdminClient } from '@/lib/analytics-data';
 import { fetchByChunks } from '@/lib/supabase-utils';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, getStudentAcademicBatch, extractBatchFromUsn, extractBranchFromUsn, canonicalBranchCode } from '@/lib/semester-utils';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { isFailedSubject, resolveCanonicalGrade } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
+
+// Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
+// start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
+export const maxDuration = 60;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -26,12 +30,13 @@ export async function GET(req) {
         const branch = (searchParams.get('branch') || '').toUpperCase().trim();
         const semester = searchParams.get('semester') ? parseInt(searchParams.get('semester'), 10) : null;
         const batch = searchParams.get('batch') || '';
+        const entryFilter = (searchParams.get('entry') || 'all').toLowerCase().trim(); // 'all' | 'regular' | 'lateral'
 
         if (!subjectCode) {
             return fail('subjectCode is required.', 'MISSING_SUBJECT_CODE', 400);
         }
 
-        const cacheKey = `subject_analytics:${subjectCode}:${branch}:${semester}:${batch}`;
+        const cacheKey = `subject_analytics:${subjectCode}:${branch}:${semester}:${batch}:${entryFilter}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
@@ -70,9 +75,7 @@ export async function GET(req) {
             (stData || []).forEach(s => studentMap.set(s.usn, s));
         }
 
-        // Compute batch and branch distribution
-        // If a specific branch is selected, scope batchesAvailable and totalMarksAcrossAllBatches to THAT branch,
-        // while also computing global totals for full institutional context.
+        // Compute batch and branch distribution with explicit regular vs lateral breakdown
         const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
         const batchPresence = {};
         const globalBatchPresence = {};
@@ -84,27 +87,46 @@ export async function GET(req) {
             const cohort = student ? getStudentAcademicBatch(student) : getStudentAcademicBatch(m.usn);
             const batchYear = cohort?.fullYear || (extractBatchFromUsn(m.usn)?.fullYear) || '2023';
             const b = canonicalBranchCode(student?.branch_code) || canonicalBranchCode(extractBranchFromUsn(m.usn)) || canonicalBranchCode(student?.branch) || 'CS';
+            const isLat = Boolean(cohort?.isLateral);
 
-            globalBatchPresence[batchYear] = (globalBatchPresence[batchYear] || 0) + 1;
+            if (!globalBatchPresence[batchYear]) {
+                globalBatchPresence[batchYear] = { count: 0, regular: 0, lateral: 0 };
+            }
+            globalBatchPresence[batchYear].count++;
+            if (isLat) globalBatchPresence[batchYear].lateral++;
+            else globalBatchPresence[batchYear].regular++;
+
             branchPresence[b] = (branchPresence[b] || 0) + 1;
 
             const inRequestedBranch = isAllBranch || matchesBranch(student || m.usn, branch);
             if (inRequestedBranch) {
                 inBranchMarksCount++;
-                batchPresence[batchYear] = (batchPresence[batchYear] || 0) + 1;
+                if (!batchPresence[batchYear]) {
+                    batchPresence[batchYear] = { count: 0, regular: 0, lateral: 0 };
+                }
+                batchPresence[batchYear].count++;
+                if (isLat) batchPresence[batchYear].lateral++;
+                else batchPresence[batchYear].regular++;
             }
         });
 
         const batchesAvailable = Object.entries(batchPresence)
-            .map(([b, cnt]) => ({
+            .map(([b, stats]) => ({
                 batch: b,
-                count: cnt,
-                globalCount: globalBatchPresence[b] || cnt
+                count: stats.count,
+                regular: stats.regular,
+                lateral: stats.lateral,
+                globalCount: globalBatchPresence[b]?.count || stats.count
             }))
             .sort((a, b) => b.batch.localeCompare(a.batch));
 
         const globalBatchesAvailable = Object.entries(globalBatchPresence)
-            .map(([b, cnt]) => ({ batch: b, count: cnt }))
+            .map(([b, stats]) => ({
+                batch: b,
+                count: stats.count,
+                regular: stats.regular,
+                lateral: stats.lateral
+            }))
             .sort((a, b) => b.batch.localeCompare(a.batch));
 
         const branchesAvailable = Object.entries(branchPresence)
@@ -114,7 +136,7 @@ export async function GET(req) {
         const totalMarksAcrossAllBatches = inBranchMarksCount;
         const collegeWideTotalMarks = marks.length;
 
-        // Apply filters
+        // Apply filters (branch, academic cohort batch, and entry type)
         let filteredMarks = marks.filter(m => {
             const student = studentMap.get(m.usn);
             if (!student) {
@@ -124,12 +146,18 @@ export async function GET(req) {
                 return false;
             }
             if (batch) {
-                return matchesBatch(student.usn, batch, student.year, student.lateral_entry);
+                if (!matchesBatch(student.usn, batch, student.year, student.lateral_entry)) return false;
+            }
+            if (entryFilter !== 'all') {
+                const cohort = getStudentAcademicBatch(student);
+                const isLat = Boolean(cohort?.isLateral);
+                if (entryFilter === 'lateral' && !isLat) return false;
+                if (entryFilter === 'regular' && isLat) return false;
             }
             return true;
         });
 
-        // 4. Calculate KPIs & deep statistics
+        // 4. Calculate KPIs & deep statistics using canonical grade normalization
         const appeared = filteredMarks.length;
         let passed = 0;
         let failed = 0;
@@ -148,6 +176,7 @@ export async function GET(req) {
 
         const scores = [];
         const gradeCounts = { O: 0, 'A+': 0, A: 0, 'B+': 0, B: 0, C: 0, P: 0, F: 0 };
+        const scheme = catData?.scheme || (subjectCode.startsWith('1') ? '2025' : '2022');
 
         filteredMarks.forEach(m => {
             const isFail = isFailedSubject(m);
@@ -165,16 +194,17 @@ export async function GET(req) {
             if (cie > maxCIE) maxCIE = cie;
             if (see > maxSEE) maxSEE = see;
 
-            const g = (m.grade || '').toUpperCase().trim();
+            // Canonical VTU letter grade derivation (eliminates scraped 'P' monolith)
+            const canonicalGrade = resolveCanonicalGrade(m, scheme);
+            m._canonicalGrade = canonicalGrade;
+
             if (isFail) {
                 failed++;
                 gradeCounts.F++;
             } else {
                 passed++;
-                if (gradeCounts[g] !== undefined) {
-                    gradeCounts[g]++;
-                } else if (g === 'S') {
-                    gradeCounts.O++;
+                if (gradeCounts[canonicalGrade] !== undefined) {
+                    gradeCounts[canonicalGrade]++;
                 } else {
                     gradeCounts.P++;
                 }
@@ -213,7 +243,7 @@ export async function GET(req) {
         const scRate = appeared > 0 ? Number(((scCount / appeared) * 100).toFixed(1)) : 0;
         const pRate = appeared > 0 ? Number(((pCount / appeared) * 100).toFixed(1)) : 0;
 
-        // 5. Sorted Marks & Dynamic Ranking
+        // 5. Sorted Marks & Dynamic Ranking with full student provenance & lateral identification
         const sortedMarks = [...filteredMarks].sort((a, b) => {
             const bt = Number(b.total) || 0;
             const at = Number(a.total) || 0;
@@ -239,6 +269,11 @@ export async function GET(req) {
                 lastScore = score;
             }
 
+            const cohort = st ? getStudentAcademicBatch(st) : getStudentAcademicBatch(m.usn);
+            const isLateral = Boolean(cohort?.isLateral);
+            const admissionYear = cohort?.admissionYear || (extractBatchFromUsn(m.usn)?.fullYear) || String(st?.year || '');
+            const cohortYear = cohort?.fullYear || (batch || '2023');
+
             return {
                 rank: curRank,
                 usn: m.usn,
@@ -247,12 +282,16 @@ export async function GET(req) {
                 internal: m.internal,
                 external: m.external,
                 total: m.total,
-                grade: m.grade || '—',
-                isFail: isFailedSubject(m)
+                grade: m._canonicalGrade || resolveCanonicalGrade(m, scheme),
+                isFail: isFailedSubject(m),
+                isLateral,
+                entryMode: isLateral ? 'LATERAL_DIPLOMA' : 'REGULAR',
+                admissionYear,
+                cohortYear
             };
         });
 
-        // 6. Top 10 Performers
+        // 6. Top 10 Performers with real letter grades & lateral tags
         const topPerformers = studentRoster.slice(0, 10).map(r => ({
             rank: r.rank,
             usn: r.usn,
@@ -260,7 +299,11 @@ export async function GET(req) {
             internal: r.internal,
             external: r.external,
             total: r.total,
-            grade: r.grade
+            grade: r.grade,
+            isLateral: r.isLateral,
+            entryMode: r.entryMode,
+            admissionYear: r.admissionYear,
+            cohortYear: r.cohortYear
         }));
 
         const gradeDistribution = Object.entries(gradeCounts).map(([grade, count]) => ({
@@ -278,7 +321,7 @@ export async function GET(req) {
                 name: authSubjectName,
                 credits: catData?.credits || marks[0]?.credits || 3,
                 semester: catData?.semester || semester || marks[0]?.semester || 1,
-                scheme: catData?.scheme || (subjectCode.startsWith('1') ? '2025' : '2022')
+                scheme
             },
             kpis: {
                 appeared,
@@ -318,7 +361,7 @@ export async function GET(req) {
             branchesAvailable,
             totalMarksAcrossAllBatches,
             collegeWideTotalMarks,
-            filtersApplied: { subjectCode, branch, semester, batch }
+            filtersApplied: { subjectCode, branch, semester, batch, entry: entryFilter }
         };
 
         setCached(cacheKey, payload, 30_000);

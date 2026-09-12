@@ -58,7 +58,13 @@ export async function GET() {
         const schemes = ['2022', '2025'];
         const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
         const sections = ['A', 'B', 'C', 'D', 'E', 'F'];
-        const academicYears = ['2025-2026', '2024-2025', '2023-2024', '2022-2023'];
+        const currentYear = new Date().getFullYear();
+        const maxBatchYear = Math.max(2036, currentYear + 10);
+        const academicYears = Array.from({ length: maxBatchYear - 2020 + 1 }, (_, i) => {
+            const y = maxBatchYear - i;
+            return `${y}-${y + 1}`;
+        });
+        const batches = Array.from({ length: maxBatchYear - 2018 + 1 }, (_, i) => String(maxBatchYear - i));
         const facultyList = facultyResult.status === 'fulfilled' && facultyResult.value.data ? facultyResult.value.data : [];
 
         const payload = {
@@ -67,6 +73,7 @@ export async function GET() {
             semesters,
             sections,
             academicYears,
+            batches,
             faculty: facultyList,
             formLookups: {
                 branches,
@@ -74,6 +81,7 @@ export async function GET() {
                 semesters,
                 sections,
                 academicYears,
+                batches,
                 faculty: facultyList
             }
         };

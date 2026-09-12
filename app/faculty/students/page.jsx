@@ -5,10 +5,13 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest, clearApiCache } from '@/lib/api/client';
-import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
+import { getJsPDF } from '@/lib/lazy-export-libs';
+import { downloadWorkbook } from '@/lib/workbook-export';
+import { fmtNum } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
+import { EntryTag } from '@/components/ui/EntryTag';
 
 export default function FacultyStudentsDirectoryPage() {
     return (
@@ -162,7 +165,11 @@ function StudentsDirectoryContent() {
         if (!silent) setLoading(true);
         setError(null);
         try {
-            const query = { page: limit === 'all' ? 1 : page, limit, sortBy, sortOrder };
+            // lib/api/client.js's buildUrl() drops any query value that is the
+            // literal string 'all', so sending limit:'all' silently fell back to the
+            // server's default of 25 and the "All (627)" page size returned one page.
+            // The route accepts -1 for the same meaning and it survives the filter.
+            const query = { page: limit === 'all' ? 1 : page, limit: limit === 'all' ? -1 : limit, sortBy, sortOrder };
             if (fresh) query.fresh = '1';
             if (branch) query.branch = branch;
             if (semester !== 'all') {
@@ -314,46 +321,105 @@ function StudentsDirectoryContent() {
     }, [facets.branches, facets.classes, branch, semester, semesterMode, batch, section, classId, status, entry, backlogsFilter, search]);
 
     const semesterColumn = semester !== 'all' ? Number(semester) : null;
+    const realSections = useMemo(() => (facets.sections || []).filter(s => s.value !== 'UNASSIGNED'), [facets.sections]);
     const statusCount = (value) => facets.statuses.find(s => s.value === value)?.count ?? 0;
 
+    /**
+     * Every student matching the current filters, not just the page on screen.
+     * Exports used to silently ship one page, so "Export Excel" on a 627-student
+     * directory produced 25 rows.
+     */
+    const fetchAllMatching = useCallback(async () => {
+        if (limit === 'all') return students || [];
+        try {
+            const res = await apiRequest('/api/faculty/students', {
+                query: {
+                    page: 1,
+                    limit: -1, // 'all' would be stripped by buildUrl(); -1 means the same thing to the route
+                    sortBy,
+                    sortOrder,
+                    branch: branch || undefined,
+                    semester: semester !== 'all' ? semester : undefined,
+                    semesterMode,
+                    batch: batch || undefined,
+                    section: section !== 'all' ? section : undefined,
+                    classId: classId || undefined,
+                    status,
+                    entry,
+                    backlogsFilter,
+                    search: search || undefined
+                }
+            });
+            return res?.students?.length ? res.students : (students || []);
+        } catch (err) {
+            console.warn('Full-set export fetch failed, exporting the current page instead:', err);
+            return students || [];
+        }
+    }, [limit, students, sortBy, sortOrder, branch, semester, semesterMode, batch, section, classId, status, entry, backlogsFilter, search]);
+
     // ── Excel Export ──
+    // Written through lib/workbook-export.js: explicit bookType, real OOXML MIME,
+    // numeric cells. Exports the whole filtered set, not just the visible page —
+    // faculty asking for "the CS 2023 list" never meant "rows 26 to 50 of it".
+    const [exportingExcel, setExportingExcel] = useState(false);
     const handleExportExcel = async () => {
-        const XLSX = await getXLSX();
-        const wb = XLSX.utils.book_new();
-        const headers = [
-            '#', 'USN', 'Name', 'Department', 'Current Sem', 'Semesters On Record',
-            'Section', 'Batch', 'CGPA', 'Backlogs Count', 'Backlog Credits', 'Status'
-        ];
-        if (semesterColumn) headers.push(`Sem ${semesterColumn} SGPA`, `Sem ${semesterColumn} Backlogs`);
-
-        const offset = limit === 'all' ? 0 : (page - 1) * Number(limit);
-        const rows = (students || []).map((s, idx) => {
-            const row = [
-                offset + idx + 1,
-                s.usn,
-                s.name,
-                s.branchLabel || s.branch,
-                s.semester,
-                (s.recordedSemesters || []).join(', ') || '—',
-                s.section || '—',
-                s.batch || '—',
-                s.cgpa !== null && s.cgpa !== undefined ? s.cgpa.toFixed(2) : '—',
-                s.total_backlogs,
-                s.backlog_credits,
-                s.is_inactive ? 'Inactive' : 'Active'
+        setExportingExcel(true);
+        try {
+            const headers = [
+                '#', 'USN', 'Name', 'Department', 'Entry', 'Current Sem', 'Semesters On Record',
+                'Section', 'Batch', 'Admission Batch', 'CGPA', 'Backlogs', 'Backlog Credits', 'Status'
             ];
-            if (semesterColumn) {
-                row.push(
-                    s.semesterView?.sgpa !== null && s.semesterView?.sgpa !== undefined ? s.semesterView.sgpa.toFixed(2) : '—',
-                    s.semesterView?.backlogs !== null && s.semesterView?.backlogs !== undefined ? s.semesterView.backlogs : '—'
-                );
-            }
-            return row;
-        });
+            if (semesterColumn) headers.push(`Sem ${semesterColumn} SGPA`, `Sem ${semesterColumn} Backlogs`);
 
-        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-        XLSX.utils.book_append_sheet(wb, ws, 'Students');
-        XLSX.writeFile(wb, `Students_Directory_${branch || 'All'}_Page${page}.xlsx`);
+            const exportRows = await fetchAllMatching();
+            const rows = exportRows.map((s, idx) => {
+                const row = [
+                    idx + 1,
+                    s.usn,
+                    s.name,
+                    s.branchLabel || s.branch,
+                    s.lateral_entry ? 'Lateral (Diploma)' : 'Regular',
+                    s.semester,
+                    (s.recordedSemesters || []).join(', '),
+                    s.section || '',
+                    s.batch || '',
+                    s.admissionBatch || s.batch || '',
+                    Number.isFinite(s.cgpa) ? s.cgpa : null,
+                    s.total_backlogs ?? 0,
+                    s.backlog_credits ?? 0,
+                    s.is_inactive ? 'Inactive' : 'Active'
+                ];
+                if (semesterColumn) {
+                    row.push(
+                        Number.isFinite(s.semesterView?.sgpa) ? s.semesterView.sgpa : null,
+                        s.semesterView?.backlogs ?? null
+                    );
+                }
+                return row;
+            });
+
+            const filterLine = activeChips.length > 0 ? activeChips.map(c => c.label).join('  ·  ') : 'No filters applied';
+            await downloadWorkbook([{
+                name: 'Students',
+                preamble: [
+                    ['GradeFlow — Students Directory'],
+                    [filterLine],
+                    [`${rows.length} students   Generated: ${new Date().toLocaleString()}`],
+                    []
+                ],
+                headers,
+                numberFormats: Object.fromEntries([
+                    ['CGPA', '0.00'],
+                    ...(semesterColumn ? [[`Sem ${semesterColumn} SGPA`, '0.00']] : [])
+                ]),
+                rows
+            }], `Students_Directory_${branch || 'All'}`);
+        } catch (err) {
+            console.error('Excel export error:', err);
+            setError('Excel export failed: ' + (err.message || 'Unknown error'));
+        } finally {
+            setExportingExcel(false);
+        }
     };
 
     // ── PDF Export ──
@@ -369,23 +435,25 @@ function StudentsDirectoryContent() {
         const filterLine = activeChips.length > 0 ? activeChips.map(c => c.label).join(' | ') : 'No filters applied';
         doc.text(`Total: ${pagination.total} Students | ${filterLine} | ${new Date().toLocaleDateString()}`, 14, 21);
 
-        const head = [['#', 'USN', 'Student Name', 'Dept', 'Sem', 'Sec', 'CGPA', 'Backlog Status']];
+
+        const head = [['#', 'USN', 'Student Name', 'Dept', 'Entry', 'Sem', 'Sec', 'CGPA', 'Backlog Status']];
         if (semesterColumn) head[0].push(`S${semesterColumn} SGPA`);
 
-        const offset = limit === 'all' ? 0 : (page - 1) * Number(limit);
-        const body = (students || []).map((s, idx) => {
+        const exportRows = await fetchAllMatching();
+        const body = exportRows.map((s, idx) => {
             const row = [
-                offset + idx + 1,
+                idx + 1,
                 s.usn,
                 s.name,
                 s.branch,
+                s.lateral_entry ? 'LE' : 'Reg',
                 s.semester,
                 s.section || '—',
-                s.cgpa !== null && s.cgpa !== undefined ? s.cgpa.toFixed(2) : '—',
+                fmtNum(s.cgpa),
                 s.total_backlogs > 0 ? `${s.total_backlogs} Sub (${s.backlog_credits} Cr)` : 'Clear'
             ];
             if (semesterColumn) {
-                row.push(s.semesterView?.sgpa !== null && s.semesterView?.sgpa !== undefined ? s.semesterView.sgpa.toFixed(2) : '—');
+                row.push(fmtNum(s.semesterView?.sgpa));
             }
             return row;
         });
@@ -416,9 +484,9 @@ function StudentsDirectoryContent() {
                     </PageHeaderSubtitle>
                 </PageHeader>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <Button onClick={handleExportExcel} variant="ghost" disabled={students.length === 0}>
-                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>description</span>
-                        Export Excel
+                    <Button onClick={handleExportExcel} variant="ghost" disabled={students.length === 0 || exportingExcel} title="Exports every student matching the current filters, not just this page">
+                        <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>grid_on</span>
+                        {exportingExcel ? 'Exporting…' : 'Export Excel'}
                     </Button>
                     <Button onClick={handleExportPDF} variant="ghost" disabled={students.length === 0}>
                         <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>picture_as_pdf</span>
@@ -490,10 +558,18 @@ function StudentsDirectoryContent() {
                             options={facetOptions(facets.batches, batch, { allValue: '', allLabel: 'All Batches' })}
                         />
                         <Select
-                            label="Section"
+                            label={realSections.length === 0 ? "Section (None Created)" : "Section"}
                             value={section}
+                            disabled={realSections.length === 0 && (facets.sections || []).length <= 1}
                             onChange={e => handleFilterChange(setSection, e.target.value)}
-                            options={facetOptions(facets.sections, section, { allValue: 'all', allLabel: 'All Sections' })}
+                            options={facetOptions(facets.sections, section, {
+                                allValue: 'all',
+                                allLabel: realSections.length === 0
+                                    ? 'No Sections (Whole Cohort)'
+                                    : realSections.length === 1
+                                        ? `Single Section (Sec ${realSections[0].value})`
+                                        : 'All Sections'
+                            })}
                         />
                         {facets.classes?.length > 0 && (
                             <Select
@@ -690,7 +766,7 @@ function StudentsDirectoryContent() {
 
 
             {/* Students Table */}
-            <Card style={{ overflow: 'hidden', marginBottom: '20px' }}>
+            <Card style={{ overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                         <thead style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }}>
@@ -768,14 +844,13 @@ function StudentsDirectoryContent() {
                                                 >
                                                     {s.usn}
                                                 </Link>
-                                                {s.lateral_entry && (
-                                                    <span title="Lateral entry" style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '9px', fontWeight: 800 }}>
-                                                        LE
-                                                    </span>
-                                                )}
+                                                {s.lateral_entry && <EntryTag lateral compact style={{ marginLeft: '6px' }} />}
                                                 {s.batch && (
                                                     <div style={{ marginTop: '2px', fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', fontFamily: 'inherit' }}>
                                                         {s.batch} batch
+                                                        {/* A lateral entrant's USN year is one later than the batch they
+                                                            graduate with; show both so the mismatch never looks like a bug. */}
+                                                        {s.admissionBatch && s.admissionBatch !== s.batch ? ` · adm. ${s.admissionBatch}` : ''}
                                                     </div>
                                                 )}
                                             </td>
@@ -788,7 +863,10 @@ function StudentsDirectoryContent() {
                                                         Inactive
                                                     </span>
                                                 )}
-
+                                                <div style={{ marginTop: '2px', fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 500, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <span>{s.email}</span>
+                                                    {s.phone && s.phone !== '—' && <span>• {s.phone}</span>}
+                                                </div>
                                             </td>
                                             <td style={{ padding: '12px 16px', color: 'var(--tx-muted)', fontWeight: 700 }} title={s.branchLabel}>
                                                 {s.branch}
@@ -862,45 +940,147 @@ function StudentsDirectoryContent() {
                         </tbody>
                     </table>
                 </div>
-            </Card>
 
-            {/* Pagination Controls */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
-                    {limit === 'all' ? (
-                        <span>Loaded <strong>All {students.length}</strong> students across the database</span>
-                    ) : (
-                        <span>
-                            Showing <strong>{pagination.total > 0 ? (page - 1) * Number(limit) + 1 : 0}</strong> to <strong>{Math.min(page * Number(limit), pagination.total)}</strong> of <strong>{pagination.total}</strong> students
-                        </span>
+                {/* Pagination — inside the table card, attached to the rows it pages.
+                    It used to float loose under the card, where it read as part of the
+                    page footer instead of as a control for this table, and on a wide
+                    screen the buttons sat a metre away from the row count. */}
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '14px',
+                        flexWrap: 'wrap',
+                        padding: '12px 16px',
+                        borderTop: '1px solid var(--border)',
+                        background: 'var(--surface-low)'
+                    }}
+                >
+                    <div style={{ fontSize: '12.5px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                        {limit === 'all' ? (
+                            <span>Showing <strong style={{ color: 'var(--tx-main)' }}>all {students.length}</strong> matching students</span>
+                        ) : pagination.total === 0 ? (
+                            <span>No students to show</span>
+                        ) : (
+                            <span>
+                                Showing <strong style={{ color: 'var(--tx-main)' }}>{(page - 1) * Number(limit) + 1}</strong>
+                                {'\u2013'}
+                                <strong style={{ color: 'var(--tx-main)' }}>{Math.min(page * Number(limit), pagination.total)}</strong>
+                                {' of '}
+                                <strong style={{ color: 'var(--tx-main)' }}>{pagination.total}</strong>
+                            </span>
+                        )}
+                    </div>
+
+                    {limit !== 'all' && pagination.totalPages > 1 && (
+                        <nav aria-label="Student directory pages" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                            <PagerButton
+                                label="First page"
+                                icon="first_page"
+                                disabled={page <= 1 || loading}
+                                onClick={() => setPage(1)}
+                            />
+                            <PagerButton
+                                label="Previous page"
+                                icon="chevron_left"
+                                disabled={page <= 1 || loading}
+                                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                            />
+
+                            {pageWindow(page, pagination.totalPages).map((entry, i) => (
+                                entry === '…' ? (
+                                    <span key={`gap-${i}`} style={{ padding: '0 4px', color: 'var(--tx-dim)', fontWeight: 700, userSelect: 'none' }}>…</span>
+                                ) : (
+                                    <button
+                                        key={entry}
+                                        type="button"
+                                        onClick={() => setPage(entry)}
+                                        disabled={loading}
+                                        aria-current={entry === page ? 'page' : undefined}
+                                        style={{
+                                            minWidth: '32px',
+                                            height: '32px',
+                                            padding: '0 8px',
+                                            borderRadius: '8px',
+                                            cursor: loading ? 'default' : 'pointer',
+                                            fontSize: '12.5px',
+                                            fontWeight: 800,
+                                            border: `1px solid ${entry === page ? 'var(--primary)' : 'var(--border)'}`,
+                                            background: entry === page ? 'var(--primary)' : 'var(--surface)',
+                                            color: entry === page ? '#FFFFFF' : 'var(--tx-main)'
+                                        }}
+                                    >
+                                        {entry}
+                                    </button>
+                                )
+                            ))}
+
+                            <PagerButton
+                                label="Next page"
+                                icon="chevron_right"
+                                disabled={page >= pagination.totalPages || loading}
+                                onClick={() => setPage(prev => Math.min(pagination.totalPages, prev + 1))}
+                            />
+                            <PagerButton
+                                label="Last page"
+                                icon="last_page"
+                                disabled={page >= pagination.totalPages || loading}
+                                onClick={() => setPage(pagination.totalPages)}
+                            />
+                        </nav>
                     )}
                 </div>
-                {limit !== 'all' && pagination.totalPages > 1 && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={page <= 1 || loading}
-                            onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                            iconStart="chevron_left"
-                        >
-                            Previous
-                        </Button>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: '13px', fontWeight: 700 }}>
-                            Page {page} of {pagination.totalPages}
-                        </span>
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={page >= pagination.totalPages || loading}
-                            onClick={() => setPage(prev => Math.min(pagination.totalPages, prev + 1))}
-                            iconEnd="chevron_right"
-                        >
-                            Next
-                        </Button>
-                    </div>
-                )}
-            </div>
+            </Card>
         </div>
     );
+}
+
+/** One square icon control in the paginator. */
+function PagerButton({ label, icon, disabled, onClick }) {
+    return (
+        <button
+            type="button"
+            aria-label={label}
+            title={label}
+            disabled={disabled}
+            onClick={onClick}
+            style={{
+                width: '32px',
+                height: '32px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'var(--surface)',
+                color: disabled ? 'var(--tx-dim)' : 'var(--tx-main)',
+                cursor: disabled ? 'default' : 'pointer',
+                opacity: disabled ? 0.5 : 1
+            }}
+        >
+            <span className="material-icons-round" style={{ fontSize: '18px' }}>{icon}</span>
+        </button>
+    );
+}
+
+/**
+ * Page numbers to render: always the first and last page, the current page and one
+ * either side, with ellipses for the gaps. 26 pages of students should not produce
+ * 26 buttons.
+ */
+function pageWindow(current, total) {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+    const pages = new Set([1, total, current, current - 1, current + 1]);
+    if (current <= 3) [2, 3, 4].forEach(n => pages.add(n));
+    if (current >= total - 2) [total - 1, total - 2, total - 3].forEach(n => pages.add(n));
+
+    const sorted = [...pages].filter(n => n >= 1 && n <= total).sort((a, b) => a - b);
+    const out = [];
+    sorted.forEach((n, i) => {
+        if (i > 0 && n - sorted[i - 1] > 1) out.push('…');
+        out.push(n);
+    });
+    return out;
 }

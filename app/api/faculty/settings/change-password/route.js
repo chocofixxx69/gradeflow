@@ -41,8 +41,14 @@ export async function POST(req) {
         }
 
         const supabase = getAdminClient();
-        const facultyId = queryId || headerId || session?.sub || session?.id;
-        const facultyEmail = queryEmail || headerEmail || session?.email?.toLowerCase()?.trim();
+        // A faculty may only change their OWN password — identity is taken from
+        // the verified session, never from client-supplied id/email. Only an
+        // admin may target another account (id/email override).
+        const isAdmin = session?.role === 'admin';
+        const facultyId = isAdmin ? (queryId || headerId || session?.sub || session?.id) : (session?.sub || session?.id);
+        const facultyEmail = isAdmin
+            ? (queryEmail || headerEmail || session?.email?.toLowerCase()?.trim())
+            : session?.email?.toLowerCase()?.trim();
 
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId || '');
         let query = supabase.from('faculty_onboarding').select('id, full_name, email, password_hash, generated_access_key');

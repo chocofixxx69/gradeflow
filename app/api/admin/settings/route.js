@@ -8,10 +8,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
     try {
-        const { session, error: authError } = requireStaff(req);
-        if (authError && process.env.NODE_ENV === 'production') {
-            return authError;
-        }
+        const { session, error: authError } = requireStaff(req, ['admin']);
+        if (authError) return authError;
 
         const { data: rows, error } = await supabaseAdmin
             .from('system_settings')
@@ -30,7 +28,9 @@ export async function GET(req) {
         };
 
         const defaultSecurity = {
-            system_access_token: process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD',
+            // Never echo a real token as a default — leave blank until the admin
+            // sets one. The old default exposed the live gatekeeper value.
+            system_access_token: '',
             session_expiry_hours: 24,
             require_gatekeeper: true
         };
@@ -53,10 +53,8 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const { session, error: authError } = requireStaff(req);
-        if (authError && process.env.NODE_ENV === 'production') {
-            return authError;
-        }
+        const { session, error: authError } = requireStaff(req, ['admin']);
+        if (authError) return authError;
 
         const body = await req.json().catch(() => ({}));
         const { profile, security } = body || {};

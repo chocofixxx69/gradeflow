@@ -8,6 +8,10 @@ import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn, can
 import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+// Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
+// start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
+export const maxDuration = 60;
+
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
@@ -63,7 +67,7 @@ export async function GET(req) {
             { data: rawStudents },
             marks1, marks2, marks3
         ] = await Promise.all([
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, academic_year, batch'),
+            supabaseAdmin.from('classes').select('id, name, branch, branch_code, semester, section, academic_year, batch'),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(0, 999),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(1000, 1999),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(2000, 2999),
@@ -111,10 +115,10 @@ export async function GET(req) {
 
         (rawClasses || []).forEach(c => {
             if (c.batch) batchSet.add(String(c.batch));
-            if (c.academic_year) {
-                const yearPart = String(c.academic_year).split(/[-/]/)[0];
-                if (yearPart && yearPart.length === 4) batchSet.add(yearPart);
-            }
+            // classes.academic_year is the SESSION a class is running in
+            // ("2026-2027"), not an admission batch. Reading it as one put a
+            // "Batch 2026" in every dropdown that no student can ever be in —
+            // a guaranteed empty report for anyone who picked it.
         });
 
         if (batchSet.size === 0) {

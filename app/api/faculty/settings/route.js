@@ -26,8 +26,15 @@ export async function GET(req) {
         if (authError) return authError;
 
         const supabase = getAdminClient();
-        const facultyId = queryId || headerId || session?.sub || session?.id;
-        const facultyEmail = queryEmail || headerEmail || session?.email?.toLowerCase()?.trim();
+        // Identity comes from the verified session. Client-supplied id/email
+        // (query or header) may ONLY redirect the target when the caller is an
+        // admin — otherwise a faculty could read/write another faculty's record
+        // just by passing ?faculty_id= or x-faculty-email (IDOR).
+        const isAdmin = session?.role === 'admin';
+        const facultyId = isAdmin ? (queryId || headerId || session?.sub || session?.id) : (session?.sub || session?.id);
+        const facultyEmail = isAdmin
+            ? (queryEmail || headerEmail || session?.email?.toLowerCase()?.trim())
+            : session?.email?.toLowerCase()?.trim();
 
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId || '');
 
@@ -160,8 +167,15 @@ export async function PATCH(req) {
         if (authError) return authError;
 
         const supabase = getAdminClient();
-        const facultyId = queryId || headerId || session?.sub || session?.id;
-        const facultyEmail = queryEmail || headerEmail || session?.email?.toLowerCase()?.trim();
+        // Identity comes from the verified session. Client-supplied id/email
+        // (query or header) may ONLY redirect the target when the caller is an
+        // admin — otherwise a faculty could read/write another faculty's record
+        // just by passing ?faculty_id= or x-faculty-email (IDOR).
+        const isAdmin = session?.role === 'admin';
+        const facultyId = isAdmin ? (queryId || headerId || session?.sub || session?.id) : (session?.sub || session?.id);
+        const facultyEmail = isAdmin
+            ? (queryEmail || headerEmail || session?.email?.toLowerCase()?.trim())
+            : session?.email?.toLowerCase()?.trim();
 
         // 1. Locate existing faculty
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(facultyId || '');

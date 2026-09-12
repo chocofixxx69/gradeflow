@@ -7,6 +7,10 @@ import { isFailedSubject } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
 
+// Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
+// start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
+export const maxDuration = 60;
+
 function ok(data) {
     return NextResponse.json({ success: true, data });
 }
@@ -108,36 +112,33 @@ export async function GET(req) {
         });
 
         // 4. Determine Sections List
-        const matchingClasses = (rawClasses || []).filter(c =>
-            (c.semester ? Number(c.semester) === semester : true) &&
-            (branch === 'ALL' || matchesBranch(c.branch, branch)) &&
-            (!batch || batch === 'ALL' || !c.batch || c.batch === batch)
+        const branchBatchClasses = (rawClasses || []).filter(c =>
+            (branch === 'ALL' || matchesBranch(c.branch_code || c.branch, branch)) &&
+            (!batch || batch === 'ALL' || matchesBatch(c.batch, batch))
         );
+        const semClasses = branchBatchClasses.filter(c => c.semester && Number(c.semester) === semester);
+        const matchingClasses = semClasses.length > 0 ? semClasses : branchBatchClasses;
+
         const detectedSections = Array.from(new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean))).sort();
 
         let sectionsList = detectedSections;
-
-        // If no sections or only 1 section detected from classes table, but active students exist in this cohort,
-        // dynamically partition active students into standard engineering sections (Section A & Section B)
-        if (sectionsList.length < 2 && activeUsns.length >= 2) {
-            sectionsList = ['A', 'B'];
-        } else if (sectionsList.length === 0 && activeUsns.length > 0) {
-            sectionsList = ['A'];
-        }
 
         if (sectionMode === '2' || sectionMode === '3' || sectionMode === '4') {
             sectionsList = sectionsList.slice(0, Number(sectionMode));
         }
 
-        if (sectionsList.length === 0) {
+        if (sectionsList.length < 2) {
             const empty = {
                 branch, batch, semester, sectionMode,
-                sections: [],
+                sections: sectionsList,
                 sectionComparisons: [],
                 subjectMatrix: [],
                 unassignedCount: activeUsns.length,
                 noRealSections: true,
-                benchmarks: { bestSection: '—', totalEvaluated: 0, benchmarkAvg: 0, sectionSpread: 0, subjectCount: 0 },
+                message: sectionsList.length === 1
+                    ? `Only Section ${sectionsList[0]} exists for ${branch} ${batch !== 'ALL' ? `Batch ${batch}` : ''}. Section comparison requires at least 2 sections.`
+                    : `No sections created for ${branch} ${batch !== 'ALL' ? `Batch ${batch}` : ''}.`,
+                benchmarks: { bestSection: sectionsList[0] || '—', totalEvaluated: 0, benchmarkAvg: 0, sectionSpread: 0, subjectCount: 0 },
             };
             setCached(cacheKey, empty, 30_000);
             return ok(empty);

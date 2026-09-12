@@ -3,7 +3,8 @@ import { requireStaff } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 import { calculateAcademicRecord } from '../../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../../lib/subjectCreditResolver';
-import { isLateralEntry } from '../../../../lib/semester-utils';
+import { buildStudentIdentity, LATERAL_ENTRY_SEMESTER } from '../../../../lib/vtu-identity';
+import { validateUsn } from '../../../../lib/vtu-usn-validator';
 import { cleanAlphanumeric } from '../../../../lib/search-utils';
 
 const supabaseAdmin = getAdminClient();
@@ -34,6 +35,31 @@ export async function GET(req) {
         // If faculty searches for a specific student USN
         if (searchUsn) {
             const cleanUSN = cleanAlphanumeric(searchUsn).toUpperCase();
+
+            // A malformed USN is answered before a single query is issued — the
+            // client used to get a synthetic profile back and render an empty
+            // record as if the student existed.
+            const usnCheck = validateUsn(cleanUSN);
+            if (!usnCheck.isValid) {
+                return ok({
+                    found: false,
+                    reason: 'INVALID_USN',
+                    usn: cleanUSN,
+                    message: `Invalid USN. ${usnCheck.error || 'Expected the VTU format, e.g. 2AB23CS043.'}`,
+                    suggestion: usnCheck.suggestion || null,
+                    profile: null,
+                    marksBySemester: {},
+                    semSGPAs: {},
+                    semStats: {},
+                    cgpa: 0,
+                    totalSubjects: 0,
+                    totalActiveBacklogs: 0,
+                    activeBacklogSubjects: [],
+                    recentResults: [],
+                    studentMarks: []
+                });
+            }
+
             const [
                 { data: studentProfile },
                 { data: resultMarks },
@@ -57,8 +83,33 @@ export async function GET(req) {
                 ? await supabaseAdmin.from('marks').select('*').eq('student_id', studentProfile.id)
                 : { data: [] };
 
+            const hasMarks = ((resultMarks || []).length + (studentMarks || []).length) > 0;
+
+            // Nothing in the students table AND nothing in any marks table means the
+            // USN is well-formed but unknown to this institution. Say so, rather than
+            // fabricating `{ usn, name: usn }` and letting the dashboard render an
+            // empty transcript that looks like a real (but blank) student.
+            if (!studentProfile && !hasMarks) {
+                return ok({
+                    found: false,
+                    reason: 'NOT_FOUND',
+                    usn: cleanUSN,
+                    message: `No student record found for ${cleanUSN}. Use "Fetch VTU" to pull their results from the university portal.`,
+                    suggestion: null,
+                    profile: null,
+                    marksBySemester: {},
+                    semSGPAs: {},
+                    semStats: {},
+                    cgpa: 0,
+                    totalSubjects: 0,
+                    totalActiveBacklogs: 0,
+                    activeBacklogSubjects: [],
+                    recentResults: [],
+                    studentMarks: []
+                });
+            }
+
             const profile = studentProfile || { usn: cleanUSN, name: cleanUSN };
-            const lateral = isLateralEntry(cleanUSN, studentProfile?.lateral_entry);
 
             // Merge all marks — identical shape as the client used to produce
             const allMarksRaw = [
@@ -83,8 +134,48 @@ export async function GET(req) {
                 scheme: profile.scheme || '2022'
             }, { catalogIndex });
 
+            // Identity is resolved against the semesters the student actually has
+            // marks for, which is what separates a diploma/lateral entrant (record
+            // starts at semester 3) from a re-admission carrying a 9xx serial.
+            const recordedSemesters = [...new Set(
+                Object.keys(record.marksBySemester || {}).map(Number).filter(Boolean)
+            )].sort((a, b) => a - b);
+            const identity = buildStudentIdentity(profile, recordedSemesters);
+            const isLateral = identity.lateral.isLateral;
+
             return ok({
-                profile: record.profile,
+                found: true,
+                profile: {
+                    ...record.profile,
+                    branchLabel: identity.branch.label,
+                    section: studentProfile?.section || null,
+                    email: studentProfile?.email || null,
+                    phone: studentProfile?.phone || null,
+                    isInactive: identity.isInactive,
+                    // Batch shown to faculty is the cohort the student graduates
+                    // with; a lateral entrant's USN year is one later than that.
+                    batch: identity.cohort.year,
+                    batchLabel: identity.cohort.label,
+                    admissionBatch: identity.batch.year,
+                    admissionBatchLabel: identity.batch.label,
+                    currentSemester: identity.standing.current,
+                    declaredSemester: identity.standing.declared,
+                    recordedSemesters
+                },
+                // VTU lateral entry IS the diploma route — a diploma holder joins
+                // directly in semester 3, so semesters 1 and 2 are "not applicable"
+                // rather than "missing", and their CGPA is over 6 semesters, not 8.
+                entry: {
+                    isLateral,
+                    entryMode: isLateral ? 'LATERAL_DIPLOMA' : 'REGULAR',
+                    entryLabel: isLateral ? 'Lateral Entry (Diploma)' : 'Regular Intake',
+                    qualification: isLateral ? 'Diploma' : 'PUC / 10+2',
+                    firstSemester: isLateral ? LATERAL_ENTRY_SEMESTER : 1,
+                    notApplicableSemesters: isLateral ? [1, 2] : [],
+                    confidence: identity.lateral.confidence,
+                    flagAgrees: identity.lateral.flagAgrees,
+                    reasons: identity.lateral.reasons
+                },
                 // Pre-computed — client uses these directly, no client-side Supabase needed
                 marksBySemester: record.marksBySemester,
                 semSGPAs: record.semSGPAs,

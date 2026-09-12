@@ -58,3 +58,7 @@ scratch/
 
 # Supabase CLI local state (project ref/pooler URL, regenerated locally)
 supabase/.temp/
+
+# Ad-hoc local probe/debug scripts — never commit
+.probe/
+scratch/

@@ -2,9 +2,14 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
-import { isFailedSubject } from '@/lib/vtuGrades';
+import { isFailedSubject, resolveCanonicalGrade } from '@/lib/vtuGrades';
+import { canonicalBranch } from '@/lib/vtu-identity';
 
 export const dynamic = 'force-dynamic';
+
+// Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
+// start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
+export const maxDuration = 60;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -107,7 +112,10 @@ export async function GET(req) {
         const performanceList = [];
 
         facultyList.forEach(fac => {
-            if (branchFilter && fac.department && !fac.department.toUpperCase().includes(branchFilter)) {
+            // Departments are matched by canonical code, not substring: a raw
+            // `includes('CS')` test is true for "ELECTRONICS" and would keep the
+            // wrong faculty in the list.
+            if (branchFilter && fac.department && canonicalBranch(fac.department) !== canonicalBranch(branchFilter)) {
                 return;
             }
 
@@ -155,8 +163,8 @@ export async function GET(req) {
                     subScoreSum += score;
                     totalScoreSum += score;
 
-                    const g = (m.grade || '').toUpperCase().trim();
-                    if (isFail) {
+                    const canonicalG = resolveCanonicalGrade(m);
+                    if (isFail || canonicalG === 'F' || canonicalG === 'AB') {
                         subFailed++;
                         totalFailed++;
                         gradeCounts.F++;
@@ -166,16 +174,14 @@ export async function GET(req) {
                                 internal: m.internal,
                                 external: m.external,
                                 total: m.total,
-                                grade: m.grade || 'F'
+                                grade: canonicalG || 'F'
                             });
                         }
                     } else {
                         subPassed++;
                         totalPassed++;
-                        if (gradeCounts[g] !== undefined) {
-                            gradeCounts[g]++;
-                        } else if (g === 'S') {
-                            gradeCounts.O++;
+                        if (gradeCounts[canonicalG] !== undefined) {
+                            gradeCounts[canonicalG]++;
                         } else {
                             gradeCounts.P++;
                         }

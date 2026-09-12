@@ -12,6 +12,7 @@ import {
 } from '../../../../lib/server-session';
 import { verifyStudentPassword, hashStudentPassword } from '../../../../lib/student-auth';
 import { checkRateLimit, getClientIp } from '../../../../lib/rate-limit';
+import { getStudentDefaultEmail } from '../../../../lib/semester-utils';
 
 const ADMIN_PASSWORD_SALT = 'vtu_calc_secure_2026';
 
@@ -75,11 +76,15 @@ async function loginAdmin({ email, password, systemToken }) {
     const trimmedEmail = String(email || '').trim().toLowerCase();
     const trimmedPassword = String(password || '').trim();
     const cleanToken = String(systemToken || '').trim();
-    const fallbackGatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
+    // Server-only gatekeeper. No hardcoded literal and NOT a NEXT_PUBLIC_ value —
+    // the old default 'GF-ADMIN-PROD' shipped to the browser and doubled as a
+    // full admin backdoor. The live token is whatever the admin configured in
+    // system_settings; the env var is only a bootstrap fallback for first login.
+    const envGatekeeper = process.env.ADMIN_GATEKEEPER || '';
 
     const supabase = getSupabaseAdmin();
 
-    let activeToken = fallbackGatekeeper;
+    let activeToken = envGatekeeper;
     try {
         const { data: secSetting } = await supabase
             .from('system_settings')
@@ -90,10 +95,14 @@ async function loginAdmin({ email, password, systemToken }) {
             activeToken = secSetting.value.system_access_token;
         }
     } catch (e) {
-        // Fallback to env
+        // Fall back to the env bootstrap token.
     }
 
-    if (cleanToken !== activeToken && cleanToken !== fallbackGatekeeper) {
+    if (!activeToken) {
+        return failureResponse('Admin access is not configured. Set ADMIN_GATEKEEPER or a system access token.', 503);
+    }
+
+    if (cleanToken !== activeToken) {
         return failureResponse('Invalid System Access Token. Access Denied.', 403);
     }
 
@@ -242,7 +251,7 @@ async function loginStudent({ usn, email, password }) {
     const supabase = getSupabaseAdmin();
     const { data: student, error } = await supabase
         .from('students')
-        .select('id, usn, name, branch, scheme, password_hash, is_suspended, suspended_reason')
+        .select('id, usn, name, branch, branch_code, scheme, email, phone, password_hash, is_suspended, suspended_reason')
         .eq('usn', cleanUSN)
         .maybeSingle();
 
@@ -270,6 +279,8 @@ async function loginStudent({ usn, email, password }) {
             .eq('id', student.id);
     }
 
+    const defaultEmail = student.email || getStudentDefaultEmail(student.usn);
+
     // Students don't get the httpOnly staff cookie — their session is the
     // returned JSON, stored client-side and replayed via x-student-* headers.
     const session = {
@@ -277,7 +288,10 @@ async function loginStudent({ usn, email, password }) {
         id: student.id,
         name: student.name,
         branch: student.branch,
+        branch_code: student.branch_code,
         scheme: student.scheme,
+        email: defaultEmail,
+        phone: student.phone || '',
         role: 'student',
         signature: signStudentSession({ usn: student.usn, id: student.id }),
     };

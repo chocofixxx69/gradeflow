@@ -1,8 +1,20 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../../lib/server-session';
 import { getAdminClient, loadResultAnalysisDataset, buildStudentRow, parseFilters } from '../../../../../lib/analytics-data';
+import { resolveCanonicalGrade } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
 
 function ok(data) { return NextResponse.json({ success: true, data }); }
 function fail(message, code, status = 400, details = {}) {
@@ -39,7 +51,7 @@ export async function GET(req) {
         let subjectPassed = 0, subjectFailed = 0;
         for (const m of dataset.subjectMarks) {
             if (!scopedUsns.has(m.usn)) continue;
-            const g = m.grade || '—';
+            const g = resolveCanonicalGrade(m);
             gradeDistribution[g] = (gradeDistribution[g] || 0) + 1;
             if (m.passed) subjectPassed++; else subjectFailed++;
         }

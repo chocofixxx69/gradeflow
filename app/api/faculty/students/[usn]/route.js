@@ -1,13 +1,25 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, invalidateAnalyticsCache } from '@/lib/analytics-data';
-import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch } from '@/lib/semester-utils';
+import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch, getStudentDefaultEmail } from '@/lib/semester-utils';
 import { readTable, SELECTS } from '@/lib/table-cache';
 import { getStudentRecord, invalidateStudentRecords } from '@/lib/student-record';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 import { logFacultyActivityServer } from '@/lib/server-audit';
+import { resolveCanonicalGrade } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -162,13 +174,11 @@ export async function GET(req, { params }) {
         for (const [semKey, subjects] of Object.entries(record.marksBySemester || {})) {
             const sem = Number(semKey);
             semesterMarks[sem] = (subjects || []).map(sub => {
-                const g = (sub.rawGrade || sub.grade || '').toUpperCase().trim();
-                if (sub.isFailed) {
+                const canonicalG = resolveCanonicalGrade(sub, record.scheme);
+                if (sub.isFailed || canonicalG === 'F' || canonicalG === 'AB') {
                     gradeCounts.F++;
-                } else if (gradeCounts[g] !== undefined) {
-                    gradeCounts[g]++;
-                } else if (g === 'S') {
-                    gradeCounts.O++;
+                } else if (gradeCounts[canonicalG] !== undefined) {
+                    gradeCounts[canonicalG]++;
                 } else {
                     gradeCounts.P++;
                 }
@@ -182,7 +192,7 @@ export async function GET(req, { params }) {
                     internal: sub.internal ?? sub.internalMarks,
                     external: sub.external ?? sub.seeMarks,
                     total: sub.total ?? sub.totalMarks,
-                    grade: sub.grade,
+                    grade: sub.grade || canonicalG,
                     grade_point: sub.gradePoint,
                     is_fail: sub.isFailed,
                     is_audit: sub.isAudit,
@@ -246,11 +256,18 @@ export async function GET(req, { params }) {
                 year: student?.year || (cohort?.fullYear ? Number(cohort.fullYear) : 2023),
                 semester: student?.semester || (sortedSemesters.length > 0 ? sortedSemesters[sortedSemesters.length - 1] : 1),
                 scheme: student?.scheme || '2022',
-                email: student?.email || '—',
+                email: student?.email || getStudentDefaultEmail(cleanUsn) || '—',
                 phone: student?.phone || '—',
                 is_inactive: Boolean(student?.is_suspended),
                 is_suspended: Boolean(student?.is_suspended),
-                lateral_entry: isLateralEntry(cleanUsn, student?.lateral_entry)
+                lateral_entry: isLateralEntry(cleanUsn, student?.lateral_entry),
+                // VTU lateral entry is the diploma route: admitted into the 3rd
+                // semester, so semesters 1-2 never existed and the graduating
+                // cohort is a year earlier than the USN's admission year.
+                entry_mode: isLateralEntry(cleanUsn, student?.lateral_entry) ? 'LATERAL_DIPLOMA' : 'REGULAR',
+                entry_label: isLateralEntry(cleanUsn, student?.lateral_entry) ? 'Lateral Entry (Diploma)' : 'Regular Intake',
+                admission_batch: cohort?.admissionYear || null,
+                admission_batch_label: cohort?.admissionLabel || null
             },
             guardian: {
                 parent_name: student?.parent_name || '',

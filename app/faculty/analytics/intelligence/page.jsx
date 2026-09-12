@@ -14,6 +14,8 @@ import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
 import { filterAndRankStudents, filterAndRank, matchesGeneric } from '@/lib/search-utils';
+import { writeWorkbook } from '@/lib/workbook-export';
+import { fmtNum } from '@/lib/format';
 
 export default function InstitutionalIntelligencePage() {
     return (
@@ -604,7 +606,7 @@ function InstitutionalIntelligenceContent() {
                 ]);
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 XLSX.utils.book_append_sheet(wb, ws, 'Department Trends');
-                XLSX.writeFile(wb, `Department_Overview_${branch}.xlsx`);
+                writeWorkbook(XLSX, wb, `Department_Overview_${branch}.xlsx`);
             } else if (viewTab === 'sections') {
                 if (compareMode === 'classes') {
                     const cList = classReport?.classes || [];
@@ -632,7 +634,7 @@ function InstitutionalIntelligenceContent() {
                     ]);
                     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                     XLSX.utils.book_append_sheet(wb, ws, 'Class Comparisons');
-                    XLSX.writeFile(wb, `Class_Comparison_Report.xlsx`);
+                    writeWorkbook(XLSX, wb, `Class_Comparison_Report.xlsx`);
                 } else {
                     const cList = sectionReport?.sectionComparisons || [];
                     if (cList.length === 0) {
@@ -650,7 +652,7 @@ function InstitutionalIntelligenceContent() {
                     ]);
                     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                     XLSX.utils.book_append_sheet(wb, ws, 'Section Benchmarks');
-                    XLSX.writeFile(wb, `Section_Comparison_${branch}_Sem${semester}.xlsx`);
+                    writeWorkbook(XLSX, wb, `Section_Comparison_${branch}_Sem${semester}.xlsx`);
                 }
             } else {
                 const tList = comparatorData?.trajectory || [];
@@ -682,7 +684,7 @@ function InstitutionalIntelligenceContent() {
                     XLSX.utils.book_append_sheet(wb, wsSub, 'Subject Breakdown');
                 }
 
-                XLSX.writeFile(wb, `Student_Comparison_Report.xlsx`);
+                writeWorkbook(XLSX, wb, `Student_Comparison_Report.xlsx`);
             }
         } catch (err) {
             console.error('Export Excel error:', err);
@@ -1354,10 +1356,14 @@ function InstitutionalIntelligenceContent() {
                                 }}>
                                     <div>
                                         <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', marginBottom: '4px' }}>
-                                            No evaluation records for {branch} in Semester {semester}
+                                            {sectionReport?.message || `No evaluation records for ${branch} in Semester ${semester}`}
                                         </div>
                                         <div style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
-                                            Active evaluated data is available in Semester {activeEvaluatedSemesters.slice(-1)[0] || 6}.
+                                            {sectionReport?.sections?.length === 1 
+                                                ? `Only Section ${sectionReport.sections[0]} is registered for this cohort. Add additional sections in Class Management to enable comparative analytics.`
+                                                : sectionReport?.sections?.length === 0 
+                                                    ? 'No sections have been created for this cohort yet. Create sections in Class Management to enable section comparison.'
+                                                    : `Active evaluated data is available in Semester ${activeEvaluatedSemesters.slice(-1)[0] || 6}.`}
                                         </div>
                                     </div>
                                     {activeEvaluatedSemesters.length > 0 && activeEvaluatedSemesters[activeEvaluatedSemesters.length - 1] !== semester && (
@@ -1870,7 +1876,7 @@ function InstitutionalIntelligenceContent() {
                                                                 background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
                                                                 color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
                                                             }}>
-                                                                {stu.cgpa.toFixed(2)} CGPA
+                                                                {fmtNum(stu.cgpa)} CGPA
                                                             </span>
                                                         )}
                                                         {stu.total_backlogs > 0 && (
@@ -1942,7 +1948,7 @@ function InstitutionalIntelligenceContent() {
                                                             borderRadius: '4px',
                                                             marginLeft: '2px'
                                                         }}>
-                                                            {stu.cgpa.toFixed(2)}
+                                                            {fmtNum(stu.cgpa)}
                                                         </span>
                                                     )}
                                                     <button
@@ -2119,7 +2125,7 @@ function InstitutionalIntelligenceContent() {
                                                                     Cumulative CGPA
                                                                 </div>
                                                                 <div style={{ fontSize: '26px', fontWeight: 900, color: color, lineHeight: 1.1, marginTop: '2px' }}>
-                                                                    {cgpa !== null ? cgpa.toFixed(2) : '—'}
+                                                                    {fmtNum(cgpa)}
                                                                 </div>
                                                             </div>
                                                             {/* Trend Pill */}
@@ -2868,7 +2874,7 @@ function InstitutionalIntelligenceContent() {
                                                                     background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(99, 102, 241, 0.12)',
                                                                     color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
                                                                 }}>
-                                                                    {stu.cgpa.toFixed(2)} CGPA
+                                                                    {fmtNum(stu.cgpa)} CGPA
                                                                 </span>
                                                             )}
                                                             {stu.total_backlogs > 0 && (

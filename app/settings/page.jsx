@@ -8,6 +8,8 @@ import AuthGuard from '../../components/AuthGuard';
 import { Button, Input } from '@/components/ui/Foundation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
+import { getStudentDefaultEmail, extractBranchFromUsn } from '@/lib/semester-utils';
+import { canonicalBranch, branchLabelFor, listBranches } from '@/lib/vtu-identity';
 
 const CANONICAL_DEPARTMENTS = [
     { code: 'CS', name: 'Computer Science & Engineering' },
@@ -243,27 +245,43 @@ function SettingsContent() {
     const loadStudentSettings = async (usn) => {
         setLoading(true);
         try {
+            const cleanUsn = usn?.toUpperCase()?.trim();
             const { data } = await supabase
                 .from('students')
                 .select('*')
-                .eq('usn', usn?.toUpperCase())
+                .eq('usn', cleanUsn)
                 .maybeSingle();
 
             if (data) {
                 setProfile(data);
                 setPhotoUrl(data.photo_url || null);
                 setEditName(data.name || '');
-                setEditBranch(data.branch || '');
-                setEditEmail(data.email || '');
+                const branchCode = canonicalBranch(data.branch_code || data.branch || extractBranchFromUsn(cleanUsn)) || 'CS';
+                setEditBranch(branchCode);
+                const defaultEmail = data.email || getStudentDefaultEmail(data.usn || cleanUsn);
+                setEditEmail(defaultEmail);
                 setEditPhone(data.phone || '');
                 setRecoveryPin(data.recovery_pin || '');
 
                 setInitialFormState({
                     name: data.name || '',
-                    branch: data.branch || '',
-                    email: data.email || '',
+                    branch: branchCode,
+                    email: defaultEmail,
                     phone: data.phone || '',
                     photo: data.photo_url || null,
+                });
+            } else if (cleanUsn) {
+                const branchCode = canonicalBranch(extractBranchFromUsn(cleanUsn)) || 'CS';
+                const defaultEmail = getStudentDefaultEmail(cleanUsn);
+                setEditBranch(branchCode);
+                setEditEmail(defaultEmail);
+                setEditPhone('');
+                setInitialFormState({
+                    name: '',
+                    branch: branchCode,
+                    email: defaultEmail,
+                    phone: '',
+                    photo: null,
                 });
             }
         } catch (err) {
@@ -441,26 +459,57 @@ function SettingsContent() {
                 showToast('✓ Administrator profile updated!');
             } else {
                 // Student save
+                const branchCode = canonicalBranch(editBranch) || 'CS';
+                const branchLabel = branchLabelFor(branchCode) || editBranch;
+                const studentEmail = editEmail || getStudentDefaultEmail(session?.usn);
+
+                // Update via API route
                 await apiRequest('/api/student/settings', {
                     method: 'PATCH',
                     headers: getStudentAuthHeaders(session),
                     body: JSON.stringify({
                         full_name: editName,
-                        email: editEmail,
+                        email: studentEmail,
                         phone: editPhone,
+                        branch: branchLabel,
+                        branch_code: branchCode,
                         photo_url: finalPhotoUrl,
                     })
                 });
 
-                const updatedSession = { ...session, name: editName, email: editEmail, phone: editPhone, photo_url: finalPhotoUrl };
+                // Also directly sync to Supabase students table
+                if (session?.usn) {
+                    await supabase
+                        .from('students')
+                        .update({
+                            name: editName,
+                            email: studentEmail,
+                            phone: editPhone,
+                            branch: branchLabel,
+                            branch_code: branchCode,
+                            photo_url: finalPhotoUrl,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('usn', session.usn.toUpperCase());
+                }
+
+                const updatedSession = {
+                    ...session,
+                    name: editName,
+                    email: studentEmail,
+                    phone: editPhone,
+                    branch: branchLabel,
+                    branch_code: branchCode,
+                    photo_url: finalPhotoUrl
+                };
                 localStorage.setItem('student_session', JSON.stringify(updatedSession));
                 window.dispatchEvent(new Event('storage'));
                 setPhotoUrl(finalPhotoUrl);
                 setPhotoPreview(null);
                 setInitialFormState({
                     name: editName,
-                    branch: editBranch,
-                    email: editEmail,
+                    branch: branchCode,
+                    email: studentEmail,
                     phone: editPhone,
                     photo: finalPhotoUrl,
                 });
@@ -720,16 +769,15 @@ function SettingsContent() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>mail</span>
-                                {editEmail || session?.email || '—'}
+                                {editEmail || (userType === 'student' ? getStudentDefaultEmail(session?.usn) : session?.email) || '—'}
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>school</span>
                                 {userType === 'student'
-                                    ? (editBranch || 'Engineering')
+                                    ? (branchLabelFor(canonicalBranch(editBranch || profile?.branch || profile?.branch_code || profile?.usn)) || editBranch || 'Computer Science & Engineering')
                                     : (userType === 'admin'
                                         ? (editDepartment || 'Institutional Administration')
-                                        : (editDepartment || 'Department of Computer Science')
-                                      )}
+                                        : (editDepartment || profile?.department || 'Department Member'))}
                             </span>
                             {editDesignation && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -919,7 +967,7 @@ function SettingsContent() {
                                     <div style={{ position: 'relative' }}>
                                         <input
                                             type="email"
-                                            value={editEmail}
+                                            value={editEmail || (userType === 'student' ? getStudentDefaultEmail(session?.usn) : '')}
                                             readOnly
                                             style={{
                                                 width: '100%',
@@ -1179,7 +1227,7 @@ function SettingsContent() {
                                             Branch
                                         </label>
                                         <select
-                                            value={editBranch}
+                                            value={canonicalBranch(editBranch) || editBranch || 'CS'}
                                             onChange={e => setEditBranch(e.target.value)}
                                             style={{
                                                 width: '100%',
@@ -1195,13 +1243,11 @@ function SettingsContent() {
                                             }}
                                         >
                                             <option value="">Select Branch</option>
-                                            <option value="CSE">Computer Science</option>
-                                            <option value="AIML">AI & Machine Learning</option>
-                                            <option value="ISE">Information Science</option>
-                                            <option value="ECE">Electronics & Comm.</option>
-                                            <option value="EEE">Electrical & Electronics</option>
-                                            <option value="ME">Mechanical Engineering</option>
-                                            <option value="CIVIL">Civil Engineering</option>
+                                            {listBranches().map(b => (
+                                                <option key={b.code} value={b.code}>
+                                                    {b.label} ({b.code})
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
                                 )}

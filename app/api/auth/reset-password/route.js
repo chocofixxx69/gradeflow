@@ -34,6 +34,19 @@ export async function POST(req) {
         if (!pin || pin.length !== 4) return fail('Please enter your 4-digit Recovery PIN.');
         if (!password || password.length < 4) return fail('Password must be at least 4 characters.');
 
+        // Per-USN lockout, in addition to the per-IP limit above. A 4-digit PIN
+        // is only 10,000 combinations, so without this an attacker could spread
+        // guesses across many IPs to defeat the per-IP cap. NOTE: this limiter is
+        // in-memory/per-process — on a multi-instance deploy move it to a shared
+        // store (Supabase/Upstash) for it to be airtight.
+        const usnLimit = checkRateLimit(`reset-password-usn:${cleanUSN}`, { limit: 8, windowMs: 15 * 60_000 });
+        if (!usnLimit.allowed) {
+            return NextResponse.json(
+                { success: false, error: 'Too many reset attempts for this account. Please try again later or contact the Admin Office.' },
+                { status: 429, headers: { 'Retry-After': String(usnLimit.retryAfterSeconds) } }
+            );
+        }
+
         const { data: student, error: fetchErr } = await supabaseAdmin
             .from('students')
             .select('id, recovery_pin')

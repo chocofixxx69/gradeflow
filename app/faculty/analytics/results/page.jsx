@@ -4,14 +4,17 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
-import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
+import { getJsPDF } from '@/lib/lazy-export-libs';
+import { downloadWorkbook } from '@/lib/workbook-export';
+import { fmtNum, fmtGpa, fmtPercent, resultFileName } from '@/lib/format';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
+import { DiplomaTag } from '@/components/ui/EntryTag';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
-import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { getCleanBranchOptions, canonicalBranchCode } from '@/lib/semester-utils';
 import { filterAndRankStudents, matchesStudent } from '@/lib/search-utils';
 
 export default function ExamResultsHubPage() {
@@ -50,42 +53,64 @@ function ExamResultsHubContent() {
     const [section, setSection] = useState('ALL');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Dynamically derive available sections from live classes metadata
+    // Dynamically derive available sections strictly from live classes metadata for the chosen branch and batch
     const availableSections = useMemo(() => {
         const classes = meta.classes || [];
-        const norm = (b) => {
-            if (!b) return '';
-            const s = String(b).toUpperCase().trim();
-            if (s === 'AI' || s === 'AIML' || s === 'CI') return 'AI';
-            if (s === 'CD' || s === 'CSD' || s === 'DS') return 'CD';
-            if (s === 'CS' || s === 'CSE') return 'CS';
-            if (s === 'EC' || s === 'ECE') return 'EC';
-            if (s === 'EE' || s === 'EEE') return 'EE';
-            if (s === 'CV' || s === 'CIVIL') return 'CV';
-            if (s === 'ME' || s === 'MECH') return 'ME';
-            if (s === 'RI' || s === 'ROBOTICS') return 'RI';
-            return s;
-        };
+        const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
+        const targetBranch = branch && branch !== 'ALL' ? norm(branch) : null;
+        const targetBatch = batch && batch !== 'ALL' ? String(batch) : null;
 
-        const relevantClasses = classes.filter(c => {
-            if (branch && branch !== 'ALL' && norm(c.branch) !== norm(branch)) return false;
-            if (viewTab !== 'batch' && semester && c.semester && Number(c.semester) !== Number(semester)) return false;
-            if (batch && batch !== 'ALL' && c.batch && c.batch !== batch) return false;
+        const branchClasses = classes.filter(c => {
+            if (targetBranch) {
+                const cBranch = norm(c.branch_code) || norm(c.branch);
+                if (cBranch !== targetBranch) return false;
+            }
+            if (targetBatch && c.batch) {
+                if (String(c.batch) !== targetBatch) return false;
+            }
             return true;
         });
-        const sectionSet = new Set(relevantClasses.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean));
-        if (sectionSet.size === 0 && classes.length > 0) {
-            classes.forEach(c => {
-                if (c.section) sectionSet.add(c.section.trim().toUpperCase());
-            });
-        }
-        if (sectionSet.size === 0) {
-            sectionSet.add('A');
-            sectionSet.add('B');
-            sectionSet.add('C');
-        }
+
+        // If semester-specific classes exist for this branch & batch, prefer them; otherwise use cohort classes
+        const semClasses = (viewTab !== 'batch' && semester && semester !== 'ALL')
+            ? branchClasses.filter(c => c.semester && Number(c.semester) === Number(semester))
+            : [];
+        const targetClasses = semClasses.length > 0 ? semClasses : branchClasses;
+
+        const sectionSet = new Set(targetClasses.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean));
         return Array.from(sectionSet).sort();
     }, [meta.classes, branch, semester, batch, viewTab]);
+
+    // Reset section filter when branch or batch changes
+    useEffect(() => {
+        setSection('ALL');
+    }, [branch, batch]);
+
+    // Clear stale section selection if no longer present in available sections
+    useEffect(() => {
+        if (section !== 'ALL' && availableSections.length > 0 && !availableSections.includes(section)) {
+            setSection('ALL');
+        }
+    }, [availableSections, section]);
+
+    // Construct user-friendly section options
+    const sectionOptions = useMemo(() => {
+        if (availableSections.length === 0) {
+            return [
+                { value: 'ALL', label: 'No Sections Created (Whole Cohort)' }
+            ];
+        }
+        if (availableSections.length === 1) {
+            return [
+                { value: 'ALL', label: `Single Section (Sec ${availableSections[0]})` },
+                { value: availableSections[0], label: `Section ${availableSections[0]}` }
+            ];
+        }
+        return [
+            { value: 'ALL', label: `All Sections (${availableSections.join(', ')})` },
+            ...availableSections.map(s => ({ value: s, label: `Section ${s}` }))
+        ];
+    }, [availableSections]);
 
     // Tab 1: Semester Analysis States
     const [viewMode, setViewMode] = useState('credits'); // 'credits' | 'marks'
@@ -131,6 +156,12 @@ function ExamResultsHubContent() {
     });
     const [revalLoading, setRevalLoading] = useState(false);
 
+    // A failed request used to fall through to "No student records found", which
+    // reads as "this cohort has no data" — the single most expensive wrong message
+    // this page can show, because the natural response is to go re-scrape results
+    // that were already there. Failures are now named.
+    const [loadError, setLoadError] = useState(null);
+
     // Synchronize filters
     useEffect(() => {
         saveFilters({ branch, semester, batch });
@@ -162,6 +193,7 @@ function ExamResultsHubContent() {
     const loadSemesterData = useCallback(async (silent = false, fresh = false) => {
         if (!branch || !semester || !batch) return null;
         if (!silent) setSemLoading(true);
+        setLoadError(null);
         try {
             const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined };
             if (fresh) query.fresh = '1';
@@ -170,6 +202,7 @@ function ExamResultsHubContent() {
             return res;
         } catch (err) {
             console.error('Failed to load semester data:', err);
+            setLoadError({ scope: 'semester gazette', message: err?.message || 'The request did not complete.' });
             return null;
         } finally {
             if (!silent) setSemLoading(false);
@@ -180,6 +213,7 @@ function ExamResultsHubContent() {
     const loadBatchTrajectory = useCallback(async (silent = false, fresh = false) => {
         if (!branch || !batch) return null;
         if (!silent) setBatchLoading(true);
+        setLoadError(null);
         try {
             const query = { branch, batch, upToSemester, section: section !== 'ALL' ? section : undefined };
             if (fresh) query.fresh = '1';
@@ -188,6 +222,7 @@ function ExamResultsHubContent() {
             return res;
         } catch (err) {
             console.error('Failed to load batch report:', err);
+            setLoadError({ scope: 'batch trajectory', message: err?.message || 'The request did not complete.' });
             return null;
         } finally {
             if (!silent) setBatchLoading(false);
@@ -198,6 +233,7 @@ function ExamResultsHubContent() {
     const loadRevalData = useCallback(async (silent = false, fresh = false) => {
         if (!branch) return null;
         if (!silent) setRevalLoading(true);
+        setLoadError(null);
         try {
             const query = { branch, semester, batch, section: section !== 'ALL' ? section : undefined };
             if (fresh) query.fresh = '1';
@@ -206,6 +242,7 @@ function ExamResultsHubContent() {
             return res;
         } catch (err) {
             console.error('Failed to load reval data:', err);
+            setLoadError({ scope: 'revaluation impact', message: err?.message || 'The request did not complete.' });
             return null;
         } finally {
             if (!silent) setRevalLoading(false);
@@ -317,71 +354,112 @@ function ExamResultsHubContent() {
         }
     };
 
+    // The batch report has shipped this count under two names; read both.
+    const backlogsOf = (row) => row?.backlogsCount ?? row?.totalBacklogs ?? 0;
+
+    // One place that turns a gazette row's class code into its full VTU award name.
+    const awardClassOf = (row) => row?.awardClass || ({
+        FCD: 'First Class Distinction',
+        FC: 'First Class',
+        SC: 'Second Class',
+        P: 'Pass Class',
+        F: 'Fail'
+    }[row?.vtuClass] || '—');
+
     // ── Excel Export ──
+    // Goes through lib/workbook-export.js so the file is written with an explicit
+    // bookType and the real OOXML MIME type — see that module for why "Export Excel"
+    // used to open as mojibake.
     const handleExportExcel = async () => {
         try {
-            const XLSX = await getXLSX();
-            const wb = XLSX.utils.book_new();
-
             if (viewTab === 'semester') {
                 if (filteredSemesterStudents.length === 0) {
                     alert('No semester gazette records available to export.');
                     return;
                 }
-                const headers = ['USN', 'Student Name', 'Total Marks', 'SGPA', 'Status', 'Class', 'Backlogs Count'];
-                const rows = filteredSemesterStudents.map(s => [
-                    s.usn,
-                    s.name,
-                    s.totalMarks ?? s.totalScoreSum ?? 0,
-                    typeof s.sgpa === 'number' ? s.sgpa.toFixed(2) : (s.sgpa ?? '—'),
-                    (s.isPassed ?? (s.hasData && s.arrearsCount === 0)) ? 'PASS' : 'FAIL',
-                    s.awardClass || (s.vtuClass === 'FCD' ? 'First Class Distinction' : s.vtuClass === 'FC' ? 'First Class' : s.vtuClass === 'SC' ? 'Second Class' : s.vtuClass === 'P' ? 'Pass Class' : s.vtuClass === 'F' ? 'Fail' : '—'),
-                    s.backlogCount ?? s.arrearsCount ?? 0
-                ]);
-                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                XLSX.utils.book_append_sheet(wb, ws, `Sem ${semester} Gazette`);
-                XLSX.writeFile(wb, `Semester_${semester}_Gazette_${branch}.xlsx`);
+                const summary = semData?.summary || {};
+                await downloadWorkbook([{
+                    name: `Sem ${semester} Gazette`,
+                    preamble: [
+                        [`Semester ${semester} Academic Gazette — ${branch} · Batch ${batch}`],
+                        [`Appeared: ${summary.totalAppeared ?? filteredSemesterStudents.length}   Passed: ${summary.totalPassed ?? 0}   Failed: ${summary.totalFailed ?? 0}   Pass rate: ${fmtNum(summary.passPercentage, 1, '0')}%`],
+                        [`Section: ${section === 'ALL' ? 'All sections' : section}   Generated: ${new Date().toLocaleString()}`],
+                        []
+                    ],
+                    headers: ['USN', 'Student Name', 'Branch', 'Section', 'Entry', 'Total Marks', 'SGPA', 'Result', 'Award Class', 'Backlogs'],
+                    numberFormats: { SGPA: '0.00' },
+                    rows: filteredSemesterStudents.map(s => [
+                        s.usn,
+                        s.name,
+                        s.branch || '—',
+                        s.section && s.section !== '—' ? s.section : '',
+                        s.isLE ? 'Lateral (Diploma)' : 'Regular',
+                        s.totalMarks ?? s.totalScoreSum ?? 0,
+                        Number.isFinite(s.sgpa) ? s.sgpa : null,
+                        (s.isPassed ?? (s.hasData && s.arrearsCount === 0)) ? 'PASS' : (s.hasData === false ? 'NOT APPEARED' : 'FAIL'),
+                        awardClassOf(s),
+                        s.backlogCount ?? s.arrearsCount ?? 0
+                    ])
+                }], `Semester_${semester}_Gazette_${branch}_${batch}`);
             } else if (viewTab === 'batch') {
                 if (filteredBatchStudents.length === 0) {
                     alert('No batch trajectory records available to export.');
                     return;
                 }
-                const headers = ['USN', 'Student Name', 'Branch', 'CGPA', 'Active Backlogs', ...Array.from({ length: upToSemester }, (_, i) => `S${i + 1} SGPA`)];
-                const rows = filteredBatchStudents.map(s => [
-                    s.usn,
-                    s.name,
-                    s.branch,
-                    typeof s.cgpa === 'number' ? s.cgpa.toFixed(2) : (s.cgpa ?? '—'),
-                    s.backlogsCount ?? 0,
-                    ...Array.from({ length: upToSemester }, (_, i) => {
-                        const semSgpa = s.semesters?.[i + 1]?.sgpa;
-                        return typeof semSgpa === 'number' ? semSgpa.toFixed(2) : '—';
-                    })
-                ]);
-                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                XLSX.utils.book_append_sheet(wb, ws, 'Batch Trajectory');
-                XLSX.writeFile(wb, `Batch_${batch}_Trajectory_${branch}.xlsx`);
+                const semesterHeaders = Array.from({ length: upToSemester }, (_, i) => `S${i + 1} SGPA`);
+                await downloadWorkbook([{
+                    name: 'Batch Trajectory',
+                    preamble: [
+                        [`Cumulative Batch Progression — ${branch} · Batch ${batch}`],
+                        [`Students: ${filteredBatchStudents.length}   Semesters tracked: 1–${upToSemester}   Generated: ${new Date().toLocaleString()}`],
+                        []
+                    ],
+                    headers: ['USN', 'Student Name', 'Branch', 'Section', 'Entry', 'CGPA', 'Active Backlogs', ...semesterHeaders],
+                    numberFormats: Object.fromEntries([['CGPA', '0.00'], ...semesterHeaders.map(h => [h, '0.00'])]),
+                    rows: filteredBatchStudents.map(s => [
+                        s.usn,
+                        s.name,
+                        s.branch,
+                        s.section && s.section !== '—' ? s.section : '',
+                        s.isLE ? 'Lateral (Diploma)' : 'Regular',
+                        Number.isFinite(s.cgpa) ? s.cgpa : null,
+                        s.backlogsCount ?? s.totalBacklogs ?? 0,
+                        ...Array.from({ length: upToSemester }, (_, i) => {
+                            const sem = s.semesters?.[i + 1];
+                            // A lateral entrant never sat semesters 1-2 — say so
+                            // rather than leaving a blank that reads as missing data.
+                            if (sem?.notApplicable) return 'N/A (Diploma)';
+                            return Number.isFinite(sem?.sgpa) ? sem.sgpa : null;
+                        })
+                    ])
+                }], `Batch_${batch}_Trajectory_${branch}_upto_Sem${upToSemester}`);
             } else {
                 if (filteredRevalRoster.length === 0) {
                     alert('No revaluation records available to export.');
                     return;
                 }
-                const headers = ['USN', 'Name', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Outcome'];
-                const rows = filteredRevalRoster.map(r => {
-                    const deltaVal = r.deltaMarks ?? r.delta;
-                    return [
-                        r.usn,
-                        r.name,
-                        r.subject_code,
-                        r.originalExternal !== null && r.originalExternal !== undefined ? r.originalExternal : (r.preMarks ?? '—'),
-                        r.revalExternal !== null && r.revalExternal !== undefined ? r.revalExternal : (r.postMarks ?? '—'),
-                        deltaVal !== null && deltaVal !== undefined ? (deltaVal > 0 ? `+${deltaVal}` : deltaVal) : '—',
-                        r.outcome || 'No Change'
-                    ];
-                });
-                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                XLSX.utils.book_append_sheet(wb, ws, 'Revaluation Delta');
-                XLSX.writeFile(wb, `Revaluation_Delta_${branch}_Sem${semester}.xlsx`);
+                await downloadWorkbook([{
+                    name: 'Revaluation Delta',
+                    preamble: [
+                        [`Revaluation Impact & Delta Audit — ${branch} · Semester ${semester}`],
+                        [`Applications evaluated: ${filteredRevalRoster.length}   Generated: ${new Date().toLocaleString()}`],
+                        []
+                    ],
+                    headers: ['USN', 'Name', 'Subject Code', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Outcome'],
+                    rows: filteredRevalRoster.map(r => {
+                        const deltaVal = r.deltaMarks ?? r.delta;
+                        return [
+                            r.usn,
+                            r.name,
+                            r.subject_code,
+                            r.subject_name || '',
+                            r.originalExternal ?? r.preMarks ?? null,
+                            r.revalExternal ?? r.postMarks ?? null,
+                            Number.isFinite(deltaVal) ? deltaVal : null,
+                            r.outcome || 'No Change'
+                        ];
+                    })
+                }], `Revaluation_Delta_${branch}_Sem${semester}`);
             }
         } catch (err) {
             console.error('Export Excel error:', err);
@@ -408,7 +486,7 @@ function ExamResultsHubContent() {
                 doc.setFont('helvetica', 'normal');
                 const appeared = semData?.summary?.totalAppeared ?? filteredSemesterStudents.length;
                 const passed = semData?.summary?.totalPassed ?? 0;
-                const passRate = typeof semData?.summary?.passPercentage === 'number' ? `${semData.summary.passPercentage.toFixed(1)}%` : '—';
+                const passRate = fmtPercent(semData?.summary?.passPercentage);
                 doc.text(`Appeared: ${appeared} | Passed: ${passed} | Pass Rate: ${passRate} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
                 const tableHead = [['USN', 'Student Name', 'Marks', 'SGPA', 'Result', 'Award Class', 'Backlogs']];
@@ -416,9 +494,9 @@ function ExamResultsHubContent() {
                     s.usn,
                     s.name,
                     s.totalMarks ?? s.totalScoreSum ?? 0,
-                    typeof s.sgpa === 'number' ? s.sgpa.toFixed(2) : (s.sgpa ?? '—'),
-                    (s.isPassed ?? (s.hasData && s.arrearsCount === 0)) ? 'PASS' : 'FAIL',
-                    s.awardClass || (s.vtuClass === 'FCD' ? 'First Class Distinction' : s.vtuClass === 'FC' ? 'First Class' : s.vtuClass === 'SC' ? 'Second Class' : s.vtuClass === 'P' ? 'Pass Class' : s.vtuClass === 'F' ? 'Fail' : '—'),
+                    fmtNum(s.sgpa),
+                    (s.isPassed ?? (s.hasData && s.arrearsCount === 0)) ? 'PASS' : (s.hasData === false ? 'NOT APPEARED' : 'FAIL'),
+                    awardClassOf(s),
                     s.backlogCount ?? s.arrearsCount ?? 0
                 ]);
 
@@ -431,7 +509,9 @@ function ExamResultsHubContent() {
                     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] }
                 });
 
-                doc.save(`Semester_${semester}_Gazette_${branch}.pdf`);
+                // "6th Sem Result Sheet - CS 2023.pdf" — the semester leads, the way
+                // faculty actually file these.
+                doc.save(resultFileName({ semester, usn: `${branch} ${batch}`, suffix: 'Result Sheet' }));
             } else if (viewTab === 'batch') {
                 if (filteredBatchStudents.length === 0) {
                     alert('No batch trajectory records available to download.');
@@ -445,15 +525,17 @@ function ExamResultsHubContent() {
                 doc.setFont('helvetica', 'normal');
                 doc.text(`Total Students: ${filteredBatchStudents.length} | Tracked Semesters: 1..${upToSemester} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
-                const tableHead = [['USN', 'Student Name', 'CGPA', 'Backlogs', ...Array.from({ length: upToSemester }, (_, i) => `S${i + 1}`)]];
+                const tableHead = [['USN', 'Student Name', 'Entry', 'CGPA', 'Backlogs', ...Array.from({ length: upToSemester }, (_, i) => `S${i + 1}`)]];
                 const tableBody = filteredBatchStudents.map(s => [
                     s.usn,
                     s.name,
-                    typeof s.cgpa === 'number' ? s.cgpa.toFixed(2) : (s.cgpa ?? '—'),
-                    s.backlogsCount ?? 0,
+                    s.isLE ? 'Lateral' : 'Regular',
+                    fmtNum(s.cgpa),
+                    s.backlogsCount ?? s.totalBacklogs ?? 0,
                     ...Array.from({ length: upToSemester }, (_, i) => {
-                        const semSgpa = s.semesters?.[i + 1]?.sgpa;
-                        return typeof semSgpa === 'number' ? semSgpa.toFixed(2) : '—';
+                        const sem = s.semesters?.[i + 1];
+                        if (sem?.notApplicable) return 'N/A';
+                        return fmtNum(sem?.sgpa);
                     })
                 ]);
 
@@ -466,7 +548,7 @@ function ExamResultsHubContent() {
                     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] }
                 });
 
-                doc.save(`Batch_${batch}_Report_${branch}.pdf`);
+                doc.save(resultFileName({ semester: upToSemester, usn: `${branch} Batch ${batch}`, suffix: 'Cumulative Result' }));
             } else {
                 if (filteredRevalRoster.length === 0) {
                     alert('No revaluation records available to download.');
@@ -503,7 +585,7 @@ function ExamResultsHubContent() {
                     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] }
                 });
 
-                doc.save(`Reval_Delta_${branch}_Sem${semester}.pdf`);
+                doc.save(resultFileName({ semester: semester === 'ALL' ? null : semester, usn: branch, suffix: 'Revaluation Delta' }));
             }
         } catch (err) {
             console.error('Export PDF error:', err);
@@ -560,6 +642,34 @@ function ExamResultsHubContent() {
                         {refreshBanner.type === 'new' ? 'auto_awesome' : 'check_circle'}
                     </span>
                     {refreshBanner.text}
+                </div>
+            )}
+
+            {/* Load failure — named, with a way out. */}
+            {loadError && (
+                <div
+                    role="alert"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '10px',
+                        background: 'rgba(220, 38, 38, 0.08)',
+                        border: '1px solid rgba(220, 38, 38, 0.35)',
+                        marginBottom: '18px'
+                    }}
+                >
+                    <span className="material-icons-round" aria-hidden="true" style={{ fontSize: '20px', color: '#DC2626' }}>error_outline</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: '#DC2626' }}>
+                            Could not load the {loadError.scope}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '3px' }}>
+                            {loadError.message} — the table below is empty because the request failed, not because this cohort has no results.
+                        </div>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={handleRefresh} disabled={isRefreshing}>Retry</Button>
                 </div>
             )}
 
@@ -682,13 +792,11 @@ function ExamResultsHubContent() {
                         )}
 
                         <Select
-                            label="Section"
+                            label={availableSections.length === 0 ? "Section (None Created)" : "Section"}
                             value={section}
+                            disabled={availableSections.length === 0}
                             onChange={e => setSection(e.target.value)}
-                            options={[
-                                { value: 'ALL', label: availableSections.length > 0 ? `All Sections (${availableSections.join(', ')})` : 'All Sections (Whole Cohort)' },
-                                ...availableSections.map(s => ({ value: s, label: `Section ${s}` }))
-                            ]}
+                            options={sectionOptions}
                         />
 
                         {viewTab === 'reval' && (
@@ -732,7 +840,7 @@ function ExamResultsHubContent() {
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Semester Pass Rate</div>
                                 <div style={{ fontSize: '28px', fontWeight: 900, color: semData.summary.passPercentage >= 70 ? '#16A34A' : '#DC2626' }}>
-                                    {semData.summary.passPercentage.toFixed(1)}%
+                                    {fmtPercent(semData.summary?.passPercentage, 1, '0.0%')}
                                 </div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>{semData.summary.totalPassed} passed, {semData.summary.totalFailed} failed</div>
                             </CardContent>
@@ -788,7 +896,10 @@ function ExamResultsHubContent() {
                                                         {s.usn}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
-                                                        <div>{s.name}</div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                            <span>{s.name}</span>
+                                                            {s.isLE && <DiplomaTag />}
+                                                        </div>
                                                         <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500, marginTop: '2px' }}>
                                                             {s.branch || (s.usn.length >= 7 ? s.usn.substring(5, 7).toUpperCase() : '—')}{s.section && s.section !== '—' ? ` • Sec ${s.section}` : ''}
                                                         </div>
@@ -825,7 +936,7 @@ function ExamResultsHubContent() {
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', color: 'var(--tx-muted)', fontSize: '12px' }}>
-                                                        {s.awardClass || (s.vtuClass === 'FCD' ? 'First Class Distinction' : s.vtuClass === 'FC' ? 'First Class' : s.vtuClass === 'SC' ? 'Second Class' : s.vtuClass === 'P' ? 'Pass Class' : s.vtuClass === 'F' ? 'Fail' : '—')}
+                                                        {awardClassOf(s)}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                                                         <Link href={`/faculty/students/${s.usn}`} style={{ textDecoration: 'none' }}>
@@ -852,13 +963,15 @@ function ExamResultsHubContent() {
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Cohort Size</div>
                                 <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{batchData.summary.totalStudents}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Tracked students</div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                                    Tracked students{batchData.summary?.lateralCount > 0 ? ` · ${batchData.summary.lateralCount} lateral (diploma)` : ''}
+                                </div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Mean Batch CGPA</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{batchData.summary.avgCGPA?.toFixed(2) || '0.00'}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{fmtNum(batchData.summary?.avgCGPA, 2, '—')}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Cumulative grade index</div>
                             </CardContent>
                         </Card>
@@ -873,7 +986,7 @@ function ExamResultsHubContent() {
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Distinction Students</div>
                                 <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>{batchData.summary.distinctionCount}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>CGPA &ge; 7.75</div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>CGPA &ge; {fmtNum(batchData.summary?.distinctionThreshold, 2, '7.75')}</div>
                             </CardContent>
                         </Card>
                     </div>
@@ -914,22 +1027,34 @@ function ExamResultsHubContent() {
                                                         {s.usn}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
-                                                        <div>{s.name}</div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                            <span>{s.name}</span>
+                                                            {s.isLE && <DiplomaTag />}
+                                                        </div>
                                                         <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500, marginTop: '2px' }}>
                                                             {s.branch || (s.usn.length >= 7 ? s.usn.substring(5, 7).toUpperCase() : '—')}{s.section && s.section !== '—' ? ` • Sec ${s.section}` : ''}
                                                         </div>
                                                     </td>
-                                                    <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--primary)' }}>
-                                                        {s.cgpa.toFixed(2)}
+                                                    <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: s.cgpa === null ? 'var(--tx-dim)' : 'var(--primary)' }}>
+                                                        {fmtNum(s.cgpa)}
                                                     </td>
-                                                    <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: s.backlogsCount > 0 ? '#DC2626' : '#16A34A' }}>
-                                                        {s.backlogsCount}
+                                                    <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: backlogsOf(s) > 0 ? '#DC2626' : '#16A34A' }}>
+                                                        {backlogsOf(s)}
                                                     </td>
                                                     {Array.from({ length: upToSemester }, (_, i) => {
                                                         const sem = s.semesters?.[i + 1];
+                                                        // Semesters 1-2 do not exist for a diploma/lateral entrant. A dash
+                                                        // there reads as "not scraped yet"; N/A is what is actually true.
+                                                        if (sem?.notApplicable) {
+                                                            return (
+                                                                <td key={i} style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '11px', fontWeight: 700 }} title="Lateral (diploma) entry - semesters 1 and 2 are not part of this programme">
+                                                                    N/A
+                                                                </td>
+                                                            );
+                                                        }
                                                         return (
-                                                            <td key={i} style={{ padding: '14px 16px', textAlign: 'center', color: sem ? 'var(--tx-main)' : 'var(--tx-dim)' }}>
-                                                                {sem?.sgpa ? sem.sgpa.toFixed(2) : '—'}
+                                                            <td key={i} style={{ padding: '14px 16px', textAlign: 'center', color: sem?.sgpa ? 'var(--tx-main)' : 'var(--tx-dim)' }}>
+                                                                {fmtGpa(sem?.sgpa)}
                                                             </td>
                                                         );
                                                     })}
@@ -978,7 +1103,7 @@ function ExamResultsHubContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Net Pass Rate Gain</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>+{revalData.summary.netPassRateGain.toFixed(1)}%</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>+{fmtNum(revalData.summary?.netPassRateGain, 1, '0.0')}%</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Post-revaluation lift</div>
                             </CardContent>
                         </Card>

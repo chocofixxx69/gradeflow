@@ -10,6 +10,8 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianG
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Input, Select } from '@/components/ui/Foundation';
+import { EntryTag } from '@/components/ui/EntryTag';
+import { fmtGpa, fmtNum, resultFileName } from '@/lib/format';
 
 export default function StudentRecordPage() {
     return (
@@ -168,10 +170,11 @@ function StudentRecordContent() {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.text(`Student Name: ${data.profile.name} | USN: ${data.profile.usn}`, 14, 23);
-        doc.text(`Department: ${data.profile.branch} | Batch: ${data.profile.batch} | Cumulative CGPA: ${data.kpis.cgpa?.toFixed(2) || '—'}`, 14, 28);
-        doc.text(`Credits Earned: ${data.kpis.credits_earned} | Backlogs: ${data.kpis.total_backlogs} | Date: ${new Date().toLocaleDateString()}`, 14, 33);
+        doc.text(`Department: ${data.profile.branch} | Batch: ${data.profile.batch} | Cumulative CGPA: ${fmtNum(data.kpis.cgpa)}`, 14, 28);
+        doc.text(`Entry Mode: ${data.profile.entry_label || (data.profile.lateral_entry ? 'Lateral Entry (Diploma)' : 'Regular Intake')}${data.profile.lateral_entry ? ' — admitted to the 3rd semester; semesters 1 and 2 are not part of this programme' : ''}`, 14, 33);
+        doc.text(`Credits Earned: ${data.kpis.credits_earned} | Backlogs: ${data.kpis.total_backlogs} | Date: ${new Date().toLocaleDateString()}`, 14, 38);
 
-        let currentY = 38;
+        let currentY = 43;
         const sortedSems = Object.keys(data.semesterMarks || {}).map(Number).sort((a, b) => a - b);
 
         sortedSems.forEach(sem => {
@@ -185,7 +188,7 @@ function StudentRecordContent() {
 
             doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
-            doc.text(`Semester ${sem} (SGPA: ${semStat.sgpa?.toFixed(2) || '—'}, Earned Cr: ${semStat.earnedCredits || 0})`, 14, currentY);
+            doc.text(`Semester ${sem} (SGPA: ${fmtNum(semStat.sgpa)}, Earned Cr: ${semStat.earnedCredits || 0})`, 14, currentY);
             currentY += 4;
 
             const head = [['Code', 'Subject Name', 'Cr', 'Int', 'Ext', 'Total', 'Grd', 'GP', 'Result']];
@@ -213,7 +216,13 @@ function StudentRecordContent() {
             currentY = (doc.lastAutoTable?.finalY || currentY + 30) + 8;
         });
 
-        doc.save(`Transcript_${data.profile.usn}.pdf`);
+        // Single-semester records file as "6th Sem Result - <USN>.pdf"; a full
+        // record as "Consolidated Result - <USN>.pdf".
+        doc.save(resultFileName({
+            semester: sortedSems.length === 1 ? sortedSems[0] : null,
+            usn: data.profile.usn,
+            suffix: sortedSems.length === 1 ? 'Result' : 'Consolidated Result'
+        }));
     };
 
     const semsAvailable = Object.keys(data.semesterMarks || {}).map(Number).sort((a, b) => a - b);
@@ -258,9 +267,13 @@ function StudentRecordContent() {
                                     Active Student
                                 </span>
                             )}
-                            {data.profile.lateral_entry && (
-                                <span style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1', fontSize: '11px', fontWeight: 800 }}>
-                                    Lateral Entry
+                            {data.profile.lateral_entry && <EntryTag lateral />}
+                            {data.profile.lateral_entry && data.profile.admission_batch && data.profile.admission_batch !== data.profile.batch && (
+                                <span
+                                    title="Lateral entrants join in the 3rd semester, so they sit their exams with — and graduate with — the batch admitted a year before them."
+                                    style={{ padding: '2px 8px', borderRadius: '6px', background: 'var(--surface-low)', color: 'var(--tx-muted)', fontSize: '11px', fontWeight: 700, border: '1px solid var(--border)' }}
+                                >
+                                    Admitted {data.profile.admission_batch} · graduates with {data.profile.batch}
                                 </span>
                             )}
                             {data.profile.is_batch_overridden && (
@@ -279,6 +292,12 @@ function StudentRecordContent() {
                             <span><strong>Current Sem:</strong> Sem {data.profile.semester}</span>
                             <span>•</span>
                             <span><strong>Email:</strong> {data.profile.email}</span>
+                            {data.profile.phone && data.profile.phone !== '—' && (
+                                <>
+                                    <span>•</span>
+                                    <span><strong>Phone:</strong> {data.profile.phone}</span>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -314,13 +333,13 @@ function StudentRecordContent() {
             {/* 7 Performance KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: '12px', marginBottom: '24px' }}>
                 {[
-                    { label: 'Current CGPA', value: data.kpis.cgpa > 0 ? data.kpis.cgpa.toFixed(2) : '—', color: data.kpis.cgpa >= 8.0 ? '#10B981' : data.kpis.cgpa >= 5.0 ? 'var(--primary)' : '#EF4444' },
+                    { label: 'Current CGPA', value: fmtGpa(data.kpis.cgpa), color: data.kpis.cgpa >= 8.0 ? '#10B981' : data.kpis.cgpa >= 5.0 ? 'var(--primary)' : '#EF4444' },
                     { label: 'Active Backlogs', value: data.kpis.total_backlogs, color: data.kpis.total_backlogs > 0 ? '#EF4444' : '#10B981' },
                     { label: 'Semesters Tracked', value: data.kpis.semesters_tracked, color: 'var(--tx-main)' },
                     { label: 'Credits Earned', value: data.kpis.credits_earned, color: 'var(--primary)' },
                     { label: 'Subjects Cleared', value: data.kpis.subjects_cleared, color: '#10B981' },
                     { label: 'Subjects Failed', value: data.kpis.subjects_failed, color: data.kpis.subjects_failed > 0 ? '#EF4444' : 'var(--tx-muted)' },
-                    { label: 'Best SGPA', value: data.kpis.best_sgpa > 0 ? data.kpis.best_sgpa.toFixed(2) : '—', color: '#6366F1' },
+                    { label: 'Best SGPA', value: fmtGpa(data.kpis.best_sgpa), color: '#6366F1' },
                 ].map(item => (
                     <div key={item.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.label}</div>
@@ -370,7 +389,7 @@ function StudentRecordContent() {
                                             }}
                                         />
                                         {data.kpis.cgpa > 0 && (
-                                            <ReferenceLine y={data.kpis.cgpa} stroke="#10B981" strokeDasharray="4 4" label={{ value: `CGPA: ${data.kpis.cgpa.toFixed(2)}`, fill: '#10B981', fontSize: 10, position: 'right' }} />
+                                            <ReferenceLine y={data.kpis.cgpa} stroke="#10B981" strokeDasharray="4 4" label={{ value: `CGPA: ${fmtNum(data.kpis.cgpa)}`, fill: '#10B981', fontSize: 10, position: 'right' }} />
                                         )}
                                         <Line
                                             type="monotone"
@@ -441,7 +460,7 @@ function StudentRecordContent() {
                         {currentSemStat.sgpa !== undefined && (
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <span style={{ padding: '4px 10px', borderRadius: '6px', background: 'var(--surface-low)', border: '1px solid var(--border)', fontSize: '12px', fontWeight: 800 }}>
-                                    SGPA: <strong style={{ color: 'var(--primary)' }}>{currentSemStat.sgpa.toFixed(2)}</strong>
+                                    SGPA: <strong style={{ color: 'var(--primary)' }}>{fmtNum(currentSemStat.sgpa)}</strong>
                                 </span>
                                 <span style={{ padding: '4px 10px', borderRadius: '6px', background: 'var(--surface-low)', border: '1px solid var(--border)', fontSize: '12px', fontWeight: 800 }}>
                                     Credits: <strong style={{ color: 'var(--tx-main)' }}>{currentSemStat.earnedCredits}</strong> / {currentSemStat.registeredCredits}

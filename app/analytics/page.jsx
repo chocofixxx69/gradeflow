@@ -5,7 +5,7 @@ import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { EmptyState, LoadingState, ResponsiveGrid, Stack } from '@/components/ui/Foundation';
-import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject } from '../../lib/vtuGrades';
+import { getGradePoint, getGradeRank, unifyGrade, isFailedSubject, resolveCanonicalGrade } from '../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../lib/subjectCreditResolver';
 import { supabase } from '../../lib/supabase';
@@ -134,8 +134,10 @@ function AnalyticsContent() {
                     return;
                 }
 
-                const newRank = getGradeRank(m.grade);
-                const oldRank = getGradeRank(existing.grade);
+                const newGrade = resolveCanonicalGrade(m);
+                const oldGrade = resolveCanonicalGrade(existing);
+                const newRank = getGradeRank(newGrade);
+                const oldRank = getGradeRank(oldGrade);
 
                 if (newRank > oldRank) {
                     bestByCode[code] = m;
@@ -178,7 +180,7 @@ function AnalyticsContent() {
             // Grade Density
             const gradeDist = {};
             deduplicated.forEach(m => {
-                const g = m.grade || 'Unknown';
+                const g = resolveCanonicalGrade(m);
                 gradeDist[g] = (gradeDist[g] || 0) + 1;
             });
             setGradeDistribution(gradeDist);

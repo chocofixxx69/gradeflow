@@ -3,12 +3,23 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { readTable, SELECTS } from '@/lib/table-cache';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
+import { matchesBatch, matchesBranch, isLateralEntry, canonicalBranchCode } from '@/lib/semester-utils';
 import { loadStudentRecords } from '@/lib/student-record';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
+
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
@@ -33,9 +44,10 @@ export async function GET(req) {
         const semester = searchParams.get('semester') && searchParams.get('semester') !== 'all'
             ? parseInt(searchParams.get('semester'), 10)
             : null;
+        const entryFilter = (searchParams.get('entry') || 'all').toLowerCase().trim(); // 'all' | 'regular' | 'lateral'
         const fresh = searchParams.get('fresh') === '1';
 
-        const cacheKey = `merit_list:${branch}:${batch}:${semester || 'all'}:${section || 'all'}`;
+        const cacheKey = `merit_list:${branch}:${batch}:${semester || 'all'}:${section || 'all'}:${entryFilter}`;
         if (!fresh) {
             const cached = getCached(cacheKey);
             if (cached) return ok(cached);
@@ -75,15 +87,41 @@ export async function GET(req) {
             records = records.filter(r => matchesBranch(r.raw, branch));
         }
         if (batch && batch.toUpperCase() !== 'ALL') {
-            records = records.filter(r => matchesBatch(r.raw, batch));
+            records = records.filter(r => matchesBatch(r, batch));
         }
         if (section && section !== 'ALL') {
             records = records.filter(r => usnToSectionMap.get(r.usn) === section);
         }
+        if (entryFilter !== 'all') {
+            records = records.filter(r => {
+                const isLat = Boolean(r.identity?.lateral?.isLateral ?? isLateralEntry(r.usn, r.raw?.lateral_entry));
+                if (entryFilter === 'lateral') return isLat;
+                if (entryFilter === 'regular') return !isLat;
+                return true;
+            });
+        }
+
+        const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
+        const targetBranch = branch && branch !== 'ALL' ? norm(branch) : null;
+        const targetBatch = batch && batch.toUpperCase() !== 'ALL' ? String(batch) : null;
+
+        const relevantClasses = (rawClasses || []).filter(c => {
+            if (targetBranch) {
+                const cBranch = norm(c.branch_code) || norm(c.branch);
+                if (cBranch !== targetBranch) return false;
+            }
+            if (targetBatch && c.batch) {
+                if (String(c.batch) !== targetBatch) return false;
+            }
+            return true;
+        });
+        const availableSections = Array.from(
+            new Set(relevantClasses.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean))
+        ).sort();
 
         if (records.length === 0) {
             return ok({
-                summary: { totalRanked: 0, highestScore: 0, avgScore: 0 },
+                summary: { totalRanked: 0, highestScore: 0, avgScore: 0, regularCount: 0, lateralCount: 0, availableSections },
                 podium: [],
                 rankedStudents: []
             });
@@ -107,13 +145,19 @@ export async function GET(req) {
             const backlogCount = semester
                 ? (record.semStats?.[semester]?.backlogs ?? 0)
                 : record.totalActiveBacklogs;
+            const isLE = Boolean(record.identity?.lateral?.isLateral ?? isLateralEntry(record.usn, record.raw?.lateral_entry));
+            const admissionBatch = record.identity?.batch?.year || record.raw?.year || null;
+            const cohortBatch = record.identity?.cohort?.year || batch || null;
 
             return {
                 usn: record.usn,
                 name: record.name || record.usn,
                 branch: record.raw?.branch || branch,
                 section: usnToSectionMap.get(record.usn) || null,
-                isLE: isLateralEntry(record.usn, record.raw?.lateral_entry),
+                isLE,
+                entryMode: isLE ? 'LATERAL_DIPLOMA' : 'REGULAR',
+                admissionBatch,
+                cohortBatch,
                 gpa: finalGpa,
                 totalMarks,
                 creditsEarned,
@@ -194,12 +238,16 @@ export async function GET(req) {
         const payload = {
             summary: {
                 totalRanked: rankedStudents.length,
+                regularCount: rankedStudents.filter(s => !s.isLE).length,
+                lateralCount: rankedStudents.filter(s => s.isLE).length,
                 highestScore,
                 avgScore,
                 department: branch,
                 batch: batch || 'All Batches',
                 semester: semester ? `Semester ${semester}` : 'Overall Cumulative',
-                section: section && section !== 'ALL' ? `Section ${section}` : 'All Sections'
+                section: section && section !== 'ALL' ? `Section ${section}` : 'All Sections',
+                entry: entryFilter,
+                availableSections
             },
             podium,
             rankedStudents

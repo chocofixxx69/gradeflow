@@ -31,8 +31,10 @@ function checkSessionSync(role, facultyAllowed) {
 
     if (stuStr) try { const p = JSON.parse(stuStr); if (p && (p.usn || p.id)) stuSession = p; } catch {}
     if (facStr) try { const p = JSON.parse(facStr); if (p && (p.email || p.id)) facSession = p; } catch {}
-    const gatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
-    if (admStr) try { const p = JSON.parse(admStr); if (p && (p.role === 'admin' || p.role === 'superadmin' || p.token === gatekeeper || p.token === 'GF-ADMIN-PROD')) admSession = p; } catch {}
+    // A valid admin session is one the server minted (role admin/superadmin +
+    // a signed sessionToken). Never accept a bare token constant — the server no
+    // longer honours one, so this only keeps the UI honest with the API.
+    if (admStr) try { const p = JSON.parse(admStr); if (p && (p.role === 'admin' || p.role === 'superadmin') && p.sessionToken) admSession = p; } catch {}
 
     if (role === 'admin') {
         return admSession ? { state: 'authenticated', userType: 'admin' } : { state: 'denied', userType: null };

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStudent } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
+import { getStudentDefaultEmail } from '../../../../lib/semester-utils';
 
 const supabaseAdmin = getAdminClient();
 
@@ -27,6 +28,8 @@ export async function GET(req) {
         if (error) throw error;
         if (!profile) return fail('Student profile not found.', 'NOT_FOUND', 404);
 
+        profile.email = profile.email || getStudentDefaultEmail(profile.usn);
+
         return ok({ profile });
     } catch (err) {
         console.error('[GET /api/student/profile]', err);
@@ -43,7 +46,7 @@ export async function PATCH(req) {
         const updates = await req.json();
 
         // Allowed update fields
-        const allowed = ['name', 'branch', 'scheme', 'semester', 'email', 'phone', 'photo_url'];
+        const allowed = ['name', 'branch', 'branch_code', 'scheme', 'semester', 'email', 'phone', 'photo_url'];
         const sanitized = {};
 
         Object.keys(updates || {}).forEach(key => {
@@ -63,9 +66,14 @@ export async function PATCH(req) {
 
         if (error) throw error;
 
+        if (updatedProfile) {
+            updatedProfile.email = updatedProfile.email || getStudentDefaultEmail(updatedProfile.usn);
+        }
+
         return ok({ profile: updatedProfile });
     } catch (err) {
         console.error('[PATCH /api/student/profile]', err);
         return fail('Failed to update student profile.', 'STUDENT_PROFILE_UPDATE_ERROR', 500);
     }
 }
+

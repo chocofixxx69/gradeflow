@@ -4,6 +4,7 @@ import { computeBacklogs, getAdminClient } from '../../../../lib/analytics-data'
 import { getStudentRecord } from '../../../../lib/student-record';
 import { isFailedSubject } from '../../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../../lib/vtuAcademicEngine';
+import { getStudentDefaultEmail } from '../../../../lib/semester-utils';
 
 const supabaseAdmin = getAdminClient();
 
@@ -43,6 +44,8 @@ export async function GET(req) {
                 404
             );
         }
+
+        studentProfile.email = studentProfile.email || getStudentDefaultEmail(studentProfile.usn);
 
         const studentId = studentProfile?.id;
 
@@ -123,34 +126,45 @@ export async function GET(req) {
         const cgpa = canonical?.cgpa ?? 0;
         const backlogsInfo = computeBacklogs(pool);
 
-        // Group by semester summary
-        const semesterSummary = {};
-        pool.forEach(m => {
-            const sem = m.semester;
-            if (!semesterSummary[sem]) {
-                semesterSummary[sem] = { semester: sem, totalSubjects: 0, passedSubjects: 0, failedSubjects: 0, totalCredits: 0 };
-            }
-            semesterSummary[sem].totalSubjects++;
-            if (isFailedSubject(m)) {
-                semesterSummary[sem].failedSubjects++;
-            } else {
-                semesterSummary[sem].passedSubjects++;
-                semesterSummary[sem].totalCredits += m.credits;
-            }
-        });
+        // Derive semester summary directly from authoritative canonical academic record
+        const semStats = canonical?.semStats || {};
+        const semSGPAs = canonical?.semSGPAs || {};
+        const marksBySemester = canonical?.marksBySemester || {};
 
-        // All results
-        const recentResults = pool;
+        const semesterSummary = Object.values(semStats).map(st => ({
+            semester: st.semester,
+            totalSubjects: st.subjectCount,
+            passedSubjects: Math.max(0, st.subjectCount - (st.backlogs || 0)),
+            failedSubjects: st.backlogs || 0,
+            totalCredits: st.totalCredits || 0,
+            earnedCredits: st.earnedCredits || 0,
+            sgpa: st.sgpa || 0,
+            gradePoints: st.gradePoints || 0
+        }));
+
+        // Flatten canonical marks with official resolved credits from catalog
+        const canonicalSubjectsList = [];
+        if (marksBySemester && Object.keys(marksBySemester).length > 0) {
+            Object.values(marksBySemester).forEach(list => {
+                if (Array.isArray(list)) canonicalSubjectsList.push(...list);
+            });
+        }
+        const recentResults = canonicalSubjectsList.length > 0 ? canonicalSubjectsList : pool;
 
         return ok({
             profile: studentProfile || { usn },
             cgpa,
-            totalBacklogs: backlogsInfo.totalBacklogs,
-            backlogsList: backlogsInfo.failedSubjects || backlogsInfo.backlogSubjects || [],
+            semStats,
+            semSGPAs,
+            marksBySemester,
+            totalBacklogs: canonical?.totalActiveBacklogs ?? backlogsInfo.totalBacklogs,
+            backlogsList: canonical?.activeBacklogSubjects?.length ? canonical.activeBacklogSubjects : (backlogsInfo.failedSubjects || backlogsInfo.backlogSubjects || []),
+            totalEarnedCredits: canonical?.totalEarnedCredits ?? 0,
+            totalRegisteredCredits: canonical?.totalRegisteredCredits ?? 0,
             remarks: remarks || [],
-            semesterSummary: Object.values(semesterSummary),
+            semesterSummary,
             recentResults,
-            totalSubjects: pool.length
+            totalSubjects: canonical?.totalSubjects ?? pool.length
         });
     } catch (err) {
         console.error('[GET /api/student/dashboard]', err);

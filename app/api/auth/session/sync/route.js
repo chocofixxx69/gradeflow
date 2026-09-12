@@ -27,9 +27,12 @@ export async function POST(req) {
 
         if (role === 'admin') {
             const cleanToken = String(token || '').trim();
-            const fallbackGatekeeper = process.env.NEXT_PUBLIC_ADMIN_GATEKEEPER || 'GF-ADMIN-PROD';
+            // Server-only gatekeeper, no hardcoded/NEXT_PUBLIC literal — this route
+            // mints a real signed admin session, so accepting the old public
+            // 'GF-ADMIN-PROD' constant here was a full admin bypass.
+            const envGatekeeper = process.env.ADMIN_GATEKEEPER || '';
 
-            let activeToken = fallbackGatekeeper;
+            let activeToken = envGatekeeper;
             const supabase = getSupabaseAdmin();
             if (supabase) {
                 try {
@@ -44,7 +47,11 @@ export async function POST(req) {
                 } catch {}
             }
 
-            if (cleanToken !== activeToken && cleanToken !== fallbackGatekeeper) {
+            if (!activeToken) {
+                return NextResponse.json({ success: false, error: 'Admin access is not configured.' }, { status: 503 });
+            }
+
+            if (cleanToken !== activeToken) {
                 return NextResponse.json({ success: false, error: 'Invalid admin token' }, { status: 403 });
             }
 

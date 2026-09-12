@@ -8,12 +8,15 @@ import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
+import { EntryTag } from '@/components/ui/EntryTag';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { fetchLeaderboard } from '@/lib/api/analytics';
-import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { getCleanBranchOptions, canonicalBranchCode } from '@/lib/semester-utils';
 import { filterAndRankStudents } from '@/lib/search-utils';
+import { writeWorkbook } from '@/lib/workbook-export';
+import { fmtNum, fmtGpa } from '@/lib/format';
 
 export default function RankingsAndMeritPage() {
     return (
@@ -58,6 +61,7 @@ function RankingsAndMeritContent() {
     const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
     const [semester, setSemester] = useState(() => initialSaved.semester ? String(initialSaved.semester) : 'all');
+    const [entryFilter, setEntryFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
 
     // Leaderboard-Specific Filters
@@ -109,6 +113,7 @@ function RankingsAndMeritContent() {
         if (batch) query.batch = batch;
         if (semester && semester !== 'all') query.semester = semester;
         if (section) query.section = section;
+        if (entryFilter && entryFilter !== 'all') query.entry = entryFilter;
 
         const cached = getCachedApiData('/api/faculty/analytics/merit-list', query);
         if (cached) {
@@ -128,7 +133,7 @@ function RankingsAndMeritContent() {
         } finally {
             setMeritLoading(false);
         }
-    }, [branch, batch, semester, section]);
+    }, [branch, batch, semester, section, entryFilter]);
 
     // 3. Fetch Leaderboard
     const loadLeaderboard = useCallback(async () => {
@@ -147,31 +152,65 @@ function RankingsAndMeritContent() {
         }
     }, [branch, section, viewSemester, subjectCode]);
 
-    // Dynamically derive available sections from classes, meta, and leaderboard
+    // Dynamically derive available sections strictly from classes matching selected branch and batch
     const availableSections = useMemo(() => {
-        const fromLeaderboard = leaderboardData?.availableSections || [];
-        const fromClasses = (meta?.classes || [])
-            .filter(c => !branch || c.branch === branch)
-            .map(c => (c.section || '').trim().toUpperCase())
-            .filter(Boolean);
-        const fromMeta = meta?.sections || [];
-        // Only sections that exist — an A-D fallback used to offer sections this
-        // institution has never created.
-        const combined = new Set([...fromLeaderboard, ...fromClasses, ...fromMeta]);
-        return Array.from(combined).filter(Boolean).sort();
-    }, [leaderboardData?.availableSections, meta?.classes, meta?.sections, branch]);
+        const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
+        const targetBranch = branch && branch !== 'ALL' ? norm(branch) : null;
+        const targetBatch = batch && batch !== 'ALL' && batch !== 'All Batches' ? String(batch) : null;
 
-    useEffect(() => {
-        if (viewTab === 'merit') {
-            loadMeritList();
-        } else {
-            loadLeaderboard();
+        if (meritReport?.summary?.availableSections !== undefined && Array.isArray(meritReport.summary.availableSections)) {
+            const reportBranch = norm(meritReport.summary.department);
+            const reportBatch = String(meritReport.summary.batch || '');
+            const branchMatches = !targetBranch || reportBranch === targetBranch;
+            const batchMatches = !targetBatch || reportBatch.includes(targetBatch) || reportBatch === 'All Batches';
+            if (branchMatches && batchMatches) {
+                return meritReport.summary.availableSections;
+            }
         }
-    }, [viewTab, loadMeritList, loadLeaderboard]);
+        const classes = meta?.classes || [];
+
+        const relevantClasses = classes.filter(c => {
+            if (targetBranch) {
+                const cBranch = norm(c.branch_code) || norm(c.branch);
+                if (cBranch !== targetBranch) return false;
+            }
+            if (targetBatch && c.batch) {
+                if (String(c.batch) !== targetBatch) return false;
+            }
+            return true;
+        });
+
+        const set = new Set(relevantClasses.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean));
+        return Array.from(set).sort();
+    }, [meritReport?.summary, meta?.classes, branch, batch]);
 
     useEffect(() => {
         setSection('');
-    }, [branch]);
+    }, [branch, batch]);
+
+    useEffect(() => {
+        if (section && availableSections.length > 0 && !availableSections.includes(section)) {
+            setSection('');
+        }
+    }, [availableSections, section]);
+
+    const sectionOptions = useMemo(() => {
+        if (availableSections.length === 0) {
+            return [
+                { value: '', label: 'No Sections (Whole Cohort)' }
+            ];
+        }
+        if (availableSections.length === 1) {
+            return [
+                { value: '', label: `Single Section (Sec ${availableSections[0]})` },
+                { value: availableSections[0], label: `Section ${availableSections[0]}` }
+            ];
+        }
+        return [
+            { value: '', label: `All Sections (${availableSections.join(', ')})` },
+            ...availableSections.map(s => ({ value: s, label: `Section ${s}` }))
+        ];
+    }, [availableSections]);
 
     // Filtered students for Merit List
     const filteredMeritStudents = useMemo(() => {
@@ -237,7 +276,7 @@ function RankingsAndMeritContent() {
                 ]);
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 XLSX.utils.book_append_sheet(wb, ws, 'Official Merit List');
-                XLSX.writeFile(wb, `Official_Merit_List_${branch}_${batch || 'All'}.xlsx`);
+                writeWorkbook(XLSX, wb, `Official_Merit_List_${branch}_${batch || 'All'}.xlsx`);
             } else {
                 if (leaderboardRows.length === 0) {
                     alert('No leaderboard records available to export.');
@@ -288,7 +327,7 @@ function RankingsAndMeritContent() {
                 }
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 XLSX.utils.book_append_sheet(wb, ws, sheetName);
-                XLSX.writeFile(wb, fileName);
+                writeWorkbook(XLSX, wb, fileName);
             }
         } catch (err) {
             console.error('Export Excel error:', err);
@@ -515,14 +554,25 @@ function RankingsAndMeritContent() {
                         />
 
                         <Select
-                            label="Section"
+                            label={availableSections.length === 0 ? "Section (None Created)" : "Section"}
                             value={section}
+                            disabled={availableSections.length === 0}
                             onChange={e => setSection(e.target.value)}
-                            options={[
-                                { value: '', label: availableSections.length > 0 ? `All Sections (${availableSections.join(', ')})` : 'All Sections' },
-                                ...availableSections.map(s => ({ value: s, label: `Section ${s}` })),
-                            ]}
+                            options={sectionOptions}
                         />
+
+                        {viewTab === 'merit' && (
+                            <Select
+                                label="Entry Type"
+                                value={entryFilter}
+                                onChange={e => setEntryFilter(e.target.value)}
+                                options={[
+                                    { value: 'all', label: 'All Entries' },
+                                    { value: 'regular', label: 'Regular Intake' },
+                                    { value: 'lateral', label: 'Lateral Entry (Diploma)' }
+                                ]}
+                            />
+                        )}
 
                         {viewTab === 'merit' ? (
                             <Select
@@ -590,20 +640,26 @@ function RankingsAndMeritContent() {
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Total Ranked Students</div>
                                 <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{meritReport.summary.totalRanked}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Active students in cohort</div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                                    {meritReport.summary?.lateralCount > 0 ? (
+                                        <span>
+                                            {meritReport.summary?.regularCount ?? 0} regular · <strong style={{ color: '#7C3AED' }}>{meritReport.summary?.lateralCount} lateral</strong>
+                                        </span>
+                                    ) : 'Active students in cohort'}
+                                </div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Highest Benchmark Score</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{meritReport.summary.highestScore > 0 ? meritReport.summary.highestScore.toFixed(2) : '—'}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{fmtGpa(meritReport.summary?.highestScore)}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Rank 1 topper GPA</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Batch Average Score</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{meritReport.summary.avgScore > 0 ? meritReport.summary.avgScore.toFixed(2) : '—'}</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{fmtGpa(meritReport.summary?.avgScore)}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Mean cumulative score</div>
                             </CardContent>
                         </Card>
@@ -628,11 +684,18 @@ function RankingsAndMeritContent() {
                                                     </span>
                                                 </div>
                                                 <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>{s.name}</div>
-                                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontFamily: 'monospace', fontWeight: 700, marginBottom: '16px' }}>{s.usn}</div>
+                                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontFamily: 'monospace', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span>{s.usn}</span>
+                                                    {s.isLE && (
+                                                        <span title={`Lateral Entrant · Admitted ${s.admissionBatch || 'Diploma'} · Graduating Cohort ${s.cohortBatch || batch}`}>
+                                                            <EntryTag lateral compact />
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
                                                     <div>
                                                         <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)' }}>SCORE / GPA</div>
-                                                        <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--primary)' }}>{s.gpa.toFixed(2)}</div>
+                                                        <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--primary)' }}>{fmtNum(s.gpa)}</div>
                                                     </div>
                                                     <div style={{ textAlign: 'right' }}>
                                                         <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)' }}>HONORS</div>
@@ -692,7 +755,14 @@ function RankingsAndMeritContent() {
                                                             )}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>
-                                                            {s.usn}
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span>{s.usn}</span>
+                                                                {s.isLE && (
+                                                                    <span title={`Lateral Entrant · Admitted ${s.admissionBatch || 'Diploma'} · Cohort ${s.cohortBatch || batch}`}>
+                                                                        <EntryTag lateral compact />
+                                                                    </span>
+                                                                )}
+                                                            </span>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontWeight: 700, color: 'var(--tx-main)' }}>
                                                             {s.name}
@@ -711,7 +781,7 @@ function RankingsAndMeritContent() {
                                                             )}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--tx-main)' }}>
-                                                            {s.gpa.toFixed(2)}
+                                                            {fmtNum(s.gpa)}
                                                         </td>
                                                         <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                             {s.creditsEarned}

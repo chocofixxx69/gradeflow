@@ -2,8 +2,20 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '../../../../../lib/server-session';
 import { getAdminClient, loadResultAnalysisDataset, parseFilters, rankBy } from '../../../../../lib/analytics-data';
 import { normalizeSubjectResult } from '../../../../../lib/vtuAcademicEngine';
+import { canonicalBranch } from '../../../../../lib/vtu-identity';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
 
 function ok(data) { return NextResponse.json({ success: true, data }); }
 function fail(message, code = 'ERROR', status = 400) {
@@ -66,12 +78,14 @@ export async function GET(req) {
 
         const sectionSet = new Set();
         (myClasses || []).forEach(c => {
-            const matchesBranch = !filters.branch || (c.branch || '').toUpperCase().includes(String(filters.branch).toUpperCase());
-            if (matchesBranch && c.section) sectionSet.add(c.section);
+            // Canonical code equality — a substring test matches "CS" inside
+            // "ELECTRONICS" and silently mixes departments.
+            const matchesBranch = !filters.branch || canonicalBranch(c.branch) === canonicalBranch(filters.branch);
+            const matchesBatch = !filters.batch || String(c.batch) === String(filters.batch);
+            if (matchesBranch && matchesBatch && c.section) {
+                sectionSet.add(String(c.section).trim().toUpperCase());
+            }
         });
-        if (sectionSet.size === 0) {
-            ['A', 'B', 'C'].forEach(s => sectionSet.add(s));
-        }
         const availableSections = Array.from(sectionSet).sort();
 
         const { students, recordsByUsn, subjectMarks, catalogIndex } = dataset;

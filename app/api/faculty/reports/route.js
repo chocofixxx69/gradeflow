@@ -4,8 +4,20 @@ import {
     getAdminClient, loadResultAnalysisDataset, buildStudentRow, rankBy,
     mode, average, findFacultyAssignment,
 } from '../../../../lib/analytics-data';
+import { resolveCanonicalGrade } from '@/lib/vtuGrades';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
 
 const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 
@@ -50,36 +62,20 @@ export async function GET(req) {
         let absentCount = 0;
 
         for (const m of scopedMarks) {
-            const rawG = (m.grade || '').toUpperCase().trim();
-            if (rawG === 'A' || rawG === 'AB' || rawG === 'ABSENT') {
+            const canonicalG = resolveCanonicalGrade(m);
+            if (canonicalG === 'AB') {
                 letterGradeCounts['Absent']++;
                 absentCount++;
-                continue;
-            }
-            if (rawG === 'F' || !m.passed) {
+            } else if (canonicalG === 'F' || !m.passed) {
                 letterGradeCounts['F']++;
                 failCount++;
-                continue;
-            }
-
-            passCount++;
-            const total = Number(m.total);
-            if (isNaN(total) || total <= 0) {
-                letterGradeCounts['P']++;
-            } else if (total >= 90) {
-                letterGradeCounts['O']++;
-            } else if (total >= 80) {
-                letterGradeCounts['A+']++;
-            } else if (total >= 70) {
-                letterGradeCounts['A']++;
-            } else if (total >= 60) {
-                letterGradeCounts['B+']++;
-            } else if (total >= 55) {
-                letterGradeCounts['B']++;
-            } else if (total >= 50) {
-                letterGradeCounts['C']++;
             } else {
-                letterGradeCounts['P']++;
+                passCount++;
+                if (letterGradeCounts[canonicalG] !== undefined) {
+                    letterGradeCounts[canonicalG]++;
+                } else {
+                    letterGradeCounts['P']++;
+                }
             }
         }
 

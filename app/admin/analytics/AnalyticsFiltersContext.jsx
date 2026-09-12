@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { fetchAdminAnalytics } from '../../../lib/api/analytics';
+import { canonicalBranchCode } from '@/lib/semester-utils';
 
 // The Overview tab's own hook (useAdminAnalytics) fetches this exact endpoint
 // with default ("all") filters, which serializes to the same unfiltered
@@ -58,20 +59,52 @@ export function AnalyticsFiltersProvider({ children }) {
     const filterOptions = useMemo(() => {
         const branches = new Set();
         const semesters = new Set();
-        const sections = new Set();
         const batches = new Set();
         const classOpts = [];
 
         classes.forEach(cls => {
             if (cls.branch && cls.branch !== '—') branches.add(cls.branch);
             if (cls.semester && cls.semester !== '—') semesters.add(String(cls.semester));
-            if (cls.section) sections.add(cls.section);
             if (cls.batch) batches.add(String(cls.batch));
             classOpts.push({ label: cls.name || 'Unnamed Class', value: cls.id });
         });
 
-        // No fabricated A-D fallback: with no classes defined there are genuinely no
-        // sections to pick, and offering four of them only produced empty results.
+        // Derive sections scoped strictly to the selected branch and batch (if specified)
+        const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
+        const targetBranch = filters.branch && filters.branch !== 'all' ? norm(filters.branch) : null;
+        const targetBatch = filters.batch && filters.batch !== 'all' ? String(filters.batch) : null;
+
+        const relevantClassesForSections = classes.filter(cls => {
+            if (targetBranch) {
+                const cBranch = norm(cls.branch_code) || norm(cls.branch);
+                if (cBranch !== targetBranch) return false;
+            }
+            if (targetBatch && cls.batch) {
+                if (String(cls.batch) !== targetBatch) return false;
+            }
+            return true;
+        });
+
+        const sections = new Set();
+        relevantClassesForSections.forEach(cls => {
+            if (cls.section) sections.add(cls.section.trim().toUpperCase());
+        });
+        const sectionList = Array.from(sections).sort();
+
+        let sectionOptions = [];
+        if (sectionList.length === 0) {
+            sectionOptions = [{ label: 'No sections (whole cohort)', value: 'all' }];
+        } else if (sectionList.length === 1) {
+            sectionOptions = [
+                { label: `Single Section (Sec ${sectionList[0]})`, value: 'all' },
+                { label: `Section ${sectionList[0]}`, value: sectionList[0] }
+            ];
+        } else {
+            sectionOptions = [
+                { label: `All sections (${sectionList.join(', ')})`, value: 'all' },
+                ...sectionList.map(s => ({ label: `Section ${s}`, value: s }))
+            ];
+        }
 
         return {
             branch: [
@@ -86,16 +119,36 @@ export function AnalyticsFiltersProvider({ children }) {
                 { label: 'All classes', value: 'all' },
                 ...classOpts.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
             ],
-            section: [
-                { label: 'All sections', value: 'all' },
-                ...Array.from(sections).sort().map(s => ({ label: s, value: s })),
-            ],
+            section: sectionOptions,
             batch: [
                 { label: 'All batches', value: 'all' },
                 ...Array.from(batches).sort().reverse().map(b => ({ label: `${b} Batch`, value: b })),
             ],
         };
-    }, [classes]);
+    }, [classes, filters.branch, filters.batch]);
+
+    // Reset section filter if active selection is invalid for current branch/batch scope
+    useEffect(() => {
+        if (filters.section !== 'all') {
+            const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
+            const targetBranch = filters.branch && filters.branch !== 'all' ? norm(filters.branch) : null;
+            const targetBatch = filters.batch && filters.batch !== 'all' ? String(filters.batch) : null;
+            const relevant = classes.filter(cls => {
+                if (targetBranch) {
+                    const cBranch = norm(cls.branch_code) || norm(cls.branch);
+                    if (cBranch !== targetBranch) return false;
+                }
+                if (targetBatch && cls.batch) {
+                    if (String(cls.batch) !== targetBatch) return false;
+                }
+                return true;
+            });
+            const valid = new Set(relevant.map(c => (c.section || '').trim().toUpperCase()).filter(Boolean));
+            if (!valid.has(filters.section.toUpperCase())) {
+                setFilters(prev => ({ ...prev, section: 'all' }));
+            }
+        }
+    }, [classes, filters.branch, filters.batch, filters.section]);
 
     const setFilter = useCallback((key, value) => {
         setFilters(prev => ({ ...prev, [key]: value }));

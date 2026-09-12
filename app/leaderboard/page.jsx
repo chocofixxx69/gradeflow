@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
-import { exportLeaderboardPDF, exportLeaderboardCSV } from '../../lib/export-utils';
+// Loaded on demand — see components/ClassesContent.jsx for why: jsPDF and the
+// embedded crest are ~500 kB that nothing on first paint needs.
+const loadExportUtils = () => import('../../lib/export-utils');
 import { filterAndRankStudents } from '../../lib/search-utils';
 import AuthGuard from '../../components/AuthGuard';
 
@@ -151,8 +153,9 @@ export default function LeaderboardPage() {
 
                         <div style={{ display: 'flex', gap: '6px' }}>
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     if (!data) return;
+                                    const { exportLeaderboardPDF } = await loadExportUtils();
                                     exportLeaderboardPDF({
                                         cohortName: data.batchName,
                                         batchCode: data.batch,
@@ -178,8 +181,9 @@ export default function LeaderboardPage() {
                             </button>
 
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     if (!data) return;
+                                    const { exportLeaderboardCSV } = await loadExportUtils();
                                     exportLeaderboardCSV({
                                         cohortName: data.batchName,
                                         batchCode: data.batch,

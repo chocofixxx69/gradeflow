@@ -8,6 +8,7 @@ import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } fr
 import { Button, Select, Input, ConfirmDialog } from '@/components/ui';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { filterAndRank } from '@/lib/search-utils';
+import { writeWorkbook } from '../lib/workbook-export';
 
 const BRANCH_ALIASES = {
     CS: ['CS', 'CSE', 'COMPUTER SCIENCE', 'COMPUTER SCIENCE & ENGINEERING'],
@@ -486,7 +487,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
         const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
         XLSX.utils.book_append_sheet(wb, ws, 'Teaching Performance');
-        XLSX.writeFile(wb, `Faculty_Teaching_Performance_${branch || 'All'}.xlsx`);
+        writeWorkbook(XLSX, wb, `Faculty_Teaching_Performance_${branch || 'All'}.xlsx`);
     };
 
     // 9. PDF Export

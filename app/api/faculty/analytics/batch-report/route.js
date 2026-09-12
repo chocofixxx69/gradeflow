@@ -4,13 +4,32 @@ import { getAdminClient } from '@/lib/analytics-data';
 import { readTable, SELECTS } from '@/lib/table-cache';
 import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBatch, matchesBranch, isLateralEntry } from '@/lib/semester-utils';
+import { LATERAL_ENTRY_SEMESTER } from '@/lib/vtu-identity';
 import { loadStudentRecords } from '@/lib/student-record';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
+
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
+
+/**
+ * VTU First Class with Distinction. The gazette (semester-analysis) has always used
+ * 7.75; this report used 8.0 while its own UI card read "CGPA >= 7.75", so the same
+ * cohort reported two different distinction counts depending on the tab.
+ */
+const FCD_THRESHOLD = 7.75;
 
 function ok(data) {
     return NextResponse.json({ success: true, data }, {
@@ -99,15 +118,20 @@ export async function GET(req) {
         // lib/student-record.js) — same SGPA/CGPA/backlog/credit source as every
         // other page, so this report never disagrees with them for the same student.
         const processedStudents = records.map(record => {
-            const isLE = isLateralEntry(record.usn, record.raw?.lateral_entry);
+            // Corroborated against the semesters actually on record — the stored
+            // lateral_entry column is wrong for 32 of the 41 live lateral students.
+            const isLE = record.identity?.lateral?.isLateral ?? isLateralEntry(record.usn, record.raw?.lateral_entry);
             const semesters = {};
             let cumulativeCredits = 0;
             let totalTrackedCredits = 0;
             let weightedSum = 0;
 
             for (let sem = 1; sem <= upToSemester; sem++) {
-                if (isLE && (sem === 1 || sem === 2)) {
-                    semesters[sem] = { isLE: true, sgpa: null, credits: null, backlogs: 0 };
+                if (isLE && sem < LATERAL_ENTRY_SEMESTER) {
+                    // A diploma/lateral entrant never sat semesters 1-2. This is
+                    // "not applicable", not "missing data", and must never be
+                    // averaged into their CGPA or counted as an unscraped gap.
+                    semesters[sem] = { isLE: true, notApplicable: true, hasData: false, sgpa: null, credits: null, backlogs: 0 };
                     continue;
                 }
 
@@ -136,15 +160,25 @@ export async function GET(req) {
             return {
                 usn: record.usn,
                 name: record.name || record.usn,
-                branch: record.raw?.branch || (record.usn.length >= 7 ? record.usn.substring(5, 7).toUpperCase() : '—'),
+                branch: record.identity?.branch?.code || record.raw?.branch || '—',
+                branchLabel: record.identity?.branch?.label || record.raw?.branch || '—',
                 section: usnToSectionMap.get(record.usn) || '—',
                 isLE,
+                entryMode: isLE ? 'LATERAL_DIPLOMA' : 'REGULAR',
+                entryLabel: isLE ? 'Lateral Entry (Diploma)' : 'Regular',
+                admissionBatch: record.identity?.batch?.year || null,
+                cohortBatch: record.identity?.cohort?.year || null,
                 semesters,
                 cumulativeCredits,
                 cgpa,
+                hasData: cgpa !== null,
+                trackedCredits: totalTrackedCredits,
+                // `backlogsCount` is the name every client reads; `totalBacklogs`
+                // is kept so older callers do not break.
+                backlogsCount: totalBacklogs,
                 totalBacklogs,
                 backlogCredits: totalBacklogCredits,
-                isDistinction: cgpa !== null && cgpa >= 8.0,
+                isDistinction: cgpa !== null && cgpa >= FCD_THRESHOLD,
                 isLow: cgpa !== null && cgpa < 5.0,
                 hasBacklogs: totalBacklogs > 0
             };
@@ -161,7 +195,7 @@ export async function GET(req) {
             if (s.cgpa !== null) {
                 totalCgpaSum += s.cgpa;
                 cgpaCount++;
-                if (s.cgpa >= 8.0) distinctionCount++;
+                if (s.cgpa >= FCD_THRESHOLD) distinctionCount++;
             }
             if (s.hasBacklogs) withBacklogsCount++;
         });
@@ -173,9 +207,11 @@ export async function GET(req) {
             upToSemester,
             summary: {
                 totalStudents: processedStudents.length,
+                studentsWithData: cgpaCount,
                 avgCGPA,
                 withBacklogs: withBacklogsCount,
                 distinctionCount,
+                distinctionThreshold: FCD_THRESHOLD,
                 lateralCount
             },
             filtersApplied: { branch, batch, upToSemester }

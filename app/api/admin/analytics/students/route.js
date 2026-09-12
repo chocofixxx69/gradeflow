@@ -4,6 +4,17 @@ import { getAdminClient, loadResultAnalysisDataset, buildStudentRow, parseFilter
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
+
 function ok(data) { return NextResponse.json({ success: true, data }); }
 function fail(message, code, status = 400, details = {}) {
     return NextResponse.json({ success: false, error: { code, message, details } }, { status });

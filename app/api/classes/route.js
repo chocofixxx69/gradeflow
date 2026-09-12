@@ -8,6 +8,9 @@ export const dynamic = 'force-dynamic';
 // GET — all classes with student count and faculty info
 export async function GET(req) {
     try {
+        const { error: authError } = requireStaff(req, ['faculty', 'admin']);
+        if (authError) return authError;
+
         const supabaseAdmin = getAdminClient();
         const [{ data: classes, error: cErr }, { data: facultyList, error: fErr }] = await Promise.all([
             supabaseAdmin

@@ -6,6 +6,10 @@ import { filterAndRankStudents } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
 
+// Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
+// start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
+export const maxDuration = 60;
+
 function ok(data) {
     return NextResponse.json({ success: true, data });
 }

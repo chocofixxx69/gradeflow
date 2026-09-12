@@ -11,6 +11,8 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
+import { writeWorkbook } from '@/lib/workbook-export';
+import { EntryTag } from '@/components/ui/EntryTag';
 
 export default function SubjectAnalyticsPage() {
     return (
@@ -47,10 +49,11 @@ function SubjectAnalyticsContent() {
     const [semester, setSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 1);
     const [subjectCode, setSubjectCode] = useState('');
     const [batch, setBatch] = useState(() => initialSaved.batch || '');
+    const [entryFilter, setEntryFilter] = useState(() => initialSaved.entry || 'all');
     
     // Roster Filtering & Search
     const [searchQuery, setSearchQuery] = useState('');
-    const [rosterTab, setRosterTab] = useState('ALL'); // 'ALL' | 'FCD' | 'FC' | 'PASS' | 'FAIL'
+    const [rosterTab, setRosterTab] = useState('ALL'); // 'ALL' | 'REGULAR' | 'LATERAL' | 'FCD' | 'FC' | 'PASS' | 'FAIL'
     const [sortBy, setSortBy] = useState('rank'); // 'rank' | 'total' | 'see' | 'cie' | 'usn'
     const [sortAsc, setSortAsc] = useState(true);
 
@@ -73,8 +76,8 @@ function SubjectAnalyticsContent() {
 
     // Sync saved filters
     useEffect(() => {
-        saveFilters({ branch, semester, batch: batch || undefined });
-    }, [branch, semester, batch]);
+        saveFilters({ branch, semester, batch: batch || undefined, entry: entryFilter !== 'all' ? entryFilter : undefined });
+    }, [branch, semester, batch, entryFilter]);
 
     // 1. Fetch metadata on mount
     useEffect(() => {
@@ -179,6 +182,7 @@ function SubjectAnalyticsContent() {
         try {
             const query = { subjectCode, branch, semester };
             if (batch) query.batch = batch;
+            if (entryFilter && entryFilter !== 'all') query.entry = entryFilter;
             if (fresh) query.fresh = '1';
             const res = await apiRequest('/api/faculty/analytics/subject', { query, cacheTtl: fresh ? 0 : 30_000 });
             if (res) {
@@ -191,7 +195,7 @@ function SubjectAnalyticsContent() {
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [subjectCode, branch, semester, batch]);
+    }, [subjectCode, branch, semester, batch, entryFilter]);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshBanner, setRefreshBanner] = useState(null);
@@ -274,7 +278,11 @@ function SubjectAnalyticsContent() {
         let list = analytics.roster || [];
 
         // Status Tabs Filter
-        if (rosterTab === 'FCD') {
+        if (rosterTab === 'REGULAR') {
+            list = list.filter(r => !r.isLateral);
+        } else if (rosterTab === 'LATERAL') {
+            list = list.filter(r => r.isLateral);
+        } else if (rosterTab === 'FCD') {
             list = list.filter(r => (Number(r.total) || 0) >= 70 && !r.isFail);
         } else if (rosterTab === 'FC') {
             list = list.filter(r => (Number(r.total) || 0) >= 60 && (Number(r.total) || 0) < 70 && !r.isFail);
@@ -357,7 +365,7 @@ function SubjectAnalyticsContent() {
         const wsRoster = XLSX.utils.aoa_to_sheet([rosterHeaders, ...rosterRows]);
         XLSX.utils.book_append_sheet(wb, wsRoster, 'Complete Roster');
 
-        XLSX.writeFile(wb, `Subject_Performance_${analytics.subject.code}_${branch}.xlsx`);
+        writeWorkbook(XLSX, wb, `Subject_Performance_${analytics.subject.code}_${branch}.xlsx`);
     };
 
     // ── PDF Export ──
@@ -470,7 +478,7 @@ function SubjectAnalyticsContent() {
             {/* Smart Filter Toolbar */}
             <Card style={{ marginBottom: '24px', boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' }}>
                 <CardContent style={{ padding: '18px 22px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', alignItems: 'flex-end' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
                         <div>
                             <Select
                                 label="Branch / Department"
@@ -519,7 +527,7 @@ function SubjectAnalyticsContent() {
                         </div>
                         <div>
                             <Select
-                                label="Batch Filter"
+                                label="Graduation Cohort (Batch)"
                                 value={batch}
                                 onChange={e => setBatch(e.target.value)}
                                 options={[
@@ -530,14 +538,28 @@ function SubjectAnalyticsContent() {
                                     ...meta.batches.map(b => {
                                         const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
                                         const normBranch = canonicalBranchCode(branch) || branch;
-                                        const count = isAllBranch
+                                        const bInfo = analytics.batchesAvailable?.find(x => x.batch === b);
+                                        const count = bInfo?.count || (isAllBranch
                                             ? (selectedSubjectMeta?.batchCounts?.[b] || 0)
-                                            : (selectedSubjectMeta?.branchBatchCounts?.[normBranch]?.[b] || 0);
+                                            : (selectedSubjectMeta?.branchBatchCounts?.[normBranch]?.[b] || 0));
+                                        const breakdown = bInfo?.lateral > 0 ? ` (${bInfo.regular} reg, ${bInfo.lateral} lateral)` : '';
                                         return {
                                             value: b,
-                                            label: `${b.slice(-2)} Batch (${b})${count > 0 ? ` • ${count}${!isAllBranch ? ` ${normBranch}` : ''} students` : ''}`
+                                            label: `${b.slice(-2)} Batch (${b})${count > 0 ? ` • ${count} students${breakdown}` : ''}`
                                         };
                                     })
+                                ]}
+                            />
+                        </div>
+                        <div>
+                            <Select
+                                label="Entry Type"
+                                value={entryFilter}
+                                onChange={e => setEntryFilter(e.target.value)}
+                                options={[
+                                    { value: 'all', label: 'All Entries' },
+                                    { value: 'regular', label: 'Regular Intake Only' },
+                                    { value: 'lateral', label: 'Lateral Entry Only (Diploma)' }
                                 ]}
                             />
                         </div>
@@ -952,8 +974,9 @@ function SubjectAnalyticsContent() {
                                         <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '2px' }}>
                                             {tp.name}
                                         </div>
-                                        <div style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--tx-muted)' }}>
-                                            {tp.usn}
+                                        <div style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span>{tp.usn}</span>
+                                            {tp.isLateral && <EntryTag lateral compact />}
                                         </div>
                                     </div>
                                     <div style={{
@@ -1033,7 +1056,10 @@ function SubjectAnalyticsContent() {
                                                     {tp.rank}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace' }}>{tp.usn}</td>
+                                            <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace' }}>
+                                                {tp.usn}
+                                                {tp.isLateral && <EntryTag lateral compact style={{ marginLeft: '6px' }} />}
+                                            </td>
                                             <td style={{ padding: '10px 14px', fontWeight: 700 }}>{tp.name}</td>
                                             <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--tx-muted)' }}>{tp.internal ?? '—'}</td>
                                             <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--tx-muted)' }}>{tp.external ?? '—'}</td>
@@ -1064,9 +1090,11 @@ function SubjectAnalyticsContent() {
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                             {/* Roster Filter Tabs */}
-                            <div style={{ display: 'flex', background: 'var(--surface-low)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
+                            <div style={{ display: 'flex', background: 'var(--surface-low)', borderRadius: '8px', padding: '3px', gap: '2px', flexWrap: 'wrap' }}>
                                 {[
                                     { id: 'ALL', label: `All (${analytics.roster.length})` },
+                                    { id: 'REGULAR', label: `Regular (${analytics.roster.filter(r => !r.isLateral).length})` },
+                                    { id: 'LATERAL', label: `Lateral (${analytics.roster.filter(r => r.isLateral).length})` },
                                     { id: 'FCD', label: `Distinction (${analytics.kpis.fcdCount})` },
                                     { id: 'FC', label: `First Class (${analytics.kpis.fcCount})` },
                                     { id: 'PASS', label: `Passed (${analytics.kpis.passed})` },
@@ -1156,7 +1184,14 @@ function SubjectAnalyticsContent() {
                                             <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-dim)' }}>
                                                 #{r.rank || idx + 1}
                                             </td>
-                                            <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace' }}>{r.usn}</td>
+                                            <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace' }}>
+                                                {r.usn}
+                                                {r.isLateral && (
+                                                    <span title={`Lateral Entrant (Admitted ${r.admissionYear || 'Diploma'}, Graduating Cohort ${r.cohortYear || batch || '2023'})`}>
+                                                        <EntryTag lateral compact style={{ marginLeft: '6px' }} />
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.name}</td>
                                             <td style={{ padding: '10px 14px', color: 'var(--tx-muted)' }}>{r.branch}</td>
                                             <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--tx-muted)' }}>{r.internal ?? '—'}</td>

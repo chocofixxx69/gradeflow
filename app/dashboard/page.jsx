@@ -7,6 +7,8 @@ import AuthGuard from '../../components/AuthGuard';
 import { Badge, Button, Divider, EmptyState, IconButton, Inline, LoadingState, ResponsiveGrid } from '../../components/ui';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject, getGradeRank } from '../../lib/vtuGrades';
 import { LIVE } from '../../lib/api/live';
+import { isLateralEntryUSN } from '../../lib/semester-utils';
+import { resultFileName } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
 import styles from './Dashboard.module.css';
 
@@ -338,7 +340,10 @@ function StudentDashboardView({
                                                                 branch: student.branch || '',
                                                                 scheme: student.scheme || '2022',
                                                                 semesterMarks: { [sem]: subjects },
-                                                                cgpa: sgpas[sem]
+                                                                cgpa: sgpas[sem],
+                                                                isLateralEntry: isLateralEntryUSN(student.usn || ''),
+                                                                // "5th Sem Result - 2AB23CS043.pdf"
+                                                                fileName: resultFileName({ semester: sem, usn: student.usn })
                                                             });
                                                         } catch (err) {
                                                             setPdfMsg('Error generating semester PDF: ' + err.message);
@@ -609,39 +614,81 @@ function DashboardContent() {
             const data = await apiRequest('/api/student/dashboard', { headers: getStudentAuthHeaders(session) });
             const profile = data?.profile || { usn, name: session?.name || usn, scheme: session?.scheme || '2022' };
 
-            // Use server-pre-computed values — no client-side Supabase/catalog fetch needed.
-            // The dashboard API returns cgpa, semesterSummary, recentResults already grouped.
+            // Use server-pre-computed canonical values from getStudentRecord
             const recentResults = data?.recentResults || [];
             const cgpaValue = data?.cgpa || 0;
+            const canonicalMarksBySem = data?.marksBySemester || {};
+            const canonicalSgpas = data?.semSGPAs || {};
+            const canonicalSemStats = data?.semStats || {};
 
-            // Group marks by semester (recentResults already have correct semester fields from API)
-            const marksBySem = {};
-            recentResults.forEach(m => {
-                const sem = m.semester || 1;
-                if (!marksBySem[sem]) marksBySem[sem] = [];
-                marksBySem[sem].push(m);
-            });
-
-            // Compute per-sem SGPA from marks (lightweight, no Supabase)
-            const semSGPAs = {};
-            const semStatsMap = {};
-            Object.entries(marksBySem).forEach(([sem, subjects]) => {
-                let totalCr = 0, earnedCr = 0, weightedGP = 0, backlogs = 0;
-                subjects.forEach(s => {
-                    const cr = s.credits || 0;
-                    const gp = s.grade_point ?? (s.grade ? gradeToPoint(s.grade) : 0);
-                    totalCr += cr;
-                    if (isFailedSubject(s)) {
-                        backlogs++;
-                    } else {
-                        earnedCr += cr;
-                        weightedGP += cr * gp;
-                    }
+            // Group marks by semester: prefer authoritative server canonical marks
+            let marksBySem = {};
+            if (Object.keys(canonicalMarksBySem).length > 0) {
+                marksBySem = canonicalMarksBySem;
+            } else {
+                recentResults.forEach(m => {
+                    const sem = m.semester || 1;
+                    if (!marksBySem[sem]) marksBySem[sem] = [];
+                    marksBySem[sem].push(m);
                 });
-                const sgpa = totalCr > 0 ? +(weightedGP / totalCr).toFixed(2) : 0;
-                semSGPAs[sem] = sgpa;
-                semStatsMap[sem] = { sgpa, earnedCredits: earnedCr, registeredCredits: totalCr, backlogs, subjectCount: subjects.length };
+            }
+
+            // Adopt authoritative canonical semester SGPAs and stats
+            let semSGPAs = { ...canonicalSgpas };
+            let semStatsMap = {};
+
+            Object.entries(canonicalSemStats).forEach(([sem, st]) => {
+                const totalCredits = st.totalCredits ?? st.registeredCredits ?? 0;
+                const earnedCredits = st.earnedCredits ?? 0;
+                const sgpa = st.sgpa ?? 0;
+                const gradePoints = st.gradePoints ?? (sgpa && totalCredits ? +(sgpa * totalCredits).toFixed(2) : 0);
+                const backlogs = st.backlogs ?? 0;
+                const subjectCount = st.subjectCount ?? (marksBySem[sem]?.length || 0);
+
+                semStatsMap[sem] = {
+                    semester: Number(sem),
+                    sgpa,
+                    totalCredits,
+                    registeredCredits: totalCredits,
+                    earnedCredits,
+                    gradePoints,
+                    backlogs,
+                    subjectCount
+                };
+                if (semSGPAs[sem] === undefined) {
+                    semSGPAs[sem] = sgpa;
+                }
             });
+
+            // Fallback calculation only if server did not send semStats
+            if (Object.keys(semStatsMap).length === 0) {
+                Object.entries(marksBySem).forEach(([sem, subjects]) => {
+                    let totalCr = 0, earnedCr = 0, weightedGP = 0, backlogs = 0;
+                    subjects.forEach(s => {
+                        const cr = s.credits || 0;
+                        const gp = s.grade_point ?? (s.grade ? gradeToPoint(s.grade) : 0);
+                        totalCr += cr;
+                        if (isFailedSubject(s)) {
+                            backlogs++;
+                        } else {
+                            earnedCr += cr;
+                            weightedGP += cr * gp;
+                        }
+                    });
+                    const sgpa = totalCr > 0 ? +(weightedGP / totalCr).toFixed(2) : 0;
+                    semSGPAs[sem] = sgpa;
+                    semStatsMap[sem] = {
+                        semester: Number(sem),
+                        sgpa,
+                        totalCredits: totalCr,
+                        registeredCredits: totalCr,
+                        earnedCredits: earnedCr,
+                        gradePoints: weightedGP,
+                        backlogs,
+                        subjectCount: subjects.length
+                    };
+                });
+            }
 
             setStudent(profile);
             setMarks(marksBySem);
@@ -893,6 +940,8 @@ function DashboardContent() {
         setPdfLoading(true);
         try {
             const { generateResultPDF } = await import('../../lib/generatePDF');
+            const semesterKeys = Object.keys(marks).map(Number).filter(Boolean).sort((a, b) => a - b);
+            const onlySemester = semesterKeys.length === 1 ? semesterKeys[0] : null;
             await generateResultPDF({
                 studentName: student?.name || 'Student',
                 usn: student?.usn || 'N/A',
@@ -900,6 +949,12 @@ function DashboardContent() {
                 scheme: student?.scheme || '2022',
                 semesterMarks: marks,
                 cgpa,
+                isLateralEntry: isLateralEntryUSN(student?.usn || ''),
+                fileName: resultFileName({
+                    semester: onlySemester,
+                    usn: student?.usn,
+                    suffix: onlySemester ? 'Result' : 'Consolidated Result'
+                })
             });
         } catch (err) {
             console.error('PDF generation error:', err);

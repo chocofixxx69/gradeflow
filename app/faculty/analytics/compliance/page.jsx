@@ -13,6 +13,8 @@ import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
 import { getCleanBranchOptions } from '@/lib/semester-utils';
 import { filterAndRankStudents } from '@/lib/search-utils';
+import { writeWorkbook } from '@/lib/workbook-export';
+import { fmtPercent } from '@/lib/format';
 
 export default function AcademicCompliancePage() {
     return (
@@ -239,7 +241,7 @@ function AcademicComplianceContent() {
                 const wsEligible = XLSX.utils.aoa_to_sheet([eligibleHeaders, ...eligibleRows]);
                 XLSX.utils.book_append_sheet(wb, wsEligible, 'Eligible Cohort');
 
-                XLSX.writeFile(wb, `VTU_Eligibility_Register_${branch}_Sem${targetSemester}.xlsx`);
+                writeWorkbook(XLSX, wb, `VTU_Eligibility_Register_${branch}_Sem${targetSemester}.xlsx`);
             } else {
                 const ledgerList = backlogReport.ledger || [];
                 if (ledgerList.length === 0) {
@@ -274,7 +276,7 @@ function AcademicComplianceContent() {
                 const wsSub = XLSX.utils.aoa_to_sheet([subHeaders, ...subRows]);
                 XLSX.utils.book_append_sheet(wb, wsSub, 'Subject Bottlenecks');
 
-                XLSX.writeFile(wb, `Standing_Backlogs_Register_${branch}_${batch || 'All'}.xlsx`);
+                writeWorkbook(XLSX, wb, `Standing_Backlogs_Register_${branch}_${batch || 'All'}.xlsx`);
             }
         } catch (err) {
             console.error('Export Excel error:', err);
@@ -536,7 +538,7 @@ function AcademicComplianceContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Progression Clearance Rate</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{eligibilityReport.summary.eligibilityRate.toFixed(1)}%</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{fmtPercent(eligibilityReport.summary?.eligibilityRate, 1, '0.0%')}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Department compliance index</div>
                             </CardContent>
                         </Card>

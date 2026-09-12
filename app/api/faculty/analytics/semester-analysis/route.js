@@ -3,12 +3,23 @@ import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { readTable, SELECTS } from '@/lib/table-cache';
 import { getCached, setCached } from '@/lib/server-cache';
-import { matchesBatch, isLateralEntry, canonicalBranchCode } from '@/lib/semester-utils';
+import { matchesBatch, matchesBranch, isLateralEntry, canonicalBranchCode } from '@/lib/semester-utils';
 import { loadStudentRecords } from '@/lib/student-record';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
+
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
@@ -84,7 +95,11 @@ export async function GET(req) {
             records = [...studentRecords.values()].filter(r => classUsns.has(r.usn));
         } else {
             records = [...studentRecords.values()];
-            if (branch && branch !== 'ALL') records = records.filter(r => (r.raw?.branch || '').toUpperCase().includes(branch) || r.identity.branch.code === branch);
+            // Canonical code equality, never a substring test: `"ELECTRONICS &
+            // COMMUNICATION (ECE)".includes('CS')` is TRUE (…NI-CS…), which used to
+            // drag every EC, EE and RI student into the CS gazette — 346 rows where
+            // the department actually has 221.
+            if (branch && branch !== 'ALL') records = records.filter(r => r.identity.branch.code === branch || matchesBranch(r.raw, branch));
             if (batch && batch.toUpperCase() !== 'ALL') records = records.filter(r => matchesBatch(r.raw, batch));
             if (section && section !== 'ALL') records = records.filter(r => usnToSectionMap.get(r.usn) === section);
         }
@@ -127,7 +142,7 @@ export async function GET(req) {
         // Fallback: if no marks exist yet for this semester, populate columns from catalog
         if (subjectCodeMap.size === 0) {
             const catSubjects = (rawCatalog || []).filter(s => Number(s.semester) === semester && (
-                !branch || branch === 'ALL' || (s.branch || '').toUpperCase().includes(branch)
+                !branch || branch === 'ALL' || canonicalBranchCode(s.branch) === branch
             ));
             catSubjects.forEach(s => {
                 const code = (s.subject_code || '').toUpperCase();
@@ -283,9 +298,15 @@ export async function GET(req) {
             studentsProcessed.push({
                 usn: record.usn,
                 name: record.name || record.usn,
-                branch: record.raw?.branch || (record.usn.length >= 7 ? record.usn.substring(5, 7).toUpperCase() : '—'),
+                branch: record.identity?.branch?.code || record.raw?.branch || '—',
+                branchLabel: record.identity?.branch?.label || record.raw?.branch || '—',
                 section: usnToSectionMap.get(record.usn) || '—',
-                isLE: isLateralEntry(record.usn, record.raw?.lateral_entry),
+                // Corroborated against the semesters on record — the stored
+                // lateral_entry column disagrees for 32 of the 41 live cases.
+                isLE: record.identity?.lateral?.isLateral ?? isLateralEntry(record.usn, record.raw?.lateral_entry),
+                entryMode: (record.identity?.lateral?.isLateral ?? isLateralEntry(record.usn, record.raw?.lateral_entry)) ? 'LATERAL_DIPLOMA' : 'REGULAR',
+                admissionBatch: record.identity?.batch?.year || null,
+                cohortBatch: record.identity?.cohort?.year || null,
                 hasData,
                 isPassed: Boolean(hasData && arrearsCount === 0),
                 totalRegisteredCr,

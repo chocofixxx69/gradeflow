@@ -2,11 +2,22 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
 import { readTable, invalidateTableCache, SELECTS } from '@/lib/table-cache';
-import { canonicalBranch, branchLabelFor } from '@/lib/vtu-identity';
+import { canonicalBranch, branchLabelFor, getStudentDefaultEmail } from '@/lib/vtu-identity';
 import { loadStudentRecords, toSummary } from '@/lib/student-record';
 import { matchesStudent, scoreStudentMatch } from '@/lib/search-utils';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The analytics warehouse is a whole-table read (19k subject_marks rows and three
+ * more tables) the first time a server instance answers. That lands around 3s warm
+ * and can exceed Vercel's default 10s function ceiling on a cold start, which is
+ * what turned a populated gazette into "No student records found" — the request was
+ * killed, not empty. Raising the ceiling lets the first request finish and warm the
+ * process caches for every request after it. The platform clamps this to the plan
+ * maximum, so it is safe to ask for 60 everywhere.
+ */
+export const maxDuration = 60;
 
 function ok(data) {
     return NextResponse.json({ success: true, data });
@@ -162,29 +173,37 @@ export async function GET(req) {
         const records = [...studentRecords.values()].map(record => {
             const classInfo = usnToClassMap.get(record.usn) || null;
 
-            // Academic batch determination:
-            // 1. If enrolled in a class with a declared batch (e.g. CSE - A 2023 with batch: '2023'), that class batch is authoritative.
-            // 2. If a lateral entry student (e.g. 2AB24... enrolled in 2nd year), their academic cohort is batchYear - 1 ('2023').
-            // 3. Otherwise, use their record's regular identity batch.
-            const isLateral = record.identity.lateral?.isLateral;
-            const usnBatchYear = record.identity.batch?.year;
-            const cohortYear = isLateral && usnBatchYear ? String(Number(usnBatchYear) - 1) : usnBatchYear;
-            const effectiveBatchYear = classInfo?.batch || cohortYear || usnBatchYear;
+            // Academic cohort determination:
+            // 1. If enrolled in a class with a declared batch (e.g. "CSE - A 2023"
+            //    with batch: '2023'), that class batch is authoritative.
+            // 2. Otherwise the canonical cohort from lib/vtu-identity.js, which
+            //    already shifts lateral entrants back a year (resolveCohort).
+            // The USN's own admission year is never lost — it stays on
+            // identity.batch, and identity.cohort carries the graduating cohort.
+            const cohort = record.identity.cohort;
+            const effectiveBatchYear = classInfo?.batch || cohort.year || record.identity.batch?.year;
             const effectiveBatchDigits = effectiveBatchYear ? String(effectiveBatchYear).replace(/[^0-9]/g, '') : '';
             const effectiveBatchTwoDigit = effectiveBatchDigits.slice(-2);
-            const effectiveBatchLabel = effectiveBatchTwoDigit ? `${effectiveBatchTwoDigit} Batch (${effectiveBatchYear})` : (record.identity.batch?.label || 'Unknown Batch');
+            const effectiveBatchLabel = effectiveBatchTwoDigit ? `${effectiveBatchTwoDigit} Batch (${effectiveBatchYear})` : (cohort.label || 'Unknown Batch');
 
             return {
                 record,
                 usn: record.usn,
                 identity: {
                     ...record.identity,
+                    cohort: {
+                        ...cohort,
+                        year: effectiveBatchYear,
+                        twoDigit: effectiveBatchTwoDigit,
+                        label: effectiveBatchLabel,
+                        source: classInfo?.batch ? 'class' : cohort.source
+                    },
                     batch: {
                         ...record.identity.batch,
                         year: effectiveBatchYear,
                         twoDigit: effectiveBatchTwoDigit,
                         label: effectiveBatchLabel,
-                        source: classInfo?.batch ? 'class' : (isLateral ? 'lateral_cohort' : record.identity.batch?.source)
+                        source: classInfo?.batch ? 'class' : (cohort.offsetApplied ? 'lateral_cohort' : record.identity.batch?.source)
                     }
                 },
                 recordedSemesters: record.recordedSemesters,
@@ -201,12 +220,14 @@ export async function GET(req) {
         // ── One predicate per filter, so facets can re-run every filter but one ──
         const predicates = {
             branch: r => !branch || r.identity.branch.code === branch,
-            // Check student's effective batch, class batch, and raw USN batch
+            // Cohort first, then the roster the student is actually enrolled in.
+            // The raw USN year is deliberately NOT a third fallback: matching it too
+            // would put every lateral entrant in two batches at once and make this
+            // directory disagree with the gazette and every other report.
             batch: r => {
                 if (!batchTwoDigit) return true;
-                return r.identity.batch.twoDigit === batchTwoDigit ||
-                       (r.classInfo?.batch && String(r.classInfo.batch).replace(/[^0-9]/g, '').slice(-2) === batchTwoDigit) ||
-                       (r.record.identity.batch?.twoDigit === batchTwoDigit);
+                return r.identity.cohort.twoDigit === batchTwoDigit ||
+                       (r.classInfo?.batch && String(r.classInfo.batch).replace(/[^0-9]/g, '').slice(-2) === batchTwoDigit);
             },
             semester: r => {
                 if (!semester) return true;
@@ -416,9 +437,11 @@ export async function GET(req) {
                 id: s?.id || null,
                 batch: r.identity.batch.year,
                 batchLabel: r.identity.batch.label,
+                admissionBatch: rec.identity.batch.year,
+                admissionBatchLabel: rec.identity.batch.label,
                 branchSource: id.branch.source,
                 year: s?.year ?? null,
-                email: s?.email || '—',
+                email: s?.email || getStudentDefaultEmail(s?.usn || r.identity.usn) || '—',
                 phone: s?.phone || '—',
                 is_suspended: id.isInactive,
                 section: r.section || null,

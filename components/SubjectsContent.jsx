@@ -11,6 +11,7 @@ import { PageHeader, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui
 import { Input, Button, Select, Badge, IconButton } from '@/components/ui/Foundation';
 import { TableWrapper, Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { writeWorkbook } from '../lib/workbook-export';
 
 // ── Branch & Scheme Definitions (single source of truth) ──
 const SCHEMES = ['2022', '2025'];
@@ -488,7 +489,7 @@ export function SubjectsContent() {
     allWs['!cols'] = [{ wch: 15 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, allWs, 'All Subjects');
 
-    XLSX.writeFile(wb, `GradeFlow_Subjects_${scheme}_${branch}.xlsx`);
+    writeWorkbook(XLSX, wb, `GradeFlow_Subjects_${scheme}_${branch}.xlsx`);
   };
 
   const displayedBranchLabel = branches.find(b => b.code === branch)?.label || branch;
