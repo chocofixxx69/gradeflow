@@ -9,6 +9,20 @@ import { Button, Select, Input, ConfirmDialog } from '@/components/ui';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { filterAndRank } from '@/lib/search-utils';
 import { writeWorkbook } from '../lib/workbook-export';
+import {
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    Tooltip as RechartsTooltip,
+    CartesianGrid,
+    Cell,
+    ReferenceLine,
+    PieChart,
+    Pie,
+    Legend
+} from 'recharts';
 
 const BRANCH_ALIASES = {
     CS: ['CS', 'CSE', 'COMPUTER SCIENCE', 'COMPUTER SCIENCE & ENGINEERING'],
@@ -43,6 +57,51 @@ function matchesBranch(subjectBranch, targetBranch) {
     return false;
 }
 
+function ChartTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0]?.payload || {};
+    return (
+        <div style={{
+            background: 'var(--surface, #FFFFFF)',
+            border: '1px solid var(--border, #E2E8F0)',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            fontSize: '12px',
+            color: 'var(--tx-main)',
+            minWidth: '200px',
+            maxWidth: '300px',
+            pointerEvents: 'none',
+            zIndex: 100
+        }}>
+            <div style={{ fontWeight: 800, fontSize: '13px', marginBottom: '4px', borderBottom: '1px solid var(--border-low, #E2E8F0)', paddingBottom: '4px' }}>
+                {data.name || label || data.code || 'Metric'}
+            </div>
+            {data.department && (
+                <div style={{ color: 'var(--tx-muted)', fontSize: '11px', marginBottom: '6px' }}>
+                    {data.department} {data.className ? `• ${data.className}` : ''}
+                </div>
+            )}
+            {payload.map((entry, index) => (
+                <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--tx-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: entry.color || entry.fill }} />
+                        {entry.name}:
+                    </span>
+                    <strong style={{ color: entry.color || entry.fill || 'var(--tx-main)' }}>
+                        {entry.value}{entry.unit || (entry.name?.includes('Rate') || entry.name?.includes('Percentage') ? '%' : '')}
+                    </strong>
+                </div>
+            ))}
+            {data.appeared !== undefined && (
+                <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed var(--border, #CBD5E1)', fontSize: '11px', color: 'var(--tx-muted)' }}>
+                    Students: <strong>{data.passed ?? 0}</strong> passed / <strong>{data.appeared ?? 0}</strong> appeared
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function FacultyPerformanceContent({ role = 'faculty', embedded = false, onNavigateTab = null }) {
     const [mounted, setMounted] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -63,6 +122,8 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     const [classFilter, setClassFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'remedial' | 'distinction' | 'unassigned'
+    const [chartTab, setChartTab] = useState('performance'); // 'performance' | 'grades' | 'courses'
+    const [chartsVisible, setChartsVisible] = useState(true);
 
     // Data
     const [facultyList, setFacultyList] = useState([]);
@@ -599,6 +660,95 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
             coveredClassesCount: coveredClasses.size
         };
     }, [facultyList, displayedFaculty, viewPerspective]);
+
+    // Demonstration & Visual Analytics Datasets
+    const facultyComparisonData = useMemo(() => {
+        return displayedFaculty
+            .filter(f => (f.total_appeared || 0) > 0 || (f.subjects && f.subjects.length > 0))
+            .map(f => {
+                const parts = (f.faculty_name || '').trim().split(/\s+/);
+                const shortName = parts.length <= 2 ? parts.join(' ') : `${parts[0]} ${parts[parts.length - 1]}`;
+                return {
+                    name: f.faculty_name || 'Faculty Member',
+                    shortName,
+                    passRate: f.pass_rate || 0,
+                    avgScore: f.avg_score || 0,
+                    appeared: f.total_appeared || 0,
+                    passed: f.total_passed || 0,
+                    failed: f.total_failed || 0,
+                    department: f.department || '—'
+                };
+            })
+            .sort((a, b) => b.passRate - a.passRate || b.avgScore - a.avgScore);
+    }, [displayedFaculty]);
+
+    const gradeSpreadData = useMemo(() => {
+        const spread = {
+            distinction: 0,
+            firstClass: 0,
+            pass: 0,
+            fail: 0
+        };
+        const letterGrades = { O: 0, 'A+': 0, A: 0, 'B+': 0, B: 0, C: 0, P: 0, F: 0 };
+
+        displayedFaculty.forEach(f => {
+            const gs = f.grade_spread || {};
+            Object.keys(letterGrades).forEach(g => {
+                letterGrades[g] += Number(gs[g] || 0);
+            });
+            spread.distinction += Number(gs.O || 0) + Number(gs.S || 0);
+            spread.firstClass += Number(gs['A+'] || 0) + Number(gs.A || 0);
+            spread.pass += Number(gs['B+'] || 0) + Number(gs.B || 0) + Number(gs.C || 0) + Number(gs.P || 0);
+            spread.fail += Number(gs.F || 0);
+        });
+
+        const total = spread.distinction + spread.firstClass + spread.pass + spread.fail;
+
+        return {
+            tiers: [
+                { name: 'Distinction (≥90%)', count: spread.distinction, percentage: total > 0 ? Number(((spread.distinction / total) * 100).toFixed(1)) : 0, color: '#10B981' },
+                { name: 'First Class (75-89%)', count: spread.firstClass, percentage: total > 0 ? Number(((spread.firstClass / total) * 100).toFixed(1)) : 0, color: '#6366F1' },
+                { name: 'Pass (40-74%)', count: spread.pass, percentage: total > 0 ? Number(((spread.pass / total) * 100).toFixed(1)) : 0, color: '#F59E0B' },
+                { name: 'Fail (<40%)', count: spread.fail, percentage: total > 0 ? Number(((spread.fail / total) * 100).toFixed(1)) : 0, color: '#EF4444' }
+            ],
+            letterGrades: Object.entries(letterGrades).map(([grade, count]) => ({
+                grade,
+                count,
+                percentage: total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0,
+                color: grade === 'O' ? '#059669' :
+                       grade === 'A+' ? '#10B981' :
+                       grade === 'A' ? '#6366F1' :
+                       grade === 'B+' ? '#3B82F6' :
+                       grade === 'B' ? '#0EA5E9' :
+                       grade === 'C' ? '#F59E0B' :
+                       grade === 'P' ? '#D97706' : '#EF4444'
+            })),
+            total
+        };
+    }, [displayedFaculty]);
+
+    const courseBreakdownData = useMemo(() => {
+        const courses = [];
+        displayedFaculty.forEach(f => {
+            (f.subjects || []).forEach(s => {
+                if (s.appeared > 0 || s.subject_code) {
+                    courses.push({
+                        code: s.subject_code,
+                        name: s.subject_name || s.subject_code,
+                        label: `${s.subject_code}${s.class_section ? ` (${s.class_section})` : ''}`,
+                        faculty: f.faculty_name,
+                        className: s.class_name || (s.class_section ? `Sec ${s.class_section}` : 'General'),
+                        appeared: s.appeared || 0,
+                        passed: s.passed || 0,
+                        failed: s.failed || 0,
+                        passRate: s.pass_rate || 0,
+                        avgScore: s.avg_score || 0
+                    });
+                }
+            });
+        });
+        return courses.sort((a, b) => b.passRate - a.passRate || b.avgScore - a.avgScore);
+    }, [displayedFaculty]);
 
     const isInstitutionalAdmin = currentUserRole === 'admin' || role === 'admin';
 
@@ -1334,6 +1484,430 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                         );
                     })}
                 </div>
+            </div>
+
+            {/* Visual Demonstration & Performance Analytics Section */}
+            <div style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: '16px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                padding: '20px',
+                marginBottom: '22px'
+            }}>
+                {/* Header with Title and Mode Switcher */}
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '14px',
+                    borderBottom: chartsVisible ? '1px solid var(--border-low, #E2E8F0)' : 'none',
+                    paddingBottom: chartsVisible ? '16px' : '0',
+                    marginBottom: chartsVisible ? '18px' : '0'
+                }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>insights</span>
+                            <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                {viewPerspective === 'my' ? 'My Performance & Course Analytics' : 'Teaching Performance & Visual Demonstration Suite'}
+                            </span>
+                            <span style={{
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(23, 75, 77, 0.08)',
+                                color: 'var(--primary)',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em'
+                            }}>
+                                NBA / NAAC Demonstration
+                            </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                            {viewPerspective === 'my'
+                                ? 'Graphical breakdown of your teaching outcomes, pass benchmarks, and student grade distribution.'
+                                : 'Interactive graphical analytics comparing educator pass rates, remedial thresholds, and student grade spread.'}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        {/* Tab Switcher */}
+                        <div style={{
+                            display: 'inline-flex',
+                            background: 'var(--surface-low)',
+                            borderRadius: '10px',
+                            padding: '3px',
+                            border: '1px solid var(--border)'
+                        }}>
+                            {[
+                                { id: 'performance', label: 'Pass Rates & Benchmark', icon: 'bar_chart' },
+                                { id: 'grades', label: 'Grade Distribution (NBA)', icon: 'pie_chart' },
+                                { id: 'courses', label: 'Course Score Matrix', icon: 'auto_graph' }
+                            ].map(tab => {
+                                const active = chartTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setChartTab(tab.id);
+                                            if (!chartsVisible) setChartsVisible(true);
+                                        }}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: active ? 'var(--primary)' : 'transparent',
+                                            color: active ? '#FFFFFF' : 'var(--tx-muted)',
+                                            fontSize: '12px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            boxShadow: active ? '0 1px 4px rgba(23, 75, 77, 0.25)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>{tab.icon}</span>
+                                        <span>{tab.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Toggle visibility */}
+                        <button
+                            type="button"
+                            onClick={() => setChartsVisible(!chartsVisible)}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                background: 'var(--surface-low)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--tx-muted)',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            title={chartsVisible ? 'Collapse demonstration charts' : 'Expand demonstration charts'}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '16px' }}>
+                                {chartsVisible ? 'expand_less' : 'expand_more'}
+                            </span>
+                            <span>{chartsVisible ? 'Collapse' : 'Expand Charts'}</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Chart View Content */}
+                {chartsVisible && (
+                    <div>
+                        {/* TAB 1: Faculty Pass Rates & NBA 75% Benchmark */}
+                        {chartTab === 'performance' && (
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                        Bar height represents educator pass percentage. Red dashed line indicates the <strong>75% NBA Remedial Threshold</strong>; green dashed line marks <strong>90% Distinction Goal</strong>.
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '11px', fontWeight: 700 }}>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#10B981' }}>
+                                            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#10B981' }} />
+                                            ≥90% High Achiever
+                                        </span>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--primary)' }}>
+                                            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--primary)' }} />
+                                            75-89% On Track
+                                        </span>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#EF4444' }}>
+                                            <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#EF4444' }} />
+                                            &lt;75% Remedial Focus
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {facultyComparisonData.length === 0 ? (
+                                    <div style={{
+                                        padding: '40px 20px',
+                                        textAlign: 'center',
+                                        background: 'var(--surface-low)',
+                                        borderRadius: '12px',
+                                        border: '1px dashed var(--border)',
+                                        color: 'var(--tx-muted)'
+                                    }}>
+                                        <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--tx-dim)', marginBottom: '8px' }}>bar_chart</span>
+                                        <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--tx-main)' }}>No Active Examination Marks Found</div>
+                                        <div style={{ fontSize: '12px', marginTop: '4px' }}>Assign subjects and class sections using the &quot;+ Assign Subject&quot; button above to generate visual performance curves.</div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ width: '100%', height: 320 }}>
+                                            {mounted && (
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={facultyComparisonData} margin={{ top: 20, right: 20, left: -10, bottom: 25 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-low, #E2E8F0)" />
+                                                        <XAxis
+                                                            dataKey="shortName"
+                                                            tick={{ fontSize: 11, fill: 'var(--tx-muted)', fontWeight: 600 }}
+                                                            interval={0}
+                                                            angle={facultyComparisonData.length > 6 ? -25 : 0}
+                                                            textAnchor={facultyComparisonData.length > 6 ? 'end' : 'middle'}
+                                                            height={facultyComparisonData.length > 6 ? 45 : 30}
+                                                        />
+                                                        <YAxis
+                                                            domain={[0, 100]}
+                                                            tick={{ fontSize: 11, fill: 'var(--tx-muted)' }}
+                                                            tickFormatter={val => `${val}%`}
+                                                        />
+                                                        <RechartsTooltip content={<ChartTooltip />} />
+                                                        <ReferenceLine
+                                                            y={75}
+                                                            stroke="#EF4444"
+                                                            strokeDasharray="4 4"
+                                                            strokeWidth={2}
+                                                            label={{ value: '75% NBA Benchmark', fill: '#DC2626', fontSize: 10, fontWeight: 800, position: 'insideTopRight' }}
+                                                        />
+                                                        <ReferenceLine
+                                                            y={90}
+                                                            stroke="#10B981"
+                                                            strokeDasharray="4 4"
+                                                            strokeWidth={1.5}
+                                                            label={{ value: '90% Goal', fill: '#10B981', fontSize: 10, fontWeight: 800, position: 'insideTopLeft' }}
+                                                        />
+                                                        <Bar dataKey="passRate" name="Pass Rate (%)" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                                                            {facultyComparisonData.map((entry, index) => (
+                                                                <Cell
+                                                                    key={`cell-${index}`}
+                                                                    fill={entry.passRate >= 90 ? '#10B981' : entry.passRate >= 75 ? 'var(--primary)' : '#EF4444'}
+                                                                />
+                                                            ))}
+                                                        </Bar>
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            )}
+                                        </div>
+
+                                        {/* Performance Demonstration Summary Highlights */}
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                            gap: '12px',
+                                            marginTop: '16px',
+                                            paddingTop: '16px',
+                                            borderTop: '1px solid var(--border-low, #E2E8F0)'
+                                        }}>
+                                            <div style={{ background: 'var(--surface-low)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Department Pass Mean</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>
+                                                    {kpis.passRate}%
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>Across {kpis.totalAppeared} evaluations</div>
+                                            </div>
+
+                                            <div style={{ background: 'var(--surface-low)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>NBA Benchmark Compliance</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#10B981', marginTop: '2px' }}>
+                                                    {facultyComparisonData.filter(f => f.passRate >= 75).length} / {facultyComparisonData.length}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                                                    {facultyComparisonData.length > 0 ? `${((facultyComparisonData.filter(f => f.passRate >= 75).length / facultyComparisonData.length) * 100).toFixed(0)}% meeting ≥75% benchmark` : '—'}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ background: 'var(--surface-low)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Remedial Attention Needed</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: kpis.atRiskSubjectsCount > 0 ? '#EF4444' : '#10B981', marginTop: '2px' }}>
+                                                    {kpis.atRiskSubjectsCount} Course{kpis.atRiskSubjectsCount === 1 ? '' : 's'}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>Below 75% passing threshold</div>
+                                            </div>
+
+                                            <div style={{ background: 'var(--surface-low)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Highest Pass Rate</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--primary)', marginTop: '2px' }}>
+                                                    {facultyComparisonData[0]?.passRate ?? 0}%
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                    {facultyComparisonData[0]?.shortName || '—'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB 2: NAAC / NBA Grade Spread */}
+                        {chartTab === 'grades' && (
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginBottom: '14px' }}>
+                                    Comprehensive grade distribution mapping Distinction ($\ge 90\%$), First Class ($75-89\%$), Second Class / Pass ($40-74\%$), and Fails ($&lt;40\%$) with official VTU letter grade frequencies.
+                                </div>
+
+                                {gradeSpreadData.total === 0 ? (
+                                    <div style={{
+                                        padding: '40px 20px',
+                                        textAlign: 'center',
+                                        background: 'var(--surface-low)',
+                                        borderRadius: '12px',
+                                        border: '1px dashed var(--border)',
+                                        color: 'var(--tx-muted)'
+                                    }}>
+                                        <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--tx-dim)', marginBottom: '8px' }}>pie_chart</span>
+                                        <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--tx-main)' }}>No Grade Data Available</div>
+                                        <div style={{ fontSize: '12px', marginTop: '4px' }}>Student grade distribution will appear automatically once exam marks are ingested.</div>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                                        {/* Donut Chart: Accreditation Tiers */}
+                                        <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                                            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                                NAAC / NBA Achievement Tiers
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginBottom: '12px' }}>
+                                                Breakdown of {gradeSpreadData.total} evaluated student outcomes
+                                            </div>
+
+                                            <div style={{ width: '100%', height: 230, position: 'relative' }}>
+                                                {mounted && (
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={gradeSpreadData.tiers.filter(t => t.count > 0)}
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                innerRadius={55}
+                                                                outerRadius={85}
+                                                                paddingAngle={3}
+                                                                dataKey="count"
+                                                            >
+                                                                {gradeSpreadData.tiers.filter(t => t.count > 0).map((entry, index) => (
+                                                                    <Cell key={`tier-${index}`} fill={entry.color} />
+                                                                ))}
+                                                            </Pie>
+                                                            <RechartsTooltip content={<ChartTooltip />} />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                )}
+                                                {/* Center Total Metric */}
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: '50%',
+                                                    left: '50%',
+                                                    transform: 'translate(-50%, -50%)',
+                                                    textAlign: 'center',
+                                                    pointerEvents: 'none'
+                                                }}>
+                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', lineHeight: 1 }}>
+                                                        {gradeSpreadData.total}
+                                                    </div>
+                                                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase', marginTop: '2px' }}>
+                                                        Students
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Tier Legend */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+                                                {gradeSpreadData.tiers.map(t => (
+                                                    <div key={t.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderRadius: '6px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--tx-main)', fontWeight: 600 }}>
+                                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: t.color }} />
+                                                            {t.name.split(' ')[0]}
+                                                        </span>
+                                                        <strong>{t.count} <span style={{ color: 'var(--tx-muted)', fontWeight: 500 }}>({t.percentage}%)</span></strong>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* VTU Letter Grade Spread Histogram */}
+                                        <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                                            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                                VTU Letter Grade Distribution
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginBottom: '12px' }}>
+                                                Authentic grades (O, A+, A, B+, B, C, P, F)
+                                            </div>
+
+                                            <div style={{ width: '100%', height: 260 }}>
+                                                {mounted && (
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <BarChart data={gradeSpreadData.letterGrades} margin={{ top: 15, right: 15, left: -15, bottom: 10 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-low, #E2E8F0)" />
+                                                            <XAxis dataKey="grade" tick={{ fontSize: 11, fill: 'var(--tx-muted)', fontWeight: 700 }} />
+                                                            <YAxis tick={{ fontSize: 11, fill: 'var(--tx-muted)' }} />
+                                                            <RechartsTooltip content={<ChartTooltip />} />
+                                                            <Bar dataKey="count" name="Students" radius={[5, 5, 0, 0]} maxBarSize={32}>
+                                                                {gradeSpreadData.letterGrades.map((entry, index) => (
+                                                                    <Cell key={`grade-cell-${index}`} fill={entry.color} />
+                                                                ))}
+                                                            </Bar>
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB 3: Course Score Matrix */}
+                        {chartTab === 'courses' && (
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginBottom: '14px' }}>
+                                    Comparative matrix displaying Pass Rate (%) and Average Score (/100) across all assigned subjects and class sections.
+                                </div>
+
+                                {courseBreakdownData.length === 0 ? (
+                                    <div style={{
+                                        padding: '40px 20px',
+                                        textAlign: 'center',
+                                        background: 'var(--surface-low)',
+                                        borderRadius: '12px',
+                                        border: '1px dashed var(--border)',
+                                        color: 'var(--tx-muted)'
+                                    }}>
+                                        <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--tx-dim)', marginBottom: '8px' }}>auto_graph</span>
+                                        <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--tx-main)' }}>No Subject Breakdowns Available</div>
+                                        <div style={{ fontSize: '12px', marginTop: '4px' }}>Subject comparisons will render here once courses are linked to faculty members.</div>
+                                    </div>
+                                ) : (
+                                    <div style={{ width: '100%', height: 320 }}>
+                                        {mounted && (
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={courseBreakdownData} margin={{ top: 20, right: 20, left: -10, bottom: 25 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-low, #E2E8F0)" />
+                                                    <XAxis
+                                                        dataKey="label"
+                                                        tick={{ fontSize: 11, fill: 'var(--tx-muted)', fontWeight: 600 }}
+                                                        interval={0}
+                                                        angle={courseBreakdownData.length > 5 ? -25 : 0}
+                                                        textAnchor={courseBreakdownData.length > 5 ? 'end' : 'middle'}
+                                                        height={courseBreakdownData.length > 5 ? 45 : 30}
+                                                    />
+                                                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: 'var(--tx-muted)' }} />
+                                                    <RechartsTooltip content={<ChartTooltip />} />
+                                                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+                                                    <ReferenceLine y={75} stroke="#EF4444" strokeDasharray="4 4" label={{ value: '75% Benchmark', fill: '#DC2626', fontSize: 10, fontWeight: 700 }} />
+                                                    <Bar dataKey="passRate" name="Pass Rate (%)" fill="var(--primary)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                                                    <Bar dataKey="avgScore" name="Avg Score (/100)" fill="#6366F1" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Performance Data Table */}
