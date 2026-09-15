@@ -30,18 +30,14 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
-        const searchUsn = searchParams.get('search_usn');
+        const searchUsnParam = searchParams.get('search_usns') || searchParams.get('search_usn');
 
-        // If faculty searches for a specific student USN
-        if (searchUsn) {
-            const cleanUSN = cleanAlphanumeric(searchUsn).toUpperCase();
-
-            // A malformed USN is answered before a single query is issued — the
-            // client used to get a synthetic profile back and render an empty
-            // record as if the student existed.
+        // Helper to process a single student lookup cleanly
+        async function lookupSingleStudent(rawTargetUsn, catalogIndex) {
+            const cleanUSN = cleanAlphanumeric(rawTargetUsn).toUpperCase();
             const usnCheck = validateUsn(cleanUSN);
             if (!usnCheck.isValid) {
-                return ok({
+                return {
                     found: false,
                     reason: 'INVALID_USN',
                     usn: cleanUSN,
@@ -57,13 +53,12 @@ export async function GET(req) {
                     activeBacklogSubjects: [],
                     recentResults: [],
                     studentMarks: []
-                });
+                };
             }
 
             const [
                 { data: studentProfile },
-                { data: resultMarks },
-                catalogIndex
+                { data: resultMarks }
             ] = await Promise.all([
                 supabaseAdmin
                     .from('students')
@@ -73,10 +68,7 @@ export async function GET(req) {
                 supabaseAdmin
                     .from('subject_marks')
                     .select('*, results(exam_name)')
-                    .eq('usn', cleanUSN),
-                // Fetch catalog on the server (admin key bypasses RLS) to avoid
-                // the client trying to query it via the anon key and crashing.
-                fetchCatalogIndex(supabaseAdmin)
+                    .eq('usn', cleanUSN)
             ]);
 
             const { data: studentMarks } = studentProfile?.id
@@ -85,12 +77,8 @@ export async function GET(req) {
 
             const hasMarks = ((resultMarks || []).length + (studentMarks || []).length) > 0;
 
-            // Nothing in the students table AND nothing in any marks table means the
-            // USN is well-formed but unknown to this institution. Say so, rather than
-            // fabricating `{ usn, name: usn }` and letting the dashboard render an
-            // empty transcript that looks like a real (but blank) student.
             if (!studentProfile && !hasMarks) {
-                return ok({
+                return {
                     found: false,
                     reason: 'NOT_FOUND',
                     usn: cleanUSN,
@@ -106,12 +94,11 @@ export async function GET(req) {
                     activeBacklogSubjects: [],
                     recentResults: [],
                     studentMarks: []
-                });
+                };
             }
 
             const profile = studentProfile || { usn: cleanUSN, name: cleanUSN };
 
-            // Merge all marks — identical shape as the client used to produce
             const allMarksRaw = [
                 ...(studentMarks || []).map(m => ({ ...m, source: 'manual', exam_date: 'Manual Entry' })),
                 ...(resultMarks || [])
@@ -126,7 +113,6 @@ export async function GET(req) {
                     }))
             ];
 
-            // Run the canonical academic pipeline SERVER-SIDE with the admin catalog
             const record = await calculateAcademicRecord(allMarksRaw, {
                 usn: cleanUSN,
                 name: profile.name,
@@ -134,17 +120,15 @@ export async function GET(req) {
                 scheme: profile.scheme || '2022'
             }, { catalogIndex });
 
-            // Identity is resolved against the semesters the student actually has
-            // marks for, which is what separates a diploma/lateral entrant (record
-            // starts at semester 3) from a re-admission carrying a 9xx serial.
             const recordedSemesters = [...new Set(
                 Object.keys(record.marksBySemester || {}).map(Number).filter(Boolean)
             )].sort((a, b) => a - b);
             const identity = buildStudentIdentity(profile, recordedSemesters);
             const isLateral = identity.lateral.isLateral;
 
-            return ok({
+            return {
                 found: true,
+                usn: cleanUSN,
                 profile: {
                     ...record.profile,
                     branchLabel: identity.branch.label,
@@ -152,8 +136,6 @@ export async function GET(req) {
                     email: studentProfile?.email || null,
                     phone: studentProfile?.phone || null,
                     isInactive: identity.isInactive,
-                    // Batch shown to faculty is the cohort the student graduates
-                    // with; a lateral entrant's USN year is one later than that.
                     batch: identity.cohort.year,
                     batchLabel: identity.cohort.label,
                     admissionBatch: identity.batch.year,
@@ -162,9 +144,6 @@ export async function GET(req) {
                     declaredSemester: identity.standing.declared,
                     recordedSemesters
                 },
-                // VTU lateral entry IS the diploma route — a diploma holder joins
-                // directly in semester 3, so semesters 1 and 2 are "not applicable"
-                // rather than "missing", and their CGPA is over 6 semesters, not 8.
                 entry: {
                     isLateral,
                     entryMode: isLateral ? 'LATERAL_DIPLOMA' : 'REGULAR',
@@ -173,21 +152,49 @@ export async function GET(req) {
                     firstSemester: isLateral ? LATERAL_ENTRY_SEMESTER : 1,
                     notApplicableSemesters: isLateral ? [1, 2] : [],
                     confidence: identity.lateral.confidence,
-                    flagAgrees: identity.lateral.flagAgrees,
-                    reasons: identity.lateral.reasons
+                    rationale: identity.lateral.rationale
                 },
-                // Pre-computed — client uses these directly, no client-side Supabase needed
                 marksBySemester: record.marksBySemester,
                 semSGPAs: record.semSGPAs,
                 semStats: record.semStats,
                 cgpa: record.cgpa,
                 totalSubjects: record.totalSubjects,
                 totalActiveBacklogs: record.totalActiveBacklogs,
-                activeBacklogSubjects: record.activeBacklogSubjects || [],
-                // Also expose raw for backwards compat
-                recentResults: (resultMarks || []).filter(m => m.usn === cleanUSN),
+                activeBacklogSubjects: record.activeBacklogSubjects,
+                recentResults: (resultMarks || []).slice(0, 10),
                 studentMarks: studentMarks || []
-            });
+            };
+        }
+
+        // If faculty searches for student USN(s)
+        if (searchUsnParam) {
+            // Split by commas, semicolons, whitespace, or newlines
+            const rawTokens = searchUsnParam.split(/[\s,;\n\r]+/).map(t => t.trim()).filter(Boolean);
+            const cleanUSNs = Array.from(new Set(rawTokens.map(t => cleanAlphanumeric(t).toUpperCase()).filter(Boolean)));
+
+            if (cleanUSNs.length === 0) {
+                return ok({ found: false, message: 'Please provide a valid USN.' });
+            }
+
+            const catalogIndex = await fetchCatalogIndex(supabaseAdmin);
+
+            // Multi-USN search
+            if (cleanUSNs.length > 1) {
+                const studentResults = await Promise.all(
+                    cleanUSNs.map(u => lookupSingleStudent(u, catalogIndex))
+                );
+                return ok({
+                    multi: true,
+                    total: studentResults.length,
+                    foundCount: studentResults.filter(s => s.found).length,
+                    missingCount: studentResults.filter(s => !s.found).length,
+                    students: studentResults
+                });
+            }
+
+            // Single USN search (100% backward-compatible structure)
+            const singleResult = await lookupSingleStudent(cleanUSNs[0], catalogIndex);
+            return ok(singleResult);
         }
 
         const facultyId = session.sub || session.id;

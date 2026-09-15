@@ -152,7 +152,14 @@ function RankingsAndMeritContent() {
         }
     }, [branch, section, viewSemester, subjectCode]);
 
-    // Dynamically derive available sections strictly from classes matching selected branch and batch
+    // 4. Auto-fetch Merit List or Leaderboard on mount and whenever filters change
+    useEffect(() => {
+        if (viewTab === 'merit') {
+            loadMeritList();
+        } else {
+            loadLeaderboard();
+        }
+    }, [viewTab, loadMeritList, loadLeaderboard]);
     const availableSections = useMemo(() => {
         const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
         const targetBranch = branch && branch !== 'ALL' ? norm(branch) : null;
