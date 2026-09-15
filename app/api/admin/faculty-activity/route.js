@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireStaff, requireAdmin } from '../../../../lib/server-session';
 import { getAdminClient } from '../../../../lib/analytics-data';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(req) {
     try {
         const { session, error: authError } = requireAdmin(req);

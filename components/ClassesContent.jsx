@@ -1621,7 +1621,7 @@ export function ClassesContent({ embedded = false }) {
                                     autoFocus
                                 />
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Branch</label>
                                     <select style={S.sel} value={newClass.branch} onChange={e => handleNewClassChange({ branch: e.target.value })}>
@@ -1636,7 +1636,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Section *</label>
                                     <div style={{ display: 'flex', gap: '6px' }}>
@@ -1674,7 +1674,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Academic Year</label>
                                     <input
@@ -1769,7 +1769,7 @@ export function ClassesContent({ embedded = false }) {
                                     autoFocus
                                 />
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Branch</label>
                                     <select style={S.sel} value={editClassForm.branch} onChange={e => setEditClassForm(p => ({ ...p, branch: e.target.value }))}>
@@ -1784,7 +1784,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Section *</label>
                                     <div style={{ display: 'flex', gap: '6px' }}>
@@ -1822,7 +1822,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Academic Year</label>
                                     <input

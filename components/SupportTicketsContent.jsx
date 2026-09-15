@@ -1365,7 +1365,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                             </div>
 
                             {/* Identifier & Name */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                                         {newTicketForm.user_type === 'student' ? 'Student USN *' : 'Faculty Email *'}
@@ -1400,7 +1400,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                             </div>
 
                             {/* Category & Initial Status */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                                         Issue Category *

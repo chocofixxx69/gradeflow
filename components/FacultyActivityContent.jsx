@@ -179,12 +179,14 @@ export function FacultyActivityContent({
         if (!isManual && typeof document !== 'undefined' && document.hidden) return;
         if (isManual) setIsManualRefreshing(true);
         try {
-            const res = await fetch('/api/admin/faculty-activity?limit=300');
-            const json = await res.json();
-            if (json?.success) {
-                if (json.activity && json.activity.length > 0) setCurrentLogs(json.activity);
-                if (json.faculty && json.faculty.length > 0) setCurrentFaculty(json.faculty);
-                if (json.presence) setLivePresenceMap(json.presence);
+            const res = await apiRequest('/api/admin/faculty-activity', { query: { limit: 300, _t: Date.now() } });
+            if (res) {
+                const acts = res.activity || (Array.isArray(res) ? res : null);
+                const facs = res.faculty;
+                const pres = res.presence;
+                if (Array.isArray(acts)) setCurrentLogs(acts);
+                if (Array.isArray(facs) && facs.length > 0) setCurrentFaculty(facs);
+                if (pres && typeof pres === 'object') setLivePresenceMap(pres);
                 setLastSyncTime(Date.now());
             }
         } catch { /* non-blocking */ }
@@ -547,28 +549,62 @@ export function FacultyActivityContent({
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshSuccess, setRefreshSuccess] = useState(false);
 
-    // ── Safe Refresh Handler ───────────────────────────────────
+    // ── Safe Refresh Handler (Live DB Sync) ─────────────────────
     const handleRefresh = async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
+        setIsManualRefreshing(true);
         setRefreshSuccess(false);
         try {
-            const res = await fetch('/api/admin/faculty-activity?limit=300');
-            const json = await res.json();
-            if (json?.success) {
-                if (json.activity && json.activity.length > 0) setCurrentLogs(json.activity);
-                if (json.faculty && json.faculty.length > 0) setCurrentFaculty(json.faculty);
+            // Proactively ensure admin session token is synchronized if present
+            if (typeof window !== 'undefined') {
+                try {
+                    const admStr = localStorage.getItem('admin_session');
+                    if (admStr) {
+                        const adm = JSON.parse(admStr);
+                        if (adm?.token && !adm?.sessionToken) {
+                            await fetch('/api/auth/session/sync', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ role: 'admin', token: adm.token, email: adm.email }),
+                            }).then(r => r.json()).then(res => {
+                                if (res?.sessionToken) {
+                                    adm.sessionToken = res.sessionToken;
+                                    localStorage.setItem('admin_session', JSON.stringify(adm));
+                                }
+                            }).catch(() => {});
+                        }
+                    }
+                } catch {}
+            }
+
+            // Fetch live activity and presence directly from DB
+            const res = await apiRequest('/api/admin/faculty-activity', { query: { limit: 300, _t: Date.now() } });
+            if (res) {
+                const acts = res.activity || (Array.isArray(res) ? res : null);
+                const facs = res.faculty;
+                const pres = res.presence;
+                if (Array.isArray(acts)) setCurrentLogs(acts);
+                if (Array.isArray(facs) && facs.length > 0) setCurrentFaculty(facs);
+                if (pres && typeof pres === 'object') setLivePresenceMap(pres);
                 setLastSyncTime(Date.now());
             }
+
+            // Trigger parent refresh to update counts, telemetry, and student/faculty states
             if (onRefresh) {
-                await onRefresh();
+                await onRefresh(true);
             }
             setRefreshSuccess(true);
             setTimeout(() => setRefreshSuccess(false), 2000);
         } catch (err) {
-            console.error('Failed to refresh faculty activity:', err);
+            console.error('Failed to refresh faculty activity from DB:', err);
+            // Even if activity-specific fetch failed, still invoke onRefresh
+            if (onRefresh) {
+                try { await onRefresh(true); } catch {}
+            }
         } finally {
             setIsRefreshing(false);
+            setIsManualRefreshing(false);
         }
     };
 
@@ -577,9 +613,15 @@ export function FacultyActivityContent({
     const handleExportCSV = () => {
         setIsExporting(true);
         try {
+            if (hasActiveFilters && filteredRecords.length === 0) {
+                alert('No activities match your current search/filters to export.');
+                setIsExporting(false);
+                return;
+            }
+
             const recordsToExport = (filteredRecords && filteredRecords.length > 0) ? filteredRecords : enrichedLogs;
             if (!recordsToExport || recordsToExport.length === 0) {
-                alert('No faculty activity records available to export.');
+                alert('No faculty activity records available in database to export.');
                 setIsExporting(false);
                 return;
             }
@@ -660,7 +702,7 @@ export function FacultyActivityContent({
             const facultyObj = !isSystemAdmin ? facultyList.find(f => f.id === logFacultyId) : null;
             const targetStudent = students.find(s => s.usn === logUsn.toUpperCase().trim());
 
-            await apiRequest('/api/admin/faculty-activity', {
+            const res = await apiRequest('/api/admin/faculty-activity', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -676,16 +718,20 @@ export function FacultyActivityContent({
                 }),
             });
 
-            setSubmitSuccess('✓ Action recorded successfully! Refreshing...');
-            if (onRefresh) await onRefresh();
+            if (res?.record) {
+                setCurrentLogs(prev => [res.record, ...prev]);
+            }
+
+            setSubmitSuccess('✓ Action recorded in database! Updating...');
+            await handleRefresh();
             setTimeout(() => {
                 setSubmitSuccess('');
                 setShowLogModal(false);
                 setLogNote('');
                 setLogUsn('');
-            }, 1000);
+            }, 800);
         } catch (err) {
-            alert('Failed to log action: ' + err.message);
+            alert('Failed to log action: ' + (err?.message || 'Failed to record action'));
         } finally {
             setIsSubmitting(false);
         }
@@ -768,37 +814,35 @@ export function FacultyActivityContent({
                     </button>
 
                     {/* Refresh Button with spinning icon and tooltip */}
-                    {onRefresh && (
-                        <button
-                            onClick={handleRefresh}
-                            disabled={isRefreshing}
+                    <button
+                        onClick={handleRefresh}
+                        disabled={isRefreshing}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            border: refreshSuccess ? '1px solid #059669' : '1px solid var(--border)',
+                            background: refreshSuccess ? 'rgba(16, 185, 129, 0.1)' : 'var(--surface)',
+                            color: refreshSuccess ? '#059669' : 'var(--tx-muted)',
+                            fontSize: '12px',
+                            cursor: isRefreshing ? 'wait' : 'pointer',
+                            transition: 'all 0.15s ease',
+                        }}
+                        title={isRefreshing ? 'Refreshing data from database...' : refreshSuccess ? 'Refreshed from database!' : 'Refresh activity logs from database'}
+                    >
+                        <span
+                            className="material-icons-round"
                             style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '8px 10px',
-                                borderRadius: '8px',
-                                border: refreshSuccess ? '1px solid #059669' : '1px solid var(--border)',
-                                background: refreshSuccess ? 'rgba(16, 185, 129, 0.1)' : 'var(--surface)',
-                                color: refreshSuccess ? '#059669' : 'var(--tx-muted)',
-                                fontSize: '12px',
-                                cursor: isRefreshing ? 'wait' : 'pointer',
-                                transition: 'all 0.15s ease',
+                                fontSize: '16px',
+                                animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                                color: refreshSuccess ? '#059669' : 'inherit',
                             }}
-                            title={isRefreshing ? 'Refreshing data...' : refreshSuccess ? 'Refreshed!' : 'Refresh activity logs'}
                         >
-                            <span
-                                className="material-icons-round"
-                                style={{
-                                    fontSize: '16px',
-                                    animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
-                                    color: refreshSuccess ? '#059669' : 'inherit',
-                                }}
-                            >
-                                {refreshSuccess ? 'check' : 'refresh'}
-                            </span>
-                        </button>
-                    )}
+                            {refreshSuccess ? 'check' : 'refresh'}
+                        </span>
+                    </button>
                 </div>
             </div>
 
@@ -896,35 +940,35 @@ export function FacultyActivityContent({
                         {/* Instant Force Refresh Button */}
                         <button
                             type="button"
-                            onClick={() => fetchLatest(true)}
-                            disabled={isManualRefreshing}
+                            onClick={handleRefresh}
+                            disabled={isRefreshing || isManualRefreshing}
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '5px',
-                                background: 'var(--surface-low)',
-                                border: '1px solid var(--border)',
-                                color: 'var(--tx-main)',
+                                background: refreshSuccess ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-low)',
+                                border: refreshSuccess ? '1px solid #059669' : '1px solid var(--border)',
+                                color: refreshSuccess ? '#059669' : 'var(--tx-main)',
                                 borderRadius: '6px',
                                 padding: '4px 10px',
                                 fontSize: '11px',
                                 fontWeight: 800,
-                                cursor: isManualRefreshing ? 'wait' : 'pointer',
+                                cursor: (isRefreshing || isManualRefreshing) ? 'wait' : 'pointer',
                                 transition: 'all 0.15s ease',
                             }}
-                            title="Instantly poll latest real-time faculty presence and activity records"
+                            title="Fetch latest real-time faculty presence and activity records from database"
                         >
                             <span
                                 className="material-icons-round"
                                 style={{
                                     fontSize: '14px',
-                                    animation: isManualRefreshing ? 'spin 0.8s linear infinite' : 'none',
-                                    color: 'var(--primary)',
+                                    animation: (isRefreshing || isManualRefreshing) ? 'spin 0.8s linear infinite' : 'none',
+                                    color: refreshSuccess ? '#059669' : 'var(--primary)',
                                 }}
                             >
-                                sync
+                                {refreshSuccess ? 'check' : 'sync'}
                             </span>
-                            Refresh
+                            {refreshSuccess ? 'Refreshed!' : (isRefreshing || isManualRefreshing) ? 'Refreshing...' : 'Refresh'}
                         </button>
 
                         {/* Live Feed Heartbeat & Pause/Resume Toggle */}
@@ -2014,29 +2058,58 @@ export function FacultyActivityContent({
                             gap: '14px',
                         }}>
                             {/* Faculty Info */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--surface-low)', padding: '12px', borderRadius: '10px' }}>
-                                <div style={{
-                                    width: '38px',
-                                    height: '38px',
-                                    borderRadius: '8px',
-                                    background: 'var(--primary)',
-                                    color: 'var(--bg)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '14px',
-                                    fontWeight: 900,
-                                }}>
-                                    {selectedRecord.who?.initials}
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                        {selectedRecord.who?.name}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: 'var(--surface-low)', padding: '12px', borderRadius: '10px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                    <div style={{
+                                        width: '38px',
+                                        height: '38px',
+                                        borderRadius: '8px',
+                                        background: 'var(--primary)',
+                                        color: 'var(--bg)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '14px',
+                                        fontWeight: 900,
+                                        flexShrink: 0,
+                                    }}>
+                                        {selectedRecord.who?.initials}
                                     </div>
-                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>
-                                        {selectedRecord.who?.department} · {selectedRecord.who?.email}
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                            {selectedRecord.who?.name}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                            {selectedRecord.who?.department} · {selectedRecord.who?.email}
+                                        </div>
                                     </div>
                                 </div>
+
+                                {onInspectFaculty && (selectedRecord.who?.id || selectedRecord.who?.email) && (
+                                    <button
+                                        onClick={() => {
+                                            const fac = facultyMap.get(selectedRecord.who?.id) ||
+                                                facultyMap.get(selectedRecord.who?.email?.toLowerCase()) ||
+                                                { id: selectedRecord.who?.id, full_name: selectedRecord.who?.name, email: selectedRecord.who?.email, department: selectedRecord.who?.department };
+                                            onInspectFaculty(fac);
+                                            setSelectedRecord(null);
+                                        }}
+                                        style={{
+                                            padding: '5px 10px',
+                                            borderRadius: '6px',
+                                            border: '1px solid var(--border)',
+                                            background: 'var(--surface)',
+                                            color: 'var(--primary)',
+                                            fontSize: '11px',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap',
+                                        }}
+                                        title="Inspect faculty member profile and assignments"
+                                    >
+                                        Inspect Faculty
+                                    </button>
+                                )}
                             </div>
 
                             {/* Details Grid */}
@@ -2070,7 +2143,7 @@ export function FacultyActivityContent({
 
                             {/* Target Student (If any) */}
                             {selectedRecord.target?.usn && (
-                                <div style={{ background: 'var(--surface-low)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ background: 'var(--surface-low)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                     <div>
                                         <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block' }}>Target Student</span>
                                         <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>
@@ -2083,10 +2156,14 @@ export function FacultyActivityContent({
                                         )}
                                     </div>
 
-                                    {onInspectStudent && selectedRecord.target?.studentInfo && (
+                                    {onInspectStudent && (
                                         <button
                                             onClick={() => {
-                                                onInspectStudent(selectedRecord.target.studentInfo);
+                                                const st = selectedRecord.target.studentInfo || {
+                                                    usn: selectedRecord.target.usn,
+                                                    name: selectedRecord.target.studentName || selectedRecord.target.usn,
+                                                };
+                                                onInspectStudent(st);
                                                 setSelectedRecord(null);
                                             }}
                                             style={{
@@ -2099,6 +2176,7 @@ export function FacultyActivityContent({
                                                 fontWeight: 800,
                                                 cursor: 'pointer',
                                             }}
+                                            title={`Inspect student profile for ${selectedRecord.target.usn}`}
                                         >
                                             View Student
                                         </button>

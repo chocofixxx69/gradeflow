@@ -675,8 +675,12 @@ export const SearchableSelect = forwardRef(function SearchableSelect({
                         top: 'calc(100% + 4px)',
                         left: 0,
                         right: 0,
-                        minWidth: '320px',
-                        maxWidth: '540px',
+                        // Rich options (subtitle/badge text) need room to breathe, so this
+                        // widens past a narrow trigger - but uncapped it could push past a
+                        // small-viewport edge, since left/right:0 alone doesn't stop min-width
+                        // from winning. Clamp both ends to the viewport so it never does.
+                        minWidth: 'min(320px, 92vw)',
+                        maxWidth: 'min(540px, 92vw)',
                         background: '#FFFFFF',
                         border: '1px solid var(--border, #cbd5e1)',
                         borderRadius: '12px',

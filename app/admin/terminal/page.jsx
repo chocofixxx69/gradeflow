@@ -1,24 +1,34 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '../../../components/AuthGuard';
-import { ClassesContent } from '../../../components/ClassesContent';
-import { AuditLogContent } from '../../../components/AuditLogContent';
-import { SupportTicketsContent } from '../../../components/SupportTicketsContent';
-import { FacultyAssignmentsContent } from '../../../components/FacultyAssignmentsContent';
-import { FacultyPerformanceContent } from '../../../components/FacultyPerformanceContent';
-import { FacultyActivityContent } from '../../../components/FacultyActivityContent';
-import { AdminVtuUrlsContent } from '../../../components/AdminVtuUrlsContent';
-import { SubjectsContent } from '../../../components/SubjectsContent';
-import { ConfirmDialog } from '../../../components/ui';
-import AdminAnalyticsPage from '../analytics/page.jsx';
+import { ConfirmDialog, LoadingState } from '../../../components/ui';
 import { AnalyticsFiltersProvider } from '../analytics/AnalyticsFiltersContext';
 import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { supabase } from '../../../lib/supabase';
 import { scoreStudentMatch, filterAndRank } from '../../../lib/search-utils';
+
+// Every tab below is conditionally rendered ({tab === 'x' && <.../>}), but a
+// static import still ships in this route's one client bundle regardless of
+// which tab is active - this page alone pulled in every admin feature
+// (recharts x3, jspdf/xlsx-adjacent chart/export code, all 9 tab bodies) on
+// first load no matter which tab a user landed on. next/dynamic defers each
+// tab's module (and its dependencies) to when that tab actually renders.
+const tabLoading = () => <LoadingState block label="Loading..." />;
+
+const ClassesContent = dynamic(() => import('../../../components/ClassesContent').then(m => m.ClassesContent), { loading: tabLoading, ssr: false });
+const AuditLogContent = dynamic(() => import('../../../components/AuditLogContent').then(m => m.AuditLogContent), { loading: tabLoading, ssr: false });
+const SupportTicketsContent = dynamic(() => import('../../../components/SupportTicketsContent').then(m => m.SupportTicketsContent), { loading: tabLoading, ssr: false });
+const FacultyAssignmentsContent = dynamic(() => import('../../../components/FacultyAssignmentsContent').then(m => m.FacultyAssignmentsContent), { loading: tabLoading, ssr: false });
+const FacultyPerformanceContent = dynamic(() => import('../../../components/FacultyPerformanceContent').then(m => m.FacultyPerformanceContent), { loading: tabLoading, ssr: false });
+const FacultyActivityContent = dynamic(() => import('../../../components/FacultyActivityContent').then(m => m.FacultyActivityContent), { loading: tabLoading, ssr: false });
+const AdminVtuUrlsContent = dynamic(() => import('../../../components/AdminVtuUrlsContent').then(m => m.AdminVtuUrlsContent), { loading: tabLoading, ssr: false });
+const SubjectsContent = dynamic(() => import('../../../components/SubjectsContent').then(m => m.SubjectsContent), { loading: tabLoading, ssr: false });
+const AdminAnalyticsPage = dynamic(() => import('../analytics/page.jsx'), { loading: tabLoading, ssr: false });
 
 const TAB_METADATA = {
     overview: { label: 'Institutional Overview', icon: 'dashboard', shortLabel: 'Overview' },
@@ -1328,7 +1338,7 @@ function AdminPanelContent() {
             transition: 'width 0.2s ease-in-out, min-width 0.2s ease-in-out, max-width 0.2s ease-in-out, padding 0.2s ease-in-out',
             zIndex: 100,
         },
-        sidebarNavScroll: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' },
+        sidebarNavScroll: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' },
         logoRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-2) var(--space-1)' },
         logoBox: {
             width: '36px', height: '36px', background: 'var(--primary)',
@@ -1336,19 +1346,21 @@ function AdminPanelContent() {
             justifyContent: 'center', color: 'var(--bg)', fontWeight: 900, fontSize: '17px',
         },
         adminTag: {
-            fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)',
-            textTransform: 'uppercase', letterSpacing: '0.12em',
-            padding: 'var(--space-1) var(--space-2) var(--space-4)',
+            fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)',
+            letterSpacing: '0.02em',
+            padding: 'var(--space-1) var(--space-2) var(--space-3)',
         },
         sep: { height: '1px', background: 'var(--border)', margin: 'var(--space-2) 0 var(--space-4)' },
         navBtn: (active) => ({
             display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-            width: '100%', padding: '11px 14px', borderRadius: 'var(--radius-5)',
-            border: 'none', background: active ? 'var(--surface-low)' : 'transparent',
-            color: active ? 'var(--tx-main)' : 'var(--tx-muted)',
-            fontWeight: active ? 700 : 500, fontSize: '13px',
+            width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-4)',
+            borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
+            borderTop: 'none', borderRight: 'none', borderBottom: 'none',
+            background: active ? 'rgba(23, 75, 77, 0.08)' : 'transparent',
+            color: active ? 'var(--primary)' : 'var(--tx-muted)',
+            fontWeight: active ? 800 : 600, fontSize: '13px',
             cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-            transition: 'all 0.15s', marginBottom: '2px',
+            transition: 'all 0.15s ease',
         }),
         main: {
             flex: 1,
@@ -1366,10 +1378,10 @@ function AdminPanelContent() {
         pageLabel: { fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--space-2)' },
         pageTitle: { fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.03em', marginBottom: 'var(--space-7)' },
         statGrid: {},
-        statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: isMobile ? 'var(--space-4)' : 'var(--space-6)', minWidth: 0, boxSizing: 'border-box' },
+        statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-5)', padding: isMobile ? 'var(--space-4)' : 'var(--space-6)', minWidth: 0, boxSizing: 'border-box' },
         statLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-3)' },
         statVal: { fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em', lineHeight: 1 },
-        tableWrap: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-7)', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', boxSizing: 'border-box' },
+        tableWrap: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-5)', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', boxSizing: 'border-box' },
         tableHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border)', gap: 'var(--space-3)', flexWrap: 'wrap' },
         tableTitle: { fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' },
         searchInput: {
@@ -1389,14 +1401,14 @@ function AdminPanelContent() {
                 banned: ['var(--red-bg)', 'var(--red)'],
             };
             const [bg, cl] = map[status] || ['var(--surface-low)', 'var(--tx-muted)'];
-            return { display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: bg, color: cl };
+            return { display: 'inline-block', padding: '3px 10px', borderRadius: 'var(--radius-2)', fontSize: '11px', fontWeight: 700, background: bg, color: cl };
         },
         avatar: { width: '36px', height: '36px', borderRadius: '50%', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: 'var(--tx-muted)', flexShrink: 0 },
         actionBtn: (filled) => ({
-            padding: '7px 16px', borderRadius: 'var(--radius-3)', border: filled ? 'none' : '1px solid var(--border)',
-            background: filled ? 'var(--primary)' : 'transparent',
-            color: filled ? 'var(--bg)' : 'var(--tx-muted)',
-            fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.1s',
+            padding: '8px 16px', borderRadius: 'var(--radius-3)', border: filled ? 'none' : '1px solid var(--border)',
+            background: filled ? 'var(--primary)' : 'var(--surface)',
+            color: filled ? 'var(--bg)' : 'var(--tx-main)',
+            fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s ease',
         }),
         overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 2000, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)', paddingLeft: 'env(safe-area-inset-left)' },
         drawer: { width: 'min(100vw, 760px)', maxWidth: '100vw', background: 'var(--surface)', maxHeight: '100dvh', overflowY: 'auto', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-5), 4vw, var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-7)', boxShadow: 'var(--shadow-lg)', boxSizing: 'border-box' },
@@ -1478,7 +1490,7 @@ function AdminPanelContent() {
                         <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {nav.find(n => n.id === tab)?.label || 'Admin Console'}
                         </div>
-                        <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', letterSpacing: '0.02em' }}>
                             Institutional Admin
                         </div>
                     </div>
@@ -1532,10 +1544,11 @@ function AdminPanelContent() {
                     {nav.map(n => (
                         <button
                             key={n.id}
+                            aria-current={tab === n.id ? 'page' : undefined}
                             style={{
                                 ...c.navBtn(tab === n.id),
                                 justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
-                                padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
+                                padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '10px 14px'
                             }}
                             onClick={() => { switchTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
                             title={sidebarCollapsed && !isMobile ? n.label : undefined}
@@ -1559,9 +1572,9 @@ function AdminPanelContent() {
                 <div style={{ ...c.sep, flexShrink: 0 }} />
                 {(!sidebarCollapsed || isMobile) && (
                     <div style={{ padding: '0 8px 12px' }}>
-                        <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                        <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: 'var(--radius-4)', border: '1px solid var(--border)' }}>
                             <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{adminUser?.email || 'Admin Account'}</div>
-                            <div style={{ fontSize: '9px', color: 'var(--tx-dim)', textTransform: 'uppercase', marginTop: '2px', fontWeight: 700 }}>Full Access Active</div>
+                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', textTransform: 'uppercase', marginTop: '2px', fontWeight: 700 }}>Full Access Active</div>
                         </div>
                     </div>
                 )}
@@ -1772,10 +1785,10 @@ function AdminPanelContent() {
                             <div style={c.statCard}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Department & Branch Enrollment</h3>
-                                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '4px 0 0 0' }}>Real student enrollment breakdown across 8 active engineering departments (559 Enrolled).</p>
+                                        <h2 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Department &amp; Branch Enrollment</h2>
+                                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>Real student enrollment breakdown across 8 active engineering departments (559 Enrolled).</p>
                                     </div>
-                                    <button style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '11px' }} onClick={() => { setStudentBranchFilter('all'); setStudentBatchFilter('all'); setStudentSemFilter('all'); switchTab('students', { from: 'overview', title: 'Institutional Overview' }); }}>
+                                    <button style={{ ...c.actionBtn(false), padding: '6px 12px', fontSize: '12px' }} onClick={() => { setStudentBranchFilter('all'); setStudentBatchFilter('all'); setStudentSemFilter('all'); switchTab('students', { from: 'overview', title: 'Institutional Overview' }); }}>
                                         View All
                                     </button>
                                 </div>
@@ -1835,8 +1848,8 @@ function AdminPanelContent() {
                             <div style={c.statCard}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)', margin: 0 }}>Academic Admission Batches</h3>
-                                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '2px 0 0 0' }}>Graduating class standing derived from verified university enrollment.</p>
+                                        <h2 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Academic Admission Batches</h2>
+                                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>Graduating class standing derived from verified university enrollment.</p>
                                     </div>
                                     <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>school</span>
                                 </div>
@@ -1882,8 +1895,8 @@ function AdminPanelContent() {
                             <div style={c.statCard}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Academic Semester Cohorts</h3>
-                                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '4px 0 0 0' }}>Current student distribution per semester standing.</p>
+                                        <h2 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Academic Semester Cohorts</h2>
+                                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>Current student distribution per semester standing.</p>
                                     </div>
                                     <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>groups</span>
                                 </div>
@@ -1907,7 +1920,23 @@ function AdminPanelContent() {
                                         >
                                             <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Semester {sem}</div>
                                             <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>{count}</div>
-                                            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--primary)', marginTop: '4px' }}>View Students →</div>
+                                            <span style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '4px',
+                                                fontSize: '11px',
+                                                fontWeight: 700,
+                                                color: 'var(--primary)',
+                                                background: 'rgba(23, 75, 77, 0.08)',
+                                                padding: '4px 8px',
+                                                borderRadius: 'var(--radius-2)',
+                                                marginTop: '6px',
+                                                transition: 'background 0.15s ease'
+                                            }}>
+                                                View Students
+                                                <span className="material-icons-round" style={{ fontSize: '12px' }}>arrow_forward</span>
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
@@ -1918,12 +1947,12 @@ function AdminPanelContent() {
                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                      <div>
                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                             <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)', margin: 0 }}>VTU Exam Performance Telemetry</h3>
+                                             <h2 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>VTU Exam Performance Telemetry</h2>
                                              <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.1)', color: '#047857' }}>
                                                  LIVE
                                              </span>
                                          </div>
-                                         <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '2px 0 0 0' }}>
+                                         <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>
                                              Based on {vtuStats.totalExams.toLocaleString()} semester results &amp; {(vtuStats.totalMarks || 0).toLocaleString()} subject marks.
                                          </p>
                                      </div>
@@ -1964,10 +1993,10 @@ function AdminPanelContent() {
                             <div style={c.statCard}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--tx-main)', margin: 0 }}>Recent Faculty Activity</h3>
-                                        <p style={{ fontSize: '11px', color: 'var(--tx-muted)', margin: '2px 0 0 0' }}>Real-time audit log of staff interactions.</p>
+                                        <h2 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Recent Faculty Activity</h2>
+                                        <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>Real-time audit log of staff interactions.</p>
                                     </div>
-                                    <button style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px' }} onClick={() => switchTab('activity', { from: 'overview', title: 'Institutional Overview' })}>
+                                    <button style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '12px' }} onClick={() => switchTab('activity', { from: 'overview', title: 'Institutional Overview' })}>
                                         Full Log ({activityLogs.length})
                                     </button>
                                 </div>
@@ -2004,12 +2033,13 @@ function AdminPanelContent() {
                     <div style={c.tableWrap}>
                         <div style={c.tableHead}>
                             <div>
-                                <div style={c.tableTitle}>Recent Student Registrations & Dossiers</div>
-                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>Showing latest students registered in the institution database.</div>
+                                <h2 style={{ ...c.tableTitle, margin: 0 }}>Recent Student Registrations &amp; Dossiers</h2>
+                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>Showing latest students registered in the institution database.</p>
                             </div>
-                            <button style={c.actionBtn(true)} onClick={() => switchTab('students', { from: 'overview', title: 'Institutional Overview' })}>View All {students.length} Students</button>
+                            <button style={c.actionBtn(false)} onClick={() => switchTab('students', { from: 'overview', title: 'Institutional Overview' })}>View All {students.length} Students</button>
                         </div>
                         {!isMobile ? (
+                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                             <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>{['Student', 'USN', 'Branch', 'Semester', 'Scheme', 'Status', 'Action'].map(h => <th key={h} style={c.th}>{h}</th>)}</tr>
@@ -2046,6 +2076,7 @@ function AdminPanelContent() {
                                     {students.length === 0 && <tr><td colSpan="7" style={{ padding: '60px', textAlign: 'center', color: 'var(--tx-dim)' }}>No students registered yet.</td></tr>}
                                 </tbody>
                             </table>
+                            </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
                                 {students.slice(0, 6).map(s => (
@@ -2361,6 +2392,7 @@ function AdminPanelContent() {
 
                         {/* Desktop Table */}
                         {!isMobile ? (
+                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                             <table style={{ width: '100%', minWidth: '780px', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
@@ -2549,6 +2581,7 @@ function AdminPanelContent() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         ) : (
                             /* Mobile Student Cards */
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
@@ -2797,6 +2830,7 @@ function AdminPanelContent() {
 
                         {/* Desktop Table */}
                         {!isMobile ? (
+                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                             <table style={{ width: '100%', minWidth: '820px', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
@@ -3007,6 +3041,7 @@ function AdminPanelContent() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         ) : (
                             /* Mobile Cards */
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
@@ -4290,7 +4325,7 @@ function AdminPanelContent() {
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Institutional Email *</label>
                         <input style={c.input} type="email" placeholder="e.g. ramesh@anjuman.edu.in" value={newFaculty.email} onChange={e => setNewFaculty(p => ({ ...p, email: e.target.value }))} />
                         
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Department</label>
@@ -4362,7 +4397,7 @@ function AdminPanelContent() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                             <div>
                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Employee ID</label>
                                 <input style={c.input} placeholder="e.g. AITM-CS-042" value={newFaculty.employee_id} onChange={e => setNewFaculty(p => ({ ...p, employee_id: e.target.value }))} />
@@ -4397,7 +4432,7 @@ function AdminPanelContent() {
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Institutional Email</label>
                         <input style={c.input} value={editingFaculty.email || ''} onChange={e => setEditingFaculty(p => ({ ...p, email: e.target.value }))} />
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Department</label>
@@ -4472,7 +4507,7 @@ function AdminPanelContent() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                             <div>
                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Employee ID</label>
                                 <input style={c.input} value={editingFaculty.employee_id || ''} onChange={e => setEditingFaculty(p => ({ ...p, employee_id: e.target.value }))} />
