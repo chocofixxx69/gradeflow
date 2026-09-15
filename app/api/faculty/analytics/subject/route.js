@@ -434,7 +434,7 @@ export async function GET(req) {
             filtersApplied: { subjectCode, branch, semester, batch, entry: entryFilter }
         };
 
-        setCached(cacheKey, payload, 30_000);
+        setCached(cacheKey, payload, 5 * 60_000);
 
         return ok(payload);
     } catch (err) {

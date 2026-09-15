@@ -51,7 +51,7 @@ const SEMESTER_MODES = new Set(['records', 'current']);
  * staying live enough that a scrape landing mid-session shows up on its own.
  * `?fresh=1` (the Refresh button) always bypasses it.
  */
-const DATASET_TTL_MS = 15_000;
+const DATASET_TTL_MS = 5 * 60_000;
 let datasetCache = { at: 0, promise: null };
 
 function loadDataset(supabaseAdmin, { fresh = false } = {}) {

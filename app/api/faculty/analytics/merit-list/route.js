@@ -253,7 +253,7 @@ export async function GET(req) {
             rankedStudents
         };
 
-        setCached(cacheKey, payload, 30_000);
+        setCached(cacheKey, payload, 5 * 60_000);
 
         return ok(payload);
     } catch (err) {
