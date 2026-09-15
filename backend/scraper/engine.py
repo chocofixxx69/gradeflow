@@ -695,8 +695,9 @@ async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, bu
     target_scheme = str(scheme).strip() if scheme else deduce_scheme_from_usn(usn)
 
     if target_url and target_url.strip():
-        urls = [target_url.strip()]
-        print(f"\n[ENGINE] Targeted Single-Portal Mode: Scraping {usn} ONLY at {target_url}...", file=sys.stderr, flush=True)
+        raw_urls = [u.strip() for u in re.split(r'[,;\s]+', target_url) if u.strip() and u.strip().lower().startswith('http')]
+        urls = raw_urls if raw_urls else [target_url.strip()]
+        print(f"\n[ENGINE] Targeted Portal Mode: Scraping {usn} across {len(urls)} targeted portal(s)...", file=sys.stderr, flush=True)
     else:
         urls = get_vtu_urls(faculty_id, scheme=target_scheme)
         if not urls:

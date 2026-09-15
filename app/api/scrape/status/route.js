@@ -25,12 +25,59 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId');
+    const jobIdsParam = searchParams.get('jobIds');
 
-    if (!jobId) {
+    if (!jobId && !jobIdsParam) {
         return NextResponse.json(
-            { success: false, error: { code: 'MISSING_JOB_ID', message: 'jobId is required.' } },
+            { success: false, error: { code: 'MISSING_JOB_ID', message: 'jobId or jobIds is required.' } },
             { status: 400 }
         );
+    }
+
+    // Batch status check
+    if (jobIdsParam) {
+        const idList = jobIdsParam.split(',').map(id => id.trim()).filter(Boolean);
+        if (idList.length === 0) {
+            return NextResponse.json({ success: true, data: { jobs: [], allTerminal: true, completedCount: 0, totalCount: 0 } });
+        }
+
+        const { data: jobs, error } = await supabaseAdmin
+            .from('scraper_jobs')
+            .select('id, usn, status, error, created_at, started_at, finished_at')
+            .in('id', idList);
+
+        if (error) {
+            console.error('[GET /api/scrape/status batch]', error);
+            return NextResponse.json(
+                { success: false, error: { code: 'QUERY_FAILED', message: 'Could not read jobs status.' } },
+                { status: 500 }
+            );
+        }
+
+        const jobsMap = new Map((jobs || []).map(j => [j.id, j]));
+        const enriched = idList.map(id => {
+            const j = jobsMap.get(id);
+            if (!j) return { id, status: 'missing', isTerminal: true };
+            const isTerminal = ['finished', 'no_result', 'error'].includes(j.status);
+            return { ...j, isTerminal };
+        });
+
+        const allTerminal = enriched.every(j => j.isTerminal);
+        const completedCount = enriched.filter(j => j.isTerminal).length;
+
+        if (enriched.some(j => j.status === 'finished')) {
+            invalidateAnalyticsCache();
+        }
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                jobs: enriched,
+                allTerminal,
+                completedCount,
+                totalCount: enriched.length
+            }
+        });
     }
 
     const { data: job, error } = await supabaseAdmin
@@ -48,8 +95,6 @@ export async function GET(req) {
     }
 
     if (!job) {
-        // Treated as terminal by the caller: the job row is gone (cleared by an
-        // admin, or the USN was deleted) so there is nothing left to wait for.
         return NextResponse.json({
             success: true,
             data: { id: jobId, status: 'missing', isTerminal: true },
@@ -58,10 +103,6 @@ export async function GET(req) {
 
     const isTerminal = ['finished', 'no_result', 'error'].includes(job.status);
 
-    // The scraper is a separate worker writing straight to Supabase, so this process
-    // never observes the write itself. A job reaching a terminal state is the signal
-    // that new marks may have landed, and it is the moment to drop the cached
-    // analytics warehouse so the next report is built from the new rows.
     if (job.status === 'finished') {
         invalidateAnalyticsCache();
     }
