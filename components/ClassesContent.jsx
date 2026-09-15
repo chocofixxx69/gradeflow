@@ -13,10 +13,39 @@ import { recordFacultyAction } from '../lib/api/faculty-action';
 const loadExportUtils = () => import('../lib/export-utils');
 import { downloadCSV, downloadWorkbook } from '../lib/workbook-export';
 import { isFailedSubject } from '../lib/vtuGrades';
+import { normalizePortalScheme } from '../lib/vtu-portals';
 import { ConfirmDialog } from './ui';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
+
+// ── VTU "Fetch Results" ─────────────────────────────────────
+// Who to scrape. Every scope is derived from the roster already on screen, so
+// the picker can never disagree with the table the user is looking at.
+const SCRAPE_SCOPE_LABELS = {
+    all: 'Every student in the class',
+    selected: 'Students ticked in the roster',
+    backlogs: 'Students carrying backlogs',
+    missing: 'Students with no results yet',
+    custom: 'Hand-picked students',
+};
+
+// scraper_jobs.status vocabulary, plus 'missing' for a job row that has been
+// cleared out from under us. See backend/scraper/process_queue.py.
+const SCRAPE_STATUS_META = {
+    queued:    { label: 'Queued',       icon: 'schedule',              color: 'var(--tx-muted)', bg: 'var(--surface-low)' },
+    running:   { label: 'Scanning',     icon: 'sync',                  color: 'var(--primary)',  bg: 'var(--surface-low)' },
+    finished:  { label: 'Updated',      icon: 'check_circle',          color: 'var(--green)',    bg: 'var(--green-bg)' },
+    no_result: { label: 'No new data',  icon: 'remove_circle_outline', color: 'var(--tx-dim)',   bg: 'var(--surface-low)' },
+    error:     { label: 'Failed',       icon: 'error_outline',         color: 'var(--red)',      bg: 'var(--red-bg)' },
+    missing:   { label: 'Job vanished', icon: 'help_outline',          color: 'var(--red)',      bg: 'var(--red-bg)' },
+};
+const scrapeMeta = status => SCRAPE_STATUS_META[status] || SCRAPE_STATUS_META.queued;
+
+// How long a watched batch stays interesting. A worker that dies holding jobs
+// would otherwise leave the panel spinning until the tab is closed.
+const SCRAPE_RUN_TTL_MS = 45 * 60 * 1000;
+const scrapeRunKey = classId => `gf_class_scrape_run_${classId}`;
 
 // Dynamic batch intake years starting at least from 2036 (or current year + 10) down to 2018
 const CURRENT_YEAR = new Date().getFullYear();
@@ -108,10 +137,19 @@ export function ClassesContent({ embedded = false }) {
     const [addTab, setAddTab] = useState('single');
     const [importResult, setImportResult] = useState(null);
     const [showImportResult, setShowImportResult] = useState(false);
-    const [showUrlModal, setShowUrlModal] = useState(false);
-    const [vtuUrls, setVtuUrls] = useState([]);
-    const [loadingUrls, setLoadingUrls] = useState(false);
-    const [newUrlInput, setNewUrlInput] = useState({ url: '', exam_name: '' });
+    // ── VTU Fetch Results: which portals to aim at ──
+    // The catalog is resolved server-side from the session (/api/scrape/portals)
+    // rather than from a faculty_id guessed in the browser, because this same
+    // component renders in both the faculty and the admin portal.
+    const [showScrapeModal, setShowScrapeModal] = useState(false);
+    const [scrapePortals, setScrapePortals] = useState([]);
+    const [scrapePortalsLoading, setScrapePortalsLoading] = useState(false);
+    const [scrapePortalsError, setScrapePortalsError] = useState('');
+    const [scrapePortalMode, setScrapePortalMode] = useState('all'); // 'all' | 'pick' | 'custom'
+    const [scrapePickedUrls, setScrapePickedUrls] = useState(new Set());
+    const [scrapePortalSearch, setScrapePortalSearch] = useState('');
+    const [scrapeCustomUrl, setScrapeCustomUrl] = useState('');
+    const [scrapeScheme, setScrapeScheme] = useState('2022');
     const [facultyList, setFacultyList] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [rosterSearch, setRosterSearch] = useState('');
@@ -178,8 +216,19 @@ export function ClassesContent({ embedded = false }) {
     const [bulkUsns, setBulkUsns] = useState('');
     const [fileLoading, setFileLoading] = useState(false);
     const [msg, setMsg] = useState('');
-    const [scrapeStatus, setScrapeStatus] = useState({});
-    const [drawerScrapeStatus, setDrawerScrapeStatus] = useState('');
+    // ── VTU Fetch Results: which students, and the batch in flight ──
+    const [scrapeScope, setScrapeScope] = useState('all');
+    const [scrapePickedUsns, setScrapePickedUsns] = useState(new Set());
+    const [scrapeStudentSearch, setScrapeStudentSearch] = useState('');
+    const [scrapeForce, setScrapeForce] = useState(true);
+    const [scrapeQueueing, setScrapeQueueing] = useState(false);
+    const [scrapeError, setScrapeError] = useState('');
+    // The batch being watched: { runId, classId, className, startedAt,
+    // portalLabel, scopeLabel, jobs: [{ id, usn, name }], cached, failed }
+    const [scrapeRun, setScrapeRun] = useState(null);
+    const [scrapeStatus, setScrapeStatus] = useState({}); // jobId -> status row
+    const [scrapeWatching, setScrapeWatching] = useState(false);
+    const [scrapePollWarning, setScrapePollWarning] = useState('');
     const [selectedUsns, setSelectedUsns] = useState(new Set());
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferScope, setTransferScope] = useState('selected');
@@ -505,9 +554,12 @@ export function ClassesContent({ embedded = false }) {
         }
     };
 
-    const fetchClassStudents = useCallback(async (cls, isManual = false) => {
-        setLoadingStudents(true);
-        if (!isManual) {
+    // `silent` is for the scraper's live refresh: pull fresh rows in the
+    // background without blanking the table, flipping the spinner on, or
+    // stamping a "roster verified" banner over whatever the run is reporting.
+    const fetchClassStudents = useCallback(async (cls, isManual = false, silent = false) => {
+        if (!silent) setLoadingStudents(true);
+        if (!isManual && !silent) {
             setStudents([]); setAllMarks([]); setSubjectToppers([]); setAvailableSems([]); setSemFilter('all');
         }
         try {
@@ -523,7 +575,7 @@ export function ClassesContent({ embedded = false }) {
                 setAvailableSems(sems);
                 setSelectedSem(sems[sems.length - 1]);
             }
-            if (isManual) {
+            if (isManual && !silent) {
                 const diff = studs.length - prevCount;
                 if (diff > 0) {
                     setMsg(`✓ New student enrollment detected: +${diff} student(s) synced dynamically!`);
@@ -534,8 +586,8 @@ export function ClassesContent({ embedded = false }) {
             }
         } catch (err) {
             console.error('Failed to fetch class students:', err);
-            setMsg('Failed to load students for this class.');
-        } finally { setLoadingStudents(false); }
+            if (!silent) setMsg('Failed to load students for this class.');
+        } finally { if (!silent) setLoadingStudents(false); }
     }, [students.length]);
 
     const computeToppers = (marks, studs, sem, remarks = null) => {
@@ -604,8 +656,35 @@ export function ClassesContent({ embedded = false }) {
         setMsg('');
         setRosterSearch('');
         setEditingName(false);
+        setSelectedUsns(new Set());
+        restoreScrapeRun(cls?.id);
         fetchClassStudents(cls);
         loadSubjectTeachers(cls);
+    };
+
+    // A scrape outlives the page that started it — the worker is a separate
+    // process writing straight to Supabase. So the batch is parked in
+    // localStorage and picked up again when the class is reopened, instead of
+    // leaving the user with no way to see how their own run is going.
+    const restoreScrapeRun = (classId) => {
+        setScrapeStatus({});
+        setScrapePollWarning('');
+        if (!classId) { setScrapeRun(null); setScrapeWatching(false); return; }
+        try {
+            const raw = localStorage.getItem(scrapeRunKey(classId));
+            if (!raw) { setScrapeRun(null); setScrapeWatching(false); return; }
+            const saved = JSON.parse(raw);
+            if (Array.isArray(saved?.jobs) && saved.jobs.length > 0 && Date.now() - (saved.startedAt || 0) < SCRAPE_RUN_TTL_MS) {
+                setScrapeRun(saved);
+                setScrapeWatching(true);
+                return;
+            }
+            localStorage.removeItem(scrapeRunKey(classId));
+        } catch (e) {
+            // A corrupt or unreadable entry is not worth failing the class open over.
+        }
+        setScrapeRun(null);
+        setScrapeWatching(false);
     };
 
     const createClass = async () => {
@@ -1022,6 +1101,364 @@ export function ClassesContent({ embedded = false }) {
         setStudents(p => p.filter(s => s.usn !== usn)); fetchClasses();
     };
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  VTU "Fetch Results" — scope resolution, queueing, and live progress
+    //
+    //  Three things this has to get right, because a half-run scrape is worse
+    //  than no scrape at all:
+    //    1. Any scope. One student, a hand-picked few, the whole roster, the
+    //       students carrying backlogs, or the ones with no results at all.
+    //    2. Any portal. Every active portal (deep scan), a chosen subset, or a
+    //       URL pasted straight from a VTU announcement.
+    //    3. Survive what actually goes wrong: a reload mid-run, a worker that
+    //       dies holding a job, a flaky poll, a roster bigger than one request.
+    // ════════════════════════════════════════════════════════════════════════
+
+    // Read by the polling interval, which must not be torn down and rebuilt
+    // every time the roster changes underneath it.
+    const fetchClassStudentsRef = useRef(fetchClassStudents);
+    fetchClassStudentsRef.current = fetchClassStudents;
+    const selectedClassRef = useRef(selectedClass);
+    selectedClassRef.current = selectedClass;
+
+    const persistScrapeRun = (run) => {
+        try { localStorage.setItem(scrapeRunKey(run.classId), JSON.stringify(run)); } catch (e) { /* private mode */ }
+    };
+    const forgetScrapeRun = (classId) => {
+        try { localStorage.removeItem(scrapeRunKey(classId)); } catch (e) { /* private mode */ }
+    };
+
+    // Every scope reads from `students`, the same array the roster table renders,
+    // so what the modal counts is exactly what the user can see.
+    const scrapeScopeGroups = useMemo(() => ({
+        all: students,
+        selected: students.filter(s => selectedUsns.has(s.usn)),
+        backlogs: students.filter(s => (s.total_backlogs || 0) > 0),
+        missing: students.filter(s => !s.has_data),
+        custom: students.filter(s => scrapePickedUsns.has(s.usn)),
+    }), [students, selectedUsns, scrapePickedUsns]);
+
+    const scrapeTargets = scrapeScopeGroups[scrapeScope] || scrapeScopeGroups.all;
+
+    const scrapeTargetUrls = useMemo(() => {
+        if (scrapePortalMode === 'pick') return Array.from(scrapePickedUrls);
+        if (scrapePortalMode === 'custom') {
+            return scrapeCustomUrl.split(/[\s,;]+/).map(u => u.trim()).filter(Boolean);
+        }
+        return []; // 'all' — no override, the worker walks every active portal
+    }, [scrapePortalMode, scrapePickedUrls, scrapeCustomUrl]);
+
+    const scrapePortalLabel = useMemo(() => {
+        if (scrapePortalMode === 'all') return `All ${scrapePortals.length} active portal(s) · deep scan`;
+        if (scrapeTargetUrls.length === 0) return 'No portal chosen yet';
+        if (scrapeTargetUrls.length === 1) {
+            const match = scrapePortals.find(p => p.url === scrapeTargetUrls[0]);
+            return match?.exam_name || scrapeTargetUrls[0];
+        }
+        return `${scrapeTargetUrls.length} portals`;
+    }, [scrapePortalMode, scrapeTargetUrls, scrapePortals]);
+
+    const visibleScrapePortals = useMemo(() => {
+        const q = scrapePortalSearch.trim().toLowerCase();
+        if (!q) return scrapePortals;
+        return scrapePortals.filter(p => `${p.exam_name || ''} ${p.url || ''}`.toLowerCase().includes(q));
+    }, [scrapePortals, scrapePortalSearch]);
+
+    const visibleScrapeStudents = useMemo(() => {
+        const q = scrapeStudentSearch.trim();
+        if (!q) return students;
+        return filterAndRankStudents(students, q);
+    }, [students, scrapeStudentSearch]);
+
+    const openScrapeModal = (presetScope, presetUsns) => {
+        if (!selectedClass) return;
+        // Opening with rows ticked in the roster means "these ones" — anything
+        // else would quietly ignore a selection the user just made.
+        const scope = presetScope || (selectedUsns.size > 0 ? 'selected' : 'all');
+        setScrapeScope(scope);
+        setScrapePickedUsns(new Set(presetUsns || selectedUsns));
+        setScrapeScheme(normalizePortalScheme(selectedClass.scheme));
+        setScrapePortalMode('all');
+        setScrapePickedUrls(new Set());
+        setScrapePortalSearch('');
+        setScrapeStudentSearch('');
+        setScrapeCustomUrl('');
+        setScrapeForce(true);
+        setScrapeError('');
+        setShowScrapeModal(true);
+    };
+
+    const toggleScrapePickedUsn = (usn) => {
+        setScrapePickedUsns(prev => {
+            const next = new Set(prev);
+            if (next.has(usn)) next.delete(usn); else next.add(usn);
+            return next;
+        });
+    };
+
+    const toggleScrapePickedUrl = (url) => {
+        setScrapePickedUrls(prev => {
+            const next = new Set(prev);
+            if (next.has(url)) next.delete(url); else next.add(url);
+            return next;
+        });
+    };
+
+    // Portal catalog for the chosen scheme. Reloaded whenever the scheme
+    // changes so a 2022-scheme class can still be aimed at an NEP portal.
+    useEffect(() => {
+        if (!showScrapeModal || !selectedClass?.id) return;
+        let cancelled = false;
+        (async () => {
+            setScrapePortalsLoading(true);
+            setScrapePortalsError('');
+            try {
+                const data = await apiRequest('/api/scrape/portals', {
+                    query: { scheme: scrapeScheme, class_id: selectedClass.id },
+                });
+                if (cancelled) return;
+                setScrapePortals(data?.portals || []);
+            } catch (err) {
+                if (cancelled) return;
+                console.error('Failed to load VTU portals:', err);
+                setScrapePortals([]);
+                setScrapePortalsError(err?.message || 'Could not load the VTU portal list.');
+            } finally {
+                if (!cancelled) setScrapePortalsLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [showScrapeModal, scrapeScheme, selectedClass?.id]);
+
+    const startClassScrape = async () => {
+        if (!selectedClass) return;
+
+        const targets = scrapeTargets;
+        if (targets.length === 0) {
+            setScrapeError('That selection matches no students. Pick a different scope.');
+            return;
+        }
+        if (scrapePortalMode !== 'all' && scrapeTargetUrls.length === 0) {
+            setScrapeError(scrapePortalMode === 'custom'
+                ? 'Paste at least one results.vtu.ac.in URL.'
+                : 'Tick at least one portal, or switch back to all active portals.');
+            return;
+        }
+        const badUrl = scrapeTargetUrls.find(u => !u.toLowerCase().includes('vtu.ac.in'));
+        if (badUrl) {
+            setScrapeError(`"${badUrl}" is not a results.vtu.ac.in URL.`);
+            return;
+        }
+
+        setScrapeQueueing(true);
+        setScrapeError('');
+
+        try {
+            const facultyId = faculty?.id || faculty?.sub || null;
+            const nameByUsn = {};
+            targets.forEach(s => { nameByUsn[s.usn] = s.name || s.usn; });
+            const usnList = targets.map(s => s.usn);
+
+            const jobs = [];
+            const cached = [];
+            const failed = [];
+
+            // /api/scrape caps one request at 400 USNs. Chunking here keeps a
+            // large cohort a queueing detail rather than an error the user has
+            // to work around by selecting students in batches by hand.
+            for (let i = 0; i < usnList.length; i += 200) {
+                const chunk = usnList.slice(i, i + 200);
+                const res = await apiRequest('/api/scrape', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        usns: chunk,
+                        force: scrapeForce,
+                        faculty_id: facultyId,
+                        scheme: scrapeScheme,
+                        target_urls: scrapeTargetUrls,
+                        class_id: selectedClass.id,
+                    }),
+                });
+
+                (res?.jobs || []).forEach(j => {
+                    if (j.status === 'queued' && j.jobId) {
+                        jobs.push({ id: j.jobId, usn: j.usn, name: nameByUsn[j.usn] || j.usn });
+                    } else if (j.status === 'cached') {
+                        cached.push(j.usn);
+                    } else {
+                        failed.push({ usn: j.usn, error: j.error || 'Could not be queued.' });
+                    }
+                });
+            }
+
+            if (jobs.length === 0) {
+                if (cached.length > 0 && failed.length === 0) {
+                    setScrapeError(`All ${cached.length} of those students already have results stored. Tick "Re-fetch even if results already exist" to scan them again.`);
+                } else {
+                    setScrapeError(failed[0]?.error || 'Nothing could be queued. Please try again.');
+                }
+                return;
+            }
+
+            const run = {
+                runId: `${selectedClass.id}-${Date.now()}`,
+                classId: selectedClass.id,
+                className: selectedClass.name,
+                startedAt: Date.now(),
+                portalLabel: scrapePortalLabel,
+                scopeLabel: SCRAPE_SCOPE_LABELS[scrapeScope] || 'Custom selection',
+                jobs,
+                cached,
+                failed,
+            };
+
+            setScrapeStatus({});
+            setScrapeRun(run);
+            setScrapeWatching(true);
+            setScrapePollWarning('');
+            persistScrapeRun(run);
+            setShowScrapeModal(false);
+            setMsg(`✓ Queued ${jobs.length} VTU fetch job(s)${cached.length ? ` · ${cached.length} already cached` : ''}${failed.length ? ` · ${failed.length} could not be queued` : ''}.`);
+            logActivity('VTU_CLASS_FETCH', null, {
+                context_module: 'Classes',
+                details: `Queued ${jobs.length} scrape job(s) for "${selectedClass.name}" — ${run.scopeLabel.toLowerCase()} via ${run.portalLabel}`,
+                metadata: { class_id: selectedClass.id, scope: scrapeScope, portals: scrapeTargetUrls, usn_count: jobs.length },
+            });
+        } catch (err) {
+            console.error('Class scrape queue failed:', err);
+            setScrapeError(err?.message || 'Could not reach the scrape queue. Check your connection and try again.');
+        } finally {
+            setScrapeQueueing(false);
+        }
+    };
+
+    // Live progress. Polls only while a batch is being watched, and stops the
+    // moment every job in it reaches a terminal status.
+    useEffect(() => {
+        if (!scrapeWatching || !scrapeRun?.jobs?.length) return;
+
+        const ids = scrapeRun.jobs.map(j => j.id);
+        const runClassId = scrapeRun.classId;
+        const startedAt = scrapeRun.startedAt;
+        let cancelled = false;
+        let consecutiveFailures = 0;
+        let lastRosterRefresh = Date.now();
+
+        const readStatuses = async () => {
+            const merged = {};
+            // Comma-joined id list, in slices, so a 400-job run still polls with
+            // a URL no proxy is going to truncate.
+            for (let i = 0; i < ids.length; i += 50) {
+                const data = await apiRequest('/api/scrape/status', {
+                    query: { jobIds: ids.slice(i, i + 50).join(',') },
+                });
+                (data?.jobs || []).forEach(j => { merged[j.id] = j; });
+            }
+            return merged;
+        };
+
+        const refreshRoster = () => {
+            const cls = selectedClassRef.current;
+            if (cls?.id === runClassId) fetchClassStudentsRef.current?.(cls, false, true);
+        };
+
+        const tick = async () => {
+            try {
+                const merged = await readStatuses();
+                if (cancelled) return;
+
+                consecutiveFailures = 0;
+                setScrapePollWarning('');
+                setScrapeStatus(merged);
+
+                const rows = ids.map(id => merged[id]).filter(Boolean);
+                const terminal = rows.filter(r => r.isTerminal).length;
+
+                if (rows.length === ids.length && terminal === ids.length) {
+                    setScrapeWatching(false);
+                    forgetScrapeRun(runClassId);
+                    const ok = rows.filter(r => r.status === 'finished').length;
+                    const none = rows.filter(r => r.status === 'no_result').length;
+                    const bad = rows.filter(r => r.status === 'error' || r.status === 'missing').length;
+                    setMsg(`✓ VTU fetch complete — ${ok} updated${none ? `, ${none} with no new results` : ''}${bad ? `, ${bad} failed` : ''}.`);
+                    refreshRoster();
+                    return;
+                }
+
+                // Marks land in the database job by job, so the roster is pulled
+                // forward during the run rather than only once at the end.
+                if (terminal > 0 && Date.now() - lastRosterRefresh > 20000) {
+                    lastRosterRefresh = Date.now();
+                    refreshRoster();
+                }
+
+                if (Date.now() - startedAt > SCRAPE_RUN_TTL_MS) {
+                    setScrapeWatching(false);
+                    forgetScrapeRun(runClassId);
+                    setScrapePollWarning('Stopped watching after 45 minutes. Any jobs still running will keep going in the background — use Refresh later to pick up their results.');
+                }
+            } catch (err) {
+                if (cancelled) return;
+                consecutiveFailures += 1;
+                // A dropped poll is expected now and then (a sleeping laptop, a
+                // redeploy). Keep retrying; only say something once it stops
+                // looking like a blip, and only give up after ~2 minutes of them.
+                if (consecutiveFailures >= 3) {
+                    setScrapePollWarning('Live progress cannot reach the server right now — still retrying.');
+                }
+                if (consecutiveFailures >= 40) {
+                    setScrapeWatching(false);
+                    setScrapePollWarning('Gave up watching progress after repeated network failures. The queued jobs themselves are unaffected — use Refresh once you are back online.');
+                }
+            }
+        };
+
+        tick();
+        const timer = setInterval(tick, 3000);
+        return () => { cancelled = true; clearInterval(timer); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scrapeWatching, scrapeRun?.runId]);
+
+    const scrapeProgress = useMemo(() => {
+        if (!scrapeRun?.jobs?.length) return null;
+        const rows = scrapeRun.jobs.map(j => ({ ...j, ...(scrapeStatus[j.id] || {}) }));
+        const done = rows.filter(r => r.isTerminal).length;
+        return {
+            rows,
+            total: rows.length,
+            done,
+            running: rows.filter(r => r.status === 'running').length,
+            finished: rows.filter(r => r.status === 'finished').length,
+            noResult: rows.filter(r => r.status === 'no_result').length,
+            errored: rows.filter(r => r.status === 'error' || r.status === 'missing').length,
+            pct: Math.round((done / rows.length) * 100),
+        };
+    }, [scrapeRun, scrapeStatus]);
+
+    const stopWatchingScrape = () => {
+        setScrapeWatching(false);
+        if (scrapeRun?.classId) forgetScrapeRun(scrapeRun.classId);
+    };
+
+    const dismissScrapeRun = () => {
+        if (scrapeRun?.classId) forgetScrapeRun(scrapeRun.classId);
+        setScrapeWatching(false);
+        setScrapeRun(null);
+        setScrapeStatus({});
+        setScrapePollWarning('');
+    };
+
+    // Re-open the picker pre-loaded with just the students that did not come
+    // back with data, so a retry does not mean re-scanning the whole class.
+    const retryFailedScrape = () => {
+        if (!scrapeProgress) return;
+        const retryUsns = scrapeProgress.rows
+            .filter(r => r.status === 'error' || r.status === 'no_result' || r.status === 'missing')
+            .map(r => r.usn);
+        if (retryUsns.length === 0) return;
+        openScrapeModal('custom', new Set(retryUsns));
+    };
+
     const filteredStudents = useMemo(() => {
         if (!rosterSearch.trim()) return students;
         return filterAndRankStudents(students, rosterSearch);
@@ -1072,7 +1509,17 @@ export function ClassesContent({ embedded = false }) {
             {selectedClass ? (
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                        <button onClick={() => setSelectedClass(null)} style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                            onClick={() => {
+                                setSelectedClass(null);
+                                // The run stays in localStorage; reopening the
+                                // class picks the watch back up where it left off.
+                                setScrapeWatching(false);
+                                setScrapeRun(null);
+                                setScrapeStatus({});
+                            }}
+                            style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
                             <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>Classes
                         </button>
                         <span style={{ color: 'var(--tx-dim)' }}>›</span>
@@ -1102,6 +1549,14 @@ export function ClassesContent({ embedded = false }) {
                             )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...btn('primary'), display: 'flex', alignItems: 'center', gap: '6px' }}
+                                onClick={() => openScrapeModal()}
+                                title="Fetch official VTU results for students in this class"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>cloud_download</span>
+                                {selectedUsns.size > 0 ? `Fetch Results (${selectedUsns.size})` : 'Fetch Results'}
+                            </button>
                             <button style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(selectedClass)}>
                                 <span className="material-icons-round" style={{ fontSize: '16px' }}>edit</span>Edit Class
                             </button>
@@ -1120,6 +1575,94 @@ export function ClassesContent({ embedded = false }) {
                     </div>
 
                     {msg && <div style={msgBox(msg.startsWith('✓'))}>{msg}</div>}
+
+                    {/* ── Live VTU fetch progress ── */}
+                    {scrapeProgress && (
+                        <div style={{ ...S.card, padding: '16px 20px', marginBottom: '20px', borderColor: scrapeWatching ? 'var(--primary)' : 'var(--border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span
+                                            className="material-icons-round"
+                                            style={{ fontSize: '18px', color: 'var(--primary)', animation: scrapeWatching ? 'spin 1.6s linear infinite' : 'none' }}
+                                        >
+                                            {scrapeWatching ? 'sync' : 'task_alt'}
+                                        </span>
+                                        <span style={{ fontSize: '14px', fontWeight: 900, color: 'var(--tx-main)' }}>
+                                            {scrapeWatching ? 'Fetching VTU results…' : 'VTU fetch run'}
+                                        </span>
+                                        <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)' }}>
+                                            {scrapeProgress.done}/{scrapeProgress.total}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                                        {scrapeRun.scopeLabel} · {scrapeRun.portalLabel}
+                                        {scrapeRun.cached?.length > 0 ? ` · ${scrapeRun.cached.length} skipped (already cached)` : ''}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    {scrapeWatching && (
+                                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px' }} onClick={stopWatchingScrape}>
+                                            Stop watching
+                                        </button>
+                                    )}
+                                    {!scrapeWatching && scrapeProgress.errored + scrapeProgress.noResult > 0 && (
+                                        <button style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px' }} onClick={retryFailedScrape}>
+                                            Retry {scrapeProgress.errored + scrapeProgress.noResult}
+                                        </button>
+                                    )}
+                                    <button style={{ ...btn('ghost'), padding: '6px 10px', fontSize: '12px' }} onClick={dismissScrapeRun}>
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style={{ height: '8px', background: 'var(--surface-low)', borderRadius: '999px', overflow: 'hidden', margin: '12px 0 10px' }}>
+                                <div style={{ width: `${scrapeProgress.pct}%`, height: '100%', background: 'var(--primary)', transition: 'width .4s ease' }} />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {[
+                                    { key: 'running', count: scrapeProgress.running, meta: SCRAPE_STATUS_META.running },
+                                    { key: 'finished', count: scrapeProgress.finished, meta: SCRAPE_STATUS_META.finished },
+                                    { key: 'no_result', count: scrapeProgress.noResult, meta: SCRAPE_STATUS_META.no_result },
+                                    { key: 'error', count: scrapeProgress.errored, meta: SCRAPE_STATUS_META.error },
+                                ].filter(x => x.count > 0).map(x => (
+                                    <span key={x.key} style={{ background: x.meta.bg, color: x.meta.color, border: '1px solid var(--border)', padding: '3px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                                        {x.count} {x.meta.label.toLowerCase()}
+                                    </span>
+                                ))}
+                            </div>
+
+                            {scrapePollWarning && (
+                                <div style={{ marginTop: '10px', fontSize: '11px', fontWeight: 700, color: 'var(--amber, #B45309)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>wifi_tethering_off</span>
+                                    {scrapePollWarning}
+                                </div>
+                            )}
+
+                            <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+                                {scrapeProgress.rows.map(r => {
+                                    const meta = scrapeMeta(r.status);
+                                    return (
+                                        <span
+                                            key={r.id}
+                                            title={`${r.name} (${r.usn}) — ${r.error || meta.label}`}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: meta.bg, color: meta.color, border: '1px solid var(--border)', borderRadius: '6px', padding: '3px 8px', fontSize: '10px', fontWeight: 800, fontFamily: 'monospace' }}
+                                        >
+                                            <span
+                                                className="material-icons-round"
+                                                style={{ fontSize: '13px', animation: r.status === 'running' ? 'spin 1.4s linear infinite' : 'none' }}
+                                            >
+                                                {meta.icon}
+                                            </span>
+                                            {r.usn}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -1205,8 +1748,11 @@ export function ClassesContent({ embedded = false }) {
                                     <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>check_circle</span>
                                     {selectedUsns.size} student(s) selected
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <button style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer('selected')}>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <button style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openScrapeModal('selected')}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>cloud_download</span>Fetch Results ({selectedUsns.size})
+                                    </button>
+                                    <button style={{ ...btn('ghost'), padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => openMultiStudentTransfer('selected')}>
                                         <span className="material-icons-round" style={{ fontSize: '16px' }}>swap_horiz</span>Transfer Selected ({selectedUsns.size})
                                     </button>
                                     <button style={{ ...btn('danger'), padding: '6px 12px', fontSize: '12px' }} onClick={() => setConfirmingBulkRemove(true)}>
@@ -1280,6 +1826,13 @@ export function ClassesContent({ embedded = false }) {
                                                             <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                                                     <button
+                                                                        title={`Fetch VTU results for ${s.usn}`}
+                                                                        onClick={(e) => { e.stopPropagation(); openScrapeModal('custom', new Set([s.usn])); }}
+                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--green)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '3px' }}
+                                                                    >
+                                                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>cloud_download</span> Fetch
+                                                                    </button>
+                                                                    <button
                                                                         title="Transfer student to another class"
                                                                         onClick={(e) => openSingleStudentTransfer(s, e)}
                                                                         style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', fontSize: '11px', fontWeight: 700, gap: '3px' }}
@@ -1336,6 +1889,13 @@ export function ClassesContent({ embedded = false }) {
                                                             </div>
                                                         </div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <button
+                                                                title={`Fetch VTU results for ${s.usn}`}
+                                                                onClick={(e) => { e.stopPropagation(); openScrapeModal('custom', new Set([s.usn])); }}
+                                                                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', color: 'var(--green)', padding: '6px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>cloud_download</span> Fetch
+                                                            </button>
                                                             <button
                                                                 title="Transfer student"
                                                                 onClick={(e) => openSingleStudentTransfer(s, e)}
@@ -2284,6 +2844,294 @@ export function ClassesContent({ embedded = false }) {
                             <button style={btn('primary')} onClick={handleGeneratePdf}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>picture_as_pdf</span>Generate & Download PDF
                             </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* ── Fetch VTU Results (Portal Rendered) ── */}
+            {mounted && showScrapeModal && selectedClass && createPortal(
+                <div style={S.modal} onClick={() => { if (!scrapeQueueing) setShowScrapeModal(false); }}>
+                    <div style={S.mbox('760px')} onClick={e => e.stopPropagation()} className="gf-fade-up">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                    ☁️ Fetch VTU Results
+                                </h3>
+                                <p style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
+                                    Queue the official VTU scraper for <strong>{selectedClass.name}</strong>. Choose who to fetch, and which exam portals to scan.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => { if (!scrapeQueueing) setShowScrapeModal(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', display: 'flex', alignItems: 'center', padding: '4px' }}
+                                aria-label="Close"
+                            >
+                                <span className="material-icons-round">close</span>
+                            </button>
+                        </div>
+
+                        {/* ── 1. Students ── */}
+                        <div>
+                            <label style={S.label}>1 · Which students</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+                                {[
+                                    { key: 'all', label: 'Whole class', icon: 'groups' },
+                                    { key: 'selected', label: 'Ticked in roster', icon: 'check_box' },
+                                    { key: 'backlogs', label: 'With backlogs', icon: 'report_problem' },
+                                    { key: 'missing', label: 'No results yet', icon: 'help_outline' },
+                                    { key: 'custom', label: 'Pick students', icon: 'person_search' },
+                                ].map(opt => {
+                                    const count = (scrapeScopeGroups[opt.key] || []).length;
+                                    // 'custom' stays clickable at zero — that is the
+                                    // state you are in right before you pick someone.
+                                    const disabled = count === 0 && opt.key !== 'custom';
+                                    const active = scrapeScope === opt.key;
+                                    return (
+                                        <button
+                                            key={opt.key}
+                                            type="button"
+                                            disabled={disabled}
+                                            onClick={() => setScrapeScope(opt.key)}
+                                            style={{
+                                                textAlign: 'left',
+                                                border: `1.5px solid ${active ? 'var(--primary)' : 'var(--border)'}`,
+                                                background: active ? 'var(--surface-low)' : 'var(--surface)',
+                                                borderRadius: 'var(--radius-4)',
+                                                padding: '10px 12px',
+                                                cursor: disabled ? 'not-allowed' : 'pointer',
+                                                opacity: disabled ? 0.45 : 1,
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: active ? 'var(--primary)' : 'var(--tx-main)' }}>
+                                                <span className="material-icons-round" style={{ fontSize: '16px' }}>{opt.icon}</span>
+                                                {opt.label}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '3px', fontWeight: 700 }}>
+                                                {count} student{count === 1 ? '' : 's'}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {scrapeScope === 'custom' && (
+                                <div style={{ marginTop: '10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)', overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', flexWrap: 'wrap' }}>
+                                        <input
+                                            style={{ ...S.input, flex: '1 1 160px', padding: '6px 10px', fontSize: '12px', height: '30px' }}
+                                            placeholder="Search USN or name…"
+                                            value={scrapeStudentSearch}
+                                            onChange={e => setScrapeStudentSearch(e.target.value)}
+                                        />
+                                        <button
+                                            type="button"
+                                            style={{ ...btn('ghost'), padding: '5px 10px', fontSize: '11px' }}
+                                            onClick={() => setScrapePickedUsns(new Set(visibleScrapeStudents.map(st => st.usn)))}
+                                        >
+                                            Select {scrapeStudentSearch.trim() ? 'matches' : 'all'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            style={{ ...btn('ghost'), padding: '5px 10px', fontSize: '11px' }}
+                                            onClick={() => setScrapePickedUsns(new Set(scrapeScopeGroups.backlogs.map(st => st.usn)))}
+                                        >
+                                            Only backlogs
+                                        </button>
+                                        <button
+                                            type="button"
+                                            style={{ ...btn('ghost'), padding: '5px 10px', fontSize: '11px' }}
+                                            onClick={() => setScrapePickedUsns(new Set())}
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                    <div style={{ maxHeight: '190px', overflowY: 'auto' }}>
+                                        {visibleScrapeStudents.length === 0 && (
+                                            <div style={{ padding: '18px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-dim)' }}>No students match.</div>
+                                        )}
+                                        {visibleScrapeStudents.map(st => (
+                                            <label
+                                                key={st.usn}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12px' }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={scrapePickedUsns.has(st.usn)}
+                                                    onChange={() => toggleScrapePickedUsn(st.usn)}
+                                                    style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                                                />
+                                                <span style={{ fontWeight: 800, color: 'var(--tx-main)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</span>
+                                                <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--tx-muted)' }}>{st.usn}</span>
+                                                {(st.total_backlogs || 0) > 0 && (
+                                                    <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--red)', background: 'var(--red-bg)', padding: '2px 6px', borderRadius: '4px' }}>
+                                                        {st.total_backlogs}
+                                                    </span>
+                                                )}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ── 2. Portals ── */}
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <label style={{ ...S.label, marginBottom: 0 }}>2 · Which VTU portals</label>
+                                <select
+                                    style={{ ...S.sel, width: 'auto', padding: '5px 30px 5px 10px', fontSize: '11px', height: '30px' }}
+                                    value={scrapeScheme}
+                                    onChange={e => { setScrapeScheme(e.target.value); setScrapePickedUrls(new Set()); }}
+                                    aria-label="Portal scheme"
+                                >
+                                    <option value="2022">2022 Scheme</option>
+                                    <option value="2025">2025 Scheme</option>
+                                    <option value="mba">MBA</option>
+                                    <option value="mca">MCA</option>
+                                </select>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                {[
+                                    { key: 'all', label: `All active portals (${scrapePortals.length})`, hint: 'Deep scan — slowest, most complete' },
+                                    { key: 'pick', label: 'Choose portals', hint: 'Fast — only what you tick' },
+                                    { key: 'custom', label: 'Paste a URL', hint: 'A portal not in the list yet' },
+                                ].map(opt => {
+                                    const active = scrapePortalMode === opt.key;
+                                    return (
+                                        <button
+                                            key={opt.key}
+                                            type="button"
+                                            onClick={() => setScrapePortalMode(opt.key)}
+                                            title={opt.hint}
+                                            style={{
+                                                flex: '1 1 150px',
+                                                textAlign: 'left',
+                                                border: `1.5px solid ${active ? 'var(--primary)' : 'var(--border)'}`,
+                                                background: active ? 'var(--surface-low)' : 'var(--surface)',
+                                                borderRadius: 'var(--radius-4)',
+                                                padding: '9px 12px',
+                                                cursor: 'pointer',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            <div style={{ fontSize: '12px', fontWeight: 800, color: active ? 'var(--primary)' : 'var(--tx-main)' }}>{opt.label}</div>
+                                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', marginTop: '2px', fontWeight: 700 }}>{opt.hint}</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {scrapePortalsLoading && (
+                                <div style={{ fontSize: '12px', color: 'var(--tx-dim)', marginTop: '8px' }}>Loading portals…</div>
+                            )}
+                            {scrapePortalsError && (
+                                <div style={{ fontSize: '12px', color: 'var(--red)', marginTop: '8px', fontWeight: 700 }}>{scrapePortalsError}</div>
+                            )}
+
+                            {scrapePortalMode === 'pick' && !scrapePortalsLoading && (
+                                <div style={{ marginTop: '10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)', overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', flexWrap: 'wrap' }}>
+                                        <input
+                                            style={{ ...S.input, flex: '1 1 160px', padding: '6px 10px', fontSize: '12px', height: '30px' }}
+                                            placeholder="Search exam session…"
+                                            value={scrapePortalSearch}
+                                            onChange={e => setScrapePortalSearch(e.target.value)}
+                                        />
+                                        <button
+                                            type="button"
+                                            style={{ ...btn('ghost'), padding: '5px 10px', fontSize: '11px' }}
+                                            onClick={() => setScrapePickedUrls(new Set(visibleScrapePortals.map(x => x.url)))}
+                                        >
+                                            Select {scrapePortalSearch.trim() ? 'matches' : 'all'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            style={{ ...btn('ghost'), padding: '5px 10px', fontSize: '11px' }}
+                                            onClick={() => setScrapePickedUrls(new Set())}
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                    <div style={{ maxHeight: '190px', overflowY: 'auto' }}>
+                                        {visibleScrapePortals.length === 0 && (
+                                            <div style={{ padding: '18px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-dim)' }}>
+                                                No active portals for this scheme. Add or re-enable them under VTU Portals.
+                                            </div>
+                                        )}
+                                        {visibleScrapePortals.map(portal => (
+                                            <label
+                                                key={portal.id || portal.url}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12px' }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={scrapePickedUrls.has(portal.url)}
+                                                    onChange={() => toggleScrapePickedUrl(portal.url)}
+                                                    style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                                                />
+                                                <span style={{ minWidth: 0, flex: 1 }}>
+                                                    <span style={{ display: 'block', fontWeight: 800, color: 'var(--tx-main)' }}>{portal.exam_name || 'Unnamed portal'}</span>
+                                                    <span style={{ display: 'block', fontSize: '10px', fontFamily: 'monospace', color: 'var(--tx-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{portal.url}</span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {scrapePortalMode === 'custom' && (
+                                <div style={{ marginTop: '10px' }}>
+                                    <textarea
+                                        style={{ ...S.input, minHeight: '68px', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical' }}
+                                        placeholder="https://results.vtu.ac.in/D25J26Ecbcs/index.php&#10;One URL per line — several can be scanned in the same job."
+                                        value={scrapeCustomUrl}
+                                        onChange={e => setScrapeCustomUrl(e.target.value)}
+                                    />
+                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                        Must be results.vtu.ac.in addresses. Paste one per line, or separate with commas.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ── 3. Options ── */}
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: 'var(--radius-4)', padding: '10px 12px' }}>
+                            <input
+                                type="checkbox"
+                                checked={scrapeForce}
+                                onChange={e => setScrapeForce(e.target.checked)}
+                                style={{ width: '15px', height: '15px', cursor: 'pointer', marginTop: '2px' }}
+                            />
+                            <span>
+                                <span style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                    Re-fetch even if results already exist
+                                </span>
+                                <span style={{ display: 'block', fontSize: '11px', color: 'var(--tx-dim)', marginTop: '2px' }}>
+                                    Leave this on after a revaluation or a new announcement. Turn it off to fill in only the students who have nothing stored yet.
+                                </span>
+                            </span>
+                        </label>
+
+                        {scrapeError && (
+                            <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red)', color: 'var(--red)', borderRadius: 'var(--radius-4)', padding: '10px 12px', fontSize: '12px', fontWeight: 700 }}>
+                                {scrapeError}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                <span style={{ color: 'var(--primary)', fontWeight: 900 }}>{scrapeTargets.length}</span> student{scrapeTargets.length === 1 ? '' : 's'} → {scrapePortalLabel}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button style={btn('ghost')} onClick={() => setShowScrapeModal(false)} disabled={scrapeQueueing}>Cancel</button>
+                                <button style={btn('primary')} onClick={startClassScrape} disabled={scrapeQueueing || scrapeTargets.length === 0}>
+                                    {scrapeQueueing ? 'Queueing…' : `Start Fetch (${scrapeTargets.length})`}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>,
