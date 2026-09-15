@@ -9,6 +9,7 @@ import AuthGuard from '../../../components/AuthGuard';
 import AcademicProgressionNavigator from '../../../components/AcademicProgressionNavigator';
 import { getGradeBadgeTone, unifyGrade, isFailedSubject } from '../../../lib/vtuGrades';
 import { validateUsn, sanitizeUsn } from '../../../lib/vtu-usn-validator';
+import { cleanAlphanumeric } from '../../../lib/search-utils';
 import { Badge, Button, ConfirmDialog, Divider, EmptyState, EntryTag, IconButton, Inline, LoadingState, ResponsiveGrid, SearchInput, SearchableSelect, Select } from '../../../components/ui';
 import { fmtGpa, fmtNum, resultFileName } from '../../../lib/format';
 import { createFacultyAssignment, deleteFacultyAssignment } from '../../../lib/api/admin-management';
@@ -70,6 +71,12 @@ function FacultyDashboardView({
     availablePortals = [],
     selectedPortalUrl = 'ALL',
     setSelectedPortalUrl,
+    selectedPortalUrls = [],
+    setSelectedPortalUrls,
+    batchResults = null,
+    setBatchResults,
+    inspectedStudent = null,
+    setInspectedStudent,
     customPortalUrl = '',
     setCustomPortalUrl,
     addSubjectOpen = false,
@@ -90,6 +97,83 @@ function FacultyDashboardView({
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    // Multi-Portal Selector State
+    const [portalDropdownOpen, setPortalDropdownOpen] = useState(false);
+    const [portalSearchFilter, setPortalSearchFilter] = useState('');
+    const [portalQuickCategory, setPortalQuickCategory] = useState('ALL');
+    const portalDropdownRef = useRef(null);
+
+    useEffect(() => {
+        if (!portalDropdownOpen) return;
+        const handleClickOutside = (e) => {
+            if (portalDropdownRef.current && !portalDropdownRef.current.contains(e.target)) {
+                setPortalDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [portalDropdownOpen]);
+
+    const isRevalPortal = (p) => {
+        const name = (p.exam_name || p.url || '').toLowerCase();
+        return name.includes('reval') || name.includes('rv');
+    };
+
+    const filteredPortals = useMemo(() => {
+        return (availablePortals || []).filter(p => {
+            if (portalQuickCategory === 'REVAL' && !isRevalPortal(p)) return false;
+            if (portalQuickCategory === 'REGULAR' && isRevalPortal(p)) return false;
+            if (portalSearchFilter.trim()) {
+                const q = portalSearchFilter.toLowerCase();
+                const matchName = (p.exam_name || '').toLowerCase().includes(q);
+                const matchUrl = (p.url || '').toLowerCase().includes(q);
+                if (!matchName && !matchUrl) return false;
+            }
+            return true;
+        });
+    }, [availablePortals, portalQuickCategory, portalSearchFilter]);
+
+    const togglePortal = (url) => {
+        setSelectedPortalUrls?.(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            return list.includes(url) ? list.filter(u => u !== url) : [...list, url];
+        });
+    };
+
+    const selectAllFilteredPortals = () => {
+        const urlsToAdd = filteredPortals.map(p => p.url).filter(Boolean);
+        setSelectedPortalUrls?.(prev => Array.from(new Set([...(Array.isArray(prev) ? prev : []), ...urlsToAdd])));
+    };
+
+    const clearAllPortals = () => {
+        setSelectedPortalUrls?.([]);
+    };
+
+    // Multi-USN Detection
+    const parsedUsns = useMemo(() => {
+        if (!usn) return [];
+        const rawTokens = usn.split(/[\s,;\n\r]+/).map(t => t.trim()).filter(Boolean);
+        return Array.from(new Set(rawTokens.map(t => cleanAlphanumeric(t).toUpperCase()).filter(Boolean)));
+    }, [usn]);
+    const isMultiUsn = parsedUsns.length > 1;
+
+    const usnValidation = useMemo(() => {
+        if (isMultiUsn) return { isValid: true };
+        return validateUsn(usn?.trim() || '');
+    }, [usn, isMultiUsn]);
+
+    const multiUsnStats = useMemo(() => {
+        if (!isMultiUsn) return null;
+        const valid = [];
+        const invalid = [];
+        parsedUsns.forEach(u => {
+            const res = validateUsn(u);
+            if (res.isValid) valid.push(u);
+            else invalid.push({ usn: u, error: res.error });
+        });
+        return { valid, invalid, allValid: invalid.length === 0 };
+    }, [parsedUsns, isMultiUsn]);
 
     useEffect(() => {
         if (!showBacklogModal) return;
@@ -114,8 +198,6 @@ function FacultyDashboardView({
     const getBacklogSemester = (mark) => mark.semester || (
         Object.entries(marks).find(([, subjects]) => subjects.some((subject) => (subject.subject_code || subject.code) === (mark.subject_code || mark.code))) || ['?', []]
     )[0];
-
-    const usnValidation = useMemo(() => validateUsn(usn), [usn]);
 
     const GradeBadge = ({ grade }) => {
         const tone = getGradeBadgeTone(grade);
@@ -195,19 +277,23 @@ function FacultyDashboardView({
                     <SearchInput
                         label="Student USN"
                         hideLabel
-                        placeholder="Enter Student USN (e.g. 2AB23CS043)"
+                        placeholder={isMultiUsn ? `${parsedUsns.length} USNs entered for batch lookup...` : "Enter Student USN(s) (e.g. 2AB23CS043, 2AB23CS015)"}
                         value={usn}
                         onChange={(event) => {
                             const raw = event.target.value;
-                            const cleaned = raw.toUpperCase().replace(/[\s\-_.,/]/g, '');
+                            const cleaned = raw.toUpperCase().replace(/[^A-Z0-9\s,;\n\r]/g, '');
                             setUsn?.(cleaned);
                         }}
                         onKeyDown={(event) => event.key === 'Enter' && lookupStudent?.(usn)}
-                        onClear={() => setUsn?.('')}
-                        error={usn && !usnValidation.isValid && !usnValidation.suggestion ? usnValidation.error : undefined}
+                        onClear={() => {
+                            setUsn?.('');
+                            setBatchResults?.(null);
+                            setInspectedStudent?.(null);
+                        }}
+                        error={usn && !isMultiUsn && !usnValidation.isValid && !usnValidation.suggestion ? usnValidation.error : undefined}
                     />
                     <Button iconStart="search" onClick={() => lookupStudent?.(usn)} loading={loading}>
-                        {loading ? 'Searching...' : 'Lookup'}
+                        {loading ? 'Searching...' : isMultiUsn ? `Lookup ${parsedUsns.length} USNs` : 'Lookup'}
                     </Button>
                     <Button
                         variant="secondary"
@@ -215,12 +301,28 @@ function FacultyDashboardView({
                         onClick={() => scraping ? stopScraping?.() : fetchFromVTU?.()}
                         disabled={!usn && !scraping}
                     >
-                        {scraping ? 'Stop' : selectedPortalUrl === 'ALL' ? 'Fetch VTU' : 'Fetch Portal'}
+                        {scraping ? 'Stop' : isMultiUsn ? `Fetch ${parsedUsns.length} VTU` : (selectedPortalUrls.length > 0 ? `Fetch (${selectedPortalUrls.length} Portals)` : 'Fetch VTU')}
                     </Button>
                 </Inline>
 
+                {/* Multi-USN Detection Pill */}
+                {isMultiUsn && (
+                    <div className={styles.multiUsnPill}>
+                        <span className="material-icons-round" style={{ fontSize: '16px' }}>groups</span>
+                        <span><strong>{parsedUsns.length} USNs</strong> detected for batch search</span>
+                        <span className={styles.multiUsnListPreview}>
+                            ({parsedUsns.slice(0, 4).join(', ')}{parsedUsns.length > 4 ? ` +${parsedUsns.length - 4} more` : ''})
+                        </span>
+                        {multiUsnStats?.invalid.length > 0 && (
+                            <span style={{ color: 'var(--red, #EF4444)', fontSize: '11px', fontWeight: 700 }}>
+                                · {multiUsnStats.invalid.length} invalid format
+                            </span>
+                        )}
+                    </div>
+                )}
+
                 {/* Real-time Validation / Did You Mean Assistant */}
-                {usn && usnValidation.suggestion && (
+                {!isMultiUsn && usn && usnValidation.suggestion && (
                     <div style={{
                         marginTop: '10px',
                         padding: '10px 14px',
@@ -250,7 +352,7 @@ function FacultyDashboardView({
                     </div>
                 )}
 
-                {usn && !usnValidation.isValid && !usnValidation.suggestion && (
+                {!isMultiUsn && usn && !usnValidation.isValid && !usnValidation.suggestion && (
                     <div style={{
                         marginTop: '10px',
                         padding: '8px 12px',
@@ -269,7 +371,7 @@ function FacultyDashboardView({
                     </div>
                 )}
 
-                {usn && usnValidation.isValid && usnValidation.segments && (
+                {!isMultiUsn && usn && usnValidation.isValid && usnValidation.segments && (
                     <div style={{
                         marginTop: '10px',
                         display: 'flex',
@@ -301,50 +403,165 @@ function FacultyDashboardView({
                     </div>
                 )}
 
-                {/* Targeted Portal Selector for Fast Reval/Backlog Verification */}
+                {/* Interactive Multi-Portal Selector with Popover Checklists, Quick Filters, & Chips */}
                 <div className={styles.targetPortalBar}>
                     <div className={styles.targetPortalLabel}>
                         <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>tune</span>
                         <span>Target Portal:</span>
                     </div>
-                    <select
-                        className={styles.targetPortalSelect}
-                        value={selectedPortalUrl}
-                        onChange={(event) => setSelectedPortalUrl?.(event.target.value)}
-                        disabled={scraping}
-                        aria-label="Select VTU Portal to Scrape"
-                    >
-                        <option value="ALL">⚡ All Portals (Deep Full Scan)</option>
-                        {availablePortals.length > 0 && (
-                            <optgroup label="Active VTU Exam & Reval Portals">
-                                {availablePortals.map((p, idx) => (
-                                    <option key={p.id || p.url || idx} value={p.url}>
-                                        🎯 {p.exam_name || p.url}
-                                    </option>
-                                ))}
-                            </optgroup>
-                        )}
-                        <option value="CUSTOM">🔗 Custom Result Portal URL...</option>
-                    </select>
 
-                    {selectedPortalUrl === 'CUSTOM' && (
-                        <input
-                            type="url"
-                            className={styles.customUrlInput}
-                            placeholder="Paste VTU URL (e.g. https://results.vtu.ac.in/RVcbcs24/index.php)"
-                            value={customPortalUrl}
-                            onChange={(event) => setCustomPortalUrl?.(event.target.value)}
+                    <div className={styles.targetPortalContainer} ref={portalDropdownRef}>
+                        <button
+                            type="button"
+                            className={`${styles.targetPortalTrigger} ${portalDropdownOpen ? styles.targetPortalTriggerActive : ''}`}
+                            onClick={() => setPortalDropdownOpen(prev => !prev)}
                             disabled={scraping}
-                            aria-label="Custom VTU Result URL"
-                        />
-                    )}
+                            aria-label="Select VTU Portals to Scrape"
+                        >
+                            <div className={styles.targetPortalSummary}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>
+                                    {selectedPortalUrls.length === 0 ? 'bolt' : 'ads_click'}
+                                </span>
+                                <span>
+                                    {selectedPortalUrls.length === 0
+                                        ? '⚡ All Portals (Deep Full Scan)'
+                                        : selectedPortalUrls.length === 1
+                                            ? (availablePortals.find(p => p.url === selectedPortalUrls[0])?.exam_name || '1 Portal Selected')
+                                            : `${selectedPortalUrls.length} Portals Selected`}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {selectedPortalUrls.length > 1 && (
+                                    <span className={styles.targetPortalCountBadge}>{selectedPortalUrls.length}</span>
+                                )}
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-muted)' }}>
+                                    {portalDropdownOpen ? 'expand_less' : 'expand_more'}
+                                </span>
+                            </div>
+                        </button>
 
-                    {selectedPortalUrl !== 'ALL' && (
-                        <span className={styles.fastPill} title="Direct single-portal execution avoids scanning other URLs">
-                            🚀 3-5s Fast Mode
+                        {portalDropdownOpen && (
+                            <div className={styles.targetPortalDropdown}>
+                                <div className={styles.targetPortalQuickBar}>
+                                    <button
+                                        type="button"
+                                        className={`${styles.quickFilterBtn} ${portalQuickCategory === 'ALL' ? styles.quickFilterBtnActive : ''}`}
+                                        onClick={() => setPortalQuickCategory('ALL')}
+                                    >
+                                        All ({availablePortals.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.quickFilterBtn} ${portalQuickCategory === 'REVAL' ? styles.quickFilterBtnActive : ''}`}
+                                        onClick={() => setPortalQuickCategory('REVAL')}
+                                    >
+                                        Reval Only
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.quickFilterBtn} ${portalQuickCategory === 'REGULAR' ? styles.quickFilterBtnActive : ''}`}
+                                        onClick={() => setPortalQuickCategory('REGULAR')}
+                                    >
+                                        Regular Only
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={styles.quickFilterBtn}
+                                        style={{ marginLeft: 'auto' }}
+                                        onClick={selectAllFilteredPortals}
+                                    >
+                                        Select All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={styles.quickFilterBtn}
+                                        onClick={clearAllPortals}
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
+
+                                <input
+                                    type="text"
+                                    className={styles.targetPortalSearchInput}
+                                    placeholder="Filter portals by exam name or URL..."
+                                    value={portalSearchFilter}
+                                    onChange={(e) => setPortalSearchFilter(e.target.value)}
+                                />
+
+                                <div className={styles.targetPortalList}>
+                                    {filteredPortals.map((p, idx) => {
+                                        const isChecked = selectedPortalUrls.includes(p.url);
+                                        const isReval = isRevalPortal(p);
+                                        return (
+                                            <div
+                                                key={p.id || p.url || idx}
+                                                className={`${styles.targetPortalItem} ${isChecked ? styles.targetPortalItemChecked : ''}`}
+                                                onClick={() => togglePortal(p.url)}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    className={styles.targetPortalCheckbox}
+                                                    checked={isChecked}
+                                                    onChange={() => {}}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
+                                                <div className={styles.targetPortalItemInfo}>
+                                                    <span className={styles.targetPortalItemName}>{p.exam_name || p.url}</span>
+                                                    <span className={styles.targetPortalItemUrl}>{p.url}</span>
+                                                </div>
+                                                <span className={`${styles.targetPortalTypeBadge} ${isReval ? styles.targetPortalTypeReval : styles.targetPortalTypeRegular}`}>
+                                                    {isReval ? 'Reval' : 'Regular'}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                    {filteredPortals.length === 0 && (
+                                        <div style={{ padding: '14px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                            No matching portals found.
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className={styles.targetPortalFooter}>
+                                    <span>{selectedPortalUrls.length} selected</span>
+                                    <Button size="sm" variant="secondary" onClick={() => setPortalDropdownOpen(false)}>
+                                        Done
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {selectedPortalUrls.length > 0 && (
+                        <span className={styles.fastPill} title="Targeted portal execution scans only selected URLs">
+                            🚀 {selectedPortalUrls.length} Targeted
                         </span>
                     )}
                 </div>
+
+                {/* Selected Portal Chips */}
+                {selectedPortalUrls.length > 0 && (
+                    <div className={styles.portalChipsWrapper}>
+                        {selectedPortalUrls.map(url => {
+                            const p = availablePortals.find(item => item.url === url);
+                            const label = p?.exam_name || url;
+                            return (
+                                <div key={url} className={styles.portalChip}>
+                                    <span className={styles.portalChipText} title={url}>{label}</span>
+                                    <button
+                                        type="button"
+                                        className={styles.portalChipRemove}
+                                        onClick={() => togglePortal(url)}
+                                        aria-label={`Remove ${label}`}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {scrapeProgress && (
                     <div className={`${styles.notice} ${styles.noticeInfo}`}>
@@ -362,7 +579,7 @@ function FacultyDashboardView({
                 the institution. Previously the API answered with a synthetic profile
                 and the dashboard rendered an empty transcript as though the student
                 existed — the single most misleading state on this page. */}
-            {!student && lookupIssue && (
+            {!student && !batchResults && lookupIssue && (
                 <section className={styles.section} aria-live="polite">
                     <div style={{
                         display: 'flex',
@@ -413,6 +630,201 @@ function FacultyDashboardView({
                         </div>
                     </div>
                 </section>
+            )}
+
+            {/* Batch Roster & Intelligence View (When 2+ USNs are searched) */}
+            {batchResults && !inspectedStudent && (
+                <section className={styles.section} aria-label="Batch Student Roster">
+                    <div className={styles.batchContainer}>
+                        <div className={styles.batchHeaderBar}>
+                            <div>
+                                <h2 className={styles.sectionTitle} style={{ fontSize: '18px' }}>
+                                    Batch Search Results ({batchResults.total} Students)
+                                </h2>
+                                <p className={styles.meta} style={{ marginTop: '2px' }}>
+                                    {batchResults.foundCount} of {batchResults.total} students found in institutional database
+                                </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {batchResults.missingCount > 0 && (
+                                    <Button
+                                        variant="primary"
+                                        iconStart={scraping ? 'sync' : 'cloud_download'}
+                                        onClick={() => {
+                                            const missing = batchResults.students.filter(s => !s.found).map(s => s.usn);
+                                            fetchFromVTU?.(missing);
+                                        }}
+                                        loading={scraping}
+                                    >
+                                        Fetch {batchResults.missingCount} Missing from VTU
+                                    </Button>
+                                )}
+                                <Button
+                                    variant="secondary"
+                                    iconStart="refresh"
+                                    onClick={() => {
+                                        const allUsns = batchResults.students.map(s => s.usn);
+                                        fetchFromVTU?.(allUsns);
+                                    }}
+                                    disabled={scraping}
+                                >
+                                    Fetch All from VTU
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    iconStart="close"
+                                    onClick={() => {
+                                        setBatchResults?.(null);
+                                        setUsn?.('');
+                                    }}
+                                >
+                                    Clear
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className={styles.batchKpis}>
+                            <div className={styles.batchKpiCard}>
+                                <span className={styles.batchKpiLabel}>Total Searched</span>
+                                <span className={styles.batchKpiValue}>{batchResults.total}</span>
+                            </div>
+                            <div className={styles.batchKpiCard}>
+                                <span className={styles.batchKpiLabel}>Found in Database</span>
+                                <span className={styles.batchKpiValue} style={{ color: 'var(--green, #10B981)' }}>
+                                    {batchResults.foundCount}
+                                </span>
+                            </div>
+                            <div className={styles.batchKpiCard}>
+                                <span className={styles.batchKpiLabel}>Needs Scrape</span>
+                                <span className={styles.batchKpiValue} style={{ color: batchResults.missingCount > 0 ? 'var(--amber, #F59E0B)' : 'var(--tx-muted)' }}>
+                                    {batchResults.missingCount}
+                                </span>
+                            </div>
+                            <div className={styles.batchKpiCard}>
+                                <span className={styles.batchKpiLabel}>Avg Batch CGPA</span>
+                                <span className={styles.batchKpiValue}>
+                                    {(() => {
+                                        const found = batchResults.students.filter(s => s.found && s.cgpa > 0);
+                                        if (found.length === 0) return '—';
+                                        const avg = found.reduce((acc, s) => acc + (s.cgpa || 0), 0) / found.length;
+                                        return avg.toFixed(2);
+                                    })()}
+                                </span>
+                            </div>
+                            <div className={styles.batchKpiCard}>
+                                <span className={styles.batchKpiLabel}>Total Active Backlogs</span>
+                                <span className={styles.batchKpiValue} style={{ color: 'var(--red, #EF4444)' }}>
+                                    {batchResults.students.reduce((acc, s) => acc + (s.totalActiveBacklogs || 0), 0)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className={styles.batchTableContainer}>
+                            <table className={styles.batchTable}>
+                                <thead>
+                                    <tr>
+                                        <th>USN</th>
+                                        <th>Student Name</th>
+                                        <th>Branch / Scheme</th>
+                                        <th>CGPA</th>
+                                        <th>Backlogs</th>
+                                        <th>Status</th>
+                                        <th style={{ textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {batchResults.students.map((item, idx) => {
+                                        const prof = item.profile || {};
+                                        return (
+                                            <tr key={item.usn || idx}>
+                                                <td className={styles.studentUsnCell}>{item.usn}</td>
+                                                <td className={styles.studentNameCell}>
+                                                    {item.found ? (prof.name || item.usn) : <span style={{ color: 'var(--tx-muted)', fontStyle: 'italic' }}>Not on record</span>}
+                                                </td>
+                                                <td>
+                                                    {item.found ? (
+                                                        <span style={{ fontSize: '12px' }}>
+                                                            {prof.branch || '—'} · {prof.scheme ? `${prof.scheme} Scheme` : '2022 Scheme'}
+                                                        </span>
+                                                    ) : '—'}
+                                                </td>
+                                                <td>
+                                                    {item.found ? (
+                                                        <Badge tone={item.cgpa >= 8 ? 'success' : item.cgpa >= 6 ? 'info' : 'warning'}>
+                                                            {fmtGpa(item.cgpa)}
+                                                        </Badge>
+                                                    ) : '—'}
+                                                </td>
+                                                <td>
+                                                    {item.found ? (
+                                                        <Badge tone={item.totalActiveBacklogs > 0 ? 'danger' : 'success'}>
+                                                            {item.totalActiveBacklogs > 0 ? `${item.totalActiveBacklogs} Backlog${item.totalActiveBacklogs > 1 ? 's' : ''}` : 'Clear'}
+                                                        </Badge>
+                                                    ) : '—'}
+                                                </td>
+                                                <td>
+                                                    {item.found ? (
+                                                        <span className={`${styles.statusPill} ${styles.statusFound}`}>
+                                                            <span className="material-icons-round" style={{ fontSize: '12px' }}>check_circle</span>
+                                                            RECORDED
+                                                        </span>
+                                                    ) : (
+                                                        <span className={`${styles.statusPill} ${styles.statusMissing}`}>
+                                                            <span className="material-icons-round" style={{ fontSize: '12px' }}>help_outline</span>
+                                                            NOT FOUND
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                                        {item.found ? (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="secondary"
+                                                                iconStart="visibility"
+                                                                onClick={() => setInspectedStudent?.(item)}
+                                                            >
+                                                                Inspect
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="primary"
+                                                                iconStart="cloud_download"
+                                                                onClick={() => fetchFromVTU?.([item.usn])}
+                                                                disabled={scraping}
+                                                            >
+                                                                Fetch VTU
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            )}
+
+            {/* Inspect Bar when drilling into a student from batch search */}
+            {batchResults && inspectedStudent && (
+                <div className={styles.inspectBar}>
+                    <div className={styles.inspectBarTitle}>
+                        <span className="material-icons-round" style={{ color: 'var(--primary)', fontSize: '20px' }}>account_circle</span>
+                        <span>Inspecting Batch Profile: <strong>{inspectedStudent.profile?.name || inspectedStudent.usn}</strong> ({inspectedStudent.usn})</span>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        iconStart="arrow_back"
+                        onClick={() => setInspectedStudent?.(null)}
+                    >
+                        Back to Batch Overview ({batchResults.total} Students)
+                    </Button>
+                </div>
             )}
 
             {student ? (
@@ -1087,6 +1499,8 @@ function FacultyDashboardContent() {
     const [usn, setUsn] = useState('');
     const [loading, setLoading] = useState(false);
     const [student, setStudent] = useState(null);
+    const [batchResults, setBatchResults] = useState(null);
+    const [inspectedStudent, setInspectedStudent] = useState(null);
     const [marks, setMarks] = useState({});
     const [sgpas, setSgpas] = useState({});
     const [semStats, setSemStats] = useState({});
@@ -1109,7 +1523,20 @@ function FacultyDashboardContent() {
     const [assignedLoading, setAssignedLoading] = useState(true);
     const [availablePortals, setAvailablePortals] = useState([]);
     const [selectedPortalUrl, setSelectedPortalUrl] = useState('ALL');
+    const [selectedPortalUrls, setSelectedPortalUrls] = useState([]);
     const [customPortalUrl, setCustomPortalUrl] = useState('');
+
+    useEffect(() => {
+        if (!inspectedStudent) return;
+        setStudent(inspectedStudent.profile || { usn: inspectedStudent.usn, name: inspectedStudent.usn });
+        setMarks(inspectedStudent.marksBySemester || {});
+        setSgpas(inspectedStudent.semSGPAs || {});
+        setSemStats(inspectedStudent.semStats || {});
+        setCgpa(inspectedStudent.cgpa || 0);
+        setServerBacklogs(inspectedStudent.activeBacklogSubjects || null);
+        setServerActiveBacklogsCount(inspectedStudent.totalActiveBacklogs ?? null);
+        setEntry(inspectedStudent.entry || null);
+    }, [inspectedStudent]);
     // Self-service "add my own subject" — same faculty_subject_assignments
     // table and endpoint the admin panel writes to, just scoped to self.
     const [addSubjectOpen, setAddSubjectOpen] = useState(false);
@@ -1415,14 +1842,55 @@ function FacultyDashboardContent() {
             return;
         }
 
-        const usnCheck = validateUsn(targetUsn);
+        const rawTokens = String(targetUsn).split(/[\s,;\n\r]+/).map(t => t.trim()).filter(Boolean);
+        const cleanUSNs = Array.from(new Set(rawTokens.map(t => cleanAlphanumeric(t).toUpperCase()).filter(Boolean)));
+
+        if (cleanUSNs.length === 0) {
+            if (!silent) setMessage('Please enter a valid USN.');
+            return;
+        }
+
+        // Multi-USN Lookup Mode
+        if (cleanUSNs.length > 1) {
+            if (!silent) setLoading(true);
+            setMessage('');
+            setStudent(null);
+            setInspectedStudent(null);
+            setLookupIssue(null);
+            try {
+                const resData = await apiRequest('/api/faculty/dashboard', {
+                    query: { search_usns: cleanUSNs.join(','), _t: Date.now() }
+                });
+
+                if (resData?.multi) {
+                    setBatchResults(resData);
+                    if (!silent) {
+                        setMessage(`Batch lookup complete: ${resData.foundCount} of ${resData.total} students found in institutional records.`);
+                    }
+                    return;
+                }
+            } catch (err) {
+                console.error('Batch lookup error:', err);
+                if (!silent) setMessage('Failed to perform batch student lookup.');
+            } finally {
+                if (!silent) setLoading(false);
+            }
+            return;
+        }
+
+        // Single USN Lookup Mode
+        const singleTarget = cleanUSNs[0];
+        setBatchResults(null);
+        setInspectedStudent(null);
+
+        const usnCheck = validateUsn(singleTarget);
         if (!usnCheck.isValid) {
             if (!silent) {
                 const hint = usnCheck.suggestion ? ` Did you mean ${usnCheck.suggestion}?` : '';
                 setMessage(`Invalid USN: ${usnCheck.error || 'Expected the VTU format, e.g. 2AB23CS043.'}${hint}`);
                 setLookupIssue({
                     reason: 'INVALID_USN',
-                    usn: usnCheck.sanitized || String(targetUsn).toUpperCase(),
+                    usn: usnCheck.sanitized || String(singleTarget).toUpperCase(),
                     message: usnCheck.error || 'This is not a valid VTU University Seat Number.',
                     suggestion: usnCheck.suggestion || null
                 });
@@ -1508,14 +1976,107 @@ function FacultyDashboardContent() {
 
     const [forceDeep] = useState(false);
 
-    const fetchFromVTU = async () => {
-        // PRIORITIZE the input box USN if provided, otherwise fallback to loaded student
-        const targetUsn = usn?.trim() || student?.usn;
-        if (!targetUsn) {
+    const fetchFromVTU = async (specificUsns = null) => {
+        let candidateUsns = [];
+        if (Array.isArray(specificUsns)) {
+            candidateUsns = specificUsns;
+        } else if (typeof specificUsns === 'string') {
+            candidateUsns = [specificUsns];
+        } else {
+            const rawTokens = (usn || '').split(/[\s,;\n\r]+/).map(t => t.trim()).filter(Boolean);
+            const tokens = Array.from(new Set(rawTokens.map(t => cleanAlphanumeric(t).toUpperCase()).filter(Boolean)));
+            if (tokens.length > 0) {
+                candidateUsns = tokens;
+            } else if (student?.usn) {
+                candidateUsns = [student.usn];
+            }
+        }
+
+        if (candidateUsns.length === 0) {
             setMessage('Please enter a valid USN to fetch.');
             return;
         }
 
+        // Resolve target portal URLs
+        let targetPortalList = null;
+        if (selectedPortalUrls && selectedPortalUrls.length > 0) {
+            targetPortalList = selectedPortalUrls;
+        } else if (selectedPortalUrl === 'CUSTOM') {
+            const trimmedCustom = customPortalUrl.trim();
+            if (!trimmedCustom || !trimmedCustom.toLowerCase().includes('vtu.ac.in')) {
+                setMessage('Please enter a valid results.vtu.ac.in URL for custom portal scan.');
+                return;
+            }
+            targetPortalList = [trimmedCustom];
+        } else if (selectedPortalUrl !== 'ALL') {
+            targetPortalList = [selectedPortalUrl];
+        }
+
+        // BATCH SCRAPE MODE (2+ USNs)
+        if (candidateUsns.length > 1) {
+            stopScraping(true);
+            setScraping(true);
+            setScrapeProgress(`Queueing ${candidateUsns.length} students for VTU scraping...`);
+            setMessage('');
+
+            try {
+                const res = await fetch('/api/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        usns: candidateUsns,
+                        role: 'faculty',
+                        force: true,
+                        faculty_id: faculty?.id,
+                        target_urls: targetPortalList || undefined
+                    }),
+                });
+                const json = await res.json();
+                const queuedJobs = (json.jobs || []).filter(j => j.status === 'queued' && j.jobId);
+
+                if (queuedJobs.length === 0) {
+                    setMessage(json.message || 'All requested students are already cached or could not be queued.');
+                    setScraping(false);
+                    setScrapeProgress('');
+                    await lookupStudent(candidateUsns.join(', '));
+                    return;
+                }
+
+                const jobIds = queuedJobs.map(j => j.jobId);
+                setScrapeProgress(`Queued ${jobIds.length} scrape job(s). Scanning portals in background...`);
+
+                const startTime = Date.now();
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusRes = await fetch(`/api/scrape/status?jobIds=${jobIds.join(',')}`);
+                        const statusJson = await statusRes.json();
+                        if (statusJson.success && statusJson.data) {
+                            const { allTerminal, completedCount, totalCount } = statusJson.data;
+                            setScrapeProgress(`Scanning VTU portals: ${completedCount} of ${totalCount} students processed...`);
+
+                            if (allTerminal || (Date.now() - startTime > 15 * 60 * 1000)) {
+                                clearInterval(pollInterval);
+                                stopScraping(true);
+                                setMessage(`Batch scraping complete! (${completedCount}/${totalCount} students updated)`);
+                                await lookupStudent(candidateUsns.join(', '), true);
+                            }
+                        }
+                    } catch (pollErr) {
+                        console.error('Batch status poll error:', pollErr);
+                    }
+                }, 3000);
+
+            } catch (err) {
+                console.error('Batch scrape error:', err);
+                setMessage('Failed to queue batch scrape.');
+                setScraping(false);
+                setScrapeProgress('');
+            }
+            return;
+        }
+
+        // SINGLE SCRAPE MODE (1 USN)
+        const targetUsn = candidateUsns[0];
         const usnCheck = validateUsn(targetUsn);
         if (!usnCheck.isValid) {
             const hint = usnCheck.suggestion ? ` Did you mean ${usnCheck.suggestion}?` : '';
@@ -1526,26 +2087,12 @@ function FacultyDashboardContent() {
         const cleanUSN = usnCheck.sanitized;
         const admissionYear = parseInt(cleanUSN.substring(3, 5), 10) || 22;
         const targetScheme = student?.scheme || (admissionYear >= 25 ? '2025' : '2022');
+        const finalTargetUrl = targetPortalList ? targetPortalList.join(',') : null;
 
-        // Resolve single-portal target URL if selected
-        let finalTargetUrl = null;
-        if (selectedPortalUrl === 'CUSTOM') {
-            const trimmedCustom = customPortalUrl.trim();
-            if (!trimmedCustom || !trimmedCustom.toLowerCase().includes('vtu.ac.in')) {
-                setMessage('Please enter a valid results.vtu.ac.in URL for custom portal scan.');
-                return;
-            }
-            finalTargetUrl = trimmedCustom;
-        } else if (selectedPortalUrl !== 'ALL') {
-            finalTargetUrl = selectedPortalUrl;
-        }
-
-        // Stop any existing polling before starting a new one
         stopScraping(true);
-
         setScraping(true);
-        const portalLabel = finalTargetUrl
-            ? (availablePortals.find(p => p.url === finalTargetUrl)?.exam_name || 'Targeted Portal')
+        const portalLabel = targetPortalList && targetPortalList.length > 0
+            ? `${targetPortalList.length} Targeted Portal${targetPortalList.length > 1 ? 's' : ''}`
             : `${targetScheme} Scheme`;
 
         setScrapeProgress(
@@ -1565,7 +2112,7 @@ function FacultyDashboardContent() {
                     force: true,
                     faculty_id: faculty?.id,
                     scheme: targetScheme,
-                    target_url: finalTargetUrl
+                    target_url: finalTargetUrl || undefined
                 }),
             });
             const json = await res.json();
@@ -1586,9 +2133,6 @@ function FacultyDashboardContent() {
                     : `Job ${jobId?.substring(0, 6)} queued. Scanning ${activeScheme} Scheme portals for ${cleanUSN}...`;
                 setScrapeProgress(queueMsg);
 
-                // Hand the job to the live subscription below. It polls
-                // /api/scrape/status every LIVE.FAST ms and reacts to the
-                // terminal status, so there is no interval to manage here.
                 setScrapeJob({ id: jobId, usn: cleanUSN, startedAt: Date.now() });
             } else {
                 setMessage(typeof json.error === 'object' ? (json.error.message || 'Unable to process.') : (json.error || 'Unable to process.'));
@@ -1723,6 +2267,12 @@ function FacultyDashboardContent() {
             availablePortals={availablePortals}
             selectedPortalUrl={selectedPortalUrl}
             setSelectedPortalUrl={setSelectedPortalUrl}
+            selectedPortalUrls={selectedPortalUrls}
+            setSelectedPortalUrls={setSelectedPortalUrls}
+            batchResults={batchResults}
+            setBatchResults={setBatchResults}
+            inspectedStudent={inspectedStudent}
+            setInspectedStudent={setInspectedStudent}
             customPortalUrl={customPortalUrl}
             setCustomPortalUrl={setCustomPortalUrl}
             addSubjectOpen={addSubjectOpen}

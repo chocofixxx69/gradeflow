@@ -834,4 +834,464 @@
     box-shadow: 0 1px 4px rgba(0,0,0,0.1);
 }
 
+/* ─── Multi-Portal Target Selector ──────────────────────── */
+.targetPortalContainer {
+    position: relative;
+    flex: 1;
+    min-width: 260px;
+}
+
+.targetPortalTrigger {
+    width: 100%;
+    min-height: 38px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tx-main);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+}
+
+.targetPortalTrigger:hover {
+    border-color: var(--primary);
+    background: var(--surface-hover, var(--surface));
+}
+
+.targetPortalTriggerActive {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+
+.targetPortalSummary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.targetPortalCountBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    background: var(--primary);
+    color: #FFFFFF;
+    padding: 1px 7px;
+    border-radius: 9999px;
+    line-height: 1.4;
+}
+
+.targetPortalDropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    min-width: 320px;
+    max-width: 500px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.targetPortalQuickBar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+}
+
+.quickFilterBtn {
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: var(--radius-1);
+    border: 1px solid var(--border);
+    background: var(--surface-low);
+    color: var(--tx-muted);
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.quickFilterBtn:hover {
+    background: var(--surface);
+    color: var(--tx-main);
+    border-color: var(--primary);
+}
+
+.quickFilterBtnActive {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.targetPortalSearchInput {
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    background: var(--surface-low);
+    color: var(--tx-main);
+    outline: none;
+}
+
+.targetPortalSearchInput:focus {
+    border-color: var(--primary);
+}
+
+.targetPortalList {
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-right: 4px;
+}
+
+.targetPortalItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--tx-main);
+    transition: background 0.12s ease;
+    user-select: none;
+}
+
+.targetPortalItem:hover {
+    background: var(--surface-low);
+}
+
+.targetPortalItemChecked {
+    background: rgba(16, 185, 129, 0.08);
+    font-weight: 600;
+}
+
+.targetPortalCheckbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.targetPortalItemInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.targetPortalItemName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.targetPortalItemUrl {
+    font-size: 10.5px;
+    color: var(--tx-muted);
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.targetPortalTypeBadge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.targetPortalTypeReval {
+    background: rgba(245, 158, 11, 0.12);
+    color: #D97706;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.targetPortalTypeRegular {
+    background: rgba(59, 130, 246, 0.12);
+    color: #2563EB;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.targetPortalFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--tx-muted);
+}
+
+/* ─── Selected Portal Chips ─────────────────────────────── */
+.portalChipsWrapper {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+.portalChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--tx-main);
+    max-width: 260px;
+}
+
+.portalChipText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.portalChipRemove {
+    background: transparent;
+    border: none;
+    color: var(--tx-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.12s ease;
+}
+
+.portalChipRemove:hover {
+    color: var(--red, #EF4444);
+}
+
+/* ─── Multi-USN Detection Pill ──────────────────────────── */
+.multiUsnPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: var(--radius-2);
+    font-size: 12px;
+    font-weight: 700;
+    color: #2563EB;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.multiUsnListPreview {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--tx-muted);
+    font-weight: 500;
+}
+
+/* ─── Batch Student Roster & Intelligence View ──────────── */
+.batchContainer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+}
+
+.batchHeaderBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.batchKpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.batchKpiCard {
+    background: var(--surface-low);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.batchKpiLabel {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--tx-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.batchKpiValue {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--tx-main);
+    line-height: 1.2;
+}
+
+.batchActionsBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.batchTableContainer {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    background: var(--surface);
+}
+
+.batchTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+
+.batchTable th {
+    background: var(--surface-low);
+    color: var(--tx-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.batchTable td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--tx-main);
+    vertical-align: middle;
+}
+
+.batchTable tr:last-child td {
+    border-bottom: none;
+}
+
+.batchTable tr:hover td {
+    background: var(--surface-hover, rgba(0,0,0,0.015));
+}
+
+.studentUsnCell {
+    font-family: monospace;
+    font-weight: 800;
+    color: var(--primary);
+}
+
+.studentNameCell {
+    font-weight: 600;
+    color: var(--tx-main);
+}
+
+.statusPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.statusFound {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10B981;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.statusMissing {
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.statusQueued {
+    background: rgba(59, 130, 246, 0.12);
+    color: #3B82F6;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.inspectBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: var(--radius-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.inspectBarTitle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--tx-main);
+}
+
 
