@@ -114,6 +114,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     // Global session/identity
     const [currentFacultyId, setCurrentFacultyId] = useState(null);
     const [currentUserRole, setCurrentUserRole] = useState(role);
+    const isInstitutionalAdmin = currentUserRole === 'admin' || role === 'admin';
 
     // View Perspective & Filters
     const [viewPerspective, setViewPerspective] = useState('all'); // 'all' | 'my'
@@ -398,7 +399,20 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
     // 4. Handle Open Assign Modal
     const handleOpenAssignModal = (faculty = null) => {
-        const target = faculty || (currentFacultyId ? facultyList.find(f => f.faculty_id === currentFacultyId) : facultyList[0]);
+        let target = null;
+        const selfFaculty = currentFacultyId ? facultyList.find(f => f.faculty_id === currentFacultyId) : null;
+
+        if (isInstitutionalAdmin) {
+            target = faculty || selfFaculty || facultyList[0];
+        } else {
+            // Faculty can ONLY assign to themselves
+            target = selfFaculty || (faculty && faculty.faculty_id === currentFacultyId ? faculty : null);
+            if (!target) {
+                setAssignError('Faculty members can only assign subjects to their own profile.');
+                return;
+            }
+        }
+
         setAssignTargetFaculty(target);
         const facBranch = target?.department?.toUpperCase().slice(0, 2) || 'CS';
         setAssignBranch(facBranch);
@@ -426,6 +440,11 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         e?.preventDefault();
         if (!assignTargetFaculty?.faculty_id) {
             setAssignError('Please select a faculty member.');
+            return;
+        }
+
+        if (!isInstitutionalAdmin && currentFacultyId && assignTargetFaculty?.faculty_id !== currentFacultyId) {
+            setAssignError('Security policy: Faculty members can only assign subjects to their own profile.');
             return;
         }
 
@@ -750,8 +769,6 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         return courses.sort((a, b) => b.passRate - a.passRate || b.avgScore - a.avgScore);
     }, [displayedFaculty]);
 
-    const isInstitutionalAdmin = currentUserRole === 'admin' || role === 'admin';
-
     // Helper for faculty avatar initials
     const getInitials = (name) => {
         if (!name) return 'FA';
@@ -837,7 +854,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                         }}
                     >
                         <span className="material-icons-round" style={{ fontSize: '18px' }}>add_link</span>
-                        + Assign Subject
+                        {isInstitutionalAdmin ? '+ Assign Subject' : '+ Assign My Subjects'}
                     </button>
 
                     <button
@@ -2031,6 +2048,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                 displayedFaculty.map((f, idx) => {
                                     const isExpanded = expandedFacultyId === f.faculty_id;
                                     const isSelf = currentFacultyId && f.faculty_id === currentFacultyId;
+                                    const canAssign = isInstitutionalAdmin || isSelf;
                                     const passColor = f.pass_rate >= 85 ? '#10B981' : f.pass_rate >= 70 ? 'var(--primary)' : f.pass_rate > 0 ? '#EF4444' : 'var(--tx-dim)';
 
                                     const gs = f.grade_spread || {};
@@ -2107,27 +2125,41 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
                                                 <td style={{ padding: '14px 14px' }}>
                                                     {f.subjects.length === 0 ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOpenAssignModal(f)}
-                                                            style={{
-                                                                padding: '6px 12px',
-                                                                borderRadius: '20px',
-                                                                border: '1px dashed var(--primary)',
-                                                                background: 'rgba(23, 75, 77, 0.06)',
-                                                                color: 'var(--primary)',
+                                                        canAssign ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenAssignModal(f)}
+                                                                style={{
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: '20px',
+                                                                    border: '1px dashed var(--primary)',
+                                                                    background: 'rgba(23, 75, 77, 0.06)',
+                                                                    color: 'var(--primary)',
+                                                                    fontSize: '12px',
+                                                                    fontWeight: 700,
+                                                                    cursor: 'pointer',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '5px',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>add</span>
+                                                                Link Subject &amp; Class
+                                                            </button>
+                                                        ) : (
+                                                            <span style={{
                                                                 fontSize: '12px',
-                                                                fontWeight: 700,
-                                                                cursor: 'pointer',
+                                                                color: 'var(--tx-muted)',
+                                                                fontStyle: 'italic',
                                                                 display: 'inline-flex',
                                                                 alignItems: 'center',
-                                                                gap: '5px',
-                                                                transition: 'all 0.15s ease'
-                                                            }}
-                                                        >
-                                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>add</span>
-                                                            Link Subject &amp; Class
-                                                        </button>
+                                                                gap: '4px'
+                                                            }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--tx-dim)' }}>horizontal_rule</span>
+                                                                Unassigned
+                                                            </span>
+                                                        )
                                                     ) : (
                                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                                             {f.subjects.map(s => (
@@ -2166,22 +2198,24 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                                                     )}
                                                                 </div>
                                                             ))}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleOpenAssignModal(f)}
-                                                                style={{
-                                                                    border: 'none',
-                                                                    background: 'transparent',
-                                                                    color: 'var(--primary)',
-                                                                    cursor: 'pointer',
-                                                                    padding: '2px',
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center'
-                                                                }}
-                                                                title="Add another course / class assignment"
-                                                            >
-                                                                <span className="material-icons-round" style={{ fontSize: '20px' }}>add_circle_outline</span>
-                                                            </button>
+                                                            {canAssign && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenAssignModal(f)}
+                                                                    style={{
+                                                                        border: 'none',
+                                                                        background: 'transparent',
+                                                                        color: 'var(--primary)',
+                                                                        cursor: 'pointer',
+                                                                        padding: '2px',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center'
+                                                                    }}
+                                                                    title="Add another course / class assignment"
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '20px' }}>add_circle_outline</span>
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </td>
@@ -2287,24 +2321,26 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                                                 <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.04em' }}>
                                                                     Subject &amp; Class-wise Performance Breakdown for {f.faculty_name}
                                                                 </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleOpenAssignModal(f)}
-                                                                    style={{
-                                                                        border: 'none',
-                                                                        background: 'transparent',
-                                                                        color: 'var(--primary)',
-                                                                        fontSize: '12px',
-                                                                        fontWeight: 700,
-                                                                        cursor: 'pointer',
-                                                                        display: 'inline-flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '4px'
-                                                                    }}
-                                                                >
-                                                                    <span className="material-icons-round" style={{ fontSize: '16px' }}>add</span>
-                                                                    Assign Additional Subject / Class
-                                                                </button>
+                                                                {canAssign && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleOpenAssignModal(f)}
+                                                                        style={{
+                                                                            border: 'none',
+                                                                            background: 'transparent',
+                                                                            color: 'var(--primary)',
+                                                                            fontSize: '12px',
+                                                                            fontWeight: 700,
+                                                                            cursor: 'pointer',
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px'
+                                                                        }}
+                                                                    >
+                                                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>add</span>
+                                                                        Assign Additional Subject / Class
+                                                                    </button>
+                                                                )}
                                                             </div>
 
                                                             <div style={{ overflowX: 'auto' }}>
@@ -2433,7 +2469,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                                                                         )}
 
                                                                                         {/* Remove Assignment Option */}
-                                                                                        {s.assignment_id && (isSelf || currentUserRole === 'admin') && (
+                                                                                        {s.assignment_id && canAssign && (
                                                                                             <button
                                                                                                 type="button"
                                                                                                 onClick={() => setUnassignTarget({ id: s.assignment_id, code: s.subject_code, name: s.subject_name })}
@@ -2590,7 +2626,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                     Faculty Member <span style={{ color: '#EF4444' }}>*</span>
                                 </label>
-                                {currentUserRole === 'admin' ? (
+                                {isInstitutionalAdmin ? (
                                     <Select
                                         value={assignTargetFaculty?.faculty_id || ''}
                                         onChange={e => {
@@ -2613,8 +2649,19 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                         alignItems: 'center'
                                     }}>
                                         <div>
-                                            <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--tx-main)' }}>
+                                            <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 {assignTargetFaculty?.faculty_name || 'Your Profile'}
+                                                <span style={{
+                                                    padding: '1px 6px',
+                                                    borderRadius: '4px',
+                                                    background: 'var(--primary)',
+                                                    color: '#FFFFFF',
+                                                    fontSize: '9.5px',
+                                                    fontWeight: 900,
+                                                    letterSpacing: '0.04em'
+                                                }}>
+                                                    YOU
+                                                </span>
                                             </div>
                                             <div style={{ fontSize: '11.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>
                                                 {assignTargetFaculty?.email || ''} · {assignTargetFaculty?.department || 'Department'}
