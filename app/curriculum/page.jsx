@@ -45,7 +45,7 @@ function CurriculumContent() {
 
             // Fallback to official synced catalog if offline / DB error
             if (isMounted) {
-                const list = getSubjectsFor(branch, semester, scheme);
+                const list = await getSubjectsFor(branch, semester, scheme);
                 setSubjects(list);
                 setLoading(false);
             }

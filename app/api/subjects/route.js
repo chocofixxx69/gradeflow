@@ -83,7 +83,7 @@ export async function GET(req) {
         // If subject_catalog had no records for this branch/semester, check VTU syllabus catalog
         if (subjects.length === 0 && semester && semester !== 'all') {
             try {
-                const officialList = getSubjectsFor(branch, semester, reqScheme || '2022') || [];
+                const officialList = await getSubjectsFor(branch, semester, reqScheme || '2022') || [];
                 if (officialList.length > 0) {
                     officialList.forEach(item => {
                         subjects.push({

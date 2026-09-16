@@ -35,6 +35,7 @@ function CalculatorContent() {
     const [manualSGPAs, setManualSGPAs] = useState(Array(8).fill(''));
     const [cgpaResult, setCgpaResult] = useState(null);
     const [loggedInUser, setLoggedInUser] = useState(null);
+    const [stats, setStats] = useState({ sgpa: 0, totalCredits: 0, totalCrP: 0, formula: '' });
 
     useEffect(() => {
         const stuSession = localStorage.getItem('student_session');
@@ -65,7 +66,7 @@ function CalculatorContent() {
     const refreshMatrix = async (b, s, sch) => {
         setLoading(true);
         try {
-            const list = getSubjectsFor(b, s, sch);
+            const list = await getSubjectsFor(b, s, sch);
             setSubjects(list.length ? list.map(sub => ({ ...sub, id: Math.random(), total: 0, grade: '-' })) : []);
         } catch (err) {
             console.error("Catalog Fetch Error:", err);
@@ -124,7 +125,7 @@ function CalculatorContent() {
                 sync_source: 'MANUAL_ENTRY'
             }));
 
-            const stats = calculateSGPA(subjects, scheme);
+            const stats = await calculateSGPA(subjects, scheme);
             await apiRequest('/api/student/results', {
                 method: 'POST',
                 headers: getStudentAuthHeaders(loggedInUser),
@@ -145,7 +146,13 @@ function CalculatorContent() {
         }
     };
 
-    const stats = calculateSGPA(subjects, scheme);
+    useEffect(() => {
+        let cancelled = false;
+        calculateSGPA(subjects, scheme).then(result => {
+            if (!cancelled) setStats(result);
+        });
+        return () => { cancelled = true; };
+    }, [subjects, scheme]);
 
     const s = {
         label: { fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)', display: 'block' },
