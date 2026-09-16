@@ -14,6 +14,11 @@ let _metaCache = null;
 let _metaCacheTime = 0;
 const META_CACHE_TTL = 60_000; // 60 seconds
 
+export function clearSystemMetaCache() {
+    _metaCache = null;
+    _metaCacheTime = 0;
+}
+
 export async function GET() {
     try {
         const now = Date.now();
@@ -23,14 +28,18 @@ export async function GET() {
             });
         }
 
-        // Fetch branches & faculty in parallel
-        const [branchesResult, facultyResult] = await Promise.allSettled([
+        // Fetch branches, faculty & batches in parallel
+        const [branchesResult, facultyResult, batchesResult] = await Promise.allSettled([
             supabaseAdmin.from('branches').select('code, label, is_active, sort_order').order('sort_order', { ascending: true }),
             supabaseAdmin
                 .from('faculty_onboarding')
                 .select('id, full_name, email, department')
                 .eq('status', 'approved')
-                .order('full_name', { ascending: true })
+                .order('full_name', { ascending: true }),
+            supabaseAdmin
+                .from('batches')
+                .select('*')
+                .order('year', { ascending: false })
         ]);
 
         const rawDbBranches = branchesResult.status === 'fulfilled' && branchesResult.value.data ? branchesResult.value.data : [];
@@ -54,17 +63,31 @@ export async function GET() {
             { code: 'RI', name: 'Robotics & Artificial Intelligence', label: 'Robotics & Artificial Intelligence' }
         ];
 
+        const rawDbBatches = batchesResult.status === 'fulfilled' && batchesResult.value.data ? batchesResult.value.data : [];
+        const activeDbBatches = rawDbBatches.filter(b => b.is_active !== false);
+        const dbBatchYears = activeDbBatches.map(b => String(b.year).trim());
+        const dbBatchSchemes = rawDbBatches.map(b => b.default_scheme ? String(b.default_scheme).trim() : null).filter(Boolean);
+        const schemes = Array.from(new Set(['2026', '2025', '2022', '2018', ...dbBatchSchemes])).sort((a, b) => {
+            const na = parseInt(a, 10);
+            const nb = parseInt(b, 10);
+            if (!isNaN(na) && !isNaN(nb)) return nb - na;
+            return b.localeCompare(a);
+        });
+
         const branches = dbBranches.length > 0 ? dbBranches : fallbackBranches;
-        const schemes = ['2022', '2025'];
         const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
         const sections = ['A', 'B', 'C', 'D', 'E', 'F'];
+
         const currentYear = new Date().getFullYear();
         const maxBatchYear = Math.max(2036, currentYear + 10);
         const academicYears = Array.from({ length: maxBatchYear - 2020 + 1 }, (_, i) => {
             const y = maxBatchYear - i;
             return `${y}-${y + 1}`;
         });
-        const batches = Array.from({ length: maxBatchYear - 2018 + 1 }, (_, i) => String(maxBatchYear - i));
+        const batches = Array.from(new Set([
+            ...dbBatchYears,
+            ...Array.from({ length: maxBatchYear - 2018 + 1 }, (_, i) => String(maxBatchYear - i))
+        ])).sort((a, b) => b.localeCompare(a));
         const facultyList = facultyResult.status === 'fulfilled' && facultyResult.value.data ? facultyResult.value.data : [];
 
         const payload = {
@@ -74,6 +97,7 @@ export async function GET() {
             sections,
             academicYears,
             batches,
+            batchList: activeDbBatches,
             faculty: facultyList,
             formLookups: {
                 branches,
@@ -82,6 +106,7 @@ export async function GET() {
                 sections,
                 academicYears,
                 batches,
+                batchList: activeDbBatches,
                 faculty: facultyList
             }
         };

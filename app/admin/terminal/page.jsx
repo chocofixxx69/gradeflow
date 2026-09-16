@@ -11,6 +11,7 @@ import { getGradePoint } from '../../../lib/vtuGrades';
 import { normalizeSubjectResult } from '../../../lib/vtuAcademicEngine';
 import { supabase } from '../../../lib/supabase';
 import { scoreStudentMatch, filterAndRank } from '../../../lib/search-utils';
+import { computeBatchLabel, computeBatchStanding, computeGraduatingClass } from '../../../lib/vtu-identity';
 
 // Every tab below is conditionally rendered ({tab === 'x' && <.../>}), but a
 // static import still ships in this route's one client bundle regardless of
@@ -20,6 +21,7 @@ import { scoreStudentMatch, filterAndRank } from '../../../lib/search-utils';
 // tab's module (and its dependencies) to when that tab actually renders.
 const tabLoading = () => <LoadingState block label="Loading..." />;
 
+const BatchesContent = dynamic(() => import('../../../components/BatchesContent').then(m => m.BatchesContent || m.default || m), { loading: tabLoading, ssr: false });
 const ClassesContent = dynamic(() => import('../../../components/ClassesContent').then(m => m.ClassesContent || m.default || m), { loading: tabLoading, ssr: false });
 const AuditLogContent = dynamic(() => import('../../../components/AuditLogContent').then(m => m.AuditLogContent || m.default || m), { loading: tabLoading, ssr: false });
 const SupportTicketsContent = dynamic(() => import('../../../components/SupportTicketsContent').then(m => m.SupportTicketsContent || m.default || m), { loading: tabLoading, ssr: false });
@@ -33,6 +35,7 @@ const AdminAnalyticsPage = dynamic(() => import('../analytics/page.jsx'), { load
 const TAB_METADATA = {
     overview: { label: 'Institutional Overview', icon: 'dashboard', shortLabel: 'Overview' },
     students: { label: 'Student Directory & Access Control', icon: 'school', shortLabel: 'Students' },
+    batches: { label: 'Academic Batches & Admission Cohorts', icon: 'calendar_month', shortLabel: 'Batches' },
     classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
     assignments: { label: 'Faculty Subject Assignments & Mapping', icon: 'assignment_ind', shortLabel: 'Subject Assignments' },
     teachingPerformance: { label: 'Faculty Teaching Performance & Attribution', icon: 'supervisor_account', shortLabel: 'Teaching Performance' },
@@ -73,19 +76,13 @@ function getActionColor(t) {
 function AdminPanelContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
         const handleResize = () => {
-            const mobile = window.innerWidth < 1024;
-            setIsMobile(mobile);
-            if (!mobile) {
-                setMobileMenuOpen(false);
-            }
+            setIsMobile(window.innerWidth < 1024);
         };
 
         handleResize();
@@ -93,19 +90,15 @@ function AdminPanelContent() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    useEffect(() => {
-        if (isMobile && mobileMenuOpen) {
-            document.body.classList.add('gf-drawer-open');
-        } else {
-            document.body.classList.remove('gf-drawer-open');
-        }
-        return () => {
-            document.body.classList.remove('gf-drawer-open');
-        };
-    }, [isMobile, mobileMenuOpen]);
-
     const initialTab = searchParams?.get('tab') || 'overview';
     const [tab, setTab] = useState(initialTab);
+
+    useEffect(() => {
+        const urlTab = searchParams?.get('tab') || 'overview';
+        if (urlTab && urlTab !== tab) {
+            setTab(urlTab);
+        }
+    }, [searchParams, tab]);
     const [tabHistory, setTabHistory] = useState([]);
     const [navigationOrigin, setNavigationOrigin] = useState(null);
     const [students, setStudents] = useState([]);
@@ -153,6 +146,7 @@ function AdminPanelContent() {
     const [addingStudent, setAddingStudent] = useState(false);
     // Faculty Management States
     const [classesList, setClassesList] = useState([]);
+    const [batchesList, setBatchesList] = useState([]);
     const [facultySearch, setFacultySearch] = useState('');
     const [facultyStatusFilter, setFacultyStatusFilter] = useState('all');
     const [facultyDeptFilter, setFacultyDeptFilter] = useState('all');
@@ -209,6 +203,23 @@ function AdminPanelContent() {
 
     const switchTab = useCallback((newTab, origin = null) => {
         if (newTab === tab && !origin) return;
+
+        const routeMap = {
+            batches: '/admin/batches',
+            classes: '/admin/classes',
+            assignments: '/admin/faculty-assignments',
+            teachingPerformance: '/admin/faculty-performance',
+            subjects: '/admin/subjects',
+            vtuUrls: '/admin/vtu-urls',
+            analytics: '/admin/analytics',
+            audit: '/admin/audit-log',
+        };
+
+        if (routeMap[newTab]) {
+            router.push(routeMap[newTab]);
+            return;
+        }
+
         setTabHistory(prev => {
             const filtered = prev.filter(t => t !== tab);
             return [...filtered, tab];
@@ -224,7 +235,7 @@ function AdminPanelContent() {
             url.searchParams.set('tab', newTab);
             window.history.pushState({ tab: newTab }, '', url.toString());
         }
-    }, [tab]);
+    }, [tab, router]);
 
     const goBack = useCallback(() => {
         // Priority 1: Close active drawers or modals
@@ -326,7 +337,6 @@ function AdminPanelContent() {
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
-                if (mobileMenuOpen) setMobileMenuOpen(false);
                 if (selectedStudent) setSelectedStudent(null);
                 if (selectedFaculty) setSelectedFaculty(null);
                 if (showAddStudent) setShowAddStudent(false);
@@ -336,7 +346,7 @@ function AdminPanelContent() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [mobileMenuOpen, selectedStudent, selectedFaculty, showAddStudent, showAddFaculty, editingFaculty]);
+    }, [selectedStudent, selectedFaculty, showAddStudent, showAddFaculty, editingFaculty]);
 
     const fetchSettings = useCallback(async () => {
         setSettingsLoading(true);
@@ -486,6 +496,7 @@ function AdminPanelContent() {
             setRequests(r);
             setActivityLogs(enrichedLogs);
             setClassesList(resData?.classes || []);
+            if (resData?.batches) setBatchesList(resData.batches);
             if (resData?.vtuStats) setVtuStats(resData.vtuStats);
 
             const todayStr = new Date().toISOString().slice(0, 10);
@@ -1088,21 +1099,25 @@ function AdminPanelContent() {
 
     // Dynamic batch list — uses correct VTU lateral entry classification
     const availableBatches = useMemo(() => {
-        const BATCH_META = {
-            '2023': { label: 'Batch 2023–27 (4th Year)' },
-            '2024': { label: 'Batch 2024–28 (3rd Year)' },
-            '2025': { label: 'Batch 2025–29 (2nd Year)' },
-            '2026': { label: 'Batch 2026–30 (1st Year)' },
-        };
         const counts = {};
+        // 1. Seed with active batches from database batches dimension
+        (batchesList || []).forEach(b => {
+            if (b.is_active !== false && b.year) counts[String(b.year)] = 0;
+        });
+        // 2. Count actual students
         students.forEach(s => {
             const { batch } = classifyStudentBatch(s.usn);
             if (batch !== 'unknown') counts[batch] = (counts[batch] || 0) + 1;
         });
         return Object.keys(counts)
             .sort()
-            .map(batch => ({ code: batch, label: BATCH_META[batch]?.label || `Batch ${batch}`, count: counts[batch] }));
-    }, [students]);
+            .reverse()
+            .map(batch => ({
+                code: batch,
+                label: computeBatchLabel(batch),
+                count: counts[batch]
+            }));
+    }, [students, batchesList]);
 
     const branchBreakdown = useMemo(() => {
         const map = {};
@@ -1124,19 +1139,46 @@ function AdminPanelContent() {
 
     // Academic Batches (Graduating Classes) using correct VTU lateral entry logic
     const batchBreakdown = useMemo(() => {
-        const counts = {
-            '2023': { label: 'Class of 2027 (Final Year)', code: '2023', count: 0, sem: 'Semester 7', academicYear: '4th Year' },
-            '2024': { label: 'Class of 2028 (3rd Year)', code: '2024', count: 0, sem: 'Semester 5', academicYear: '3rd Year' },
-            '2025': { label: 'Class of 2029 (2nd Year)', code: '2025', count: 0, sem: 'Semester 3', academicYear: '2nd Year' },
-        };
+        const counts = {};
+        const curYear = new Date().getFullYear();
+
+        // 1. Gather all active batches from database dimension or fallback
+        const activeBatches = new Set((batchesList || []).filter(b => b.is_active !== false).map(b => String(b.year)));
+        if (activeBatches.size === 0) {
+            ['2026', '2025', '2024', '2023'].forEach(y => activeBatches.add(y));
+        }
+
+        // 2. Ensure all batches with real students are included
+        students.forEach(s => {
+            const { batch } = classifyStudentBatch(s.usn);
+            if (batch !== 'unknown') activeBatches.add(batch);
+        });
+
+        Array.from(activeBatches).sort().reverse().forEach(batch => {
+            const standing = computeBatchStanding(batch, curYear);
+            const gradClass = computeGraduatingClass(batch);
+            counts[batch] = {
+                label: `${gradClass} (${standing || 'Batch ' + batch})`,
+                code: batch,
+                count: 0,
+                sem: standing.includes('1st') ? 'Semester 1' :
+                     standing.includes('2nd') ? 'Semester 3' :
+                     standing.includes('3rd') ? 'Semester 5' :
+                     standing.includes('Final') ? 'Semester 7' : 'Graduated',
+                academicYear: standing
+            };
+        });
 
         students.forEach(s => {
             const { batch } = classifyStudentBatch(s.usn);
             if (counts[batch]) counts[batch].count++;
         });
 
-        return { batches: Object.values(counts), lateralCount: students.filter(s => classifyStudentBatch(s.usn).isLateral).length };
-    }, [students, classifyStudentBatch]);
+        return {
+            batches: Object.values(counts),
+            lateralCount: students.filter(s => classifyStudentBatch(s.usn).isLateral).length
+        };
+    }, [students, batchesList, classifyStudentBatch]);
 
     // Base scoped students matching search, branch, semester, and batch
     const baseScopedStudents = useMemo(() => {
@@ -1305,75 +1347,20 @@ function AdminPanelContent() {
     const c = {
         layout: {
             display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
-            height: '100dvh',
-            maxHeight: '100dvh',
+            flexDirection: 'column',
+            width: '100%',
+            maxWidth: '100%',
+            minWidth: 0,
             background: 'var(--bg)',
             fontFamily: "'Plus Jakarta Sans', sans-serif",
-            minWidth: 0,
-            width: '100%',
-            maxWidth: '100vw',
-            overflow: 'hidden',
         },
-        sidebar: isMobile ? {
-            position: 'fixed', left: 0, top: 0, width: 'min(85vw, 320px)', height: '100dvh',
-            background: 'var(--surface)', borderRight: '1px solid var(--border)',
-            padding: 'max(var(--space-5), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left))',
-            display: 'flex', flexDirection: 'column',
-            transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
-            transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-            zIndex: 2500, boxShadow: 'var(--elevation-overlay)', overflow: 'hidden',
-        } : {
-            width: sidebarCollapsed ? '72px' : '260px',
-            minWidth: sidebarCollapsed ? '72px' : '260px',
-            maxWidth: sidebarCollapsed ? '72px' : '260px',
-            flexShrink: 0,
-            background: 'var(--surface)',
-            borderRight: '1px solid var(--border)',
-            padding: sidebarCollapsed ? 'var(--space-4) var(--space-2)' : 'var(--space-6) var(--space-4)',
-            display: 'flex', flexDirection: 'column',
-            height: '100dvh',
-            overflow: 'hidden',
-            boxSizing: 'border-box',
-            transition: 'width 0.2s ease-in-out, min-width 0.2s ease-in-out, max-width 0.2s ease-in-out, padding 0.2s ease-in-out',
-            zIndex: 100,
-        },
-        sidebarNavScroll: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' },
-        logoRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-2) var(--space-1)' },
-        logoBox: {
-            width: '36px', height: '36px', background: 'var(--primary)',
-            borderRadius: 'var(--radius-4)', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', color: 'var(--bg)', fontWeight: 900, fontSize: '17px',
-        },
-        adminTag: {
-            fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)',
-            letterSpacing: '0.02em',
-            padding: 'var(--space-1) var(--space-2) var(--space-3)',
-        },
-        sep: { height: '1px', background: 'var(--border)', margin: 'var(--space-2) 0 var(--space-4)' },
-        navBtn: (active) => ({
-            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-            width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-4)',
-            borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
-            borderTop: 'none', borderRight: 'none', borderBottom: 'none',
-            background: active ? 'rgba(23, 75, 77, 0.08)' : 'transparent',
-            color: active ? 'var(--primary)' : 'var(--tx-muted)',
-            fontWeight: active ? 800 : 600, fontSize: '13px',
-            cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-            transition: 'all 0.15s ease',
-        }),
         main: {
             flex: 1,
-            height: isMobile ? 'calc(100dvh - 56px)' : '100dvh',
-            maxHeight: isMobile ? 'calc(100dvh - 56px)' : '100dvh',
             padding: isMobile ? 'var(--space-4)' : 'var(--page-py) var(--page-px)',
-            overflowY: 'auto',
-            overflowX: 'hidden',
             minWidth: 0,
             width: '100%',
             maxWidth: '100%',
             boxSizing: 'border-box',
-            WebkitOverflowScrolling: 'touch',
         },
         pageLabel: { fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 'var(--space-2)' },
         pageTitle: { fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.03em', marginBottom: 'var(--space-7)' },
@@ -1440,22 +1427,6 @@ function AdminPanelContent() {
         },
     };
 
-    const nav = [
-        { id: 'overview', label: 'Overview', icon: 'space_dashboard' },
-        { id: 'students', label: 'Students', icon: 'school' },
-        { id: 'classes', label: 'Classes', icon: 'groups' },
-        { id: 'assignments', label: 'Subject Assignments', icon: 'assignment_ind' },
-        { id: 'teachingPerformance', label: 'Teaching Performance', icon: 'supervisor_account' },
-        { id: 'subjects', label: 'Subjects Catalog', icon: 'library_books' },
-        { id: 'requests', label: 'Faculty Access', icon: 'verified_user' },
-        { id: 'vtuUrls', label: 'VTU Result URLs', icon: 'link' },
-        { id: 'support', label: 'Support & Issues', icon: 'support_agent' },
-        { id: 'activity', label: 'Activity Log', icon: 'history' },
-        { id: 'audit', label: 'System Audit', icon: 'security' },
-        { id: 'analytics', label: 'Institutional Analytics', icon: 'analytics' },
-        { id: 'settings', label: 'Settings', icon: 'settings_suggest' },
-    ];
-
     // Group marks by semester for drawer
     const groupedMarks = {};
     if (studentDetails?.marks) {
@@ -1468,131 +1439,6 @@ function AdminPanelContent() {
 
     return (
         <div style={c.layout}>
-            {isMobile && (
-                <header style={{
-                    position: 'sticky', top: 0, zIndex: 1000, height: '56px',
-                    background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '0 16px', width: '100%', boxSizing: 'border-box'
-                }}>
-                    <button
-                        onClick={() => setMobileMenuOpen(true)}
-                        aria-label="Open Navigation Menu"
-                        style={{
-                            background: 'transparent', border: 'none', color: 'var(--tx-main)',
-                            minWidth: '44px', minHeight: '44px', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                        }}
-                    >
-                        <span className="material-icons-round" style={{ fontSize: '26px' }}>menu</span>
-                    </button>
-                    <div style={{ textAlign: 'center', minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {nav.find(n => n.id === tab)?.label || 'Admin Console'}
-                        </div>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', letterSpacing: '0.02em' }}>
-                            Institutional Admin
-                        </div>
-                    </div>
-                    <div style={c.logoBox}>G</div>
-                </header>
-            )}
-
-            {isMobile && mobileMenuOpen && (
-                <div
-                    onClick={() => setMobileMenuOpen(false)}
-                    style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-                        zIndex: 2400, backdropFilter: 'blur(2px)', touchAction: 'none'
-                    }}
-                />
-            )}
-
-            {/* Sidebar */}
-            <aside style={c.sidebar}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'space-between', padding: '0 4px', marginBottom: '8px' }}>
-                    {(!sidebarCollapsed || isMobile) ? (
-                        <div style={{ ...c.logoRow, cursor: 'pointer' }} onClick={() => { switchTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>
-                            <div style={c.logoBox}>G</div>
-                            <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>GradeFlow</span>
-                        </div>
-                    ) : (
-                        <div style={{ ...c.logoBox, cursor: 'pointer' }} onClick={() => { switchTab('overview'); if (isMobile) setMobileMenuOpen(false); }}>G</div>
-                    )}
-                    {isMobile ? (
-                        <button
-                            onClick={() => setMobileMenuOpen(false)}
-                            aria-label="Close navigation menu"
-                            style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', borderRadius: '6px' }}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '24px' }}>close</span>
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px', borderRadius: '6px' }}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '20px' }}>menu</span>
-                        </button>
-                    )}
-                </div>
-                {(!sidebarCollapsed || isMobile) && <span style={c.adminTag}>Institutional Admin</span>}
-                <div style={c.sep} />
-
-                <nav style={c.sidebarNavScroll}>
-                    {nav.map(n => (
-                        <button
-                            key={n.id}
-                            aria-current={tab === n.id ? 'page' : undefined}
-                            style={{
-                                ...c.navBtn(tab === n.id),
-                                justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
-                                padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '10px 14px'
-                            }}
-                            onClick={() => { switchTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
-                            title={sidebarCollapsed && !isMobile ? n.label : undefined}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '18px' }}>{n.icon}</span>
-                            {(!sidebarCollapsed || isMobile) && <span>{n.label}</span>}
-                            {n.id === 'requests' && stats.pending > 0 && (
-                                <span style={{ marginLeft: (sidebarCollapsed && !isMobile) ? '0' : 'auto', background: 'var(--amber)', color: 'var(--bg)', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
-                                    {stats.pending}
-                                </span>
-                            )}
-                            {n.id === 'support' && openTicketsCount > 0 && (
-                                <span style={{ marginLeft: (sidebarCollapsed && !isMobile) ? '0' : 'auto', background: '#b91c1c', color: '#ffffff', padding: '2px 6px', borderRadius: 'var(--radius-4)', fontSize: '10px', fontWeight: 900 }}>
-                                    {openTicketsCount}
-                                </span>
-                            )}
-                        </button>
-                    ))}
-                </nav>
-
-                <div style={{ ...c.sep, flexShrink: 0 }} />
-                {(!sidebarCollapsed || isMobile) && (
-                    <div style={{ padding: '0 8px 12px' }}>
-                        <div style={{ padding: '14px', background: 'var(--surface-low)', borderRadius: 'var(--radius-4)', border: '1px solid var(--border)' }}>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{adminUser?.email || 'Admin Account'}</div>
-                            <div style={{ fontSize: '10px', color: 'var(--tx-dim)', textTransform: 'uppercase', marginTop: '2px', fontWeight: 700 }}>Full Access Active</div>
-                        </div>
-                    </div>
-                )}
-                <button
-                    style={{
-                        ...c.navBtn(false),
-                        color: 'var(--red)',
-                        justifyContent: (sidebarCollapsed && !isMobile) ? 'center' : 'flex-start',
-                        padding: (sidebarCollapsed && !isMobile) ? '12px 0' : '11px 14px'
-                    }}
-                    onClick={() => { localStorage.removeItem('admin_session'); if (isMobile) setMobileMenuOpen(false); router.push('/admin/gateway'); }}
-                    title={sidebarCollapsed && !isMobile ? "Terminate Session" : undefined}
-                >
-                    <span className="material-icons-round" style={{ fontSize: '18px' }}>logout</span>
-                    {(!sidebarCollapsed || isMobile) && <span>Terminate Session</span>}
-                </button>
-            </aside>
-
             {/* Main */}
             <main style={c.main} className="gf-fade-up">
                 {loadError && (
@@ -1742,10 +1588,22 @@ function AdminPanelContent() {
                                 Real-time academic health, student distribution, faculty engagement logs, and VTU exam synchronization for Anjuman Institute of Technology & Management.
                             </p>
                         </div>
-                        <button style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }} onClick={handleReloadAllData} disabled={reloadingData}>
-                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)', animation: reloadingData ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
-                            {reloadingData ? 'Reloading…' : 'Sync All Datasets'}
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                                style={{ ...c.actionBtn(true), display: 'flex', alignItems: 'center', gap: '6px', boxShadow: 'var(--shadow-sm)' }}
+                                onClick={() => {
+                                    const el = document.getElementById('academic-batches-section');
+                                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '16px' }}>add_circle</span>
+                                + Register New Batch
+                            </button>
+                            <button style={{ ...c.actionBtn(false), display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--surface-low)' }} onClick={handleReloadAllData} disabled={reloadingData}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)', animation: reloadingData ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
+                                {reloadingData ? 'Reloading…' : 'Sync All Datasets'}
+                            </button>
+                        </div>
                     </div>
 
                     {reloadDiffMsg && (
@@ -1758,6 +1616,7 @@ function AdminPanelContent() {
                     {/* Executive Metric Cards */}
                     <div className="gf-stats-grid" style={{ marginBottom: '32px' }}>
                         {[
+                            { label: 'Configured Batches', val: batchesList?.length || 5, sub: `${(batchesList || []).filter(b => b.is_active !== false).length || 5} Active Cohorts`, icon: 'calendar_month', link: 'batches' },
                             { label: 'Total Enrolled Students', val: stats.students, sub: `${statusCounts.active} Active · ${statusCounts.pending} Awaiting`, icon: 'people', link: 'students' },
                             { label: 'VTU Academic Records', val: stats.totalMarks, sub: 'Synced University Results', icon: 'inventory_2', link: 'students' },
                             { label: 'Verified Teaching Faculty', val: stats.faculty, sub: `${requests.length} Registered Staff`, icon: 'badge', link: 'requests' },
@@ -1774,6 +1633,11 @@ function AdminPanelContent() {
                                 <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '8px', fontWeight: 600 }}>{st.sub}</div>
                             </div>
                         ))}
+                    </div>
+
+                    {/* ── ACADEMIC BATCHES & ADMISSION COHORTS MANAGEMENT SECTION (DIRECT ON MAIN PAGE) ── */}
+                    <div id="academic-batches-section" style={{ marginBottom: '32px' }} className="gf-fade-up">
+                        <BatchesContent embedded={true} showHeader={true} onNavigateTab={switchTab} onBatchChange={loadData} />
                     </div>
 
                     {/* ── TWO-COLUMN ANALYTICS SECTION: Branch Matrix, Batches & Academic Telemetry ── */}
@@ -1846,12 +1710,21 @@ function AdminPanelContent() {
 
                             {/* Graduating Batches & Admission Cohorts */}
                             <div style={c.statCard}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
                                     <div>
                                         <h2 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--tx-main)', margin: 0, letterSpacing: '-0.02em' }}>Academic Admission Batches</h2>
                                         <p style={{ fontSize: '13px', color: 'var(--tx-muted)', margin: '4px 0 0 0', lineHeight: 1.5 }}>Graduating class standing derived from verified university enrollment.</p>
                                     </div>
-                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>school</span>
+                                    <button
+                                        style={{ ...c.actionBtn(false), padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        onClick={() => {
+                                            const el = document.getElementById('academic-batches-section');
+                                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                        }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>add_circle</span>
+                                        Manage Batches
+                                    </button>
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
@@ -3134,6 +3007,8 @@ function AdminPanelContent() {
                         isMobile={isMobile}
                     />
                 )}
+
+                {tab === 'batches' && <BatchesContent embedded={true} onNavigateTab={switchTab} />}
 
                 {tab === 'classes' && <ClassesContent embedded={true} />}
 

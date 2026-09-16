@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     getBreadcrumbs,
@@ -37,9 +37,11 @@ function getRoleLabel(role) {
 export default function Navbar() {
     const router = useRouter();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const currentTab = searchParams?.get('tab') || '';
     const [user, setUser] = useState(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [sessionRole, setSessionRole] = useState('student');
+    const [sessionRole, setSessionRole] = useState(() => resolveRoleFromPath(pathname, 'student'));
     const [collapsed, setCollapsed] = useState(false);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
     const sidebarRef = useRef(null);
@@ -288,7 +290,7 @@ export default function Navbar() {
                     {navGroups.map(group => {
                         const isCollapsible = !collapsed && group.items.length > NAV_GROUP_COLLAPSE_THRESHOLD;
                         const isExpanded = !isCollapsible || Boolean(expandedGroups[group.label]);
-                        const hasActiveChild = group.items.some(link => isNavItemActive(pathname, link.href));
+                        const hasActiveChild = group.items.some(link => isNavItemActive(pathname, link.href, currentTab));
 
                         return (
                         <div key={group.label} className={`gf-nav-group${isCollapsible ? ' is-collapsible' : ''}${isExpanded ? ' is-expanded' : ' is-collapsed'}`}>
@@ -319,7 +321,7 @@ export default function Navbar() {
                             {isExpanded && (
                             <div className="gf-nav-group-items">
                                 {group.items.map(link => {
-                                    const active = isNavItemActive(pathname, link.href);
+                                    const active = isNavItemActive(pathname, link.href, currentTab);
 
                                     return (
                                         <Link

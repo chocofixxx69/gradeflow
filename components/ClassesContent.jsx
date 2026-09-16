@@ -171,6 +171,17 @@ export function ClassesContent({ embedded = false }) {
     const handleNewClassChange = (patch) => {
         setNewClass(prev => {
             const updated = { ...prev, ...patch };
+            if (patch.batch) {
+                const bYear = parseInt(patch.batch, 10);
+                if (!isNaN(bYear)) {
+                    if (!patch.scheme) {
+                        updated.scheme = bYear >= 2025 ? '2025' : '2022';
+                    }
+                    if (!patch.academic_year) {
+                        updated.academic_year = `${bYear}-${bYear + 1}`;
+                    }
+                }
+            }
             if (!nameIsManual || !updated.name?.trim()) {
                 updated.name = suggestClassName(updated.branch, updated.semester, updated.section, updated.batch);
             }
@@ -237,7 +248,8 @@ export function ClassesContent({ embedded = false }) {
     const [transferMode, setTransferMode] = useState('move');
     const [transferLoading, setTransferLoading] = useState(false);
     const [branches, setBranches] = useState([]);
-    const [schemes] = useState(['2022', '2025']);
+    const [metaBatches, setMetaBatches] = useState([]);
+    const [schemes, setSchemes] = useState(['2022', '2025', '2026']);
     const [exportSemester, setExportSemester] = useState(4);
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportType, setExportType] = useState('consolidated');
@@ -255,6 +267,8 @@ export function ClassesContent({ embedded = false }) {
         const data = await apiRequest('/api/system/meta').catch(() => null);
         if (data?.branches) setBranches(data.branches);
         if (data?.faculty) setFacultyList(data.faculty);
+        if (data?.batches) setMetaBatches(data.batches);
+        if (data?.schemes) setSchemes(data.schemes);
     };
 
     const loadSemesterExportData = async (targetSem) => {
@@ -1470,9 +1484,10 @@ export function ClassesContent({ embedded = false }) {
     const avgCgpa = withCgpa.length ? (withCgpa.reduce((s, st) => s + (st.cgpa || 0), 0) / withCgpa.length).toFixed(2) : '—';
     const classTopper = top10[0] || null;
 
-    // Batches that exist, plus all intake years up to at least 2036
+    // Batches that exist, plus active registered batches and all intake years
     const availableClassBatches = Array.from(new Set([
         ...classes.map(c => c.batch).filter(Boolean).map(String),
+        ...metaBatches,
         ...BATCH_INTAKE_YEARS
     ])).sort((a, b) => b.localeCompare(a));
 

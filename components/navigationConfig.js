@@ -33,15 +33,21 @@ export const NAV_CONFIG = {
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   admin: [
-    { key: 'terminal', label: 'Admin Console', href: '/admin/terminal', icon: 'dashboard', group: 'Institution' },
+    { key: 'terminal', label: 'Overview', href: '/admin/terminal', icon: 'dashboard', group: 'Institution' },
+    { key: 'batches', label: 'Academic Batches', href: '/admin/batches', icon: 'calendar_month', group: 'Institution' },
+    { key: 'students', label: 'Students', href: '/admin/terminal?tab=students', icon: 'school', group: 'Institution' },
     { key: 'classes', label: 'Classes', href: '/admin/classes', icon: 'groups', group: 'Institution' },
+    { key: 'assignments', label: 'Subject Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },
+    { key: 'teachingPerformance', label: 'Teaching Performance', href: '/admin/faculty-performance', icon: 'supervisor_account', group: 'Institution' },
+    { key: 'subjects', label: 'Subjects Catalog', href: '/admin/subjects', icon: 'library_books', group: 'Institution' },
+    { key: 'requests', label: 'Faculty Access', href: '/admin/terminal?tab=requests', icon: 'verified_user', group: 'Institution' },
+    { key: 'vtuUrls', label: 'VTU Result URLs', href: '/admin/vtu-urls', icon: 'link', group: 'Institution' },
     { key: 'examSessions', label: 'Exam Sessions', href: '/admin/exam-sessions', icon: 'event', group: 'Institution' },
-    { key: 'facultyAssignments', label: 'Faculty Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },
-    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/admin/faculty-performance', icon: 'supervisor_account', group: 'Institution' },
-    { key: 'subjects', label: 'Subject Catalog', href: '/admin/subjects', icon: 'library_books', group: 'Institution' },
-    { key: 'vtuUrls', label: 'VTU Result Links', href: '/admin/vtu-urls', icon: 'link', group: 'Institution' },
-    { key: 'analytics', label: 'Analytics', href: '/admin/analytics', icon: 'analytics', group: 'Institution' },
-    { key: 'auditLog', label: 'Audit Log', href: '/admin/audit-log', icon: 'history', group: 'Governance' },
+    { key: 'analytics', label: 'Institutional Analytics', href: '/admin/analytics', icon: 'analytics', group: 'Institution' },
+    { key: 'audit', label: 'System Audit', href: '/admin/audit-log', icon: 'security', group: 'Governance' },
+    { key: 'support', label: 'Support & Issues', href: '/admin/terminal?tab=support', icon: 'support_agent', group: 'Governance' },
+    { key: 'activity', label: 'Activity Log', href: '/admin/terminal?tab=activity', icon: 'history', group: 'Governance' },
+    { key: 'settings', label: 'Settings', href: '/admin/terminal?tab=settings', icon: 'settings', group: 'Governance' },
   ],
 };
 
@@ -66,7 +72,6 @@ export const HIDE_SIDEBAR_ON = [
   '/faculty/register',
   '/admin/gateway',
   '/faculty/internal',
-  '/admin/terminal',
 ];
 
 export const HIDE_SIDEBAR_PREFIXES = [
@@ -120,6 +125,7 @@ export const ROUTE_LABELS = {
   '/faculty/login': 'Faculty Login',
   '/faculty/register': 'Faculty Registration',
   '/admin': 'Admin',
+  '/admin/batches': 'Academic Batches',
   '/admin/classes': 'Classes',
   '/admin/exam-sessions': 'Exam Sessions',
   '/admin/faculty-assignments': 'Faculty Assignments',
@@ -139,9 +145,35 @@ export function resolveRoleFromPath(pathname, fallbackRole = 'student') {
   return fallbackRole || 'student';
 }
 
-export function isNavItemActive(pathname, href) {
+export function isNavItemActive(pathname, href, currentTab = '') {
   if (!pathname || !href) return false;
-  if (pathname === href) return true;
+
+  const tabAliases = {
+    '/admin/batches': 'batches',
+    '/admin/classes': 'classes',
+    '/admin/faculty-assignments': 'assignments',
+    '/admin/faculty-performance': 'teachingPerformance',
+    '/admin/subjects': 'subjects',
+    '/admin/vtu-urls': 'vtuUrls',
+    '/admin/analytics': 'analytics',
+    '/admin/audit-log': 'audit',
+  };
+
+  if (pathname === '/admin/terminal' && currentTab && tabAliases[href] === currentTab) {
+    return true;
+  }
+
+  if (href.includes('?tab=')) {
+    const [hrefPath, tabVal] = href.split('?tab=');
+    if (pathname !== hrefPath) return false;
+    return currentTab === tabVal;
+  }
+  if (pathname === href) {
+    if (pathname === '/admin/terminal' && currentTab && currentTab !== 'overview') {
+      return false;
+    }
+    return true;
+  }
   return pathname.startsWith(`${href}/`);
 }
 

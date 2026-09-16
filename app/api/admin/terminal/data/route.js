@@ -67,7 +67,8 @@ export async function GET(req) {
             { count: marksCount },
             { data: facultyActivity },
             { data: classes },
-            { data: sgpaRows }
+            { data: sgpaRows },
+            { data: batches }
         ] = await Promise.all([
             fetchAllPaginated('students', 'id, usn, name, branch, scheme, semester, year, lateral_entry, activated_at, is_suspended, suspended_at, suspended_reason, created_at, updated_at', supabaseAdmin, 'created_at', false),
             supabaseAdmin.from('faculty_onboarding').select('*').order('created_at', { ascending: false }),
@@ -75,6 +76,7 @@ export async function GET(req) {
             supabaseAdmin.from('faculty_activity').select('*').order('created_at', { ascending: false }).limit(300),
             supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, scheme, academic_year, faculty_id, created_at'),
             supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa').not('sgpa', 'is', null),
+            supabaseAdmin.from('batches').select('*').order('year', { ascending: false }),
         ]);
 
         // Aggregate SGPA stats from academic_remarks
@@ -97,6 +99,7 @@ export async function GET(req) {
             facultyActivity: facultyActivity || [],
             facultyList,
             classes: classes || [],
+            batches: batches || [],
             counts: {
                 totalStudents: students?.length || 0,
                 totalFacultyOnboarding: facultyOnboarding?.length || 0,

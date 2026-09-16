@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { SWRConfig } from 'swr';
 import Sidebar from './Navbar';
@@ -99,7 +100,11 @@ export default function ClientLayoutWrapper({ children }) {
         <SWRConfig value={swrGlobalConfig}>
             <FacultyPresenceHeartbeat />
             <div className={`app-layout ${hideSidebar ? 'app-layout-public' : 'app-layout-authenticated'}`}>
-                {!hideSidebar && <Sidebar />}
+                {!hideSidebar && (
+                    <Suspense fallback={<aside className="gf-sidebar" />}>
+                        <Sidebar />
+                    </Suspense>
+                )}
                 <div
                     className={`main-content ${hideSidebar ? 'full-width' : ''}`}
                 >

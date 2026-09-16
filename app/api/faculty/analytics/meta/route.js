@@ -4,6 +4,7 @@ import { getAdminClient, fetchDynamicStudents } from '@/lib/analytics-data';
 import { fetchAllPaginated } from '@/lib/supabase-utils';
 import { getCached, setCached } from '@/lib/server-cache';
 import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn, canonicalBranchCode } from '@/lib/semester-utils';
+import { computeBatchLabel, computeBatchStanding } from '@/lib/vtu-identity';
 
 import { unstable_noStore as noStore } from 'next/cache';
 
@@ -67,13 +68,18 @@ export async function GET(req) {
             catalogSubjects,
             { data: metaBranches },
             rawStudents,
-            marksSubjects
+            marksSubjects,
+            rawBatches
         ] = await Promise.all([
             readTable(supabaseAdmin, 'classes', SELECTS.classes),
             readTable(supabaseAdmin, 'subject_catalog', SELECTS.subject_catalog),
             supabaseAdmin.from('branches').select('code, label, is_active, sort_order').order('sort_order', { ascending: true }),
             readTable(supabaseAdmin, 'students', SELECTS.students),
-            readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks)
+            readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks),
+            readTable(supabaseAdmin, 'batches', SELECTS.batches).catch(err => {
+                console.warn('[meta/route] batches table read failed, falling back:', err?.message);
+                return [];
+            })
         ]);
 
         // Map students for quick lookup
@@ -85,8 +91,27 @@ export async function GET(req) {
             }
         });
 
-        // 3. Derive distinct batches dynamically from database students, marks, and classes
+        // 3. Derive distinct batches dynamically from database batches table, students, marks, and classes
         const batchSet = new Set();
+        const batchMetaMap = new Map();
+
+        // A. Primary: Active batches configured in the database batches dimension
+        (rawBatches || []).forEach(b => {
+            if (b.is_active !== false && b.year) {
+                const y = String(b.year).trim();
+                batchSet.add(y);
+                batchMetaMap.set(y, {
+                    year: y,
+                    label: b.label || computeBatchLabel(y),
+                    academic_year: b.academic_year || `${y}-${Number(y) + 1}`,
+                    default_scheme: b.default_scheme || (Number(y) >= 2025 ? '2025' : '2022'),
+                    is_active: true,
+                    standing: computeBatchStanding(y)
+                });
+            }
+        });
+
+        // B. Union: Any cohorts discovered from existing students, marks, and classes (zero data loss)
         (rawStudents || []).forEach(s => {
             const cohort = getStudentAcademicBatch(s);
             if (cohort) {
@@ -105,10 +130,6 @@ export async function GET(req) {
 
         (rawClasses || []).forEach(c => {
             if (c.batch) batchSet.add(String(c.batch));
-            // classes.academic_year is the SESSION a class is running in
-            // ("2026-2027"), not an admission batch. Reading it as one put a
-            // "Batch 2026" in every dropdown that no student can ever be in —
-            // a guaranteed empty report for anyone who picked it.
         });
 
         if (batchSet.size === 0) {
@@ -117,6 +138,19 @@ export async function GET(req) {
         }
 
         const batches = Array.from(batchSet).sort().reverse();
+
+        // Complete structured batchList for consumers requiring full metadata
+        const batchList = batches.map(y => {
+            if (batchMetaMap.has(y)) return batchMetaMap.get(y);
+            return {
+                year: y,
+                label: computeBatchLabel(y),
+                academic_year: `${y}-${Number(y) + 1}`,
+                default_scheme: Number(y) >= 2025 ? '2025' : '2022',
+                is_active: true,
+                standing: computeBatchStanding(y)
+            };
+        });
 
         // 4. Branches list - single source of truth from active database branches
         const branchLabels = {
@@ -358,6 +392,7 @@ export async function GET(req) {
 
         const payload = {
             batches,
+            batchList,
             branches,
             semesters,
             sections,
