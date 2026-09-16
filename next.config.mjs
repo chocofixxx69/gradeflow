@@ -33,12 +33,6 @@ const nextConfig = {
     ];
   },
   webpack: (config, { isServer, dev }) => {
-    if (isServer) {
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: false,
-      };
-    }
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
