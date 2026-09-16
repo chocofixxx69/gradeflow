@@ -112,7 +112,10 @@ async function loginAdmin({ email, password, systemToken }) {
         .eq('email', trimmedEmail)
         .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[loginAdmin] DB error:', error);
+        return failureResponse('Database error during admin verification: ' + (error.message || 'Please try again.'), 503);
+    }
 
     const hashedInput = hashAdminPassword(trimmedPassword);
     if (!admin?.password_hash || !safeCompareHex(hashedInput, admin.password_hash)) {
@@ -142,7 +145,10 @@ async function loginFaculty({ email, password }, req = null) {
         .eq('email', normalizedEmail)
         .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[loginFaculty] DB error:', error);
+        return failureResponse('Database error checking faculty account: ' + (error.message || 'Please try again.'), 503);
+    }
 
     if (!faculty) {
         return failureResponse('No faculty account found for this institutional email.', 401);
@@ -255,7 +261,10 @@ async function loginStudent({ usn, email, password }) {
         .eq('usn', cleanUSN)
         .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[loginStudent] DB error:', error);
+        return failureResponse('Database error checking student record: ' + (error.message || 'Please try again.'), 503);
+    }
     if (!student) return failureResponse('USN not found in student directory. Please contact your department.', 404);
 
     if (student.is_suspended) {
@@ -328,8 +337,9 @@ export async function POST(req) {
     } catch (err) {
         console.error('[POST /api/auth/login]', err);
         return NextResponse.json(
-            { success: false, error: 'Authentication service unavailable. Please try again.' },
+            { success: false, error: err?.message ? `Authentication error: ${err.message}` : 'Authentication service unavailable. Please try again.' },
             { status: 500 }
         );
     }
 }
+
