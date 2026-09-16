@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminClient } from '../../../../lib/analytics-data';
+import { getSystemMetaCache, setSystemMetaCache } from '../../../../lib/system-meta-cache';
 
 const supabaseAdmin = getAdminClient();
 
@@ -10,20 +11,11 @@ function fail(message, code = 'ERROR', status = 400) {
     return NextResponse.json({ success: false, error: { code, message } }, { status });
 }
 
-let _metaCache = null;
-let _metaCacheTime = 0;
-const META_CACHE_TTL = 60_000; // 60 seconds
-
-export function clearSystemMetaCache() {
-    _metaCache = null;
-    _metaCacheTime = 0;
-}
-
 export async function GET() {
     try {
-        const now = Date.now();
-        if (_metaCache && (now - _metaCacheTime) < META_CACHE_TTL) {
-            return NextResponse.json({ success: true, data: _metaCache }, {
+        const cached = getSystemMetaCache();
+        if (cached) {
+            return NextResponse.json({ success: true, data: cached }, {
                 headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }
             });
         }
@@ -111,8 +103,7 @@ export async function GET() {
             }
         };
 
-        _metaCache = payload;
-        _metaCacheTime = now;
+        setSystemMetaCache(payload);
 
         return NextResponse.json({ success: true, data: payload }, {
             headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }

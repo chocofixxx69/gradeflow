@@ -4,7 +4,7 @@ import { getAdminClient } from '@/lib/analytics-data';
 import { clearServerCache } from '@/lib/server-cache';
 import { invalidateTableCache } from '@/lib/table-cache';
 import { computeBatchLabel, computeBatchStanding, computeGraduatingClass } from '@/lib/vtu-identity';
-import { clearSystemMetaCache } from '@/app/api/system/meta/route';
+import { clearSystemMetaCache } from '@/lib/system-meta-cache';
 
 export const dynamic = 'force-dynamic';
 
