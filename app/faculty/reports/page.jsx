@@ -251,6 +251,87 @@ function ReportsContent() {
         }
     };
 
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
+    const [downloadingCsv, setDownloadingCsv] = useState(false);
+
+    const handleDownloadConsolidatedPdf = async () => {
+        setDownloadingPdf(true);
+        try {
+            const query = {};
+            if (branch && branch !== 'ALL') query.branch = branch;
+            if (batch && batch !== 'ALL') query.batch = batch;
+            if (semester && semester !== 'ALL') query.semester = semester;
+            if (section && section !== 'ALL') query.section = section;
+
+            const res = await apiRequest('/api/faculty/reports/consolidated', { query });
+            if (!res || !res.students?.length) {
+                alert('No student records found to compile consolidated report.');
+                return;
+            }
+
+            const { exportConsolidatedReportPDF } = await import('@/lib/export-utils');
+            const cleanBranch = branch && branch !== 'ALL' ? branch : 'CSE';
+            const cleanBatch = batch && batch !== 'ALL' ? batch : '2023';
+            const cleanSem = semester && semester !== 'ALL' ? `Sem${semester}` : 'AllSem';
+            const cleanSec = section && section !== 'ALL' ? `Sec${section}` : 'Cohort';
+
+            exportConsolidatedReportPDF({
+                selectedClass: res.selectedClass,
+                students: res.students,
+                allMarks: res.allMarks,
+                subjects: res.subjects,
+                facultyMap: res.facultyMap,
+                targetSemester: res.targetSemester,
+                institutionInfo: res.institutionInfo,
+                fileName: `${cleanBranch}_Batch${cleanBatch}_${cleanSem}_${cleanSec}_Consolidated_Report.pdf`
+            });
+        } catch (err) {
+            console.error('Failed to generate Consolidated PDF:', err);
+            alert('Failed to generate Consolidated PDF: ' + (err.message || err));
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
+    const handleDownloadConsolidatedCsv = async () => {
+        setDownloadingCsv(true);
+        try {
+            const query = {};
+            if (branch && branch !== 'ALL') query.branch = branch;
+            if (batch && batch !== 'ALL') query.batch = batch;
+            if (semester && semester !== 'ALL') query.semester = semester;
+            if (section && section !== 'ALL') query.section = section;
+
+            const res = await apiRequest('/api/faculty/reports/consolidated', { query });
+            if (!res || !res.students?.length) {
+                alert('No student records found to export consolidated report.');
+                return;
+            }
+
+            const { exportConsolidatedReportCSV } = await import('@/lib/export-utils');
+            const cleanBranch = branch && branch !== 'ALL' ? branch : 'CSE';
+            const cleanBatch = batch && batch !== 'ALL' ? batch : '2023';
+            const cleanSem = semester && semester !== 'ALL' ? `Sem${semester}` : 'AllSem';
+            const cleanSec = section && section !== 'ALL' ? `Sec${section}` : 'Cohort';
+
+            exportConsolidatedReportCSV({
+                selectedClass: res.selectedClass,
+                students: res.students,
+                allMarks: res.allMarks,
+                subjects: res.subjects,
+                facultyMap: res.facultyMap,
+                targetSemester: res.targetSemester,
+                institutionInfo: res.institutionInfo,
+                fileName: `${cleanBranch}_Batch${cleanBatch}_${cleanSem}_${cleanSec}_Consolidated_Report.csv`
+            });
+        } catch (err) {
+            console.error('Failed to export Consolidated CSV:', err);
+            alert('Failed to export Consolidated CSV: ' + (err.message || err));
+        } finally {
+            setDownloadingCsv(false);
+        }
+    };
+
     useEffect(() => {
         loadReportData();
     }, [branch, batch, semester, section]);
@@ -450,6 +531,86 @@ function ReportsContent() {
                         onChange={e => setSection(e.target.value)}
                         options={sectionOptions}
                     />
+                </div>
+
+                {/* Institutional Consolidated Report Export Action */}
+                <div style={{
+                    marginTop: '16px',
+                    paddingTop: '16px',
+                    borderTop: '1px solid var(--border)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '12px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            background: 'rgba(23, 75, 77, 0.1)',
+                            color: 'var(--primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <span className="material-icons-round" style={{ fontSize: '20px' }}>summarize</span>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                Consolidated Institutional Report &mdash; {batch === 'ALL' ? 'All Batches' : `Batch ${batch}`} {section === 'ALL' ? '(Whole Cohort)' : `(Section ${section})`} &bull; {semester === 'ALL' ? 'Semesters 1-7 (Cumulative)' : `Semester ${semester}`}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                Official accredited VTU format: passing summary, subject analysis, toppers, backlogs, &amp; complete marks matrix.
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={handleDownloadConsolidatedPdf}
+                            disabled={downloadingPdf}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'var(--primary)',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: downloadingPdf ? 'wait' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                boxShadow: '0 2px 8px rgba(23, 75, 77, 0.25)',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '16px' }}>picture_as_pdf</span>
+                            {downloadingPdf ? 'Compiling PDF...' : 'Download Consolidated PDF'}
+                        </button>
+                        <button
+                            onClick={handleDownloadConsolidatedCsv}
+                            disabled={downloadingCsv}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'var(--surface-low)',
+                                color: 'var(--tx-main)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: downloadingCsv ? 'wait' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--green)' }}>table_chart</span>
+                            {downloadingCsv ? 'Exporting...' : 'Export Excel / CSV'}
+                        </button>
+                    </div>
                 </div>
             </CardContent>
         </Card>

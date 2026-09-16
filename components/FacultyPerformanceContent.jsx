@@ -9,6 +9,7 @@ import { Button, Select, Input, ConfirmDialog } from '@/components/ui';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
 import { filterAndRank } from '@/lib/search-utils';
 import { writeWorkbook } from '../lib/workbook-export';
+import { canonicalBranch } from '@/lib/vtu-identity';
 import {
     ResponsiveContainer,
     BarChart,
@@ -119,7 +120,15 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     // View Perspective & Filters
     const [viewPerspective, setViewPerspective] = useState('all'); // 'all' | 'my'
     const [branch, setBranch] = useState('');
+    const [batch, setBatch] = useState(() => {
+        try {
+            const saved = sessionStorage.getItem('gf_faculty_active_filters');
+            if (saved) return JSON.parse(saved).batch || '2023';
+        } catch {}
+        return '2023';
+    });
     const [semester, setSemester] = useState('all');
+    const [section, setSection] = useState('all');
     const [classFilter, setClassFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'remedial' | 'distinction' | 'unassigned'
@@ -130,6 +139,26 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     const [facultyList, setFacultyList] = useState([]);
     const [classesList, setClassesList] = useState([]);
     const [expandedFacultyId, setExpandedFacultyId] = useState(null);
+
+    const availableBatches = useMemo(() => {
+        const list = ['2023', '2024', '2022', '2021', '2025'];
+        if (meta?.batches && Array.isArray(meta.batches)) {
+            meta.batches.forEach(b => { if (!list.includes(String(b))) list.push(String(b)); });
+        }
+        classesList.forEach(c => { if (c.batch && !list.includes(String(c.batch))) list.push(String(c.batch)); });
+        return Array.from(new Set(list)).sort().reverse();
+    }, [meta?.batches, classesList]);
+
+    const availableSections = useMemo(() => {
+        const sections = new Set();
+        classesList.forEach(c => {
+            if (branch && c.branch && canonicalBranch(c.branch) !== canonicalBranch(branch)) return;
+            if (batch && batch !== 'all' && c.batch && String(c.batch) !== String(batch)) return;
+            if (semester && semester !== 'all' && c.semester && Number(c.semester) !== Number(semester)) return;
+            if (c.section) sections.add(c.section.trim().toUpperCase());
+        });
+        return Array.from(sections).sort();
+    }, [classesList, branch, batch, semester]);
 
     // Subject Assignment Modal State (Multi-subject & Multi-class support)
     const [showAssignModal, setShowAssignModal] = useState(false);
@@ -202,8 +231,10 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         try {
             const query = { _t: Date.now() };
             if (branch) query.branch = branch;
+            if (batch && batch !== 'all') query.batch = batch;
             if (semester && semester !== 'all') query.semester = semester;
             if (classFilter && classFilter !== 'all') query.classId = classFilter;
+            if (section && section !== 'all') query.section = section;
 
             // Fetch metadata and faculty performance in parallel for instant, zero-delay refresh
             const metaPromise = isManual
@@ -258,7 +289,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
             if (!isManual) setLoading(false);
             setRefreshing(false);
         }
-    }, [branch, semester, classFilter, facultyList]);
+    }, [branch, batch, semester, classFilter, section, facultyList]);
 
     useEffect(() => {
         loadPerformance();
@@ -581,7 +612,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Department: ${branch || 'All'} | Semester: ${semester} | Class: ${classFilter || 'All'} | Total Faculty: ${displayedFaculty.length} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
+        doc.text(`Department: ${branch || 'All'} | Batch: ${batch || 'All'} | Semester: ${semester} | Section: ${section || 'All'} | Total Faculty: ${displayedFaculty.length} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
         const tableHead = [['#', 'Faculty Name', 'Department', 'Assigned Subjects & Classes', 'Appeared', 'Passed', 'Failed', 'Pass Rate', 'Avg Marks']];
         const tableBody = displayedFaculty.map((f, idx) => [
@@ -780,7 +811,9 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
     // Filter state helpers
     const hasActiveFilters = Boolean(
         branch ||
+        (batch && batch !== 'all') ||
         (semester && semester !== 'all') ||
+        (section && section !== 'all') ||
         (classFilter && classFilter !== 'all') ||
         searchQuery.trim() ||
         (quickFilter && quickFilter !== 'all')
@@ -788,7 +821,9 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
     const activeFilterCount = [
         Boolean(branch),
+        Boolean(batch && batch !== 'all'),
         Boolean(semester && semester !== 'all'),
+        Boolean(section && section !== 'all'),
         Boolean(classFilter && classFilter !== 'all'),
         Boolean(searchQuery.trim()),
         Boolean(quickFilter && quickFilter !== 'all')
@@ -796,6 +831,8 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
     const handleResetFilters = () => {
         setBranch('');
+        setBatch('all');
+        setSection('all');
         setSemester('all');
         setClassFilter('all');
         setSearchQuery('');
@@ -1377,6 +1414,48 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                         </select>
                     </div>
 
+                    {/* 2b. Academic Batch Dropdown */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            color: 'var(--tx-muted)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
+                        }}>
+                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>school</span>
+                            Academic Batch
+                        </label>
+                        <select
+                            value={batch}
+                            onChange={e => setBatch(e.target.value)}
+                            style={{
+                                width: '100%',
+                                height: '42px',
+                                padding: '0 36px 0 14px',
+                                borderRadius: '10px',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface-low)',
+                                color: 'var(--tx-main)',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                outline: 'none',
+                                cursor: 'pointer',
+                                boxSizing: 'border-box'
+                            }}
+                        >
+                            <option value="all">All Batches</option>
+                            {availableBatches.map(b => (
+                                <option key={b} value={b}>
+                                    {b} Batch {b === '2023' ? '★ (7th Sem)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* 3. Semester Filter Dropdown */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <label style={{
@@ -1419,6 +1498,48 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                         </select>
                     </div>
 
+                    {/* 3b. Section Filter Dropdown */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            color: 'var(--tx-muted)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
+                        }}>
+                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>groups</span>
+                            Section Filter
+                        </label>
+                        <select
+                            value={section}
+                            onChange={e => setSection(e.target.value)}
+                            style={{
+                                width: '100%',
+                                height: '42px',
+                                padding: '0 36px 0 14px',
+                                borderRadius: '10px',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface-low)',
+                                color: 'var(--tx-main)',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                outline: 'none',
+                                cursor: 'pointer',
+                                boxSizing: 'border-box'
+                            }}
+                        >
+                            <option value="all">All Sections / Whole Cohort</option>
+                            {availableSections.map(sec => (
+                                <option key={sec} value={sec}>
+                                    Section {sec}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* 4. Class Filter Dropdown */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <label style={{
@@ -1432,7 +1553,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                             letterSpacing: '0.05em'
                         }}>
                             <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>meeting_room</span>
-                            Class / Section Filter
+                            Specific Class Filter
                         </label>
                         <select
                             value={classFilter}
@@ -1452,7 +1573,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                 boxSizing: 'border-box'
                             }}
                         >
-                            <option value="all">All Class Sections</option>
+                            <option value="all">All Classes</option>
                             {classesList.map(c => (
                                 <option key={c.id} value={c.id}>
                                     {c.name} ({c.branch} · Sem {c.semester}{c.section ? ` · Sec ${c.section}` : ''})

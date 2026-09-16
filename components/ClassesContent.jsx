@@ -1283,7 +1283,13 @@ export function ClassesContent({ embedded = false }) {
         setScrapeError('');
 
         try {
-            const facultyId = faculty?.id || faculty?.sub || null;
+            // `faculty` falls back to the admin_session when this component
+            // renders inside the admin terminal (see the useEffect above), so
+            // its id is an admin_users row there — not a faculty_onboarding
+            // one. Sending that as faculty_id violates scraper_jobs' FK and
+            // 500s the whole queue request, so only forward a real faculty id.
+            const isRealFaculty = faculty && faculty.role !== 'admin' && faculty.role !== 'superadmin';
+            const facultyId = isRealFaculty ? (faculty?.id || faculty?.sub || null) : null;
             const nameByUsn = {};
             targets.forEach(s => { nameByUsn[s.usn] = s.name || s.usn; });
             const usnList = targets.map(s => s.usn);

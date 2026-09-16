@@ -56,7 +56,7 @@ export async function GET(req) {
         const branch = (searchParams.get('branch') || 'ALL').toUpperCase().trim();
         const batch = searchParams.get('batch') || '';
         const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
-        const upToSemester = Math.min(8, Math.max(1, parseInt(searchParams.get('upToSemester') || '6', 10)));
+        const upToSemester = Math.min(8, Math.max(1, parseInt(searchParams.get('upToSemester') || '7', 10)));
         const fresh = searchParams.get('fresh') === '1';
 
         const cacheKey = `batch_report:${branch}:${batch}:${upToSemester}:${section}`;

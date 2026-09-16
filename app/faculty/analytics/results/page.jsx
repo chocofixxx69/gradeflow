@@ -131,15 +131,15 @@ function ExamResultsHubContent() {
     const [semLoading, setSemLoading] = useState(() => !initialSemData);
 
     // Tab 2: Batch Trajectory States
-    const [upToSemester, setUpToSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6);
+    const [upToSemester, setUpToSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 7);
     const initialBatchData = getCachedApiData('/api/faculty/analytics/batch-report', {
         branch: initialSaved.branch || 'CS',
         batch: initialSaved.batch || '2023',
-        upToSemester: (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6
+        upToSemester: (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 7
     });
     const [batchData, setBatchData] = useState(() => initialBatchData || {
         students: [],
-        upToSemester: 6,
+        upToSemester: 7,
         summary: { totalStudents: 0, avgCGPA: 0, withBacklogs: 0, distinctionCount: 0, lateralCount: 0 }
     });
     const [batchLoading, setBatchLoading] = useState(() => !initialBatchData);

@@ -4,6 +4,7 @@ import { getAdminClient } from '@/lib/analytics-data';
 import { getCached, setCached } from '@/lib/server-cache';
 import { isFailedSubject, resolveCanonicalGrade } from '@/lib/vtuGrades';
 import { canonicalBranch } from '@/lib/vtu-identity';
+import { matchesBatch, matchesBranch } from '@/lib/semester-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,24 +33,30 @@ export async function GET(req) {
             ? parseInt(searchParams.get('semester'), 10) 
             : null;
         const classFilter = (searchParams.get('classId') || '').trim();
+        const batchFilter = (searchParams.get('batch') || searchParams.get('batchYear') || '').trim();
+        const sectionFilter = (searchParams.get('section') || '').toUpperCase().trim();
 
-        const cacheKey = `fac_perf:${branchFilter}:${semesterFilter || 'all'}:${classFilter || 'all'}`;
+        const cacheKey = `fac_perf:${branchFilter}:${semesterFilter || 'all'}:${classFilter || 'all'}:${batchFilter || 'all'}:${sectionFilter || 'all'}`;
         const cached = getCached(cacheKey);
         if (cached) return ok(cached);
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch faculty members, subject assignments with class info, catalog, and classes
+        // 1. Fetch faculty members, subject assignments with class info, catalog, classes, and students
         const [
             { data: rawFaculty },
             { data: rawAssignments },
             { data: rawSubjects },
-            { data: rawClasses }
+            { data: rawClasses },
+            { data: rawClassStudents },
+            { data: rawStudents }
         ] = await Promise.all([
             supabaseAdmin.from('faculty_onboarding').select('id, full_name, email, department, status, designation').order('full_name', { ascending: true }),
             supabaseAdmin.from('faculty_subject_assignments').select('*, classes(id, name, branch, semester, section, batch)'),
             supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, credits'),
-            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, class_students(count)').order('name', { ascending: true })
+            supabaseAdmin.from('classes').select('id, name, branch, semester, section, batch, class_students(count)').order('name', { ascending: true }),
+            supabaseAdmin.from('class_students').select('class_id, usn'),
+            supabaseAdmin.from('students').select('usn, name, branch, year, lateral_entry, batch')
         ]);
 
         const facultyList = rawFaculty || [];
@@ -59,6 +66,11 @@ export async function GET(req) {
             ...c,
             student_count: c.class_students?.[0]?.count ?? 0
         }));
+
+        const studentMap = new Map();
+        (rawStudents || []).forEach(s => {
+            if (s.usn) studentMap.set(s.usn.toUpperCase().trim(), s);
+        });
 
         const catalogMap = new Map();
         catalogSubjects.forEach(s => catalogMap.set(s.subject_code.toUpperCase(), s));
@@ -71,17 +83,21 @@ export async function GET(req) {
             assignmentsByFaculty.set(a.faculty_id, list);
         });
 
-        // Fetch students enrolled in assigned classes for accurate class-level attribution
-        const assignedClassIds = Array.from(new Set(assignments.map(a => a.class_id).filter(Boolean)));
+        // Index students by class_id
         const classStudentsMap = new Map();
-        if (assignedClassIds.length > 0) {
-            const { data: rawClassStudents } = await supabaseAdmin
-                .from('class_students')
-                .select('class_id, usn')
-                .in('class_id', assignedClassIds);
-            (rawClassStudents || []).forEach(cs => {
-                if (!classStudentsMap.has(cs.class_id)) classStudentsMap.set(cs.class_id, new Set());
-                classStudentsMap.get(cs.class_id).add((cs.usn || '').toUpperCase().trim());
+        (rawClassStudents || []).forEach(cs => {
+            if (!classStudentsMap.has(cs.class_id)) classStudentsMap.set(cs.class_id, new Set());
+            classStudentsMap.get(cs.class_id).add((cs.usn || '').toUpperCase().trim());
+        });
+
+        // Derive set of USNs in a section across all classes matching sectionFilter
+        const sectionUsns = new Set();
+        if (sectionFilter && sectionFilter !== 'ALL') {
+            classesList.forEach(cls => {
+                if ((cls.section || '').toUpperCase().trim() === sectionFilter) {
+                    const enrolled = classStudentsMap.get(cls.id);
+                    if (enrolled) enrolled.forEach(u => sectionUsns.add(u));
+                }
             });
         }
 
@@ -121,7 +137,7 @@ export async function GET(req) {
 
             const facAssignments = assignmentsByFaculty.get(fac.id) || [];
             
-            // Filter by semester and class if active
+            // Filter by semester, class, batch, and section if active
             let filteredAssignments = facAssignments;
             if (semesterFilter) {
                 filteredAssignments = filteredAssignments.filter(a => Number(a.semester) === semesterFilter);
@@ -129,8 +145,14 @@ export async function GET(req) {
             if (classFilter && classFilter !== 'all') {
                 filteredAssignments = filteredAssignments.filter(a => a.class_id === classFilter);
             }
+            if (batchFilter && batchFilter !== 'all') {
+                filteredAssignments = filteredAssignments.filter(a => !a.classes?.batch || matchesBatch(a.classes.batch, batchFilter));
+            }
+            if (sectionFilter && sectionFilter !== 'ALL' && sectionFilter !== 'all') {
+                filteredAssignments = filteredAssignments.filter(a => !a.classes?.section || a.classes.section.toUpperCase() === sectionFilter);
+            }
 
-            if (facAssignments.length === 0 && (branchFilter || classFilter)) return;
+            if (facAssignments.length === 0 && (branchFilter || classFilter || batchFilter || sectionFilter)) return;
 
             let totalAppeared = 0;
             let totalPassed = 0;
@@ -145,10 +167,36 @@ export async function GET(req) {
                 const catInfo = catalogMap.get(code);
                 let subMarks = marksBySubject.get(code) || [];
 
-                // If this subject is specifically assigned to a class section, scope to that class's students
+                // 1. If this subject is specifically assigned to a class section, scope to that class's students
                 if (assign.class_id && classStudentsMap.has(assign.class_id)) {
                     const validUsns = classStudentsMap.get(assign.class_id);
                     subMarks = subMarks.filter(m => validUsns.has((m.usn || '').toUpperCase().trim()));
+                } else if (sectionFilter && sectionFilter !== 'ALL' && sectionFilter !== 'all' && sectionUsns.size > 0) {
+                    // Fallback to section USNs across this section
+                    subMarks = subMarks.filter(m => sectionUsns.has((m.usn || '').toUpperCase().trim()));
+                }
+
+                // 2. Filter marks by student batch
+                if (batchFilter && batchFilter !== 'all') {
+                    subMarks = subMarks.filter(m => {
+                        const usnKey = (m.usn || '').toUpperCase().trim();
+                        const st = studentMap.get(usnKey);
+                        return matchesBatch(st || usnKey, batchFilter);
+                    });
+                }
+
+                // 3. Filter marks by branch if active
+                if (branchFilter && branchFilter !== 'ALL') {
+                    subMarks = subMarks.filter(m => {
+                        const usnKey = (m.usn || '').toUpperCase().trim();
+                        const st = studentMap.get(usnKey);
+                        return matchesBranch(st || usnKey, branchFilter);
+                    });
+                }
+
+                // 4. Filter marks by semester if active
+                if (semesterFilter) {
+                    subMarks = subMarks.filter(m => Number(m.semester) === semesterFilter);
                 }
 
                 let subAppeared = subMarks.length;
@@ -232,10 +280,20 @@ export async function GET(req) {
         // Sort by pass rate descending
         performanceList.sort((a, b) => b.pass_rate - a.pass_rate || a.faculty_name.localeCompare(b.faculty_name));
 
+        const allBatches = Array.from(new Set([
+            '2023',
+            '2024',
+            '2022',
+            '2021',
+            '2025',
+            ...classesList.map(c => c.batch).filter(Boolean)
+        ])).sort().reverse();
+
         const payload = {
             faculty: performanceList,
             totalFaculty: performanceList.length,
             classes: classesList,
+            batches: allBatches,
             currentFacultyId: session?.sub || session?.user?.id || null,
             currentUserRole: session?.role || 'faculty'
         };
