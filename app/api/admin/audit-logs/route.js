@@ -125,7 +125,7 @@ export async function GET(req) {
             academicEngine: {
                 status: 'OPERATIONAL',
                 engineVersion: 'VTU-v2.6',
-                activeSchemes: ['2021 CBCS', '2022 NEP', '2018 CBCS'],
+                activeSchemes: ['2026 NEP', '2025 NEP', '2022 NEP', '2021 CBCS', '2018 CBCS'],
                 rulesCalibrated: true,
             },
             securitySubsystem: {

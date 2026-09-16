@@ -57,10 +57,25 @@ const BATCH_INTAKE_YEARS = Array.from(
 );
 
 // ── Activity Logger ─────────────────────────────────────────
-async function logActivity(action_type, target = null, options = {}) {
+async function logActivity(action_or_faculty, target_or_action = null, options_or_target = {}, maybeOptions = {}) {
     try {
-        const stored = typeof window !== 'undefined' ? (localStorage.getItem('faculty_session') || localStorage.getItem('gradeflow_faculty') || localStorage.getItem('user_session')) : null;
-        const fac = stored ? JSON.parse(stored) : null;
+        let action_type = action_or_faculty;
+        let target = target_or_action;
+        let options = options_or_target;
+        let fac = null;
+
+        // Defensively handle when caller passes (faculty, action_type, target, options)
+        if (typeof action_or_faculty === 'object' && action_or_faculty !== null) {
+            fac = action_or_faculty;
+            action_type = target_or_action;
+            target = options_or_target;
+            options = maybeOptions || {};
+        }
+
+        if (!fac && typeof window !== 'undefined') {
+            const stored = localStorage.getItem('faculty_session') || localStorage.getItem('gradeflow_faculty') || localStorage.getItem('user_session');
+            fac = stored ? JSON.parse(stored) : null;
+        }
         await recordFacultyAction(fac, action_type, target, options);
     } catch (e) {
         // Safe failover
@@ -745,7 +760,7 @@ export function ClassesContent({ embedded = false }) {
                 batch: '2023'
             });
             setMsg('✓ Class created successfully. Visible to all faculty & administrators.');
-            await logActivity(faculty, 'CLASS_CREATE', newClass.name);
+            await logActivity('CLASS_CREATE', newClass.name);
             fetchClasses();
         } else {
             setMsg(j.error || 'Failed to create class.');

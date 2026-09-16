@@ -1602,12 +1602,18 @@ export function FacultyActivityContent({
                                             </td>
 
                                             {/* Action & Student */}
-                                            <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
+                                            <td style={{ padding: '12px 14px', verticalAlign: 'top', maxWidth: '240px', wordBreak: 'break-word' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
-                                                    <span style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
-                                                        {(record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT')
-                                                            ? 'VTU SEE Hall Tickets Issued & Verified'
-                                                            : (record.what?.title || record.action_type)}
+                                                    <span style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)', lineHeight: '1.4' }}>
+                                                        {(() => {
+                                                            const raw = (record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT')
+                                                                ? 'VTU SEE Hall Tickets Issued & Verified'
+                                                                : (record.what?.title || record.action_type || 'Academic Operation');
+                                                            if (typeof raw === 'string' && (raw.startsWith('{') || raw.includes('sessionToken') || raw.length > 70)) {
+                                                                return 'Academic Class Section Creation';
+                                                            }
+                                                            return raw;
+                                                        })()}
                                                     </span>
                                                     {(record.action_type === 'HALL_TICKET_GENERATE' || record.action_type === 'HALL_TICKET_BATCH_EXPORT' || record.what?.code === 'HALL_TICKET_GENERATE') && (
                                                         <span style={{
