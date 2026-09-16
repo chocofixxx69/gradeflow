@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient, invalidateAnalyticsCache } from '@/lib/analytics-data';
 import { isLateralEntry, canonicalBranchCode, extractBranchFromUsn, getStudentAcademicBatch, getStudentDefaultEmail } from '@/lib/semester-utils';
-import { readTable, SELECTS } from '@/lib/table-cache';
 import { getStudentRecordDirect, invalidateStudentRecords } from '@/lib/student-record';
 import { normalizeBranch } from '@/lib/vtuAcademicEngine';
 import { logFacultyActivityServer } from '@/lib/server-audit';
@@ -111,19 +110,32 @@ export async function GET(req, { params }) {
         const cleanUsn = rawUsn.toUpperCase().trim();
         const supabaseAdmin = getAdminClient();
 
-        // Student profile, subject marks, academic remarks and the subject catalog
-        // are all independent of each other (none needs another's result), so they
-        // run as one batch instead of blocking on the profile fetch first.
+        // Student profile, subject marks and the canonical academic record are all
+        // independent of each other (none needs another's result), so they run as
+        // one batch instead of blocking on the profile fetch first.
+        // getStudentRecordDirect() in particular used to be awaited only after this
+        // batch resolved even though it re-fetches students/subject_marks/
+        // academic_remarks itself and needs nothing from this batch's copies - that
+        // was a second full network round trip stacked on the first for no reason,
+        // which costs the most on exactly the slow/high-latency connections this
+        // page needs to stay usable on.
         //
         // The standalone `results` query that used to sit here was never read - the
         // exam name each mark needs already comes through the `results(exam_name)`
         // join below, and every SGPA on this page is computed from the marks - so it
-        // was a per-page round trip for nothing.
+        // was a per-page round trip for nothing. The `academic_remarks` and
+        // `subject_catalog` reads that used to sit here were the same story: their
+        // results (`rawRemarks`, `catalogRows`) were never read below either -
+        // getStudentRecordDirect()'s `record` has fully replaced what they fed
+        // (kpis/semStats come from the canonical engine, not from academic_remarks;
+        // no code path here still calls buildCodeToSemMap/inferSemester, the only
+        // consumers a catalog fetch would serve). And subject_marks itself only
+        // needs `id` plus the joined exam name - see examByMarkId below - not every
+        // mark/credit/grade column, which the canonical `record` already carries.
         const [
             { data: student, error: stuErr },
             { data: rawMarks },
-            { data: rawRemarks },
-            catalogRows
+            record
         ] = await Promise.all([
             supabaseAdmin
                 .from('students')
@@ -132,16 +144,16 @@ export async function GET(req, { params }) {
                 .maybeSingle(),
             supabaseAdmin
                 .from('subject_marks')
-                .select('*, results(exam_name)')
-                .eq('usn', cleanUsn)
-                .order('semester', { ascending: true })
-                .order('subject_code', { ascending: true }),
-            supabaseAdmin
-                .from('academic_remarks')
-                .select('*')
-                .eq('student_usn', cleanUsn)
-                .order('semester', { ascending: true }),
-            readTable(supabaseAdmin, 'subject_catalog', SELECTS.subject_catalog)
+                .select('id, results(exam_name)')
+                .eq('usn', cleanUsn),
+            // ── THE canonical academic record ──────────────────────────────────
+            // Every number on this page comes from lib/student-record.js — the same
+            // record the faculty dashboard and the students directory read. This
+            // route used to compute its own: it averaged academic_remarks at a flat
+            // 20 credits per semester, which for 2AB23CS006 produced a CGPA of 7.56
+            // from a stale semester-6 SGPA of 7.56 while this very page's mark sheet
+            // showed 6.72 for that semester. Nothing here recomputes anything.
+            getStudentRecordDirect(supabaseAdmin, cleanUsn)
         ]);
 
         if (stuErr) throw stuErr;
@@ -151,15 +163,6 @@ export async function GET(req, { params }) {
             canonicalBranchCode(extractBranchFromUsn(cleanUsn)) || 'CS';
 
         const marks = rawMarks || [];
-
-        // ── THE canonical academic record ─────────────────────────────────────
-        // Every number on this page comes from lib/student-record.js — the same
-        // record the faculty dashboard and the students directory read. This route
-        // used to compute its own: it averaged academic_remarks at a flat 20 credits
-        // per semester, which for 2AB23CS006 produced a CGPA of 7.56 from a stale
-        // semester-6 SGPA of 7.56 while this very page's mark sheet showed 6.72 for
-        // that semester. Nothing here recomputes anything any more.
-        const record = await getStudentRecordDirect(supabaseAdmin, cleanUsn);
         if (!record) return fail('Student not found.', 'STUDENT_NOT_FOUND', 404);
 
         // Exam round per mark, for the "Exam Session" column — provenance the engine

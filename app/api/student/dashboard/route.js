@@ -28,18 +28,27 @@ export async function GET(req) {
         // so they run as one batch instead of blocking on the profile fetch first.
         // Only the manual-marks table needs studentId from the profile, so it has
         // to wait - see below.
+        //
+        // getStudentRecordDirect() is in this same batch rather than awaited after
+        // it: it re-fetches students/subject_marks/academic_remarks itself (it has
+        // no dependency on this batch's own copies), so awaiting it separately was
+        // a second full network round trip stacked after the first for no reason -
+        // pure added latency, worst on exactly the slow/high-latency connections
+        // this app needs to stay usable on.
         const [
             { data: studentProfile, error: pErr },
             { data: resultMarks },
             { data: remarks },
             { data: resultRows },
-            catalogIndex
+            catalogIndex,
+            canonical
         ] = await Promise.all([
             supabaseAdmin.from('students').select('*').eq('usn', usn).maybeSingle(),
             supabaseAdmin.from('subject_marks').select('id, usn, subject_code, subject_name, internal, external, total, grade, credits, semester, passed, is_backlog, is_makeup, announced_date, results(exam_name)').eq('usn', usn),
             supabaseAdmin.from('academic_remarks').select('student_usn, semester, sgpa, backlog_count, is_all_clear').eq('student_usn', usn),
             supabaseAdmin.from('results').select('id, usn, semester, sgpa, total_credits').eq('usn', usn),
-            fetchCatalogIndex(supabaseAdmin)
+            fetchCatalogIndex(supabaseAdmin),
+            getStudentRecordDirect(supabaseAdmin, usn)
         ]);
 
         if (pErr) throw pErr;
@@ -125,8 +134,8 @@ export async function GET(req) {
         // by results.total_credits. Both of those are derived tables the scraper does
         // not keep current - for 2AB23CS006 they claimed a semester-6 SGPA of 7.56
         // against marks that give 6.72 - so a student was shown a CGPA their own mark
-        // sheet contradicted. See lib/student-record.js.
-        const canonical = await getStudentRecordDirect(supabaseAdmin, usn);
+        // sheet contradicted. See lib/student-record.js. (Fetched above, in the same
+        // batch as everything else.)
         const cgpa = canonical?.cgpa ?? 0;
         const backlogsInfo = computeBacklogs(pool);
 
