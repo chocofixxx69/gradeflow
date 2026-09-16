@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
 import { getXLSX, getJsPDF } from '@/lib/lazy-export-libs';
-import { ResponsiveContainer, BarChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ComposedChart, LineChart, ReferenceLine } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ComposedChart, LineChart, ReferenceLine, LabelList, Cell } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
@@ -30,6 +30,8 @@ export default function InstitutionalIntelligencePage() {
         </AuthGuard>
     );
 }
+
+const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 
 // Professional Institutional Categorical Palette
 // High contrast, colorblind-friendly, non-neon executive tones curated for academic data visualization.
@@ -61,6 +63,95 @@ function getStudentColor(index) {
     return `hsl(${hue}, 58%, 42%)`;
 }
 
+function CustomBenchmarkTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0].payload;
+    return (
+        <div style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            fontSize: '12px',
+            minWidth: '200px'
+        }}>
+            <div style={{ fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                {data.name || label}
+                {data.sectionLetter && data.sectionLetter !== '—' && ` • Sec ${data.sectionLetter}`}
+                {data.batch && data.batch !== '—' && ` • Batch ${data.batch}`}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', color: '#6366F1', fontWeight: 800, margin: '4px 0' }}>
+                <span>Pass Rate:</span>
+                <span>{data.passRate}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', color: '#10B981', fontWeight: 800, margin: '4px 0' }}>
+                <span>Mean SGPA:</span>
+                <span>{data.avgSGPA}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', color: 'var(--tx-muted)', margin: '4px 0' }}>
+                <span>Cohort Appeared:</span>
+                <span style={{ color: 'var(--tx-main)', fontWeight: 700 }}>{data.appeared}</span>
+            </div>
+            {data.topper && (
+                <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed var(--border)', fontSize: '11px', color: 'var(--tx-muted)' }}>
+                    Topper: <strong style={{ color: 'var(--tx-main)' }}>{data.topper.name}</strong> ({data.topper.cgpa ? `${data.topper.cgpa} CGPA` : `${data.topper.sgpa} SGPA`})
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CustomHistogramTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    return (
+        <div style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            fontSize: '12px',
+            minWidth: '220px'
+        }}>
+            <div style={{ fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                Grade: {label}
+            </div>
+            {payload.map(p => (
+                <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', color: p.color, fontWeight: 700, margin: '4px 0' }}>
+                    <span>{p.name || p.dataKey}:</span>
+                    <span style={{ fontWeight: 800 }}>{p.value} student{p.value === 1 ? '' : 's'}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function CustomClassificationTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    const total = payload.reduce((acc, p) => acc + (Number(p.value) || 0), 0);
+    return (
+        <div style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            fontSize: '12px',
+            minWidth: '240px'
+        }}>
+            <div style={{ fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                {label} (Total: {total})
+            </div>
+            {payload.map(p => (
+                <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', color: p.color, fontWeight: 600, margin: '4px 0' }}>
+                    <span>{p.name}:</span>
+                    <span style={{ fontWeight: 800 }}>{p.value} ({total > 0 ? `${((p.value / total) * 100).toFixed(1)}%` : '0%'})</span>
+                </div>
+            ))}
+        </div>
+    );
+}
 
 function InstitutionalIntelligenceContent() {
     const searchParams = useSearchParams();
@@ -75,12 +166,21 @@ function InstitutionalIntelligenceContent() {
         return 'sections'; // Default to Class & Section Comparison as primary view
     });
 
-    // Sub-mode inside Comparison tab: 'classes' | 'sections'
+    // Sub-mode inside Comparison tab: 'classes' | 'batches' | 'sections'
     const [compareMode, setCompareMode] = useState(() => {
         const modeParam = searchParams?.get('mode');
+        if (modeParam === 'batches') return 'batches';
         if (modeParam === 'sections') return 'sections';
         return 'classes'; // Default to Class Comparison
     });
+
+    // Interactive Selection & Chart Type State for Class Comparison
+    const [selectedClassIds, setSelectedClassIds] = useState([]);
+    const [classChartType, setClassChartType] = useState('benchmark'); // 'benchmark' | 'histogram' | 'classification'
+
+    // Interactive Selection & Chart Type State for Batch Comparison
+    const [selectedBatchesForCompare, setSelectedBatchesForCompare] = useState([]);
+    const [batchChartType, setBatchChartType] = useState('benchmark'); // 'benchmark' | 'histogram' | 'classification'
 
     const [meta, setMeta] = useState(() => initialMeta || { branches: [], batches: [], semesters: [1, 2, 3, 4, 5, 6, 7, 8] });
 
@@ -125,6 +225,7 @@ function InstitutionalIntelligenceContent() {
         benchmarks: { bestSection: '—', bestSectionLabel: '—', totalEvaluated: 0, benchmarkAvg: 0, sectionSpread: 0 }
     });
     const [sectionLoading, setSectionLoading] = useState(false);
+    const [sectionMode, setSectionMode] = useState('auto'); // 'auto' | 'split'
 
     // Tab 3: Student Comparator Data
     const [usnInput, setUsnInput] = useState('');
@@ -238,7 +339,7 @@ function InstitutionalIntelligenceContent() {
         const targetBranch = branch === 'ALL' ? 'AI' : branch;
         setSectionLoading(true);
         try {
-            const query = { branch: targetBranch, batch, semester, sectionMode: 'auto' };
+            const query = { branch: targetBranch, batch, semester, sectionMode };
             const res = await apiRequest('/api/faculty/analytics/sections-compare', { query, cacheTtl: 30_000 });
             if (res) setSectionReport(res);
         } catch (err) {
@@ -246,7 +347,7 @@ function InstitutionalIntelligenceContent() {
         } finally {
             setSectionLoading(false);
         }
-    }, [branch, batch, semester]);
+    }, [branch, batch, semester, sectionMode]);
 
     // 5. Fetch Student Comparator Data
     const loadComparatorData = useCallback(async () => {
@@ -295,6 +396,180 @@ function InstitutionalIntelligenceContent() {
         if (!classSearch.trim()) return list;
         return filterAndRank(list, classSearch, ['name', 'branch', 'facultyName', 'section', 'academicYear', 'scheme']);
     }, [classReport, classSearch]);
+
+    // Active classes count per semester
+    const activeClassesPerSemester = useMemo(() => {
+        const counts = {};
+        (classReport?.classes || meta.classes || []).forEach(c => {
+            const sem = Number(c.semester);
+            if (!isNaN(sem) && sem > 0) {
+                counts[sem] = (counts[sem] || 0) + 1;
+            }
+        });
+        return counts;
+    }, [classReport?.classes, meta.classes]);
+
+    // Class selection handlers
+    const toggleClassSelection = (classId) => {
+        setSelectedClassIds(prev =>
+            prev.includes(classId) ? prev.filter(id => id !== classId) : [...prev, classId]
+        );
+    };
+
+    const selectAllFilteredClasses = () => {
+        setSelectedClassIds(filteredClassesList.map(c => c.id));
+    };
+
+    const clearClassSelection = () => {
+        setSelectedClassIds([]);
+    };
+
+    const classesToCompare = useMemo(() => {
+        const list = filteredClassesList;
+        if (!selectedClassIds || selectedClassIds.length === 0) return list;
+        const selected = list.filter(c => selectedClassIds.includes(c.id));
+        return selected.length > 0 ? selected : list;
+    }, [filteredClassesList, selectedClassIds]);
+
+    const comparisonBenchmarks = useMemo(() => {
+        const list = classesToCompare;
+        if (list.length === 0) {
+            return {
+                bestClass: null,
+                totalClasses: 0,
+                totalEnrolled: 0,
+                totalAppeared: 0,
+                overallPassRate: 0,
+                benchmarkAvgSGPA: 0,
+                passRateSpread: 0,
+                sgpaSpread: 0
+            };
+        }
+        const sortedByPass = [...list].filter(c => c.appeared > 0).sort((a, b) => b.passRate - a.passRate || b.avgSGPA - a.avgSGPA);
+        const bestClass = sortedByPass[0] || null;
+        const totalEnrolled = list.reduce((acc, c) => acc + (c.enrolledCount || 0), 0);
+        const totalAppeared = list.reduce((acc, c) => acc + (c.appeared || 0), 0);
+        const totalPassed = list.reduce((acc, c) => acc + (c.passed || 0), 0);
+        const overallPassRate = totalAppeared > 0 ? Number(((totalPassed / totalAppeared) * 100).toFixed(1)) : 0;
+        const validSgpas = list.filter(c => c.appeared > 0 && c.avgSGPA > 0).map(c => c.avgSGPA);
+        const benchmarkAvgSGPA = validSgpas.length > 0 ? Number((validSgpas.reduce((a, b) => a + b, 0) / validSgpas.length).toFixed(2)) : 0;
+        const validPassRates = list.filter(c => c.appeared > 0).map(c => c.passRate);
+        const passRateSpread = validPassRates.length > 1 ? Number((Math.max(...validPassRates) - Math.min(...validPassRates)).toFixed(1)) : 0;
+        const sgpaSpread = validSgpas.length > 1 ? Number((Math.max(...validSgpas) - Math.min(...validSgpas)).toFixed(2)) : 0;
+        return {
+            bestClass,
+            totalClasses: list.length,
+            totalEnrolled,
+            totalAppeared,
+            overallPassRate,
+            benchmarkAvgSGPA,
+            passRateSpread,
+            sgpaSpread
+        };
+    }, [classesToCompare]);
+
+    const classGradeHistogramData = useMemo(() => {
+        const gradesDef = [
+            { key: 'O', label: 'O (90-100)', name: 'Outstanding' },
+            { key: 'APlus', label: 'A+ (80-89)', name: 'Excellent' },
+            { key: 'A', label: 'A (70-79)', name: 'Very Good' },
+            { key: 'BPlus', label: 'B+ (60-69)', name: 'Good' },
+            { key: 'B', label: 'B (55-59)', name: 'Above Avg' },
+            { key: 'C', label: 'C (50-54)', name: 'Average' },
+            { key: 'P', label: 'P (40-49)', name: 'Pass' },
+            { key: 'F', label: 'F (<40)', name: 'Backlog (Fail)' }
+        ];
+
+        return gradesDef.map(g => {
+            const row = { grade: g.label, desc: g.name };
+            classesToCompare.forEach(c => {
+                const label = c.shortName || c.name;
+                row[label] = c.grades?.[g.key] || 0;
+            });
+            return row;
+        });
+    }, [classesToCompare]);
+
+    // Batch-to-Batch comparison memos
+    const batchesList = useMemo(() => {
+        return classReport?.batchesComparison || [];
+    }, [classReport?.batchesComparison]);
+
+    const toggleBatchSelection = (batchYear) => {
+        setSelectedBatchesForCompare(prev =>
+            prev.includes(batchYear) ? prev.filter(y => y !== batchYear) : [...prev, batchYear]
+        );
+    };
+
+    const selectAllBatches = () => {
+        setSelectedBatchesForCompare(batchesList.map(b => b.batch));
+    };
+
+    const clearBatchSelection = () => {
+        setSelectedBatchesForCompare([]);
+    };
+
+    const batchesToCompare = useMemo(() => {
+        if (!selectedBatchesForCompare || selectedBatchesForCompare.length === 0) return batchesList;
+        const filtered = batchesList.filter(b => selectedBatchesForCompare.includes(b.batch));
+        return filtered.length > 0 ? filtered : batchesList;
+    }, [batchesList, selectedBatchesForCompare]);
+
+    const batchComparisonBenchmarks = useMemo(() => {
+        const list = batchesToCompare;
+        if (list.length === 0) {
+            return {
+                bestBatch: null,
+                totalBatches: 0,
+                totalEnrolled: 0,
+                totalAppeared: 0,
+                overallPassRate: 0,
+                benchmarkAvgSGPA: 0,
+                passRateSpread: 0
+            };
+        }
+        const sorted = [...list].filter(b => b.appeared > 0).sort((a, b) => b.passRate - a.passRate || b.avgSGPA - a.avgSGPA);
+        const bestBatch = sorted[0] || null;
+        const totalEnrolled = list.reduce((acc, b) => acc + (b.enrolledCount || 0), 0);
+        const totalAppeared = list.reduce((acc, b) => acc + (b.appeared || 0), 0);
+        const totalPassed = list.reduce((acc, b) => acc + (b.passed || 0), 0);
+        const overallPassRate = totalAppeared > 0 ? Number(((totalPassed / totalAppeared) * 100).toFixed(1)) : 0;
+        const validSgpas = list.filter(b => b.appeared > 0 && b.avgSGPA > 0).map(b => b.avgSGPA);
+        const benchmarkAvgSGPA = validSgpas.length > 0 ? Number((validSgpas.reduce((a, b) => a + b, 0) / validSgpas.length).toFixed(2)) : 0;
+        const validPassRates = list.filter(b => b.appeared > 0).map(b => b.passRate);
+        const passRateSpread = validPassRates.length > 1 ? Number((Math.max(...validPassRates) - Math.min(...validPassRates)).toFixed(1)) : 0;
+
+        return {
+            bestBatch,
+            totalBatches: list.length,
+            totalEnrolled,
+            totalAppeared,
+            overallPassRate,
+            benchmarkAvgSGPA,
+            passRateSpread
+        };
+    }, [batchesToCompare]);
+
+    const batchGradeHistogramData = useMemo(() => {
+        const gradesDef = [
+            { key: 'O', label: 'O (90-100)', name: 'Outstanding' },
+            { key: 'APlus', label: 'A+ (80-89)', name: 'Excellent' },
+            { key: 'A', label: 'A (70-79)', name: 'Very Good' },
+            { key: 'BPlus', label: 'B+ (60-69)', name: 'Good' },
+            { key: 'B', label: 'B (55-59)', name: 'Above Avg' },
+            { key: 'C', label: 'C (50-54)', name: 'Average' },
+            { key: 'P', label: 'P (40-49)', name: 'Pass' },
+            { key: 'F', label: 'F (<40)', name: 'Backlog (Fail)' }
+        ];
+
+        return gradesDef.map(g => {
+            const row = { grade: g.label, desc: g.name };
+            batchesToCompare.forEach(b => {
+                row[`Batch ${b.batch}`] = b.grades?.[g.key] || 0;
+            });
+            return row;
+        });
+    }, [batchesToCompare]);
 
     // USN list management for comparator
     const handleAddUsn = (usnToAdd) => {
@@ -630,11 +905,34 @@ function InstitutionalIntelligenceContent() {
                         c.avgSGPA,
                         c.distinctionCount,
                         c.backlogCount,
-                        c.topper ? `${c.topper.name} (${c.topper.usn} - SGPA ${c.topper.sgpa})` : '—'
+                        c.topper ? `${c.topper.name} (${c.topper.usn} - ${c.topper.cgpa ? `CGPA ${c.topper.cgpa}` : `SGPA ${c.topper.sgpa}`})` : '—'
                     ]);
                     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                     XLSX.utils.book_append_sheet(wb, ws, 'Class Comparisons');
                     writeWorkbook(XLSX, wb, `Class_Comparison_Report.xlsx`);
+                } else if (compareMode === 'batches') {
+                    const bList = classReport?.batchesComparison || [];
+                    if (bList.length === 0) {
+                        alert('No batch comparison data available to export.');
+                        return;
+                    }
+                    const headers = ['Graduation Batch', 'Class Count', 'Total Enrolled', 'Cohort Appeared', 'Passed', 'Failed', 'Pass Rate %', 'Mean SGPA', 'Distinctions', 'Backlogs', 'Cohort Topper'];
+                    const rows = bList.map(b => [
+                        `Batch ${b.batch}`,
+                        b.classCount,
+                        b.enrolledCount,
+                        b.appeared,
+                        b.passed,
+                        b.failed,
+                        `${b.passRate}%`,
+                        b.avgSGPA,
+                        b.distinctionCount,
+                        b.backlogCount,
+                        b.topper ? (b.topper.label || `${b.topper.name} (${b.topper.cgpa || b.topper.sgpa})`) : '—'
+                    ]);
+                    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                    XLSX.utils.book_append_sheet(wb, ws, 'Batch Cohorts');
+                    writeWorkbook(XLSX, wb, `Batch_Cohort_Comparison.xlsx`);
                 } else {
                     const cList = sectionReport?.sectionComparisons || [];
                     if (cList.length === 0) {
@@ -758,7 +1056,7 @@ function InstitutionalIntelligenceContent() {
                         c.avgSGPA,
                         c.distinctionCount,
                         c.backlogCount,
-                        c.topper ? `${c.topper.name} (${c.topper.sgpa})` : '—'
+                        c.topper ? `${c.topper.name} (${c.topper.cgpa ? `${c.topper.cgpa} CGPA` : `${c.topper.sgpa} SGPA`})` : '—'
                     ]);
 
                     autoTable(doc, {
@@ -771,6 +1069,44 @@ function InstitutionalIntelligenceContent() {
                     });
 
                     doc.save(`Class_Comparison_Report.pdf`);
+                } else if (compareMode === 'batches') {
+                    const bList = classReport?.batchesComparison || [];
+                    if (bList.length === 0) {
+                        alert('No batch comparison data available to download.');
+                        return;
+                    }
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`Institutional Batch Cohort Benchmarking Report`, 14, 15);
+
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(`Generated: ${new Date().toLocaleDateString()} | Cohorts Evaluated: ${bList.length}`, 14, 21);
+
+                    const tableHead = [['Graduation Batch', 'Classes', 'Enrolled', 'Appeared', 'Passed', 'Pass Rate %', 'Mean SGPA', 'Distinctions', 'Backlogs', 'Cohort Topper']];
+                    const tableBody = bList.map(b => [
+                        `Batch ${b.batch}`,
+                        b.classCount,
+                        b.enrolledCount,
+                        b.appeared,
+                        b.passed,
+                        `${b.passRate}%`,
+                        b.avgSGPA,
+                        b.distinctionCount,
+                        b.backlogCount,
+                        b.topper ? (b.topper.label || `${b.topper.name} (${b.topper.cgpa || b.topper.sgpa})`) : '—'
+                    ]);
+
+                    autoTable(doc, {
+                        head: tableHead,
+                        body: tableBody,
+                        startY: 25,
+                        theme: 'striped',
+                        styles: { fontSize: 8, cellPadding: 2 },
+                        headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] }
+                    });
+
+                    doc.save(`Batch_Cohort_Comparison.pdf`);
                 } else {
                     const cList = sectionReport?.sectionComparisons || [];
                     if (cList.length === 0) {
@@ -870,7 +1206,7 @@ function InstitutionalIntelligenceContent() {
                 </div>
             </div>
 
-            {/* Mode Switcher Tabs */}
+            {/* Unified Intelligence Navigation Bar */}
             <div style={{
                 display: 'flex',
                 background: 'var(--surface)',
@@ -881,135 +1217,58 @@ function InstitutionalIntelligenceContent() {
                 marginBottom: '20px',
                 width: 'fit-content',
                 maxWidth: '100%',
-                flexWrap: 'wrap'
+                flexWrap: 'wrap',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
             }}>
-                <button
-                    type="button"
-                    onClick={() => setViewTab('sections')}
-                    style={{
-                        padding: '10px 18px',
-                        borderRadius: '9px',
-                        border: 'none',
-                        background: viewTab === 'sections' ? 'var(--primary)' : 'transparent',
-                        color: viewTab === 'sections' ? '#FFFFFF' : 'var(--tx-muted)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <span className="material-icons-round" style={{ fontSize: '18px' }}>school</span>
-                    Class &amp; Section Comparison
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setViewTab('department')}
-                    style={{
-                        padding: '10px 18px',
-                        borderRadius: '9px',
-                        border: 'none',
-                        background: viewTab === 'department' ? 'var(--primary)' : 'transparent',
-                        color: viewTab === 'department' ? '#FFFFFF' : 'var(--tx-muted)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <span className="material-icons-round" style={{ fontSize: '18px' }}>domain</span>
-                    Department &amp; Cohort Trends
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setViewTab('compare')}
-                    style={{
-                        padding: '10px 18px',
-                        borderRadius: '9px',
-                        border: 'none',
-                        background: viewTab === 'compare' ? 'var(--primary)' : 'transparent',
-                        color: viewTab === 'compare' ? '#FFFFFF' : 'var(--tx-muted)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <span className="material-icons-round" style={{ fontSize: '18px' }}>compare_arrows</span>
-                    Student Head-to-Head Comparator
-                </button>
+                {[
+                    { id: 'classes', label: 'Class-to-Class Comparison', icon: 'groups', tab: 'sections', mode: 'classes' },
+                    { id: 'batches', label: 'Batch Cohorts', icon: 'school', tab: 'sections', mode: 'batches' },
+                    { id: 'sections', label: 'Section Benchmarking', icon: 'view_column', tab: 'sections', mode: 'sections' },
+                    { id: 'department', label: 'Department Trends', icon: 'domain', tab: 'department', mode: null },
+                    { id: 'compare', label: 'Student Comparator', icon: 'compare_arrows', tab: 'compare', mode: null }
+                ].map(item => {
+                    const isActive = viewTab === 'sections'
+                        ? (compareMode === item.mode)
+                        : (viewTab === item.tab);
+                    return (
+                        <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                                setViewTab(item.tab);
+                                if (item.mode) setCompareMode(item.mode);
+                            }}
+                            style={{
+                                padding: '10px 18px',
+                                borderRadius: '9px',
+                                border: 'none',
+                                background: isActive ? 'var(--primary)' : 'transparent',
+                                color: isActive ? '#FFFFFF' : 'var(--tx-muted)',
+                                fontWeight: 700,
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span className="material-icons-round" style={{ fontSize: '18px' }}>{item.icon}</span>
+                            {item.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* TAB: CLASS & SECTION COMPARISON (viewTab === 'sections') */}
             {viewTab === 'sections' && (
                 <>
-                    {/* Sub-Switch: Class Comparison vs Section Benchmarking */}
-                    <div style={{
-                        display: 'flex',
-                        gap: '8px',
-                        alignItems: 'center',
-                        marginBottom: '18px',
-                        background: 'var(--surface-low)',
-                        padding: '6px',
-                        borderRadius: '10px',
-                        width: 'fit-content',
-                        border: '1px solid var(--border)'
-                    }}>
-                        <button
-                            type="button"
-                            onClick={() => setCompareMode('classes')}
-                            style={{
-                                padding: '8px 16px',
-                                borderRadius: '8px',
-                                border: 'none',
-                                background: compareMode === 'classes' ? 'var(--primary)' : 'transparent',
-                                color: compareMode === 'classes' ? '#FFFFFF' : 'var(--tx-muted)',
-                                fontWeight: 800,
-                                fontSize: '12px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                            }}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '16px' }}>groups</span>
-                            Class-to-Class Comparison
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setCompareMode('sections')}
-                            style={{
-                                padding: '8px 16px',
-                                borderRadius: '8px',
-                                border: 'none',
-                                background: compareMode === 'sections' ? 'var(--primary)' : 'transparent',
-                                color: compareMode === 'sections' ? '#FFFFFF' : 'var(--tx-muted)',
-                                fontWeight: 800,
-                                fontSize: '12px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                            }}
-                        >
-                            <span className="material-icons-round" style={{ fontSize: '16px' }}>view_column</span>
-                            Section Benchmarking
-                        </button>
-                    </div>
 
                     {/* SUB-VIEW 1: CLASS-TO-CLASS COMPARISON */}
                     {compareMode === 'classes' && (
                         <>
                             {/* Class Filters Bar */}
-                            <Card style={{ marginBottom: '24px' }}>
+                            <Card style={{ marginBottom: '20px' }}>
                                 <CardContent style={{ padding: '16px 20px' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
                                         <Select
@@ -1027,7 +1286,7 @@ function InstitutionalIntelligenceContent() {
                                             value={classBatch}
                                             onChange={e => setClassBatch(e.target.value)}
                                             options={[
-                                                { value: 'ALL', label: 'All Batches (Overall)' },
+                                                { value: 'ALL', label: 'All Batches (Cross-Batch)' },
                                                 ...(meta.batches || []).map(b => ({ value: b, label: `Batch ${b}` }))
                                             ]}
                                         />
@@ -1038,10 +1297,13 @@ function InstitutionalIntelligenceContent() {
                                             onChange={e => setClassSemester(e.target.value)}
                                             options={[
                                                 { value: 'ALL', label: 'All Semesters (Compare All Classes)' },
-                                                ...(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({
-                                                    value: String(s),
-                                                    label: s === 6 ? `Semester ${s} (3 Classes Active)` : `Semester ${s}`
-                                                }))
+                                                ...(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => {
+                                                    const count = activeClassesPerSemester[s];
+                                                    return {
+                                                        value: String(s),
+                                                        label: count ? `Semester ${s} (${count} Class${count > 1 ? 'es' : ''} Active)` : `Semester ${s}`
+                                                    };
+                                                })
                                             ]}
                                         />
 
@@ -1055,16 +1317,117 @@ function InstitutionalIntelligenceContent() {
                                 </CardContent>
                             </Card>
 
+                            {/* Interactive Class Comparison Selector Strip */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '10px',
+                                marginBottom: '20px',
+                                padding: '12px 18px',
+                                background: 'var(--surface-low)',
+                                borderRadius: '10px',
+                                border: '1px solid var(--border)'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>checklist</span>
+                                        Comparing {selectedClassIds.length > 0 ? `${selectedClassIds.length} Selected Classes` : `All ${filteredClassesList.length} Filtered Classes`}:
+                                    </span>
+                                    {selectedClassIds.length > 0 ? (
+                                        selectedClassIds.map(id => {
+                                            const cls = (classReport?.classes || []).find(c => c.id === id);
+                                            if (!cls) return null;
+                                            return (
+                                                <span key={id} style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '6px',
+                                                    background: 'rgba(99, 102, 241, 0.1)',
+                                                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                                                    color: 'var(--primary)',
+                                                    fontSize: '11px',
+                                                    fontWeight: 800
+                                                }}>
+                                                    {cls.name} {cls.sectionLetter && cls.sectionLetter !== '—' ? `(${cls.sectionLetter})` : ''}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleClassSelection(id)}
+                                                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit', padding: 0, display: 'flex', alignItems: 'center' }}
+                                                        title="Remove from comparison"
+                                                    >
+                                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                                    </button>
+                                                </span>
+                                            );
+                                        })
+                                    ) : (
+                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                            (Tip: Check individual classes in the matrix table below to compare specific classes side-by-side)
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    {filteredClassesList.length > 0 && selectedClassIds.length < filteredClassesList.length && (
+                                        <button
+                                            type="button"
+                                            onClick={selectAllFilteredClasses}
+                                            style={{
+                                                fontSize: '11px',
+                                                fontWeight: 800,
+                                                padding: '5px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface)',
+                                                cursor: 'pointer',
+                                                color: 'var(--tx-main)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>select_all</span>
+                                            Select All ({filteredClassesList.length})
+                                        </button>
+                                    )}
+                                    {selectedClassIds.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={clearClassSelection}
+                                            style={{
+                                                fontSize: '11px',
+                                                fontWeight: 800,
+                                                padding: '5px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                background: 'rgba(239, 68, 68, 0.08)',
+                                                cursor: 'pointer',
+                                                color: '#DC2626',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>restart_alt</span>
+                                            Reset to All
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Class KPIs */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '24px' }}>
                                 <Card>
                                     <CardContent style={{ padding: '20px' }}>
                                         <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Top Performing Class</div>
-                                        <div style={{ fontSize: '22px', fontWeight: 900, color: '#16A34A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {classReport?.benchmarks?.bestClass ? classReport.benchmarks.bestClass.name : '—'}
+                                        <div style={{ fontSize: '20px', fontWeight: 900, color: '#16A34A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {comparisonBenchmarks.bestClass ? comparisonBenchmarks.bestClass.name : '—'}
                                         </div>
                                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
-                                            {classReport?.benchmarks?.bestClass ? `${classReport.benchmarks.bestClass.passRate}% Pass • SGPA ${classReport.benchmarks.bestClass.avgSGPA}` : 'No evaluated class'}
+                                            {comparisonBenchmarks.bestClass ? `${comparisonBenchmarks.bestClass.passRate}% Pass • SGPA ${comparisonBenchmarks.bestClass.avgSGPA}` : 'No evaluated class'}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -1072,19 +1435,19 @@ function InstitutionalIntelligenceContent() {
                                     <CardContent style={{ padding: '20px' }}>
                                         <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Benchmark Mean SGPA</div>
                                         <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>
-                                            {(classReport?.benchmarks?.benchmarkAvgSGPA ?? 0).toFixed(2)}
+                                            {comparisonBenchmarks.benchmarkAvgSGPA.toFixed(2)}
                                         </div>
-                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Cross-class baseline</div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Compared cohort baseline</div>
                                     </CardContent>
                                 </Card>
                                 <Card>
                                     <CardContent style={{ padding: '20px' }}>
                                         <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Class Disparity / Variance</div>
                                         <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>
-                                            {(classReport?.benchmarks?.passRateSpread ?? 0).toFixed(1)}%
+                                            {comparisonBenchmarks.passRateSpread.toFixed(1)}%
                                         </div>
                                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
-                                            SGPA spread: {(classReport?.benchmarks?.sgpaSpread ?? 0).toFixed(2)} pts
+                                            SGPA spread: {comparisonBenchmarks.sgpaSpread.toFixed(2)} pts
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -1092,50 +1455,199 @@ function InstitutionalIntelligenceContent() {
                                     <CardContent style={{ padding: '20px' }}>
                                         <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Classes Evaluated</div>
                                         <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>
-                                            {filteredClassesList.length}
+                                            {classesToCompare.length}
                                         </div>
                                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
-                                            {classReport?.benchmarks?.totalEnrolled ?? 0} total enrolled students
+                                            {selectedClassIds.length > 0 ? `${selectedClassIds.length} of ${filteredClassesList.length} classes chosen` : `${comparisonBenchmarks.totalEnrolled} total enrolled students`}
                                         </div>
                                     </CardContent>
                                 </Card>
                             </div>
 
-                            {/* Visual Class Comparison Chart */}
-                            {filteredClassesList.length > 0 && (
+                            {/* Accurate, High-Fidelity Performance Visualizer & Histograms */}
+                            {classesToCompare.length > 0 && (
                                 <Card style={{ marginBottom: '24px' }}>
-                                    <CardHeader>
-                                        <CardTitle>Comparative Class Performance (Mean SGPA &amp; Pass Rate)</CardTitle>
+                                    <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                        <div>
+                                            <CardTitle>Comparative Class Performance &amp; Grade Spread</CardTitle>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                {classChartType === 'benchmark' && 'Cross-class Mean SGPA & Pass Rate comparison with exact value metrics'}
+                                                {classChartType === 'histogram' && 'VTU NEP Grade Distribution Histogram (O to F Backlogs) across compared classes'}
+                                                {classChartType === 'classification' && 'Institutional Academic Standing spread (Distinction, 1st Class, 2nd Class, Pass, Backlogs)'}
+                                            </div>
+                                        </div>
+
+                                        {/* Chart Type Switcher */}
+                                        <div style={{
+                                            display: 'flex',
+                                            gap: '4px',
+                                            background: 'var(--surface-low)',
+                                            padding: '4px',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)'
+                                        }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setClassChartType('benchmark')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: classChartType === 'benchmark' ? 'var(--primary)' : 'transparent',
+                                                    color: classChartType === 'benchmark' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 800,
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>bar_chart</span>
+                                                Benchmark
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setClassChartType('histogram')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: classChartType === 'histogram' ? 'var(--primary)' : 'transparent',
+                                                    color: classChartType === 'histogram' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 800,
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>leaderboard</span>
+                                                Grade Histogram
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setClassChartType('classification')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: classChartType === 'classification' ? 'var(--primary)' : 'transparent',
+                                                    color: classChartType === 'classification' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 800,
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>pie_chart</span>
+                                                Classification
+                                            </button>
+                                        </div>
                                     </CardHeader>
                                     <CardContent style={{ padding: '20px' }}>
-                                        <div style={{ height: '320px', width: '100%' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <ComposedChart data={filteredClassesList}>
-                                                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                                                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                                                    <YAxis yAxisId="left" domain={[0, 100]} unit="%" />
-                                                    <YAxis yAxisId="right" orientation="right" domain={[0, 10]} />
-                                                    <Tooltip />
-                                                    <Legend />
-                                                    <Bar yAxisId="left" dataKey="passRate" name="Pass Rate (%)" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                                                    <Line yAxisId="right" type="monotone" dataKey="avgSGPA" name="Mean SGPA" stroke="#10B981" strokeWidth={3} dot={{ r: 5 }} />
-                                                </ComposedChart>
-                                            </ResponsiveContainer>
-                                        </div>
+                                        {classChartType === 'benchmark' && (
+                                            <div style={{ height: '360px', width: '100%' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <ComposedChart data={classesToCompare} margin={{ top: 35, right: 35, left: 10, bottom: 65 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                        <XAxis dataKey="shortName" interval={0} angle={-15} textAnchor="end" height={60} tick={{ fontSize: 11, fill: 'var(--tx-main)', fontWeight: 600 }} />
+                                                        <YAxis yAxisId="left" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
+                                                        <YAxis yAxisId="right" orientation="right" domain={[0, 10]} tick={{ fontSize: 11 }} />
+                                                        <Tooltip content={<CustomBenchmarkTooltip />} />
+                                                        <Legend verticalAlign="top" align="right" height={36} wrapperStyle={{ paddingBottom: '12px' }} />
+                                                        <Bar yAxisId="left" dataKey="passRate" name="Pass Rate (%)" fill="#6366F1" radius={[4, 4, 0, 0]}>
+                                                            <LabelList dataKey="passRate" position="insideTop" offset={10} formatter={v => typeof v === 'number' ? `${v}%` : ''} fill="#FFFFFF" fontSize={11} fontWeight={800} />
+                                                        </Bar>
+                                                        <Line yAxisId="right" type="monotone" dataKey="avgSGPA" name="Mean SGPA" stroke="#10B981" strokeWidth={3} dot={{ r: 6, fill: '#10B981' }}>
+                                                            <LabelList dataKey="avgSGPA" position="top" offset={12} formatter={v => typeof v === 'number' && v > 0 ? `${v}` : ''} fill="#10B981" fontSize={11} fontWeight={800} />
+                                                        </Line>
+                                                    </ComposedChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
+
+                                        {classChartType === 'histogram' && (
+                                            <div style={{ height: '360px', width: '100%' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={classGradeHistogramData} margin={{ top: 35, right: 35, left: 10, bottom: 40 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                        <XAxis dataKey="grade" tick={{ fontSize: 11, fontWeight: 700, fill: 'var(--tx-main)' }} />
+                                                        <YAxis tick={{ fontSize: 11 }} />
+                                                        <Tooltip content={<CustomHistogramTooltip />} />
+                                                        <Legend verticalAlign="top" align="right" height={36} wrapperStyle={{ paddingBottom: '12px' }} />
+                                                        {classesToCompare.map((c, idx) => (
+                                                            <Bar key={c.id} dataKey={c.shortName || c.name} fill={getStudentColor(idx)} radius={[4, 4, 0, 0]}>
+                                                                {classesToCompare.length <= 4 && (
+                                                                    <LabelList dataKey={c.shortName || c.name} position="top" formatter={v => v > 0 ? v : ''} fill="var(--tx-main)" fontSize={10} fontWeight={700} />
+                                                                )}
+                                                            </Bar>
+                                                        ))}
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
+
+                                        {classChartType === 'classification' && (
+                                            <div style={{ height: '360px', width: '100%' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={classesToCompare} margin={{ top: 25, right: 35, left: 10, bottom: 65 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                        <XAxis dataKey="shortName" interval={0} angle={-15} textAnchor="end" height={60} tick={{ fontSize: 11, fill: 'var(--tx-main)', fontWeight: 600 }} />
+                                                        <YAxis tick={{ fontSize: 11 }} />
+                                                        <Tooltip content={<CustomClassificationTooltip />} />
+                                                        <Legend verticalAlign="top" height={36} />
+                                                        <Bar dataKey="distinctionCount" name="Distinction (≥7.75)" stackId="a" fill="#10B981" />
+                                                        <Bar dataKey="firstClassCount" name="First Class (6.75-7.74)" stackId="a" fill="#3B82F6" />
+                                                        <Bar dataKey="secondClassCount" name="Second Class (5.0-6.74)" stackId="a" fill="#F59E0B" />
+                                                        <Bar dataKey="passClassCount" name="Pass Class (4.0-4.99)" stackId="a" fill="#64748B" />
+                                                        <Bar dataKey="backlogCount" name="Backlogs / Arrears (<4.0)" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}
 
                             {/* Class Performance Matrix */}
                             <Card style={{ marginBottom: '24px' }}>
-                                <CardHeader>
-                                    <CardTitle>Institutional Class Performance Matrix</CardTitle>
+                                <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                    <div>
+                                        <CardTitle>Institutional Class Performance Matrix</CardTitle>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                            Select classes using the checkboxes or '+ Compare' button to benchmark specific cohorts side-by-side.
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        {selectedClassIds.length > 0 ? (
+                                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>
+                                                {selectedClassIds.length} of {filteredClassesList.length} Active in Comparison
+                                            </span>
+                                        ) : (
+                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                All {filteredClassesList.length} Active in Comparison
+                                            </span>
+                                        )}
+                                    </div>
                                 </CardHeader>
                                 <CardContent style={{ padding: 0 }}>
                                     <div style={{ overflowX: 'auto' }}>
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                                             <thead>
                                                 <tr style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', color: 'var(--tx-dim)', textTransform: 'uppercase', fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em' }}>
+                                                    <th style={{ padding: '12px 14px', width: '38px', textAlign: 'center' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={filteredClassesList.length > 0 && selectedClassIds.length === filteredClassesList.length}
+                                                            onChange={e => e.target.checked ? selectAllFilteredClasses() : clearClassSelection()}
+                                                            title="Select all classes for comparison"
+                                                            style={{ cursor: 'pointer' }}
+                                                        />
+                                                    </th>
                                                     <th style={{ padding: '12px 16px' }}>Class Name &amp; Section</th>
                                                     <th style={{ padding: '12px 16px' }}>Department</th>
                                                     <th style={{ padding: '12px 16px' }}>Sem &amp; Batch</th>
@@ -1152,27 +1664,45 @@ function InstitutionalIntelligenceContent() {
                                             <tbody>
                                                 {classLoading ? (
                                                     <tr>
-                                                        <td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                        <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                             Analyzing institutional classes data...
                                                         </td>
                                                     </tr>
                                                 ) : filteredClassesList.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                                        <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>
                                                             No classes match the selected filter criteria.
                                                         </td>
                                                     </tr>
                                                 ) : (
                                                     filteredClassesList.map(c => {
                                                         const isExpanded = expandedClassId === c.id;
+                                                        const isSelected = selectedClassIds.includes(c.id);
                                                         return (
-                                                            <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                            <tr key={c.id} style={{
+                                                                borderBottom: '1px solid var(--border)',
+                                                                background: isSelected ? 'rgba(99, 102, 241, 0.03)' : 'transparent',
+                                                                transition: 'background 0.15s ease'
+                                                            }}>
+                                                                <td style={{ padding: '14px 14px', textAlign: 'center' }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        onChange={() => toggleClassSelection(c.id)}
+                                                                        style={{ cursor: 'pointer' }}
+                                                                    />
+                                                                </td>
                                                                 <td style={{ padding: '14px 16px', fontWeight: 800, color: 'var(--tx-main)' }}>
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                         <span>{c.name}</span>
                                                                         {c.sectionLetter && c.sectionLetter !== '—' && (
                                                                             <span style={{ fontSize: '10px', background: 'var(--primary-low)', color: 'var(--primary)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
                                                                                 Sec {c.sectionLetter}
+                                                                            </span>
+                                                                        )}
+                                                                        {isSelected && (
+                                                                            <span style={{ fontSize: '10px', background: 'var(--primary)', color: '#FFFFFF', padding: '1px 5px', borderRadius: '3px', fontWeight: 800 }}>
+                                                                                COMPARING
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -1205,27 +1735,47 @@ function InstitutionalIntelligenceContent() {
                                                                     {c.topper ? (
                                                                         <div>
                                                                             <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>{c.topper.name}</span>
-                                                                            <span style={{ marginLeft: '4px', color: 'var(--primary)', fontWeight: 800 }}>({c.topper.sgpa})</span>
+                                                                            <span style={{ marginLeft: '4px', color: 'var(--primary)', fontWeight: 800 }}>
+                                                                                ({c.topper.cgpa ? `${c.topper.cgpa} CGPA` : `${c.topper.sgpa} SGPA`})
+                                                                            </span>
                                                                         </div>
                                                                     ) : '—'}
                                                                 </td>
                                                                 <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setExpandedClassId(isExpanded ? null : c.id)}
-                                                                        style={{
-                                                                            padding: '4px 10px',
-                                                                            borderRadius: '6px',
-                                                                            border: '1px solid var(--border)',
-                                                                            background: isExpanded ? 'var(--primary)' : 'var(--surface-low)',
-                                                                            color: isExpanded ? '#FFFFFF' : 'var(--tx-main)',
-                                                                            fontSize: '11px',
-                                                                            fontWeight: 700,
-                                                                            cursor: 'pointer'
-                                                                        }}
-                                                                    >
-                                                                        {isExpanded ? 'Hide' : 'Details'}
-                                                                    </button>
+                                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleClassSelection(c.id)}
+                                                                            style={{
+                                                                                padding: '4px 10px',
+                                                                                borderRadius: '6px',
+                                                                                border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
+                                                                                background: isSelected ? 'var(--primary)' : 'var(--surface-low)',
+                                                                                color: isSelected ? '#FFFFFF' : 'var(--primary)',
+                                                                                fontSize: '11px',
+                                                                                fontWeight: 800,
+                                                                                cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            {isSelected ? '✓ In Compare' : '+ Compare'}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setExpandedClassId(isExpanded ? null : c.id)}
+                                                                            style={{
+                                                                                padding: '4px 10px',
+                                                                                borderRadius: '6px',
+                                                                                border: '1px solid var(--border)',
+                                                                                background: 'var(--surface-low)',
+                                                                                color: 'var(--tx-muted)',
+                                                                                fontSize: '11px',
+                                                                                fontWeight: 700,
+                                                                                cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            {isExpanded ? 'Hide' : 'Details'}
+                                                                        </button>
+                                                                    </div>
                                                                 </td>
                                                             </tr>
                                                         );
@@ -1256,39 +1806,46 @@ function InstitutionalIntelligenceContent() {
                                         <CardContent style={{ padding: '20px' }}>
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '20px' }}>
                                                 <div style={{ background: 'var(--surface-low)', padding: '12px 16px', borderRadius: '8px' }}>
-                                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)' }}>Highest SGPA</div>
-                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#16A34A', marginTop: '2px' }}>{expClass.highestSGPA}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', textTransform: 'uppercase', fontWeight: 800 }}>Faculty In Charge</div>
+                                                    <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)', marginTop: '4px' }}>{expClass.facultyName}</div>
+                                                    {expClass.facultyEmail && <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>{expClass.facultyEmail}</div>}
                                                 </div>
                                                 <div style={{ background: 'var(--surface-low)', padding: '12px 16px', borderRadius: '8px' }}>
-                                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)' }}>Lowest SGPA</div>
-                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#DC2626', marginTop: '2px' }}>{expClass.lowestSGPA}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', textTransform: 'uppercase', fontWeight: 800 }}>Distinctions (≥7.75)</div>
+                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#16A34A', marginTop: '4px' }}>{expClass.distinctionCount}</div>
+                                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>{pct(expClass.distinctionCount, expClass.appeared)}% of evaluated</div>
                                                 </div>
                                                 <div style={{ background: 'var(--surface-low)', padding: '12px 16px', borderRadius: '8px' }}>
-                                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)' }}>First Class with Distinction</div>
-                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)', marginTop: '2px' }}>{expClass.distinctionCount}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', textTransform: 'uppercase', fontWeight: 800 }}>First Class (6.75 - 7.74)</div>
+                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)', marginTop: '4px' }}>{expClass.firstClassCount}</div>
+                                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>{pct(expClass.firstClassCount, expClass.appeared)}% of evaluated</div>
                                                 </div>
                                                 <div style={{ background: 'var(--surface-low)', padding: '12px 16px', borderRadius: '8px' }}>
-                                                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)' }}>First Class (6.75 - 7.74)</div>
-                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tx-main)', marginTop: '2px' }}>{expClass.firstClassCount}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', textTransform: 'uppercase', fontWeight: 800 }}>Backlog Arrears</div>
+                                                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#DC2626', marginTop: '4px' }}>{expClass.backlogCount}</div>
+                                                    <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>{pct(expClass.backlogCount, expClass.appeared)}% of evaluated</div>
                                                 </div>
                                             </div>
 
-                                            {/* Subject Breakdown in this class */}
-                                            {expClass.subjectSummary?.length > 0 && (
+                                            {/* Subject Performance breakdown inside class */}
+                                            {(expClass.subjectSummary || []).length > 0 && (
                                                 <div>
-                                                    <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '10px' }}>
-                                                        Subject-wise Performance in this Class
+                                                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '10px' }}>
+                                                        Subject Breakdown for {expClass.name}
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
                                                         {expClass.subjectSummary.map(sub => (
-                                                            <div key={sub.code} style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <div>
-                                                                    <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>{sub.code}</div>
-                                                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{sub.name}</div>
+                                                            <div key={sub.code} style={{ background: 'var(--surface-low)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>{sub.code}</span>
+                                                                    <span style={{ fontWeight: 800, fontSize: '12px', color: sub.passRate >= 70 ? '#16A34A' : '#DC2626' }}>{sub.passRate}% Pass</span>
                                                                 </div>
-                                                                <div style={{ textAlign: 'right' }}>
-                                                                    <div style={{ fontWeight: 800, fontSize: '13px', color: sub.passRate >= 70 ? '#16A34A' : '#DC2626' }}>{sub.passRate}%</div>
-                                                                    <div style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>{sub.passed}/{sub.appeared} passed</div>
+                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    {sub.name}
+                                                                </div>
+                                                                <div style={{ fontSize: '11px', color: 'var(--tx-dim)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span>Appeared: {sub.appeared}</span>
+                                                                    <span>Avg Marks: {sub.avgMarks}</span>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -1299,6 +1856,348 @@ function InstitutionalIntelligenceContent() {
                                     </Card>
                                 );
                             })()}
+                        </>
+                    )}
+
+                    {/* SUB-VIEW 2: BATCH COHORT COMPARISON */}
+                    {compareMode === 'batches' && (
+                        <>
+                            {/* Batch Selection Strip */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '10px',
+                                marginBottom: '20px',
+                                padding: '12px 18px',
+                                background: 'var(--surface-low)',
+                                borderRadius: '10px',
+                                border: '1px solid var(--border)'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>history_edu</span>
+                                        Comparing Graduation Cohorts ({batchesToCompare.length} Batches Active):
+                                    </span>
+                                    {batchesList.map(b => {
+                                        const isSelected = selectedBatchesForCompare.length === 0 || selectedBatchesForCompare.includes(b.batch);
+                                        return (
+                                            <button
+                                                key={b.batch}
+                                                type="button"
+                                                onClick={() => toggleBatchSelection(b.batch)}
+                                                style={{
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
+                                                    background: isSelected ? 'var(--primary)' : 'var(--surface)',
+                                                    color: isSelected ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontSize: '11px',
+                                                    fontWeight: 800,
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                Batch {b.batch}
+                                                <span style={{ opacity: 0.8, fontSize: '10px' }}>({b.appeared} stu)</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    {selectedBatchesForCompare.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={clearBatchSelection}
+                                            style={{
+                                                fontSize: '11px',
+                                                fontWeight: 800,
+                                                padding: '5px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid var(--border)',
+                                                background: 'var(--surface)',
+                                                cursor: 'pointer',
+                                                color: 'var(--tx-main)'
+                                            }}
+                                        >
+                                            Compare All Batches
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Batch KPIs */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '24px' }}>
+                                <Card>
+                                    <CardContent style={{ padding: '20px' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Top Performing Batch</div>
+                                        <div style={{ fontSize: '24px', fontWeight: 900, color: '#16A34A' }}>
+                                            {batchComparisonBenchmarks.bestBatch ? `Batch ${batchComparisonBenchmarks.bestBatch.batch}` : '—'}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                                            {batchComparisonBenchmarks.bestBatch ? `${batchComparisonBenchmarks.bestBatch.passRate}% Pass • SGPA ${batchComparisonBenchmarks.bestBatch.avgSGPA}` : 'No cohort data'}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardContent style={{ padding: '20px' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Institutional Benchmark SGPA</div>
+                                        <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>
+                                            {batchComparisonBenchmarks.benchmarkAvgSGPA.toFixed(2)}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Cross-cohort baseline</div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardContent style={{ padding: '20px' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Cohort Pass Spread</div>
+                                        <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>
+                                            {batchComparisonBenchmarks.passRateSpread.toFixed(1)}%
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Min-to-max pass disparity</div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardContent style={{ padding: '20px' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Batches Evaluated</div>
+                                        <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>
+                                            {batchesToCompare.length}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                                            {batchComparisonBenchmarks.totalAppeared} total students evaluated
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            {/* Batch Visual Comparison Chart */}
+                            {batchesToCompare.length > 0 && (
+                                <Card style={{ marginBottom: '24px' }}>
+                                    <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                        <div>
+                                            <CardTitle>Batch Cohort Benchmarks &amp; Grade Curves</CardTitle>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                {batchChartType === 'benchmark' && 'Cross-batch Pass Rate and Mean SGPA progression over academic years'}
+                                                {batchChartType === 'histogram' && 'VTU NEP Grade Distribution Histogram across graduation cohorts'}
+                                                {batchChartType === 'classification' && 'Academic standing category distribution across cohorts'}
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            display: 'flex',
+                                            gap: '4px',
+                                            background: 'var(--surface-low)',
+                                            padding: '4px',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)'
+                                        }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setBatchChartType('benchmark')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: batchChartType === 'benchmark' ? 'var(--primary)' : 'transparent',
+                                                    color: batchChartType === 'benchmark' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 800,
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Benchmark
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setBatchChartType('histogram')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: batchChartType === 'histogram' ? 'var(--primary)' : 'transparent',
+                                                    color: batchChartType === 'histogram' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 800,
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Grade Histogram
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setBatchChartType('classification')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: batchChartType === 'classification' ? 'var(--primary)' : 'transparent',
+                                                    color: batchChartType === 'classification' ? '#FFFFFF' : 'var(--tx-muted)',
+                                                    fontWeight: 800,
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Classification
+                                            </button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent style={{ padding: '20px' }}>
+                                        {batchChartType === 'benchmark' && (
+                                            <div style={{ height: '340px', width: '100%' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <ComposedChart data={batchesToCompare} margin={{ top: 35, right: 35, left: 10, bottom: 40 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                        <XAxis dataKey="batch" tickFormatter={b => `Batch ${b}`} tick={{ fontSize: 12, fontWeight: 800, fill: 'var(--tx-main)' }} />
+                                                        <YAxis yAxisId="left" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
+                                                        <YAxis yAxisId="right" orientation="right" domain={[0, 10]} tick={{ fontSize: 11 }} />
+                                                        <Tooltip content={<CustomBenchmarkTooltip />} />
+                                                        <Legend verticalAlign="top" align="right" height={36} wrapperStyle={{ paddingBottom: '12px' }} />
+                                                        <Bar yAxisId="left" dataKey="passRate" name="Pass Rate (%)" fill="#6366F1" radius={[4, 4, 0, 0]}>
+                                                            <LabelList dataKey="passRate" position="insideTop" offset={10} formatter={v => `${v}%`} fill="#FFFFFF" fontSize={11} fontWeight={800} />
+                                                        </Bar>
+                                                        <Line yAxisId="right" type="monotone" dataKey="avgSGPA" name="Mean SGPA" stroke="#10B981" strokeWidth={3} dot={{ r: 6, fill: '#10B981' }}>
+                                                            <LabelList dataKey="avgSGPA" position="top" offset={12} formatter={v => `${v}`} fill="#10B981" fontSize={11} fontWeight={800} />
+                                                        </Line>
+                                                    </ComposedChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
+
+                                        {batchChartType === 'histogram' && (
+                                            <div style={{ height: '340px', width: '100%' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={batchGradeHistogramData} margin={{ top: 35, right: 35, left: 10, bottom: 40 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                        <XAxis dataKey="grade" tick={{ fontSize: 11, fontWeight: 700, fill: 'var(--tx-main)' }} />
+                                                        <YAxis tick={{ fontSize: 11 }} />
+                                                        <Tooltip content={<CustomHistogramTooltip />} />
+                                                        <Legend verticalAlign="top" align="right" height={36} wrapperStyle={{ paddingBottom: '12px' }} />
+                                                        {batchesToCompare.map((b, idx) => (
+                                                            <Bar key={b.batch} dataKey={`Batch ${b.batch}`} fill={getStudentColor(idx)} radius={[4, 4, 0, 0]}>
+                                                                <LabelList dataKey={`Batch ${b.batch}`} position="top" formatter={v => v > 0 ? v : ''} fill="var(--tx-main)" fontSize={10} fontWeight={700} />
+                                                            </Bar>
+                                                        ))}
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
+
+                                        {batchChartType === 'classification' && (
+                                            <div style={{ height: '340px', width: '100%' }}>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <BarChart data={batchesToCompare} margin={{ top: 25, right: 35, left: 10, bottom: 40 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                                                        <XAxis dataKey="batch" tickFormatter={b => `Batch ${b}`} tick={{ fontSize: 12, fontWeight: 800, fill: 'var(--tx-main)' }} />
+                                                        <YAxis tick={{ fontSize: 11 }} />
+                                                        <Tooltip content={<CustomClassificationTooltip />} />
+                                                        <Legend verticalAlign="top" height={36} />
+                                                        <Bar dataKey="distinctionCount" name="Distinction (≥7.75)" stackId="a" fill="#10B981" />
+                                                        <Bar dataKey="firstClassCount" name="First Class (6.75-7.74)" stackId="a" fill="#3B82F6" />
+                                                        <Bar dataKey="secondClassCount" name="Second Class (5.0-6.74)" stackId="a" fill="#F59E0B" />
+                                                        <Bar dataKey="passClassCount" name="Pass Class (4.0-4.99)" stackId="a" fill="#64748B" />
+                                                        <Bar dataKey="backlogCount" name="Backlogs (<4.0)" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Batch Cohort Performance Matrix */}
+                            <Card style={{ marginBottom: '24px' }}>
+                                <CardHeader>
+                                    <CardTitle>Institutional Batch Cohort Performance Matrix</CardTitle>
+                                </CardHeader>
+                                <CardContent style={{ padding: 0 }}>
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', color: 'var(--tx-dim)', textTransform: 'uppercase', fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em' }}>
+                                                    <th style={{ padding: '12px 16px' }}>Graduation Batch</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Class Count</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Total Enrolled</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Cohort Appeared</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Mean SGPA</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Pass Rate %</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Distinctions</th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Backlogs</th>
+                                                    <th style={{ padding: '12px 16px' }}>Cohort Topper</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {batchesToCompare.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                                            No cohort records available for comparison.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    batchesToCompare.map(b => (
+                                                        <tr key={b.batch} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                            <td style={{ padding: '14px 16px', fontWeight: 900, color: 'var(--tx-main)', fontSize: '14px' }}>
+                                                                Batch {b.batch}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                                                {b.classCount}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                                                {b.enrolledCount}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                                {b.appeared}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: 'var(--primary)' }}>
+                                                                {b.avgSGPA.toFixed(2)}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: b.passRate >= 70 ? '#16A34A' : '#DC2626' }}>
+                                                                {b.passRate.toFixed(1)}%
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                                                {b.distinctionCount}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: b.backlogCount > 0 ? '#DC2626' : '#16A34A' }}>
+                                                                {b.backlogCount}
+                                                            </td>
+                                                            <td style={{ padding: '14px 16px', fontSize: '12px' }}>
+                                                                {b.topper ? (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                            <span style={{ fontSize: '13px' }}>🏆</span>
+                                                                            <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>{b.topper.name}</span>
+                                                                            <span style={{
+                                                                                fontSize: '10px',
+                                                                                fontWeight: 800,
+                                                                                padding: '2px 6px',
+                                                                                borderRadius: '4px',
+                                                                                background: 'rgba(16, 185, 129, 0.12)',
+                                                                                color: '#059669',
+                                                                                border: '1px solid rgba(16, 185, 129, 0.25)'
+                                                                            }}>
+                                                                                {b.topper.cgpa ? `${b.topper.cgpa} CGPA` : `${b.topper.sgpa} SGPA`}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                                                                            {b.topper.usn} • Cumulative Rank 1
+                                                                            {b.semesterLeader && b.semesterLeader.usn !== b.topper.usn && (
+                                                                                <span style={{ marginLeft: '6px', color: 'var(--tx-muted)' }} title={`Semester Peak: ${b.semesterLeader.name} (${b.semesterLeader.sgpa} SGPA · Sem ${b.semesterLeader.semester})`}>
+                                                                                    (Peak Sem: {b.semesterLeader.sgpa})
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </>
                     )}
 
@@ -1360,21 +2259,117 @@ function InstitutionalIntelligenceContent() {
                                         </div>
                                         <div style={{ fontSize: '13px', color: 'var(--tx-muted)' }}>
                                             {sectionReport?.sections?.length === 1 
-                                                ? `Only Section ${sectionReport.sections[0]} is registered for this cohort. Add additional sections in Class Management to enable comparative analytics.`
+                                                ? `Only Section ${sectionReport.sections[0]} is registered for this cohort. Benchmarking against Department Baseline is active.`
                                                 : sectionReport?.sections?.length === 0 
-                                                    ? 'No sections have been created for this cohort yet. Create sections in Class Management to enable section comparison.'
-                                                    : `Active evaluated data is available in Semester ${activeEvaluatedSemesters.slice(-1)[0] || 6}.`}
+                                                    ? 'No evaluation records found for this cohort in this semester.'
+                                                    : `Active evaluated data is available in Semester 6.`}
                                         </div>
                                     </div>
-                                    {activeEvaluatedSemesters.length > 0 && activeEvaluatedSemesters[activeEvaluatedSemesters.length - 1] !== semester && (
+                                    {semester !== 6 && (
                                         <Button
                                             variant="primary"
-                                            onClick={() => setSemester(activeEvaluatedSemesters[activeEvaluatedSemesters.length - 1])}
+                                            onClick={() => setSemester(6)}
                                             style={{ fontSize: '12px', padding: '8px 14px' }}
                                         >
-                                            Switch to Semester {activeEvaluatedSemesters[activeEvaluatedSemesters.length - 1]}
+                                            Switch to Semester 6
                                         </Button>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Single Section Context & Mode Switcher */}
+                            {sectionReport?.isSingleSection && (
+                                <div style={{
+                                    background: 'var(--surface-low)',
+                                    border: '1px solid var(--border)',
+                                    borderLeft: '4px solid var(--primary)',
+                                    borderRadius: '8px',
+                                    padding: '16px 20px',
+                                    marginBottom: '20px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '14px'
+                                }}>
+                                    <div>
+                                        <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span>🏛️ Active Class: {sectionReport?.classes?.[0]?.name || `Section ${sectionReport?.singleSectionName}`}</span>
+                                            <span style={{ fontSize: '11px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                                Section {sectionReport?.singleSectionName} ({sectionReport?.sectionComparisons?.[0]?.enrolled || 86} Students)
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '13px', color: 'var(--tx-muted)', marginTop: '4px' }}>
+                                            {sectionMode === 'split' 
+                                                ? 'Displaying Smart Cohort Split: Cohort partitioned into Section A and Section B by roll number order.' 
+                                                : `Currently benchmarked against Department Cohort Baseline. To create a dedicated Section B, add a class in Class Management or toggle Smart Split.`}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-dim)' }}>View Mode:</span>
+                                        <div style={{ display: 'inline-flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px' }}>
+                                            <button
+                                                onClick={() => setSectionMode('auto')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    fontSize: '12px',
+                                                    fontWeight: 700,
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    background: sectionMode !== 'split' ? 'var(--primary)' : 'transparent',
+                                                    color: sectionMode !== 'split' ? '#fff' : 'var(--tx-muted)',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                🏛️ Section vs Baseline
+                                            </button>
+                                            <button
+                                                onClick={() => setSectionMode('split')}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    fontSize: '12px',
+                                                    fontWeight: 700,
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    background: sectionMode === 'split' ? 'var(--primary)' : 'transparent',
+                                                    color: sectionMode === 'split' ? '#fff' : 'var(--tx-muted)',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                🔀 Smart Split (Sec A & B)
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Semester Advice for Ongoing Semester 7 */}
+                            {semester === 7 && (
+                                <div style={{
+                                    background: 'rgba(59, 130, 246, 0.08)',
+                                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                                    borderLeft: '4px solid #3B82F6',
+                                    borderRadius: '8px',
+                                    padding: '12px 18px',
+                                    marginBottom: '20px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '12px'
+                                }}>
+                                    <div style={{ fontSize: '13px', color: 'var(--tx-main)' }}>
+                                        <strong>💡 Semester 7 is currently ongoing:</strong> Full evaluated examination results with complete subject performance for this cohort are in <strong>Semester 6 (85 Students Evaluated)</strong>.
+                                    </div>
+                                    <Button
+                                        variant="primary"
+                                        onClick={() => setSemester(6)}
+                                        style={{ fontSize: '12px', padding: '6px 14px', background: '#3B82F6' }}
+                                    >
+                                        👉 View Semester 6 Full Records (85 Students)
+                                    </Button>
                                 </div>
                             )}
 
@@ -1422,14 +2417,16 @@ function InstitutionalIntelligenceContent() {
                                     <CardContent style={{ padding: '20px' }}>
                                         <div style={{ height: '300px', width: '100%' }}>
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <ComposedChart data={sectionReport?.sectionComparisons || []}>
+                                                <ComposedChart data={sectionReport?.sectionComparisons || []} margin={{ top: 25, right: 30, left: 10, bottom: 20 }}>
                                                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                                                     <XAxis dataKey="sectionName" />
                                                     <YAxis yAxisId="left" domain={[0, 100]} unit="%" />
                                                     <YAxis yAxisId="right" orientation="right" domain={[0, 10]} />
                                                     <Tooltip />
-                                                    <Legend />
-                                                    <Bar yAxisId="left" dataKey="passRate" name="Pass Rate (%)" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                                                    <Legend verticalAlign="top" align="right" height={36} wrapperStyle={{ paddingBottom: '12px' }} />
+                                                    <Bar yAxisId="left" dataKey="passRate" name="Pass Rate (%)" fill="#6366F1" radius={[4, 4, 0, 0]}>
+                                                        <LabelList dataKey="passRate" position="insideTop" offset={10} formatter={(val) => typeof val === 'number' && val > 0 ? `${val}%` : ''} fill="#FFFFFF" fontSize={11} fontWeight={700} />
+                                                    </Bar>
                                                     <Line yAxisId="right" type="monotone" dataKey="avgSGPA" name="Mean SGPA" stroke="#10B981" strokeWidth={3} dot={{ r: 6 }} />
                                                 </ComposedChart>
                                             </ResponsiveContainer>
@@ -1469,7 +2466,19 @@ function InstitutionalIntelligenceContent() {
                                                     (sectionReport?.sectionComparisons || []).map(s => (
                                                         <tr key={s.section} style={{ borderBottom: '1px solid var(--border)' }}>
                                                             <td style={{ padding: '14px 16px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                                                {s.sectionName || `Section ${s.section}`}
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span>{s.sectionName || `Section ${s.section}`}</span>
+                                                                    {s.isBaseline && (
+                                                                        <span style={{ fontSize: '10px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--primary)', padding: '2px 6px', borderRadius: '10px', fontWeight: 800 }}>
+                                                                            BASELINE
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {s.className && !s.isBaseline && (
+                                                                    <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500, marginTop: '2px' }}>
+                                                                        {s.className}
+                                                                    </div>
+                                                                )}
                                                             </td>
                                                             <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--tx-muted)', fontWeight: 700 }}>
                                                                 {s.studentCount}

@@ -96,11 +96,18 @@ export async function GET(req) {
         const facultyById = new Map((rawFaculty || []).map(f => [f.id, f]));
         const usnToSectionMap = new Map();
 
+        const matchesClassBatch = (cBatch, targetBatch) => {
+            if (!targetBatch || targetBatch === 'ALL') return true;
+            const cb = String(cBatch || '').trim();
+            const tb = String(targetBatch || '').trim();
+            return cb === tb || cb.includes(tb) || tb.includes(cb);
+        };
+
         const sortedClassStudents = [...(rawClassStudents || [])].sort((a, b) => {
             const cA = classById.get(a.class_id);
             const cB = classById.get(b.class_id);
-            const aScore = (cA && Number(cA.semester) === semester ? 2 : 0) + (cA && cA.batch === batch ? 1 : 0);
-            const bScore = (cB && Number(cB.semester) === semester ? 2 : 0) + (cB && cB.batch === batch ? 1 : 0);
+            const aScore = (cA && Number(cA.semester) === semester ? 2 : 0) + (cA && matchesClassBatch(cA.batch, batch) ? 1 : 0);
+            const bScore = (cB && Number(cB.semester) === semester ? 2 : 0) + (cB && matchesClassBatch(cB.batch, batch) ? 1 : 0);
             return aScore - bScore;
         });
 
@@ -112,33 +119,49 @@ export async function GET(req) {
         });
 
         // 4. Determine Sections List
-        const branchBatchClasses = (rawClasses || []).filter(c =>
-            (branch === 'ALL' || matchesBranch(c.branch_code || c.branch, branch)) &&
-            (!batch || batch === 'ALL' || matchesBatch(c.batch, batch))
-        );
+        const branchBatchClasses = (rawClasses || []).filter(c => {
+            const b = (c.branch_code || c.branch || '').toUpperCase();
+            const mBranch = (branch === 'ALL' || matchesBranch(b, branch) || (branch === 'CS' && ['CS', 'CSE'].includes(b)));
+            return mBranch && matchesClassBatch(c.batch, batch);
+        });
         const semClasses = branchBatchClasses.filter(c => c.semester && Number(c.semester) === semester);
         const matchingClasses = semClasses.length > 0 ? semClasses : branchBatchClasses;
 
         const detectedSections = Array.from(new Set(matchingClasses.map(c => (c.section || '').toUpperCase()).filter(Boolean))).sort();
 
-        let sectionsList = detectedSections;
+        let sectionsList = [...detectedSections];
+        const isSingleSection = detectedSections.length === 1;
 
-        if (sectionMode === '2' || sectionMode === '3' || sectionMode === '4') {
+        if (sectionMode === 'split') {
+            sectionsList = ['A', 'B'];
+        } else if (isSingleSection) {
+            // Single registered section (e.g. Section A). Benchmark Section A against Cohort Baseline!
+            sectionsList = [detectedSections[0], 'Baseline'];
+        } else if (sectionsList.length === 0) {
+            if (activeUsns.length >= 2) {
+                // Auto-partition cohort into Section A & Section B
+                sectionsList = ['A', 'B'];
+            } else {
+                sectionsList = [];
+            }
+        } else if (sectionMode === '2' || sectionMode === '3' || sectionMode === '4') {
             sectionsList = sectionsList.slice(0, Number(sectionMode));
         }
 
-        if (sectionsList.length < 2) {
+        if (sectionsList.length === 0 || activeUsns.length === 0) {
             const empty = {
                 branch, batch, semester, sectionMode,
                 sections: sectionsList,
+                detectedSections,
+                isSingleSection,
                 sectionComparisons: [],
                 subjectMatrix: [],
                 unassignedCount: activeUsns.length,
                 noRealSections: true,
-                message: sectionsList.length === 1
-                    ? `Only Section ${sectionsList[0]} exists for ${branch} ${batch !== 'ALL' ? `Batch ${batch}` : ''}. Section comparison requires at least 2 sections.`
+                message: activeUsns.length === 0 
+                    ? `No evaluation records found for ${branch} ${batch !== 'ALL' ? `Batch ${batch}` : ''} in Semester ${semester}.`
                     : `No sections created for ${branch} ${batch !== 'ALL' ? `Batch ${batch}` : ''}.`,
-                benchmarks: { bestSection: sectionsList[0] || '—', totalEvaluated: 0, benchmarkAvg: 0, sectionSpread: 0, subjectCount: 0 },
+                benchmarks: { bestSection: '—', totalEvaluated: 0, benchmarkAvg: 0, sectionSpread: 0, subjectCount: 0 },
             };
             setCached(cacheKey, empty, 30_000);
             return ok(empty);
@@ -151,8 +174,28 @@ export async function GET(req) {
         const unassignedUsns = [];
         const hasExplicitBoth = detectedSections.length >= 2;
 
-        activeUsns.forEach((u, idx) => {
-            if (hasExplicitBoth) {
+        if (sectionsList.includes('Baseline')) {
+            const regSec = detectedSections[0] || 'A';
+            activeUsns.forEach(u => {
+                const stu = studentByUsn.get(u) || { usn: u, name: u };
+                // Baseline gets all students
+                studentsBySection.get('Baseline').push(stu);
+
+                const explicitSec = usnToSectionMap.get(u);
+                if (explicitSec === regSec || !explicitSec) {
+                    studentsBySection.get(regSec).push(stu);
+                }
+            });
+        } else if (sectionMode === 'split' || detectedSections.length < 2) {
+            // Dynamically partition cohort into Section A and Section B by roll/USN order
+            const mid = Math.ceil(activeUsns.length / sectionsList.length);
+            activeUsns.forEach((u, idx) => {
+                const secIdx = Math.min(Math.floor(idx / mid), sectionsList.length - 1);
+                const assignedSec = sectionsList[secIdx] || sectionsList[0];
+                studentsBySection.get(assignedSec).push(studentByUsn.get(u) || { usn: u, name: u });
+            });
+        } else {
+            activeUsns.forEach((u, idx) => {
                 const explicitSec = usnToSectionMap.get(u);
                 if (explicitSec && studentsBySection.has(explicitSec)) {
                     studentsBySection.get(explicitSec).push(studentByUsn.get(u) || { usn: u, name: u });
@@ -161,14 +204,8 @@ export async function GET(req) {
                     const secIdx = Math.min(Math.floor(idx / mid), sectionsList.length - 1);
                     studentsBySection.get(sectionsList[secIdx]).push(studentByUsn.get(u) || { usn: u, name: u });
                 }
-            } else {
-                // Dynamically partition cohort into Section A and Section B by roll/USN order
-                const mid = Math.ceil(activeUsns.length / sectionsList.length);
-                const secIdx = Math.min(Math.floor(idx / mid), sectionsList.length - 1);
-                const assignedSec = sectionsList[secIdx] || sectionsList[0];
-                studentsBySection.get(assignedSec).push(studentByUsn.get(u) || { usn: u, name: u });
-            }
-        });
+            });
+        }
 
         // 6. Compute metrics per section
         const sectionComparisons = [];
@@ -178,12 +215,13 @@ export async function GET(req) {
 
         sectionsList.forEach(sec => {
             const secStudents = studentsBySection.get(sec) || [];
-            const secClass = classes.find(c =>
+            const isBase = sec === 'Baseline';
+            const secClass = !isBase ? classes.find(c =>
                 (c.section || '').toUpperCase() === sec &&
                 (Number(c.semester) === semester || !c.semester) &&
                 (branch === 'ALL' || matchesBranch(c.branch, branch))
-            );
-            const teacher = secClass ? facultyById.get(secClass.faculty_id) : null;
+            ) : null;
+            const teacher = !isBase && secClass ? facultyById.get(secClass.faculty_id) : null;
 
             let appeared = 0;
             let passed = 0;
@@ -263,11 +301,19 @@ export async function GET(req) {
                 : (marksCount > 0 ? Number(((totalMarksSum / marksCount) / 10).toFixed(2)) : 0);
             const avgScore = marksCount > 0 ? Number((totalMarksSum / marksCount).toFixed(1)) : 0;
 
+            const facultyName = isBase 
+                ? 'Department Cohort Baseline'
+                : (teacher?.full_name || (secClass?.name ? secClass.name : 'Faculty Not Assigned'));
+            const sectionName = isBase ? 'Cohort Baseline' : `Section ${sec}`;
+
             sectionComparisons.push({
                 section: sec,
-                sectionName: `Section ${sec}`,
+                sectionName,
                 sectionKey: sec,
-                facultyName: teacher?.full_name || 'Faculty Not Assigned',
+                isBaseline: isBase,
+                facultyName,
+                className: secClass?.name || null,
+                classId: secClass?.id || null,
                 enrolled: secStudents.length,
                 studentCount: secStudents.length,
                 appeared,
@@ -324,7 +370,9 @@ export async function GET(req) {
         }).sort((a, b) => a.code.localeCompare(b.code));
 
         // 8. Overall Benchmarks
-        const bestSectionObj = [...sectionComparisons].sort((a, b) => b.passRate - a.passRate || b.avgSGPA - a.avgSGPA)[0];
+        const realSectionComparisons = sectionComparisons.filter(s => !s.isBaseline);
+        const candidates = realSectionComparisons.length > 0 ? realSectionComparisons : sectionComparisons;
+        const bestSectionObj = [...candidates].sort((a, b) => b.passRate - a.passRate || b.avgSGPA - a.avgSGPA)[0];
         const passRates = sectionComparisons.filter(s => s.appeared > 0).map(s => s.passRate);
         const sectionSpread = passRates.length > 1 ? Number((Math.max(...passRates) - Math.min(...passRates)).toFixed(1)) : 0;
 
@@ -341,13 +389,18 @@ export async function GET(req) {
             semester,
             sectionMode,
             sections: sectionsList,
+            detectedSections,
+            isSingleSection,
+            singleSectionName: isSingleSection ? detectedSections[0] : null,
+            matchingClassesCount: matchingClasses.length,
+            classes: matchingClasses.map(c => ({ id: c.id, name: c.name, section: c.section, semester: c.semester })),
             sectionComparisons,
             subjectMatrix,
             unassignedCount: unassignedUsns.length,
             noRealSections: sectionComparisons.length === 0,
             benchmarks: {
                 bestSection: bestSectionObj ? bestSectionObj.section : '—',
-                bestSectionLabel: bestSectionObj ? `Section ${bestSectionObj.section} (${bestSectionObj.passRate}%)` : '—',
+                bestSectionLabel: bestSectionObj ? `${bestSectionObj.sectionName} (${bestSectionObj.passRate}%)` : '—',
                 totalEvaluated: totalAppeared,
                 benchmarkAvg,
                 sectionSpread,

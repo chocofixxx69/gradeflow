@@ -5,6 +5,8 @@ import { getCached, setCached } from '@/lib/server-cache';
 import { matchesBranch, matchesBatch } from '@/lib/semester-utils';
 import { isFailedSubject } from '@/lib/vtuGrades';
 
+import { readTable, SELECTS } from '@/lib/table-cache';
+
 export const dynamic = 'force-dynamic';
 
 // Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
@@ -34,7 +36,7 @@ export async function GET(req) {
         const classIdsParam = searchParams.get('classIds');
         const selectedClassIds = classIdsParam ? classIdsParam.split(',').map(s => s.trim()).filter(Boolean) : null;
 
-        const cacheKey = `classes_compare_v3:${branch}:${batch}:${semester}:${classIdsParam || 'all'}`;
+        const cacheKey = `classes_compare_v4:${branch}:${batch}:${semester}:${classIdsParam || 'all'}`;
         const forceFresh = searchParams.get('fresh') === '1' || searchParams.has('t');
         if (!forceFresh) {
             const cached = getCached(cacheKey);
@@ -43,15 +45,22 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch all classes
-        const { data: rawClasses, error: classErr } = await supabaseAdmin
-            .from('classes')
-            .select('id, name, branch, semester, section, batch, academic_year, faculty_id, scheme, branch_code');
-
-        if (classErr) {
-            console.error('[classes-compare] Error fetching classes:', classErr);
-            return fail('Failed to fetch classes: ' + classErr.message, 'CLASSES_FETCH_ERROR', 500);
-        }
+        // 1. High-Performance Parallel Fetch using process-wide table-cache
+        const [
+            rawClasses,
+            rawClassStudents,
+            { data: rawFaculty },
+            rawStudents,
+            allResults,
+            allMarks
+        ] = await Promise.all([
+            readTable(supabaseAdmin, 'classes', SELECTS.classes),
+            readTable(supabaseAdmin, 'class_students', SELECTS.class_students),
+            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email'),
+            readTable(supabaseAdmin, 'students', SELECTS.students),
+            readTable(supabaseAdmin, 'results', SELECTS.results),
+            readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks)
+        ]);
 
         const allClasses = rawClasses || [];
 
@@ -77,20 +86,6 @@ export async function GET(req) {
 
         const displayClasses = matchedClasses.length > 0 ? matchedClasses : allClasses;
 
-        // 2. Fetch class_students, faculty, students
-        const classIdsToFetch = displayClasses.map(c => c.id);
-        const [
-            { data: rawClassStudents },
-            { data: rawFaculty },
-            { data: rawStudents }
-        ] = await Promise.all([
-            classIdsToFetch.length > 0
-                ? supabaseAdmin.from('class_students').select('class_id, usn')
-                : { data: [] },
-            supabaseAdmin.from('faculty_onboarding').select('id, full_name, email'),
-            supabaseAdmin.from('students').select('id, usn, name, branch, semester, year, branch_code')
-        ]);
-
         const facultyMap = new Map((rawFaculty || []).map(f => [f.id, f]));
         const studentMap = new Map();
         (rawStudents || []).forEach(s => {
@@ -107,55 +102,15 @@ export async function GET(req) {
             usnsByClass.get(cs.class_id).push(cs.usn);
         });
 
-        // Collect all unique USNs to fetch results and subject marks in bulk
-        const allUsns = Array.from(new Set((rawClassStudents || []).map(cs => cs.usn)));
-
-        // 3. Fetch results and subject marks for these students
-        let allResults = [];
-        let allMarks = [];
-
-        if (allUsns.length > 0) {
-            // Fetch in chunks of 500
-            const chunkSize = 500;
-            const resPromises = [];
-            const marksPromises = [];
-
-            const targetSemesters = semester !== 'ALL'
-                ? [Number(semester)]
-                : [1, 2, 3, 4, 5, 6, 7, 8];
-
-            for (let i = 0; i < allUsns.length; i += chunkSize) {
-                const chunk = allUsns.slice(i, i + chunkSize);
-                let rQuery = supabaseAdmin.from('results').select('usn, semester, sgpa, total_credits').in('usn', chunk);
-                let mQuery = supabaseAdmin.from('subject_marks').select('usn, semester, subject_code, subject_name, grade, passed, is_backlog, total, credits').in('usn', chunk);
-
-                if (targetSemesters.length > 0) {
-                    rQuery = rQuery.in('semester', targetSemesters);
-                    mQuery = mQuery.in('semester', targetSemesters);
-                }
-
-                resPromises.push(rQuery);
-                marksPromises.push(mQuery);
-            }
-
-            const [resResults, marksResults] = await Promise.all([
-                Promise.all(resPromises),
-                Promise.all(marksPromises)
-            ]);
-
-            allResults = resResults.flatMap(r => r.data || []);
-            allMarks = marksResults.flatMap(m => m.data || []);
-        }
-
         // Map results and marks by `${usn}|${semester}`
         const resultsMap = new Map();
-        allResults.forEach(r => {
+        (allResults || []).forEach(r => {
             const key = `${r.usn}|${r.semester}`;
             resultsMap.set(key, r);
         });
 
         const marksMap = new Map();
-        allMarks.forEach(m => {
+        (allMarks || []).forEach(m => {
             const key = `${m.usn}|${m.semester}`;
             if (!marksMap.has(key)) marksMap.set(key, []);
             marksMap.get(key).push(m);
@@ -165,7 +120,7 @@ export async function GET(req) {
         const classComparisons = displayClasses.map(c => {
             const enrolledUsns = usnsByClass.get(c.id) || [];
             const teacher = facultyMap.get(c.faculty_id);
-            const targetSem = semester !== 'ALL' ? Number(semester) : null;
+            const targetSem = semester !== 'ALL' ? Number(semester) : (Number(c.semester) || null);
 
             let appeared = 0;
             let passed = 0;
@@ -231,10 +186,12 @@ export async function GET(req) {
                         highestSgpa = studentSgpa;
                         const normUsn = String(usn || '').toUpperCase().trim();
                         const sInfo = studentMap.get(normUsn) || studentMap.get(usn);
+                        const sName = (sInfo?.name && sInfo.name.trim() !== '') ? sInfo.name.trim() : usn;
                         topperObj = {
                             usn,
-                            name: (sInfo?.name && sInfo.name.trim() !== '') ? sInfo.name.trim() : usn,
-                            sgpa: studentSgpa
+                            name: sName,
+                            sgpa: studentSgpa,
+                            label: `${sName} (${studentSgpa} SGPA)`
                         };
                     }
                     if (studentSgpa < lowestSgpa) {
@@ -285,9 +242,14 @@ export async function GET(req) {
                 avgMarks: sub.appeared > 0 ? Math.round(sub.totalMarks / sub.appeared) : 0
             })).sort((a, b) => b.appeared - a.appeared);
 
+            const passClassCount = Math.max(0, passed - distinctions - firstClass - secondClass);
+            const cleanSec = c.section ? `(${c.section})` : '';
+            const shortName = `${c.name} ${cleanSec}`.replace(/\s+/g, ' ').trim();
+
             return {
                 id: c.id,
                 name: c.name,
+                shortName,
                 branch: c.branch || c.branch_code || 'General',
                 semester: c.semester,
                 section: c.section ? `Section ${c.section}` : 'General',
@@ -309,6 +271,7 @@ export async function GET(req) {
                 distinctionCount: distinctions,
                 firstClassCount: firstClass,
                 secondClassCount: secondClass,
+                passClassCount,
                 backlogCount: failed,
                 topper: topperObj,
                 grades,
@@ -316,7 +279,143 @@ export async function GET(req) {
             };
         });
 
-        // 5. Overall Comparative Benchmarks
+        // 5. Compute Batch-to-Batch Aggregated Comparison with Cumulative CGPA Standards
+        const batchMap = new Map();
+        const batchUsnsMap = new Map(); // batch -> Set of unique enrolled student USNs
+
+        displayClasses.forEach(c => {
+            const b = c.batch && c.batch !== '—' ? String(c.batch) : 'Other';
+            if (!batchUsnsMap.has(b)) batchUsnsMap.set(b, new Set());
+            const enrolled = usnsByClass.get(c.id) || [];
+            enrolled.forEach(u => batchUsnsMap.get(b).add(u));
+        });
+
+        classComparisons.forEach(c => {
+            const b = c.batch && c.batch !== '—' ? String(c.batch) : 'Other';
+            if (!batchMap.has(b)) {
+                batchMap.set(b, {
+                    batch: b,
+                    classCount: 0,
+                    enrolledCount: 0,
+                    appeared: 0,
+                    passed: 0,
+                    failed: 0,
+                    distinctionCount: 0,
+                    firstClassCount: 0,
+                    secondClassCount: 0,
+                    passClassCount: 0,
+                    backlogCount: 0,
+                    sumSGPA: 0,
+                    sgpaCount: 0,
+                    highestSGPA: 0,
+                    lowestSGPA: 10,
+                    topper: null,
+                    cgpaTopper: null,
+                    semesterLeader: null,
+                    grades: { O: 0, APlus: 0, A: 0, BPlus: 0, B: 0, C: 0, P: 0, F: 0 },
+                    classes: []
+                });
+            }
+            const bEntry = batchMap.get(b);
+            bEntry.classCount++;
+            bEntry.enrolledCount += c.enrolledCount;
+            bEntry.appeared += c.appeared;
+            bEntry.passed += c.passed;
+            bEntry.failed += c.failed;
+            bEntry.distinctionCount += c.distinctionCount;
+            bEntry.firstClassCount += c.firstClassCount;
+            bEntry.secondClassCount += c.secondClassCount;
+            bEntry.passClassCount += (c.passClassCount || 0);
+            bEntry.backlogCount += c.backlogCount;
+            if (c.avgSGPA > 0 && c.appeared > 0) {
+                bEntry.sumSGPA += (c.avgSGPA * c.appeared);
+                bEntry.sgpaCount += c.appeared;
+            }
+            if (c.highestSGPA > bEntry.highestSGPA) {
+                bEntry.highestSGPA = c.highestSGPA;
+            }
+            if (c.lowestSGPA > 0 && c.lowestSGPA < bEntry.lowestSGPA) {
+                bEntry.lowestSGPA = c.lowestSGPA;
+            }
+            Object.keys(c.grades || {}).forEach(k => {
+                bEntry.grades[k] = (bEntry.grades[k] || 0) + (c.grades[k] || 0);
+            });
+            bEntry.classes.push({ id: c.id, name: c.name, passRate: c.passRate, avgSGPA: c.avgSGPA });
+        });
+
+        // Compute academic toppers for each batch based on cumulative CGPA across all evaluated semesters
+        for (const [b, bEntry] of batchMap.entries()) {
+            const usnSet = batchUsnsMap.get(b) || new Set();
+            let bestCgpa = 0;
+            let bestCgpaTopper = null;
+            let peakSemSgpa = 0;
+            let peakSemLeader = null;
+
+            usnSet.forEach(usn => {
+                let totalCredits = 0;
+                let totalCreditPoints = 0;
+                let studentPeakSgpa = 0;
+                let studentPeakSem = null;
+
+                for (let s = 1; s <= 8; s++) {
+                    const r = resultsMap.get(`${usn}|${s}`);
+                    if (r && r.sgpa && r.total_credits) {
+                        const creds = Number(r.total_credits);
+                        const sg = Number(r.sgpa);
+                        if (creds > 0 && sg > 0) {
+                            totalCredits += creds;
+                            totalCreditPoints += (creds * sg);
+                        }
+                        if (sg > studentPeakSgpa) {
+                            studentPeakSgpa = sg;
+                            studentPeakSem = s;
+                        }
+                    }
+                }
+
+                const sInfo = studentMap.get(String(usn || '').toUpperCase().trim()) || studentMap.get(usn) || {};
+                const studentName = (sInfo.name && sInfo.name.trim() !== '') ? sInfo.name.trim() : usn;
+
+                if (totalCredits > 0) {
+                    const cgpa = Number((totalCreditPoints / totalCredits).toFixed(2));
+                    if (cgpa > bestCgpa || (cgpa === bestCgpa && totalCredits > (bestCgpaTopper?.credits || 0))) {
+                        bestCgpa = cgpa;
+                        bestCgpaTopper = {
+                            usn,
+                            name: studentName,
+                            cgpa,
+                            credits: totalCredits,
+                            label: `${studentName} (${cgpa} CGPA)`
+                        };
+                    }
+                }
+
+                if (studentPeakSgpa > peakSemSgpa) {
+                    peakSemSgpa = studentPeakSgpa;
+                    peakSemLeader = {
+                        usn,
+                        name: studentName,
+                        sgpa: studentPeakSgpa,
+                        semester: studentPeakSem,
+                        label: `${studentName} (${studentPeakSgpa} SGPA · Sem ${studentPeakSem})`
+                    };
+                }
+            });
+
+            bEntry.cgpaTopper = bestCgpaTopper;
+            bEntry.semesterLeader = peakSemLeader;
+            // Primary Cohort Topper is determined by Cumulative Academic CGPA
+            bEntry.topper = bestCgpaTopper || peakSemLeader;
+        }
+
+        const batchesComparison = Array.from(batchMap.values()).map(b => ({
+            ...b,
+            passRate: pct(b.passed, b.appeared),
+            avgSGPA: b.sgpaCount > 0 ? Number((b.sumSGPA / b.sgpaCount).toFixed(2)) : 0,
+            lowestSGPA: b.lowestSGPA === 10 ? 0 : b.lowestSGPA
+        })).sort((a, b) => b.batch.localeCompare(a.batch));
+
+        // 6. Overall Comparative Benchmarks
         const sortedByPass = [...classComparisons].filter(c => c.appeared > 0).sort((a, b) => b.passRate - a.passRate || b.avgSGPA - a.avgSGPA);
         const bestClass = sortedByPass[0] || null;
 
@@ -340,6 +439,7 @@ export async function GET(req) {
 
         const payload = {
             classes: classComparisons,
+            batchesComparison,
             benchmarks: {
                 bestClass: bestClass ? {
                     id: bestClass.id,
