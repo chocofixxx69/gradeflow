@@ -44,13 +44,33 @@ export async function GET(req) {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
+        const { searchParams } = new URL(req.url);
+        const rawBranch = searchParams.get('branch') || '';
+        const branch = rawBranch && rawBranch !== 'ALL' ? rawBranch : null;
+        const rawBatch = searchParams.get('batch') || '';
+        const batch = rawBatch && rawBatch !== 'ALL' ? rawBatch : null;
+        const rawSemester = searchParams.get('semester') || '';
+        const semester = rawSemester && rawSemester !== 'ALL' ? parseInt(rawSemester, 10) : null;
+        const rawSection = searchParams.get('section') || '';
+        const section = rawSection && rawSection !== 'ALL' ? rawSection : null;
+
+        const filters = {};
+        if (branch) filters.branch = branch;
+        if (batch) filters.batch = batch;
+        if (semester) filters.semester = semester;
+        if (section) filters.section = section;
+
         const dataset = await loadResultAnalysisDataset(getAdminClient(), {
             role: session.role,
             facultyId: session.sub,
+            filters,
         });
 
         const scopedUsns = new Set(dataset.students.map(s => s.usn));
-        const scopedMarks = dataset.subjectMarks.filter(m => scopedUsns.has(m.usn));
+        let scopedMarks = dataset.subjectMarks.filter(m => scopedUsns.has(m.usn));
+        if (semester) {
+            scopedMarks = scopedMarks.filter(m => Number(m.semester) === Number(semester));
+        }
         const totalMarksCount = scopedMarks.length;
 
         // ── Authentic Grade Distribution from Total Scores ──

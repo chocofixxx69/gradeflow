@@ -120,14 +120,24 @@ function examCycleKey(examName) {
     return genericKey || clean;
 }
 
+function isFailed(attempt) {
+    if (!attempt) return true;
+    const g = String(attempt.grade || '').toUpperCase().trim();
+    if (g === 'F' || g === 'AB' || g === 'FAIL' || g === 'NP' || g === 'NE' || g === 'X') return true;
+    if (attempt.passed === false) return true;
+    const ext = Number(attempt.external);
+    const tot = Number(attempt.total);
+    if (!isNaN(ext) && ext < 18) return true;
+    if (!isNaN(tot) && tot < 40) return true;
+    return false;
+}
+
 export async function GET(req) {
     noStore();
     try {
         const { session, error: authError } = requireStaff(req, ['faculty', 'admin']);
         if (authError) return authError;
 
-        // searchParams was read without ever being derived from the request, so every
-        // call to this route threw ReferenceError before it reached the database.
         const { searchParams } = new URL(req.url);
         const rawBranch = searchParams.get('branch') || 'ALL';
         const branch = rawBranch === 'ALL' ? 'ALL' : (canonicalBranchCode(rawBranch) || rawBranch.toUpperCase().trim());
@@ -135,7 +145,7 @@ export async function GET(req) {
         const semester = (semParam === 'ALL' || !semParam) ? 'ALL' : parseInt(semParam, 10);
         const batch = searchParams.get('batch') || '';
         const section = (searchParams.get('section') || 'ALL').toUpperCase().trim();
-        const cacheKey = `reval_impact_v2:${branch}:${semester}:${batch}:${section}`;
+        const cacheKey = `reval_impact_v3:${branch}:${semester}:${batch}:${section}`;
         const fresh = searchParams.get('fresh') === '1';
         if (!fresh) {
             const cached = getCached(cacheKey);
@@ -144,16 +154,26 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. Fetch classes & class_students for dynamic section resolution
+        // 1. Fetch classes, students, canonical subject_marks & results from warehouse cache
         const [
             rawStudents,
             { data: rawClasses },
-            { data: rawClassStudents }
+            { data: rawClassStudents },
+            { data: rawSubjectMarks },
+            { data: rawResults }
         ] = await Promise.all([
             fetchDynamicStudents(supabaseAdmin, { branch, select: 'id, usn, name, branch, year, lateral_entry' }),
             readTable(supabaseAdmin, 'classes', SELECTS.classes, { orderCol: 'created_at', ascending: false }).then(data => ({ data })),
-            readTable(supabaseAdmin, 'class_students', SELECTS.class_students).then(data => ({ data }))
+            readTable(supabaseAdmin, 'class_students', SELECTS.class_students).then(data => ({ data })),
+            readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks).then(data => ({ data })),
+            readTable(supabaseAdmin, 'results', SELECTS.results).then(data => ({ data }))
         ]);
+
+        const resultById = new Map((rawResults || []).map(r => [r.id, r]));
+        const canonicalMarksByUsnSub = new Map();
+        (rawSubjectMarks || []).forEach(m => {
+            canonicalMarksByUsnSub.set(`${m.usn}|${(m.subject_code || '').toUpperCase()}`, m);
+        });
 
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
         const usnToSectionMap = new Map();
@@ -217,48 +237,61 @@ export async function GET(req) {
         const deltaRoster = [];
         let upgradedCount = 0;
         let clearedCount = 0;
+        let reExamClearedCount = 0;
+        let stillFailCount = 0;
+        let confirmedCount = 0;
         let unchangedCount = 0;
         let decreasedCount = 0;
-        let awaitingOriginalCount = 0;
+        let retainedCount = 0;
 
         bySubject.forEach((subjectAttempts, key) => {
+            const [usn, sem, subCode] = key.split('|');
+            const stu = studentByUsn.get(usn);
+            const revals = subjectAttempts.filter(a => a.isReval);
+            const regulars = subjectAttempts.filter(a => !a.isReval);
+
+            if (revals.length === 0) return;
+
             // 1. Deduplicate revaluation attempts by exam cycle key
             const revalsByCycle = new Map();
-            subjectAttempts.filter(a => a.isReval).forEach(a => {
+            revals.forEach(a => {
                 const cycle = examCycleKey(a.exam_name);
                 const existing = revalsByCycle.get(cycle);
                 if (!existing) {
                     revalsByCycle.set(cycle, a);
                 } else {
-                    const extPassed = (existing.grade === 'P' || existing.grade === 'PASS' || (Number(existing.external) >= 18 && Number(existing.total) >= 40));
-                    const aPassed = (a.grade === 'P' || a.grade === 'PASS' || (Number(a.external) >= 18 && Number(a.total) >= 40));
+                    const extPassed = !isFailed(existing);
+                    const aPassed = !isFailed(a);
                     if (!extPassed && aPassed) {
                         revalsByCycle.set(cycle, a);
-                    } else if (new Date(a.announced_date || a.scraped_at || 0) > new Date(existing.announced_date || existing.scraped_at || 0)) {
-                        if (extPassed === aPassed) {
-                            revalsByCycle.set(cycle, a);
-                        }
+                    } else if (new Date(a.announced_date || a.scraped_at || 0) < new Date(existing.announced_date || existing.scraped_at || 0)) {
+                        revalsByCycle.set(cycle, a);
                     }
                 }
             });
 
-            // 2. Deduplicate regular attempts by exam cycle key
-            const regularByCycle = new Map();
-            subjectAttempts.filter(a => !a.isReval).forEach(a => {
-                const cycle = examCycleKey(a.exam_name);
-                const existing = regularByCycle.get(cycle);
-                if (!existing || (new Date(a.announced_date || a.scraped_at || 0) > new Date(existing.announced_date || existing.scraped_at || 0))) {
-                    regularByCycle.set(cycle, a);
-                }
-            });
-
             revalsByCycle.forEach((attempt, cycle) => {
-                const [usn] = key.split('|');
-                const stu = studentByUsn.get(usn);
-                const prior = regularByCycle.get(cycle);
+                // Find all regular attempts for this exam cycle
+                const cycleRegulars = regulars.filter(r => examCycleKey(r.exam_name) === cycle);
+                if (cycleRegulars.length === 0) return;
 
-                // A revaluation delta requires a regular attempt baseline from the same exam cycle
-                if (!prior) return;
+                // Sort regular attempts by date/scrape time ascending (earliest first)
+                cycleRegulars.sort((a, b) => new Date(a.announced_date || a.scraped_at || 0) - new Date(b.announced_date || b.scraped_at || 0));
+
+                const revalDate = new Date(attempt.announced_date || attempt.scraped_at || 0);
+                const preRevalRegulars = cycleRegulars.filter(r => {
+                    const rDate = new Date(r.announced_date || r.scraped_at || 0);
+                    return rDate <= revalDate;
+                });
+
+                let prior = preRevalRegulars.length > 0 ? preRevalRegulars[0] : cycleRegulars[0];
+
+                // If prior has exact same marks as attempt, check if there was another regular attempt with different marks
+                // (defends against scrapes done post-revaluation where VTU updated the regular URL with reval marks)
+                if (prior.external === attempt.external && cycleRegulars.length > 1) {
+                    const diffReg = cycleRegulars.find(r => r.external !== attempt.external);
+                    if (diffReg) prior = diffReg;
+                }
 
                 const revalExternal = attempt.external !== null && attempt.external !== undefined ? Number(attempt.external) : null;
                 const revalInternal = attempt.internal !== null && attempt.internal !== undefined ? Number(attempt.internal) : null;
@@ -277,22 +310,128 @@ export async function GET(req) {
                     : (postScore - preScore);
                 const delta = postScore - preScore;
 
-                const wasFailingBefore = isFailedSubject(prior);
-                const isFailingNow = isFailedSubject(attempt);
+                const wasFailingBefore = isFailed(prior);
+                const isFailingNow = isFailed(attempt);
 
                 let outcome;
+                let outcomeType;
+
                 if (wasFailingBefore && !isFailingNow) {
                     outcome = 'Cleared Backlog';
+                    outcomeType = 'CLEARED_BACKLOG';
                     clearedCount++;
-                } else if (deltaMarks > 0) {
-                    outcome = 'Grade Upgraded';
-                    upgradedCount++;
-                } else if (deltaMarks < 0) {
-                    outcome = 'Marks Decreased';
-                    decreasedCount++;
+                } else if (wasFailingBefore && isFailingNow) {
+                    if (deltaMarks > 0) {
+                        outcome = `Marks Improved (+${deltaMarks}, Still Fail)`;
+                        outcomeType = 'STILL_FAIL';
+                        stillFailCount++;
+                    } else if (deltaMarks < 0) {
+                        outcome = 'Original Retained (Still Fail)';
+                        outcomeType = 'ORIGINAL_RETAINED';
+                        retainedCount++;
+                        decreasedCount++;
+                    } else {
+                        outcome = 'Confirmed (Backlog Retained)';
+                        outcomeType = 'CONFIRMED';
+                        unchangedCount++;
+                    }
+                } else if (!wasFailingBefore && !isFailingNow) {
+                    if (deltaMarks > 0) {
+                        outcome = 'Grade Upgraded';
+                        outcomeType = 'GRADE_UPGRADED';
+                        upgradedCount++;
+                    } else if (deltaMarks < 0) {
+                        outcome = 'Original Retained (Higher Mark Kept)';
+                        outcomeType = 'ORIGINAL_RETAINED';
+                        retainedCount++;
+                        decreasedCount++;
+                    } else {
+                        outcome = 'Confirmed (No Change)';
+                        outcomeType = 'CONFIRMED';
+                        unchangedCount++;
+                    }
                 } else {
-                    outcome = 'Confirmed';
-                    unchangedCount++;
+                    outcome = 'Original Retained (Pass Retained)';
+                    outcomeType = 'ORIGINAL_RETAINED';
+                    retainedCount++;
+                    decreasedCount++;
+                }
+
+                // Check current official status from canonical subject_marks and subsequent attempts
+                const canonicalKey = `${usn}|${(attempt.subject_code || '').toUpperCase()}`;
+                const canonical = canonicalMarksByUsnSub.get(canonicalKey);
+
+                const subsequentAttempts = regulars.filter(a => {
+                    const aDate = new Date(a.announced_date || a.scraped_at || 0);
+                    return aDate > revalDate && examCycleKey(a.exam_name) !== cycle;
+                });
+
+                let currentStatus = {
+                    isCleared: false,
+                    statusType: 'ACTIVE_BACKLOG',
+                    label: 'Active Backlog',
+                    details: null,
+                };
+
+                if (!isFailingNow) {
+                    const statusLabel = 'Cleared via Reval';
+                    const statusDetails = `${revalExternal ?? '—'} SEE / ${postScore} Total (Grade ${postGrade})`;
+                    currentStatus = {
+                        isCleared: true,
+                        statusType: 'CLEARED_REVAL',
+                        label: statusLabel,
+                        badgeLabel: statusLabel,
+                        details: statusDetails,
+                        detail: statusDetails,
+                    };
+                } else {
+                    const canonicalPassed = canonical && !isFailed(canonical);
+                    const passedReExam = subsequentAttempts.find(a => !isFailed(a));
+
+                    if (canonicalPassed || passedReExam) {
+                        const passRecord = passedReExam || canonical;
+                        const examName = passRecord.exam_name || (passRecord.result_id && resultById.get(passRecord.result_id)?.exam_name) || 'Re-Exam';
+                        const extMarks = passRecord.external ?? passRecord.external_marks ?? '—';
+                        const totMarks = passRecord.total ?? '—';
+                        const gradeVal = passRecord.grade ?? 'P';
+                        const statusLabel = 'Cleared in Re-Exam';
+                        const statusDetails = `Cleared in ${examName} (${extMarks} SEE / ${totMarks} Total, Grade ${gradeVal})`;
+                        currentStatus = {
+                            isCleared: true,
+                            statusType: 'CLEARED_REEXAM',
+                            label: statusLabel,
+                            badgeLabel: statusLabel,
+                            examName,
+                            details: statusDetails,
+                            detail: statusDetails,
+                        };
+                        reExamClearedCount++;
+                    } else if (subsequentAttempts.length > 0) {
+                        const lastAtt = subsequentAttempts[subsequentAttempts.length - 1];
+                        const extMarks = lastAtt.external ?? lastAtt.external_marks ?? '—';
+                        const statusLabel = 'Re-Exam Attempted (Pending)';
+                        const statusDetails = `Latest: ${extMarks} SEE in ${lastAtt.exam_name}`;
+                        currentStatus = {
+                            isCleared: false,
+                            statusType: 'REEXAM_ATTEMPTED',
+                            label: statusLabel,
+                            badgeLabel: statusLabel,
+                            examName: lastAtt.exam_name,
+                            details: statusDetails,
+                            detail: statusDetails,
+                        };
+                    } else {
+                        const statusLabel = 'Active Backlog';
+                        const statusDetails = 'Backlog pending re-exam';
+                        currentStatus = {
+                            isCleared: false,
+                            statusType: 'ACTIVE_BACKLOG',
+                            label: statusLabel,
+                            badgeLabel: statusLabel,
+                            details: statusDetails,
+                            detail: statusDetails,
+                        };
+                    }
                 }
 
                 const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -320,7 +459,11 @@ export async function GET(req) {
                     postGrade,
                     delta,
                     outcome,
-                    isCleared: outcome === 'Cleared Backlog',
+                    outcomeType,
+                    currentStatus,
+                    isCleared: currentStatus.isCleared,
+                    isClearedInReval: outcome === 'Cleared Backlog',
+                    isClearedInReExam: currentStatus.statusType === 'CLEARED_REEXAM',
                     revalExam: attempt.exam_name || 'Reval',
                     revalExamLabel: formatExamSession(attempt.exam_name),
                     regularExam: prior?.exam_name || 'Regular',
@@ -344,6 +487,9 @@ export async function GET(req) {
                 totalDelta: 0,
                 upgraded: 0,
                 cleared: 0,
+                reExamCleared: 0,
+                stillFail: 0,
+                retained: 0,
                 decreased: 0,
                 confirmed: 0,
                 awaitingOriginal: 0,
@@ -351,11 +497,14 @@ export async function GET(req) {
             entry.applications.push(d);
             entry.semesters.add(d.semester);
             if (d.delta !== null) entry.totalDelta += d.delta;
-            if (d.outcome === 'Awaiting Original Mark') entry.awaitingOriginal++;
-            else if (d.outcome === 'Cleared Backlog') entry.cleared++;
-            else if (d.delta > 0) entry.upgraded++;
-            else if (d.delta < 0) entry.decreased++;
+            if (d.outcomeType === 'CLEARED_BACKLOG') entry.cleared++;
+            else if (d.outcomeType === 'STILL_FAIL') entry.stillFail++;
+            else if (d.outcomeType === 'GRADE_UPGRADED') entry.upgraded++;
+            else if (d.outcomeType === 'ORIGINAL_RETAINED') { entry.retained++; entry.decreased++; }
             else entry.confirmed++;
+
+            if (d.currentStatus?.statusType === 'CLEARED_REEXAM') entry.reExamCleared++;
+
             studentMap.set(d.usn, entry);
         });
 
@@ -381,9 +530,13 @@ export async function GET(req) {
                 totalStudents: studentRoster.length,
                 upgradedCount,
                 clearedCount,
+                reExamClearedCount,
+                stillFailCount,
+                retainedCount,
+                confirmedCount,
                 unchangedCount,
                 decreasedCount,
-                awaitingOriginalCount,
+                awaitingOriginalCount: 0,
                 netPassRateGain,
             },
             deltaRoster,

@@ -6,6 +6,10 @@ import { recordFacultyAction } from '../../../lib/api/faculty-action';
 import AuthGuard from '../../../components/AuthGuard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
+import { Select } from '@/components/ui/Foundation';
+import { getCleanBranchOptions, branchLabel } from '@/lib/semester-utils';
+import { canonicalBranch } from '@/lib/vtu-identity';
+import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { fmtNum, fmtPercent } from '@/lib/format';
 
@@ -62,6 +66,16 @@ function ReportsContent() {
     const [faculty, setFaculty] = useState(null);
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState(null);
+
+    const initialSaved = getSavedFilters();
+    const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1, 2, 3, 4, 5, 6, 7, 8], classes: [] });
+
+    // Scope filters (Branch/Department, Batch, Semester, Section)
+    const [branch, setBranch] = useState(() => initialSaved.branch || 'ALL');
+    const [batch, setBatch] = useState(() => initialSaved.batch || 'ALL');
+    const [semester, setSemester] = useState(() => initialSaved.semester || 'ALL');
+    const [section, setSection] = useState('ALL');
+
     const [stats, setStats] = useState({
         uniqueStudents: 0,
         totalSubjects: 0,
@@ -93,20 +107,81 @@ function ReportsContent() {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
 
+    // Dynamic section options based on active branch, batch, and semester
+    const availableSections = useMemo(() => {
+        const classes = meta.classes || [];
+        const targetBranch = branch && branch !== 'ALL' ? branch.toUpperCase().trim() : null;
+        const targetBatch = batch && batch !== 'ALL' ? String(batch) : null;
+
+        const branchClasses = classes.filter(cls => {
+            if (targetBranch) {
+                const cBranch = (cls.branch_code || cls.branch || '').toUpperCase().trim();
+                if (cBranch !== targetBranch) return false;
+            }
+            if (targetBatch && cls.batch) {
+                if (String(cls.batch) !== targetBatch) return false;
+            }
+            return true;
+        });
+
+        const semClasses = (semester && semester !== 'ALL')
+            ? branchClasses.filter(cls => cls.semester && Number(cls.semester) === Number(semester))
+            : [];
+        const targetClasses = semClasses.length > 0 ? semClasses : branchClasses;
+
+        const sectionSet = new Set(targetClasses.map(cls => (cls.section || '').trim().toUpperCase()).filter(Boolean));
+        return Array.from(sectionSet).sort();
+    }, [meta.classes, branch, semester, batch]);
+
+    useEffect(() => {
+        setSection('ALL');
+    }, [branch, batch, semester]);
+
+    const sectionOptions = useMemo(() => {
+        if (availableSections.length === 0) {
+            return [{ value: 'ALL', label: 'All Sections / Whole Cohort' }];
+        }
+        if (availableSections.length === 1) {
+            return [
+                { value: 'ALL', label: `Single Section (Sec ${availableSections[0]})` },
+                { value: availableSections[0], label: `Section ${availableSections[0]}` }
+            ];
+        }
+        return [
+            { value: 'ALL', label: `All Sections (${availableSections.join(', ')})` },
+            ...availableSections.map(s => ({ value: s, label: `Section ${s}` }))
+        ];
+    }, [availableSections]);
+
+    // Load metadata on mount
+    useEffect(() => {
+        apiRequest('/api/faculty/analytics/meta').then(res => {
+            if (res) setMeta(prev => ({ ...prev, ...res }));
+        }).catch(() => {});
+    }, []);
+
     useEffect(() => {
         const sessionStr = localStorage.getItem('faculty_session');
         if (!sessionStr) return;
         try {
             const f = JSON.parse(sessionStr);
             setFaculty(f);
-            loadReportData();
+            // If branch was not specifically chosen in session storage yet, intelligently default to faculty's department!
+            const rawSaved = sessionStorage.getItem('gf_faculty_active_filters');
+            if (!rawSaved && (f?.department || f?.branch)) {
+                const depBranch = canonicalBranch(f.branch || f.department);
+                if (depBranch) {
+                    setBranch(depBranch);
+                    saveFilters({ branch: depBranch });
+                }
+            }
         } catch { /* ignored */ }
     }, []);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [reportSyncMsg, setReportSyncMsg] = useState('');
 
-    const loadReportData = async (isManual = false) => {
+    const loadReportData = async (isManual = false, overrideFilters = null) => {
         const prevStudents = stats.uniqueStudents;
         const prevSubjects = stats.totalSubjects;
 
@@ -116,8 +191,20 @@ function ReportsContent() {
         } else {
             setLoading(true);
         }
+
+        const activeBranch = overrideFilters?.branch ?? branch;
+        const activeBatch = overrideFilters?.batch ?? batch;
+        const activeSem = overrideFilters?.semester ?? semester;
+        const activeSec = overrideFilters?.section ?? section;
+
+        const query = { _t: Date.now() };
+        if (activeBranch && activeBranch !== 'ALL') query.branch = activeBranch;
+        if (activeBatch && activeBatch !== 'ALL') query.batch = activeBatch;
+        if (activeSem && activeSem !== 'ALL') query.semester = activeSem;
+        if (activeSec && activeSec !== 'ALL') query.section = activeSec;
+
         try {
-            const data = await apiRequest(`/api/faculty/reports?_t=${Date.now()}`).catch(() => null);
+            const data = await apiRequest('/api/faculty/reports', { query }).catch(() => null);
 
             if (data) {
                 setStats({
@@ -163,6 +250,10 @@ function ReportsContent() {
             setIsRefreshing(false);
         }
     };
+
+    useEffect(() => {
+        loadReportData();
+    }, [branch, batch, semester, section]);
 
     const handleViewStudent = async (usn) => {
         await logActivity(faculty, 'VIEW_REPORT_STUDENT', usn);
@@ -309,34 +400,102 @@ function ReportsContent() {
         }
     };
 
-    if (loading) return (
+    const filterCard = (
+        <Card style={{ marginBottom: '24px' }}>
+            <CardContent style={{ padding: '16px 20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '14px', alignItems: 'flex-end' }}>
+                    <Select
+                        label="Branch / Department"
+                        value={branch}
+                        onChange={e => {
+                            const val = e.target.value;
+                            setBranch(val);
+                            saveFilters({ branch: val });
+                        }}
+                        options={getCleanBranchOptions(meta.branches)}
+                    />
+
+                    <Select
+                        label="Graduation Batch"
+                        value={batch}
+                        onChange={e => {
+                            const val = e.target.value;
+                            setBatch(val);
+                            saveFilters({ batch: val });
+                        }}
+                        options={[
+                            { value: 'ALL', label: 'All Batches (All Cohorts)' },
+                            ...(meta.batches || []).map(b => ({ value: b, label: `Batch ${b}` }))
+                        ]}
+                    />
+
+                    <Select
+                        label="Semester"
+                        value={semester}
+                        onChange={e => {
+                            const val = e.target.value;
+                            setSemester(val);
+                            saveFilters({ semester: val });
+                        }}
+                        options={[
+                            { value: 'ALL', label: 'All Semesters (Cumulative)' },
+                            ...(meta.semesters || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => ({ value: s, label: `Semester ${s}` }))
+                        ]}
+                    />
+
+                    <Select
+                        label={availableSections.length === 0 ? "Section (None Created)" : "Section"}
+                        value={section}
+                        disabled={availableSections.length === 0}
+                        onChange={e => setSection(e.target.value)}
+                        options={sectionOptions}
+                    />
+                </div>
+            </CardContent>
+        </Card>
+    );
+
+    if (loading && stats.uniqueStudents === 0) return (
         <div style={c.page}>
             <PageHeader>
                 <PageHeaderEyebrow>Analytics &amp; Insights</PageHeaderEyebrow>
                 <PageHeaderTitle>Reports</PageHeaderTitle>
+                <PageHeaderSubtitle>
+                    Live academic reporting across {branch === 'ALL' ? 'all department classes' : `${branchLabel(branch)} classes`}.
+                </PageHeaderSubtitle>
             </PageHeader>
-            <div style={{ marginTop: 'var(--space-9)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {filterCard}
+            <div style={{ marginTop: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 {[1, 2, 3].map(i => <div key={i} style={{ height: '80px', background: 'var(--surface)', borderRadius: 'var(--radius-6)', opacity: 0.5 }} className="gf-pulse" />)}
             </div>
         </div>
     );
 
-    if (stats.uniqueStudents === 0) {
+    if (stats.uniqueStudents === 0 && !loading) {
         return (
             <div style={c.page}>
                 <PageHeader>
                     <PageHeaderEyebrow>Analytics &amp; Insights</PageHeaderEyebrow>
                     <PageHeaderTitle>Reports</PageHeaderTitle>
+                    <PageHeaderSubtitle>
+                        Academic reporting filtered by department and cohort.
+                    </PageHeaderSubtitle>
                 </PageHeader>
-                <div style={{ ...c.emptyState, marginTop: 'var(--space-8)' }}>
+                {filterCard}
+                <div style={{ ...c.emptyState, marginTop: 'var(--space-4)' }}>
                     <span className="material-icons-round" style={{ fontSize: '48px', marginBottom: 'var(--space-4)', opacity: 0.4, display: 'block' }}>analytics</span>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: 'var(--space-2)' }}>No Data Yet</div>
-                    <p style={{ fontSize: '14px', maxWidth: '400px', margin: '0 auto', lineHeight: 1.6 }}>
-                        Add students to a class or fetch VTU results to see reporting data here. It updates automatically.
+                    <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: 'var(--space-2)' }}>No Data for Selected Scope</div>
+                    <p style={{ fontSize: '14px', maxWidth: '460px', margin: '0 auto', lineHeight: 1.6 }}>
+                        No student or examination records were found for the selected department, batch, or semester. Try switching to another department or selecting "All Branches".
                     </p>
                     <button
-                        onClick={() => loadReportData(true)}
-                        disabled={isRefreshing}
+                        onClick={() => {
+                            setBranch('ALL');
+                            setBatch('ALL');
+                            setSemester('ALL');
+                            setSection('ALL');
+                            saveFilters({ branch: 'ALL', batch: 'ALL', semester: 'all' });
+                        }}
                         style={{
                             marginTop: '16px',
                             padding: '8px 18px',
@@ -346,14 +505,10 @@ function ReportsContent() {
                             borderRadius: '10px',
                             fontSize: '13px',
                             fontWeight: 700,
-                            cursor: isRefreshing ? 'wait' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px'
+                            cursor: 'pointer',
                         }}
                     >
-                        <span className="material-icons-round" style={{ fontSize: '18px', animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }}>refresh</span>
-                        {isRefreshing ? 'Refreshing...' : 'Check Again'}
+                        Reset All Filters
                     </button>
                 </div>
             </div>
@@ -365,12 +520,12 @@ function ReportsContent() {
     return (
         <div style={c.page} className="gf-fade-up">
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
                     <PageHeaderEyebrow>Analytics &amp; Insights</PageHeaderEyebrow>
                     <PageHeaderTitle>Reports</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Live academic reporting across all department classes — updates automatically.
+                        Live academic reporting across {branch === 'ALL' ? 'all department classes' : `${branchLabel(branch)} classes`} — updates automatically.
                         {lastUpdated && <span style={{ marginLeft: '8px', opacity: 0.6 }}>Last synced {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
                     </PageHeaderSubtitle>
                 </PageHeader>
@@ -412,6 +567,8 @@ function ReportsContent() {
                     </div>
                 </div>
             </div>
+
+            {filterCard}
 
             {reportSyncMsg && (
                 <div

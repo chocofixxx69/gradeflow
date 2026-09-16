@@ -1651,11 +1651,11 @@ function InstitutionalIntelligenceContent() {
                                         type="button"
                                         onClick={() => {
                                             if (!classReport?.classes?.length) loadClassesData();
-                                            setClassPickerOpen(true);
+                                            setClassPickerOpen(prev => !prev);
                                         }}
                                         style={{
-                                            background: 'rgba(99, 102, 241, 0.1)',
-                                            color: 'var(--primary)',
+                                            background: classPickerOpen ? 'var(--primary)' : 'rgba(99, 102, 241, 0.1)',
+                                            color: classPickerOpen ? '#FFFFFF' : 'var(--primary)',
                                             border: '1px solid rgba(99, 102, 241, 0.3)',
                                             borderRadius: '8px',
                                             padding: '6px 12px',
@@ -1664,11 +1664,14 @@ function InstitutionalIntelligenceContent() {
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '5px'
+                                            gap: '5px',
+                                            transition: 'all 0.15s ease'
                                         }}
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>groups</span>
-                                        📋 Pick from Class Roster
+                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>
+                                            {classPickerOpen ? 'close' : 'groups'}
+                                        </span>
+                                        {classPickerOpen ? 'Hide Class Roster' : '📋 Pick from Class Roster'}
                                     </button>
                                     <button
                                         type="button"
@@ -1736,6 +1739,253 @@ function InstitutionalIntelligenceContent() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Inline Class Roster Drawer (Eliminating Black Screen Overlay) */}
+                            {classPickerOpen && (
+                                <div style={{
+                                    marginBottom: '16px',
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '12px',
+                                    overflow: 'hidden',
+                                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.05)',
+                                    transition: 'all 0.2s ease'
+                                }}>
+                                    {/* Panel Header */}
+                                    <div style={{
+                                        padding: '14px 18px',
+                                        borderBottom: '1px solid var(--border)',
+                                        background: 'var(--surface-low)',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}>
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>groups</span>
+                                                Pick Students from Class Roster
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                Select a class section below and click "+ Compare" to add students to the comparison cohort ({usnList.length} selected).
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setClassPickerOpen(false)}
+                                            style={{
+                                                background: 'var(--surface)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: '6px',
+                                                padding: '4px 10px',
+                                                fontSize: '12px',
+                                                fontWeight: 700,
+                                                color: 'var(--tx-muted)',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                            Close
+                                        </button>
+                                    </div>
+
+                                    {/* Controls: Target Class Section & Search */}
+                                    <div style={{
+                                        padding: '12px 18px',
+                                        borderBottom: '1px solid var(--border)',
+                                        background: 'var(--surface)',
+                                        display: 'flex',
+                                        gap: '12px',
+                                        flexWrap: 'wrap',
+                                        alignItems: 'flex-end'
+                                    }}>
+                                        <div style={{ flex: '1', minWidth: '220px' }}>
+                                            <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.05em' }}>
+                                                Target Class Section
+                                            </label>
+                                            <select
+                                                value={selectedPickerClassId}
+                                                onChange={e => {
+                                                    setSelectedPickerClassId(e.target.value);
+                                                    loadClassRoster(e.target.value);
+                                                }}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '8px 12px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid var(--border)',
+                                                    background: 'var(--surface-low)',
+                                                    color: 'var(--tx-main)',
+                                                    fontSize: '12px',
+                                                    fontWeight: 700,
+                                                    outline: 'none'
+                                                }}
+                                            >
+                                                {(classReport?.classes || []).map(c => (
+                                                    <option key={c.id} value={c.id}>
+                                                        {c.name} {c.section ? `(Sec ${c.section})` : ''} • Sem {c.semester} • Batch {c.batch}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div style={{ flex: '1', minWidth: '200px' }}>
+                                            <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.05em' }}>
+                                                Search Students in Class
+                                            </label>
+                                            <input
+                                                type="text"
+                                                placeholder="Filter by name or USN..."
+                                                value={rosterSearch}
+                                                onChange={e => setRosterSearch(e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '8px 12px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid var(--border)',
+                                                    background: 'var(--surface-low)',
+                                                    color: 'var(--tx-main)',
+                                                    fontSize: '12px',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Student Roster List */}
+                                    <div style={{
+                                        padding: '12px 18px',
+                                        maxHeight: '340px',
+                                        overflowY: 'auto',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px'
+                                    }}>
+                                        {isLoadingRoster ? (
+                                            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                <span className="material-icons-round gf-spin" style={{ fontSize: '24px', color: 'var(--primary)', marginBottom: '6px' }}>sync</span>
+                                                <div style={{ fontSize: '12px', fontWeight: 700 }}>Loading class roster...</div>
+                                            </div>
+                                        ) : classRosterStudents.length === 0 ? (
+                                            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--tx-main)' }}>No students found in this class</div>
+                                                <div style={{ fontSize: '11px', marginTop: '2px' }}>Try selecting another class section above.</div>
+                                            </div>
+                                        ) : (
+                                            filterAndRankStudents(classRosterStudents, rosterSearch).map(stu => {
+                                                const isAdded = usnList.includes(stu.usn);
+                                                return (
+                                                    <div
+                                                        key={stu.usn}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '8px 12px',
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${isAdded ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: isAdded ? 'rgba(99, 102, 241, 0.05)' : 'var(--surface-low)',
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            <div style={{
+                                                                width: '30px',
+                                                                height: '30px',
+                                                                borderRadius: '50%',
+                                                                background: isAdded ? 'var(--primary)' : 'var(--border)',
+                                                                color: isAdded ? '#FFFFFF' : 'var(--tx-muted)',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontWeight: 800,
+                                                                fontSize: '11px'
+                                                            }}>
+                                                                {(stu.name || stu.usn).slice(0, 2).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
+                                                                    {stu.name || stu.usn}
+                                                                </div>
+                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
+                                                                    {stu.usn} {stu.section ? `• Sec ${stu.section}` : ''}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
+                                                                <span style={{
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    padding: '2px 7px',
+                                                                    borderRadius: '5px',
+                                                                    background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(99, 102, 241, 0.12)',
+                                                                    color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
+                                                                }}>
+                                                                    {fmtNum(stu.cgpa)} CGPA
+                                                                </span>
+                                                            )}
+                                                            {stu.total_backlogs > 0 && (
+                                                                <span style={{
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    padding: '2px 7px',
+                                                                    borderRadius: '5px',
+                                                                    background: 'rgba(239, 68, 68, 0.12)',
+                                                                    color: '#DC2626'
+                                                                }}>
+                                                                    {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (isAdded) {
+                                                                        handleRemoveUsn(stu.usn);
+                                                                    } else {
+                                                                        handleAddUsn(stu.usn);
+                                                                    }
+                                                                }}
+                                                                style={{
+                                                                    padding: '5px 10px',
+                                                                    borderRadius: '6px',
+                                                                    border: 'none',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer',
+                                                                    background: isAdded ? 'rgba(239, 68, 68, 0.1)' : 'var(--primary)',
+                                                                    color: isAdded ? '#DC2626' : '#FFFFFF',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                {isAdded ? 'Remove' : '+ Compare'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+
+                                    {/* Panel Footer */}
+                                    <div style={{
+                                        padding: '10px 18px',
+                                        borderTop: '1px solid var(--border)',
+                                        background: 'var(--surface-low)',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}>
+                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                            {usnList.length} student{usnList.length === 1 ? '' : 's'} in comparison cohort
+                                        </span>
+                                        <Button size="sm" variant="primary" onClick={() => setClassPickerOpen(false)}>
+                                            Done
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Live Search Input with Suggestions Dropdown */}
                             <div ref={searchContainerRef} style={{ position: 'relative' }}>
@@ -2700,236 +2950,6 @@ function InstitutionalIntelligenceContent() {
                                 </Card>
                             )}
                         </>
-                    )}
-                    {/* Class Roster Picker Modal */}
-                    {classPickerOpen && (
-                        <div
-                            onClick={() => setClassPickerOpen(false)}
-                            style={{
-                                position: 'fixed',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                background: 'rgba(0, 0, 0, 0.65)',
-                                backdropFilter: 'blur(4px)',
-                                zIndex: 9999,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: '20px'
-                            }}
-                        >
-                            <div
-                                onClick={e => e.stopPropagation()}
-                                style={{
-                                    background: 'var(--surface)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '16px',
-                                    width: '100%',
-                                    maxWidth: '680px',
-                                    maxHeight: '85vh',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    boxShadow: '0 25px 60px rgba(0,0,0,0.4)',
-                                    overflow: 'hidden',
-                                    position: 'relative',
-                                    zIndex: 10000
-                                }}
-                            >
-                                {/* Modal Header */}
-                                <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ fontWeight: 900, fontSize: '16px', color: 'var(--tx-main)' }}>
-                                            Pick Students from Class Roster
-                                        </div>
-                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                            Select a class section and click students to compare. ({usnList.length} student{usnList.length === 1 ? '' : 's'} selected)
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setClassPickerOpen(false)}
-                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', fontSize: '22px', lineHeight: 1 }}
-                                    >
-                                        &times;
-                                    </button>
-                                </div>
-
-                                {/* Modal Controls: Class Selector & Search */}
-                                <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                                    <div style={{ flex: '1', minWidth: '220px' }}>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px' }}>
-                                            Target Class Section
-                                        </label>
-                                        <select
-                                            value={selectedPickerClassId}
-                                            onChange={e => {
-                                                setSelectedPickerClassId(e.target.value);
-                                                loadClassRoster(e.target.value);
-                                            }}
-                                            style={{
-                                                width: '100%',
-                                                padding: '9px 12px',
-                                                borderRadius: '8px',
-                                                border: '1px solid var(--border)',
-                                                background: 'var(--surface)',
-                                                color: 'var(--tx-main)',
-                                                fontSize: '13px',
-                                                fontWeight: 700,
-                                                outline: 'none'
-                                            }}
-                                        >
-                                            {(classReport?.classes || []).map(c => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.name} {c.section ? `(Sec ${c.section})` : ''} • Sem {c.semester} • Batch {c.batch}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div style={{ flex: '1', minWidth: '200px' }}>
-                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px' }}>
-                                            Search Students
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Filter by name or USN..."
-                                            value={rosterSearch}
-                                            onChange={e => setRosterSearch(e.target.value)}
-                                            style={{
-                                                width: '100%',
-                                                padding: '9px 12px',
-                                                borderRadius: '8px',
-                                                border: '1px solid var(--border)',
-                                                background: 'var(--surface)',
-                                                color: 'var(--tx-main)',
-                                                fontSize: '13px',
-                                                outline: 'none'
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Modal Body: Roster Grid */}
-                                <div style={{ padding: '16px 24px', overflowY: 'auto', flex: '1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {isLoadingRoster ? (
-                                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                                            <span className="material-icons-round gf-spin" style={{ fontSize: '28px', color: 'var(--primary)', marginBottom: '8px' }}>sync</span>
-                                            <div style={{ fontSize: '13px', fontWeight: 700 }}>Loading class roster...</div>
-                                        </div>
-                                    ) : classRosterStudents.length === 0 ? (
-                                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                                            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--tx-main)' }}>No students found in this class</div>
-                                            <div style={{ fontSize: '12px' }}>Try selecting another class section above.</div>
-                                        </div>
-                                    ) : (
-                                        filterAndRankStudents(classRosterStudents, rosterSearch)
-                                            .map(stu => {
-                                                const isAdded = usnList.includes(stu.usn);
-                                                return (
-                                                    <div
-                                                        key={stu.usn}
-                                                        style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '10px 14px',
-                                                            borderRadius: '8px',
-                                                            border: `1px solid ${isAdded ? 'var(--primary)' : 'var(--border)'}`,
-                                                            background: isAdded ? 'rgba(99, 102, 241, 0.06)' : 'var(--surface-low)',
-                                                            transition: 'all 0.15s ease'
-                                                        }}
-                                                    >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                            <div style={{
-                                                                width: '34px',
-                                                                height: '34px',
-                                                                borderRadius: '50%',
-                                                                background: isAdded ? 'var(--primary)' : 'var(--border)',
-                                                                color: isAdded ? '#FFFFFF' : 'var(--tx-muted)',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                fontWeight: 800,
-                                                                fontSize: '12px'
-                                                            }}>
-                                                                {(stu.name || stu.usn).slice(0, 2).toUpperCase()}
-                                                            </div>
-                                                            <div>
-                                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
-                                                                    {stu.name || stu.usn}
-                                                                </div>
-                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
-                                                                    {stu.usn} {stu.section ? `• Sec ${stu.section}` : ''}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                            {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
-                                                                <span style={{
-                                                                    fontSize: '11px',
-                                                                    fontWeight: 800,
-                                                                    padding: '3px 8px',
-                                                                    borderRadius: '6px',
-                                                                    background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(99, 102, 241, 0.12)',
-                                                                    color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
-                                                                }}>
-                                                                    {fmtNum(stu.cgpa)} CGPA
-                                                                </span>
-                                                            )}
-                                                            {stu.total_backlogs > 0 && (
-                                                                <span style={{
-                                                                    fontSize: '11px',
-                                                                    fontWeight: 800,
-                                                                    padding: '3px 8px',
-                                                                    borderRadius: '6px',
-                                                                    background: 'rgba(239, 68, 68, 0.12)',
-                                                                    color: '#DC2626'
-                                                                }}>
-                                                                    {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
-                                                                </span>
-                                                            )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if (isAdded) {
-                                                                        handleRemoveUsn(stu.usn);
-                                                                    } else {
-                                                                        handleAddUsn(stu.usn);
-                                                                    }
-                                                                }}
-                                                                style={{
-                                                                    padding: '6px 12px',
-                                                                    borderRadius: '6px',
-                                                                    border: 'none',
-                                                                    fontSize: '11px',
-                                                                    fontWeight: 800,
-                                                                    cursor: 'pointer',
-                                                                    background: isAdded ? 'rgba(239, 68, 68, 0.1)' : 'var(--primary)',
-                                                                    color: isAdded ? '#DC2626' : '#FFFFFF',
-                                                                    transition: 'all 0.15s ease'
-                                                                }}
-                                                            >
-                                                                {isAdded ? 'Remove' : '+ Compare'}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                    )}
-                                </div>
-
-                                {/* Modal Footer */}
-                                <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 700 }}>
-                                        {usnList.length} student{usnList.length === 1 ? '' : 's'} in comparison cohort
-                                    </span>
-                                    <Button variant="primary" onClick={() => setClassPickerOpen(false)}>
-                                        Done
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
                     )}
                 </>
             )}

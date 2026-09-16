@@ -287,7 +287,26 @@ function ExamResultsHubContent() {
                 item.subject_code?.toLowerCase().includes(query) ||
                 item.subject_name?.toLowerCase().includes(query);
 
-            const matchOutcome = outcomeFilter === 'ALL' || item.outcome === outcomeFilter;
+            let matchOutcome = true;
+            if (outcomeFilter !== 'ALL') {
+                if (outcomeFilter === 'CLEARED_BACKLOG') {
+                    matchOutcome = item.outcomeType === 'CLEARED_BACKLOG' || item.outcome === 'Cleared Backlog';
+                } else if (outcomeFilter === 'CLEARED_REEXAM') {
+                    matchOutcome = item.currentStatus?.statusType === 'CLEARED_REEXAM';
+                } else if (outcomeFilter === 'STILL_FAIL') {
+                    matchOutcome = item.outcomeType === 'STILL_FAIL' || item.outcome?.includes('Still Fail') || item.outcome?.includes('Backlog Retained');
+                } else if (outcomeFilter === 'GRADE_UPGRADED') {
+                    matchOutcome = item.outcomeType === 'GRADE_UPGRADED' || item.outcome === 'Grade Upgraded';
+                } else if (outcomeFilter === 'ORIGINAL_RETAINED') {
+                    matchOutcome = item.outcomeType === 'ORIGINAL_RETAINED' || item.outcome?.includes('Original Retained');
+                } else if (outcomeFilter === 'CONFIRMED') {
+                    matchOutcome = item.outcomeType === 'CONFIRMED' || item.outcome?.includes('Confirmed');
+                } else if (outcomeFilter === 'ACTIVE_BACKLOG') {
+                    matchOutcome = item.currentStatus?.statusType === 'ACTIVE_BACKLOG' || item.currentStatus?.statusType === 'REEXAM_ATTEMPTED';
+                } else {
+                    matchOutcome = item.outcome === outcomeFilter;
+                }
+            }
             return matchSearch && matchOutcome;
         });
     }, [revalData.deltaRoster, searchQuery, outcomeFilter]);
@@ -445,7 +464,7 @@ function ExamResultsHubContent() {
                         [`Applications evaluated: ${filteredRevalRoster.length}   Generated: ${new Date().toLocaleString()}`],
                         []
                     ],
-                    headers: ['USN', 'Name', 'Subject Code', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Outcome'],
+                    headers: ['USN', 'Name', 'Subject Code', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Reval Outcome', 'Current Standing', 'Exam / Status Details'],
                     rows: filteredRevalRoster.map(r => {
                         const deltaVal = r.deltaMarks ?? r.delta;
                         return [
@@ -456,7 +475,9 @@ function ExamResultsHubContent() {
                             r.originalExternal ?? r.preMarks ?? null,
                             r.revalExternal ?? r.postMarks ?? null,
                             Number.isFinite(deltaVal) ? deltaVal : null,
-                            r.outcome || 'No Change'
+                            r.outcome || 'No Change',
+                            r.currentStatus?.badgeLabel || (r.currentStatus?.isCleared ? 'Cleared' : 'Active Backlog'),
+                            r.currentStatus?.detail || ''
                         ];
                     })
                 }], `Revaluation_Delta_${branch}_Sem${semester}`);
@@ -562,9 +583,12 @@ function ExamResultsHubContent() {
                 doc.setFont('helvetica', 'normal');
                 doc.text(`Evaluated Applications: ${filteredRevalRoster.length} | Date: ${new Date().toLocaleDateString()}`, 14, 21);
 
-                const tableHead = [['USN', 'Name', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Outcome']];
+                const tableHead = [['USN', 'Name', 'Subject', 'Original SEE', 'Reval SEE', 'Delta', 'Reval Outcome', 'Current Standing']];
                 const tableBody = filteredRevalRoster.map(r => {
                     const deltaVal = r.deltaMarks ?? r.delta;
+                    const statusText = r.currentStatus?.badgeLabel
+                        ? `${r.currentStatus.badgeLabel} - ${r.currentStatus.detail || ''}`
+                        : (r.currentStatus?.isCleared ? 'Cleared' : 'Active Backlog');
                     return [
                         r.usn,
                         r.name,
@@ -572,7 +596,8 @@ function ExamResultsHubContent() {
                         r.originalExternal !== null && r.originalExternal !== undefined ? String(r.originalExternal) : (r.preMarks !== null && r.preMarks !== undefined ? String(r.preMarks) : '—'),
                         r.revalExternal !== null && r.revalExternal !== undefined ? String(r.revalExternal) : (r.postMarks !== null && r.postMarks !== undefined ? String(r.postMarks) : '—'),
                         deltaVal !== null && deltaVal !== undefined ? (deltaVal > 0 ? `+${deltaVal}` : String(deltaVal)) : '—',
-                        r.outcome || 'No Change'
+                        r.outcome || 'No Change',
+                        statusText
                     ];
                 });
 
@@ -801,15 +826,18 @@ function ExamResultsHubContent() {
 
                         {viewTab === 'reval' && (
                             <Select
-                                label="Outcome Filter"
+                                label="Outcome & Status Filter"
                                 value={outcomeFilter}
                                 onChange={e => setOutcomeFilter(e.target.value)}
                                 options={[
-                                    { value: 'ALL', label: 'All Outcomes' },
-                                    { value: 'Cleared Backlog', label: 'Cleared Backlog' },
-                                    { value: 'Grade Upgraded', label: 'Grade Upgraded' },
-                                    { value: 'Confirmed', label: 'Confirmed (No Change)' },
-                                    { value: 'Marks Decreased', label: 'Marks Decreased' },
+                                    { value: 'ALL', label: 'All Outcomes & Statuses' },
+                                    { value: 'CLEARED_BACKLOG', label: 'Cleared in Revaluation' },
+                                    { value: 'CLEARED_REEXAM', label: 'Cleared in Subsequent Re-Exam' },
+                                    { value: 'STILL_FAIL', label: 'Marks Improved (Still Fail)' },
+                                    { value: 'GRADE_UPGRADED', label: 'Grade Upgraded (Passed)' },
+                                    { value: 'ORIGINAL_RETAINED', label: 'Original Retained (VTU Policy)' },
+                                    { value: 'CONFIRMED', label: 'Confirmed (No Change)' },
+                                    { value: 'ACTIVE_BACKLOG', label: 'Active Backlog (Needs Clearing)' },
                                 ]}
                             />
                         )}
@@ -1082,29 +1110,40 @@ function ExamResultsHubContent() {
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Reval Applications</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{revalData.summary.totalApplications}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Total challenge evaluations</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--tx-main)' }}>{revalData.summary?.totalApplications ?? 0}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>{revalData.summary?.totalStudents ?? 0} students evaluated</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
-                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Marks Upgraded</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>{revalData.summary.upgradedCount}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Benefited from reval</div>
+                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Cleared via Reval</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>{revalData.summary?.clearedCount ?? 0}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Immediate pass from challenge</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
-                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Backlogs Cleared</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--primary)' }}>{revalData.summary.clearedCount}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Converted from Fail &rarr; Pass</div>
+                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Cleared in Re-Exam</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#059669' }}>{revalData.summary?.reExamClearedCount ?? 0}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Passed in makeup/regular exam</div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardContent style={{ padding: '20px' }}>
-                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Net Pass Rate Gain</div>
-                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#16A34A' }}>+{fmtNum(revalData.summary?.netPassRateGain, 1, '0.0')}%</div>
-                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Post-revaluation lift</div>
+                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Active Backlogs</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#DC2626' }}>
+                                    {Math.max(0, (revalData.summary?.totalApplications ?? 0) - (revalData.summary?.clearedCount ?? 0) - (revalData.summary?.reExamClearedCount ?? 0) - (revalData.summary?.upgradedCount ?? 0))}
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Pending clearance in re-exam</div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent style={{ padding: '20px' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Total Clearance Lift</div>
+                                <div style={{ fontSize: '28px', fontWeight: 900, color: '#2563EB' }}>
+                                    +{fmtNum((((revalData.summary?.clearedCount ?? 0) + (revalData.summary?.reExamClearedCount ?? 0)) / (revalData.summary?.totalApplications || 1)) * 100, 1, '0.0')}%
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '4px' }}>Reval + subsequent re-exams</div>
                             </CardContent>
                         </Card>
                     </div>
@@ -1125,18 +1164,19 @@ function ExamResultsHubContent() {
                                             <th style={{ padding: '12px 16px', textAlign: 'center' }}>Original SEE</th>
                                             <th style={{ padding: '12px 16px', textAlign: 'center' }}>Reval SEE</th>
                                             <th style={{ padding: '12px 16px', textAlign: 'center' }}>Delta</th>
-                                            <th style={{ padding: '12px 16px' }}>Outcome</th>
+                                            <th style={{ padding: '12px 16px' }}>Reval Outcome</th>
+                                            <th style={{ padding: '12px 16px' }}>Current Standing (Re-Exam)</th>
                                             <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {revalLoading ? (
                                             <tr>
-                                                <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>Loading reval delta records...</td>
+                                                <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>Loading reval delta records...</td>
                                             </tr>
                                         ) : filteredRevalRoster.length === 0 ? (
                                             <tr>
-                                                <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>No revaluation records match criteria.</td>
+                                                <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)' }}>No revaluation records match criteria.</td>
                                             </tr>
                                         ) : (
                                             filteredRevalRoster.map((r, idx) => {
@@ -1145,6 +1185,18 @@ function ExamResultsHubContent() {
                                                 const isLoss = typeof deltaVal === 'number' && deltaVal < 0;
                                                 const origVal = r.originalExternal !== null && r.originalExternal !== undefined ? r.originalExternal : (r.preMarks !== null && r.preMarks !== undefined ? r.preMarks : '—');
                                                 const revalVal = r.revalExternal !== null && r.revalExternal !== undefined ? r.revalExternal : (r.postMarks !== null && r.postMarks !== undefined ? r.postMarks : '—');
+
+                                                // Determine outcome pill styling
+                                                const isCleared = r.outcomeType === 'CLEARED_BACKLOG' || r.outcome === 'Cleared Backlog';
+                                                const isStillFail = r.outcomeType === 'STILL_FAIL' || r.outcome?.includes('Still Fail') || r.outcome?.includes('Backlog Retained');
+                                                const isUpgraded = r.outcomeType === 'GRADE_UPGRADED' || r.outcome === 'Grade Upgraded';
+                                                const isRetained = r.outcomeType === 'ORIGINAL_RETAINED' || r.outcome?.includes('Original Retained');
+
+                                                // Current status styling
+                                                const currentStatusType = r.currentStatus?.statusType;
+                                                const isReExamCleared = currentStatusType === 'CLEARED_REEXAM';
+                                                const isRevalCleared = currentStatusType === 'CLEARED_REVAL';
+                                                const isReExamPending = currentStatusType === 'REEXAM_ATTEMPTED';
 
                                                 return (
                                                     <tr key={`${r.usn}-${r.subject_code}-${idx}`} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1166,36 +1218,135 @@ function ExamResultsHubContent() {
                                                         <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-main)' }}>
                                                             {revalVal}
                                                         </td>
-                                                        <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: isGain ? '#16A34A' : (isLoss ? '#DC2626' : 'var(--tx-dim)') }}>
+                                                        <td style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 900, color: isGain ? '#16A34A' : (isLoss ? 'var(--tx-dim)' : 'var(--tx-dim)') }}>
                                                             {deltaVal !== null && deltaVal !== undefined ? (isGain ? `+${deltaVal}` : deltaVal) : '—'}
                                                         </td>
                                                         <td style={{ padding: '14px 16px' }}>
-                                                            <span style={{
-                                                                padding: '4px 10px',
-                                                                borderRadius: '20px',
-                                                                fontSize: '11px',
-                                                                fontWeight: 800,
-                                                                background: (r.outcome === 'Cleared Backlog' || r.outcome === 'UPGRADED_PASS')
-                                                                    ? 'rgba(34, 197, 94, 0.12)'
-                                                                    : (r.outcome === 'Grade Upgraded' || r.outcome === 'UPGRADED')
-                                                                    ? 'rgba(59, 130, 246, 0.12)'
-                                                                    : (r.outcome === 'Marks Decreased' || r.outcome === 'DECREASED')
-                                                                    ? 'rgba(239, 68, 68, 0.12)'
-                                                                    : (r.outcome === 'Awaiting Original Mark')
-                                                                    ? 'rgba(245, 158, 11, 0.12)'
-                                                                    : 'var(--surface-low)',
-                                                                color: (r.outcome === 'Cleared Backlog' || r.outcome === 'UPGRADED_PASS')
-                                                                    ? '#16A34A'
-                                                                    : (r.outcome === 'Grade Upgraded' || r.outcome === 'UPGRADED')
-                                                                    ? '#2563EB'
-                                                                    : (r.outcome === 'Marks Decreased' || r.outcome === 'DECREASED')
-                                                                    ? '#DC2626'
-                                                                    : (r.outcome === 'Awaiting Original Mark')
-                                                                    ? '#D97706'
-                                                                    : 'var(--tx-muted)'
-                                                            }}>
-                                                                {r.outcome}
-                                                            </span>
+                                                            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '4px' }}>
+                                                                <span style={{
+                                                                    display: 'inline-block',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '20px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 800,
+                                                                    width: 'fit-content',
+                                                                    background: isCleared
+                                                                        ? 'rgba(34, 197, 94, 0.12)'
+                                                                        : isUpgraded
+                                                                        ? 'rgba(59, 130, 246, 0.12)'
+                                                                        : isStillFail
+                                                                        ? 'rgba(245, 158, 11, 0.12)'
+                                                                        : isRetained
+                                                                        ? 'rgba(148, 163, 184, 0.15)'
+                                                                        : 'var(--surface-low)',
+                                                                    color: isCleared
+                                                                        ? '#16A34A'
+                                                                        : isUpgraded
+                                                                        ? '#2563EB'
+                                                                        : isStillFail
+                                                                        ? '#D97706'
+                                                                        : isRetained
+                                                                        ? 'var(--tx-muted)'
+                                                                        : 'var(--tx-dim)'
+                                                                }}>
+                                                                    {r.outcome}
+                                                                </span>
+                                                                {isRetained && (
+                                                                    <span style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 600 }}>
+                                                                        VTU higher mark kept ({origVal})
+                                                                    </span>
+                                                                )}
+                                                                {isStillFail && (
+                                                                    <span style={{ fontSize: '10px', color: '#D97706', fontWeight: 600 }}>
+                                                                        Needs ≥18 SEE to clear
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td style={{ padding: '14px 16px' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                                {isReExamCleared ? (
+                                                                    <>
+                                                                        <span style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                            padding: '3px 8px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '11px',
+                                                                            fontWeight: 800,
+                                                                            width: 'fit-content',
+                                                                            background: 'rgba(5, 150, 105, 0.12)',
+                                                                            color: '#059669'
+                                                                        }}>
+                                                                            ✓ Cleared in Re-Exam
+                                                                        </span>
+                                                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500 }}>
+                                                                            {r.currentStatus?.detail}
+                                                                        </span>
+                                                                    </>
+                                                                ) : isRevalCleared ? (
+                                                                    <>
+                                                                        <span style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                            padding: '3px 8px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '11px',
+                                                                            fontWeight: 800,
+                                                                            width: 'fit-content',
+                                                                            background: 'rgba(34, 197, 94, 0.12)',
+                                                                            color: '#16A34A'
+                                                                        }}>
+                                                                            ✓ Cleared via Reval
+                                                                        </span>
+                                                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500 }}>
+                                                                            Score: {revalVal} SEE
+                                                                        </span>
+                                                                    </>
+                                                                ) : isReExamPending ? (
+                                                                    <>
+                                                                        <span style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                            padding: '3px 8px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '11px',
+                                                                            fontWeight: 800,
+                                                                            width: 'fit-content',
+                                                                            background: 'rgba(245, 158, 11, 0.12)',
+                                                                            color: '#D97706'
+                                                                        }}>
+                                                                            ↻ Re-Exam Attempted
+                                                                        </span>
+                                                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 500 }}>
+                                                                            {r.currentStatus?.detail}
+                                                                        </span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <span style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                            padding: '3px 8px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '11px',
+                                                                            fontWeight: 800,
+                                                                            width: 'fit-content',
+                                                                            background: 'rgba(239, 68, 68, 0.12)',
+                                                                            color: '#DC2626'
+                                                                        }}>
+                                                                            ⚠ Active Backlog
+                                                                        </span>
+                                                                        <span style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 500 }}>
+                                                                            {r.currentStatus?.detail || 'Needs re-exam appearance'}
+                                                                        </span>
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                                                             <Link href={`/faculty/students/${r.usn}`} style={{ textDecoration: 'none' }}>

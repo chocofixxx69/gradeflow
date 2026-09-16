@@ -7,6 +7,8 @@ import { extractBatchFromUsn, getStudentAcademicBatch, extractBranchFromUsn, can
 
 import { unstable_noStore as noStore } from 'next/cache';
 
+import { readTable, SELECTS } from '@/lib/table-cache';
+
 export const dynamic = 'force-dynamic';
 // Whole-table analytics reads can exceed Vercel's default 10s ceiling on a cold
 // start; see app/api/faculty/analytics/semester-analysis/route.js for the detail.
@@ -59,36 +61,20 @@ export async function GET(req) {
 
         const supabaseAdmin = getAdminClient();
 
-        // 1. High-Performance Parallel Fetch: classes, catalog, branches, students, and recent marks simultaneously
+        // 1. High-Performance Parallel Fetch using process-wide table-cache
         const [
-            { data: rawClasses },
-            cat1, cat2, cat3,
+            rawClasses,
+            catalogSubjects,
             { data: metaBranches },
-            { data: rawStudents },
-            marks1, marks2, marks3
+            rawStudents,
+            marksSubjects
         ] = await Promise.all([
-            supabaseAdmin.from('classes').select('id, name, branch, branch_code, semester, section, academic_year, batch'),
-            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(0, 999),
-            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(1000, 1999),
-            supabaseAdmin.from('subject_catalog').select('subject_code, subject_name, semester, branch, scheme, credits').range(2000, 2999),
+            readTable(supabaseAdmin, 'classes', SELECTS.classes),
+            readTable(supabaseAdmin, 'subject_catalog', SELECTS.subject_catalog),
             supabaseAdmin.from('branches').select('code, label, is_active, sort_order').order('sort_order', { ascending: true }),
-            supabaseAdmin.from('students').select('branch, year, usn, lateral_entry, name, semester'),
-            supabaseAdmin.from('subject_marks').select('subject_code, subject_name, semester, credits, usn').order('id', { ascending: false }).range(0, 999),
-            supabaseAdmin.from('subject_marks').select('subject_code, subject_name, semester, credits, usn').order('id', { ascending: false }).range(1000, 1999),
-            supabaseAdmin.from('subject_marks').select('subject_code, subject_name, semester, credits, usn').order('id', { ascending: false }).range(2000, 2999)
+            readTable(supabaseAdmin, 'students', SELECTS.students),
+            readTable(supabaseAdmin, 'subject_marks', SELECTS.subject_marks)
         ]);
-
-        const catalogSubjects = [
-            ...(cat1?.data || []),
-            ...(cat2?.data || []),
-            ...(cat3?.data || [])
-        ];
-
-        const marksSubjects = [
-            ...(marks1?.data || []),
-            ...(marks2?.data || []),
-            ...(marks3?.data || [])
-        ];
 
         // Map students for quick lookup
         const studentMap = new Map();

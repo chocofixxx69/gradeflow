@@ -94,43 +94,42 @@ function SubjectAnalyticsContent() {
         loadMeta();
     }, []);
 
-    // Filter available subjects based on selected branch and semester
-    // Prioritize subjects that have real student data, and compute their branch-specific scope counts
+    // Filter available subjects based on selected branch, semester, and batch
+    // Strictly isolate subjects to the active department and cohort so phantom, other-branch, and repeated subjects are eliminated
     const availableSubjects = useMemo(() => {
         const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
         const normBranch = canonicalBranchCode(branch) || branch;
 
-        const filtered = (meta.subjects || []).filter(s => {
-            const matchesSem = !semester || Number(s.semester) === Number(semester);
-            if (!matchesSem) return false;
-
-            if (isAllBranch) return true;
-
-            if (s.branches && Array.isArray(s.branches)) {
-                return s.branches.some(b => matchesBranch(b, branch));
-            }
-            return matchesBranch(s.branch || s.code, branch);
+        // 1. Semester matching
+        const semSubjects = (meta.subjects || []).filter(s => {
+            return !semester || Number(s.semester) === Number(semester);
         });
 
-        // If there are real active subjects with marks in this scope, ONLY show those active subjects!
-        // This eliminates duplicate phantom catalog placeholders (like 1BCS401, 1BCS402) that duplicate active courses.
-        const hasRealSubjects = filtered.some(s => s.hasRealData || (isAllBranch ? (s.studentCount > 0) : ((s.branchCounts?.[normBranch] || 0) > 0)));
-        const candidateSubjects = hasRealSubjects
-            ? filtered.filter(s => isAllBranch ? (s.hasRealData || s.studentCount > 0) : ((s.branchCounts?.[normBranch] || 0) > 0 || s.hasRealData))
-            : filtered;
+        // 2. Branch isolation:
+        // When a department is selected (e.g. EC), the subject MUST have marks for that department.
+        const branchActiveSubjects = semSubjects.filter(s => {
+            if (isAllBranch) return (s.studentCount || 0) > 0;
+            return (s.branchCounts?.[normBranch] || 0) > 0;
+        });
 
-        // Deduplicate candidate subjects by code so no subject appears multiple times
-        const seenCodes = new Set();
-        const uniqueSubjects = [];
-        for (const s of candidateSubjects) {
-            if (!seenCodes.has(s.code)) {
-                seenCodes.add(s.code);
-                uniqueSubjects.push(s);
-            }
+        let baseSubjects = [];
+        if (branchActiveSubjects.length > 0) {
+            // Real subjects with active marks exist for this department: ONLY use active subjects!
+            // This strictly eliminates CSE-only subjects (e.g. 1BMATS101) or phantom catalog duplicates.
+            baseSubjects = branchActiveSubjects;
+        } else {
+            // Fallback for semesters/departments with zero marks: only include catalog subjects matching this branch
+            baseSubjects = semSubjects.filter(s => {
+                if (isAllBranch) return true;
+                if (s.branches && Array.isArray(s.branches)) {
+                    return s.branches.some(b => matchesBranch(b, branch));
+                }
+                return matchesBranch(s.branch || s.code, branch);
+            });
         }
 
-        // Compute scope count and total count specific to the selected branch and batch
-        return uniqueSubjects.map(s => {
+        // 3. Map scope count (specific to selected batch) and department total count
+        const mapped = baseSubjects.map(s => {
             let batchCount = 0;
             let totalCount = 0;
 
@@ -148,16 +147,32 @@ function SubjectAnalyticsContent() {
                 scopeCount: batchCount,
                 totalCount: totalCount
             };
-        }).sort((a, b) => {
-            // First by presence in current selected batch
+        });
+
+        // 4. Batch Scoping:
+        // When a specific batch is chosen (e.g. "2023"), show ONLY subjects that have active marks in this batch!
+        // This stops legacy/alternate scheme codes (like 1BENG106 alongside BENGK106) from appearing as repeated subjects.
+        const batchScoped = batch ? mapped.filter(s => s.scopeCount > 0) : mapped;
+        const candidateSubjects = batchScoped.length > 0 ? batchScoped : mapped;
+
+        // Deduplicate by subject code so no duplicate codes appear
+        const seenCodes = new Set();
+        const uniqueSubjects = [];
+        for (const s of candidateSubjects) {
+            if (!seenCodes.has(s.code)) {
+                seenCodes.add(s.code);
+                uniqueSubjects.push(s);
+            }
+        }
+
+        return uniqueSubjects.sort((a, b) => {
+            // Sort by active students in this cohort
             if (a.scopeCount > 0 && b.scopeCount === 0) return -1;
             if (a.scopeCount === 0 && b.scopeCount > 0) return 1;
             if (a.scopeCount > 0 && b.scopeCount > 0) return b.scopeCount - a.scopeCount;
 
-            // Then by total student marks
-            if (a.totalCount > 0 && b.totalCount === 0) return -1;
-            if (a.totalCount === 0 && b.totalCount > 0) return 1;
-            if (a.totalCount > 0 && b.totalCount > 0) return b.totalCount - a.totalCount;
+            // Then by total department marks
+            if (a.totalCount !== b.totalCount) return b.totalCount - a.totalCount;
 
             return a.code.localeCompare(b.code);
         });
@@ -493,32 +508,37 @@ function SubjectAnalyticsContent() {
                                 value={semester}
                                 onChange={e => setSemester(Number(e.target.value))}
                                 options={meta.semesters.map(s => {
-                                    const count = (meta.subjects || []).filter(sub => sub.semester === s && sub.hasRealData).length;
+                                    const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
+                                    const normBranch = canonicalBranchCode(branch) || branch;
+                                    const count = (meta.subjects || []).filter(sub => {
+                                        if (Number(sub.semester) !== Number(s)) return false;
+                                        if (isAllBranch) return (sub.studentCount || 0) > 0;
+                                        return (sub.branchCounts?.[normBranch] || 0) > 0;
+                                    }).length;
                                     return {
                                         value: s,
-                                        label: `Semester ${s} ${count > 0 ? `(${count} Active Subjects)` : ''}`
+                                        label: `Semester ${s} ${count > 0 ? `(${count} Active Subject${count === 1 ? '' : 's'})` : ''}`
                                     };
                                 })}
                             />
                         </div>
                         <div>
                             <Select
-                                label={`Subject (${availableSubjects.filter(s => s.scopeCount > 0).length} with Marks)`}
+                                label={`Subject (${availableSubjects.length} Active Subject${availableSubjects.length === 1 ? '' : 's'})`}
                                 value={subjectCode}
                                 onChange={e => setSubjectCode(e.target.value)}
                                 options={availableSubjects.length > 0 
                                     ? availableSubjects.map(s => {
-                                        let tag = '';
                                         const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
                                         const normBranch = canonicalBranchCode(branch) || branch;
                                         const branchTag = !isAllBranch ? ` ${normBranch}` : '';
+                                        const count = s.scopeCount > 0 ? s.scopeCount : s.totalCount;
 
-                                        if (s.scopeCount > 0) tag = `★ ${s.code} - ${s.name} (${s.scopeCount}${branchTag} students)`;
-                                        else if (s.totalCount > 0) tag = `${s.code} - ${s.name} (${s.totalCount}${branchTag} in other batches)`;
-                                        else tag = `${s.code} - ${s.name}`;
                                         return {
                                             value: s.code,
-                                            label: tag
+                                            label: count > 0
+                                                ? `${s.code} - ${s.name} (${count}${branchTag} students)`
+                                                : `${s.code} - ${s.name}`
                                         };
                                     })
                                     : [{ value: subjectCode || '', label: subjectCode || 'No subjects found' }]
