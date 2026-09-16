@@ -1,2 +1,5 @@
-import AdminManagementPage from '../management/ManagementPage';
-export default function ExamSessionsPage() { return <AdminManagementPage type="sessions" />; }
+import { redirect } from 'next/navigation';
+
+export default function ExamSessionsPage() {
+    redirect('/admin/terminal');
+}
