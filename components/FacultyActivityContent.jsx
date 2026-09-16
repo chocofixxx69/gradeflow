@@ -2469,3 +2469,5 @@ export function FacultyActivityContent({
         </div>
     );
 }
+
+export default FacultyActivityContent;

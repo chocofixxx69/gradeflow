@@ -20,14 +20,14 @@ import { scoreStudentMatch, filterAndRank } from '../../../lib/search-utils';
 // tab's module (and its dependencies) to when that tab actually renders.
 const tabLoading = () => <LoadingState block label="Loading..." />;
 
-const ClassesContent = dynamic(() => import('../../../components/ClassesContent').then(m => m.ClassesContent), { loading: tabLoading, ssr: false });
-const AuditLogContent = dynamic(() => import('../../../components/AuditLogContent').then(m => m.AuditLogContent), { loading: tabLoading, ssr: false });
-const SupportTicketsContent = dynamic(() => import('../../../components/SupportTicketsContent').then(m => m.SupportTicketsContent), { loading: tabLoading, ssr: false });
-const FacultyAssignmentsContent = dynamic(() => import('../../../components/FacultyAssignmentsContent').then(m => m.FacultyAssignmentsContent), { loading: tabLoading, ssr: false });
-const FacultyPerformanceContent = dynamic(() => import('../../../components/FacultyPerformanceContent').then(m => m.FacultyPerformanceContent), { loading: tabLoading, ssr: false });
-const FacultyActivityContent = dynamic(() => import('../../../components/FacultyActivityContent').then(m => m.FacultyActivityContent), { loading: tabLoading, ssr: false });
-const AdminVtuUrlsContent = dynamic(() => import('../../../components/AdminVtuUrlsContent').then(m => m.AdminVtuUrlsContent), { loading: tabLoading, ssr: false });
-const SubjectsContent = dynamic(() => import('../../../components/SubjectsContent').then(m => m.SubjectsContent), { loading: tabLoading, ssr: false });
+const ClassesContent = dynamic(() => import('../../../components/ClassesContent').then(m => m.ClassesContent || m.default || m), { loading: tabLoading, ssr: false });
+const AuditLogContent = dynamic(() => import('../../../components/AuditLogContent').then(m => m.AuditLogContent || m.default || m), { loading: tabLoading, ssr: false });
+const SupportTicketsContent = dynamic(() => import('../../../components/SupportTicketsContent').then(m => m.SupportTicketsContent || m.default || m), { loading: tabLoading, ssr: false });
+const FacultyAssignmentsContent = dynamic(() => import('../../../components/FacultyAssignmentsContent').then(m => m.FacultyAssignmentsContent || m.default || m), { loading: tabLoading, ssr: false });
+const FacultyPerformanceContent = dynamic(() => import('../../../components/FacultyPerformanceContent').then(m => m.FacultyPerformanceContent || m.default || m), { loading: tabLoading, ssr: false });
+const FacultyActivityContent = dynamic(() => import('../../../components/FacultyActivityContent').then(m => m.FacultyActivityContent || m.default || m), { loading: tabLoading, ssr: false });
+const AdminVtuUrlsContent = dynamic(() => import('../../../components/AdminVtuUrlsContent').then(m => m.AdminVtuUrlsContent || m.default || m), { loading: tabLoading, ssr: false });
+const SubjectsContent = dynamic(() => import('../../../components/SubjectsContent').then(m => m.SubjectsContent || m.default || m), { loading: tabLoading, ssr: false });
 const AdminAnalyticsPage = dynamic(() => import('../analytics/page.jsx'), { loading: tabLoading, ssr: false });
 
 const TAB_METADATA = {
