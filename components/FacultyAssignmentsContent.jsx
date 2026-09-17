@@ -535,7 +535,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
         },
         kpiGrid: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))',
             gap: '14px',
             marginBottom: '20px',
         },
@@ -817,7 +817,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 </div>
 
                 <select
-                    style={{ ...s.select, flex: '0 0 auto' }}
+                    style={{ ...s.select, flex: '1 1 160px', minWidth: 0, maxWidth: '100%' }}
                     value={filterFaculty}
                     onChange={e => setFilterFaculty(e.target.value)}
                 >
@@ -830,7 +830,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 </select>
 
                 <select
-                    style={{ ...s.select, flex: '0 0 auto' }}
+                    style={{ ...s.select, flex: '1 1 160px', minWidth: 0, maxWidth: '100%' }}
                     value={filterBranch}
                     onChange={e => setFilterBranch(e.target.value)}
                 >
@@ -841,7 +841,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                 </select>
 
                 <select
-                    style={{ ...s.select, flex: '0 0 auto' }}
+                    style={{ ...s.select, flex: '1 1 160px', minWidth: 0, maxWidth: '100%' }}
                     value={filterSemester}
                     onChange={e => setFilterSemester(e.target.value)}
                 >
@@ -997,8 +997,6 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                     style={{
                         position: 'fixed',
                         inset: 0,
-                        width: '100vw',
-                        height: '100vh',
                         background: 'rgba(15, 23, 42, 0.65)',
                         backdropFilter: 'blur(8px)',
                         WebkitBackdropFilter: 'blur(8px)',
@@ -1132,7 +1130,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                 </div>
 
                                 {/* Branch & Semester */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '12px', marginBottom: '16px' }}>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
                                             Branch <span style={{ color: 'var(--red)' }}>*</span>
@@ -1214,7 +1212,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                     </div>
 
                                     {/* Scope Radios */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '8px', marginBottom: '12px' }}>
                                         <button
                                             type="button"
                                             onClick={() => setAssignScope('class')}
@@ -1391,7 +1389,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
                                                     No classes match the filter. Click &quot;All Branches&quot; or &quot;All Semesters&quot; above to choose classes.
                                                 </div>
                                             ) : (
-                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(210px, 100%), 1fr))', gap: '8px' }}>
                                                     {selectableClasses.map(c => {
                                                         const isSelected = assignClassIds.includes(c.id);
                                                         return (
@@ -1499,7 +1497,7 @@ export function FacultyAssignmentsContent({ embedded = false, preselectedFaculty
 
                                     {manualSubjectMode ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr)) auto', gap: '8px', alignItems: 'center' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr)) auto', gap: '8px', alignItems: 'center' }}>
                                                 <input
                                                     style={s.input}
                                                     placeholder="Code (e.g. BCS601)"

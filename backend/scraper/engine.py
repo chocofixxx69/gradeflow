@@ -117,7 +117,15 @@ def _parse_row(texts):
     cred = CREDIT_MAP.get(code, 3)
     int_m = ext_m = tot_m = 0
     
-    if len(nums) >= 4:
+    # Detect Revaluation structure: [Internal, Old_Marks, Old_Result, RV_Marks, RV_Result, Final_Marks, Final_Result]
+    # In VTU Revaluation results, there are 4 numbers: [Internal, Old, RV, Final], and multiple result tokens (P/F).
+    is_reval_row = (len(nums) >= 4 and sum(1 for v in rem if v.strip().upper() in VALID_GRADES) >= 2)
+
+    if is_reval_row:
+        int_m = int(nums[0])
+        ext_m = int(nums[-1])  # Final External Marks (e.g. 36)
+        tot_m = int_m + ext_m  # Total = Internal + Final External
+    elif len(nums) >= 4:
         if 1.0 <= nums[0] <= 6.0:  # type: ignore
             if code not in CREDIT_MAP: cred = int(nums[0])
             int_m = int(nums[1]) if len(nums) > 1 else 0
@@ -159,7 +167,14 @@ def _parse_row(texts):
     ABSENT_MARKS = {"AB", "ABSENT"}
     
     non_nums = [v.strip().upper() for v in rem if not re.match(r'^\d+(?:\.\d+)?$', v.strip())]
-    result_str = " ".join(non_nums) if non_nums else grade
+    if is_reval_row:
+        # Reval rows carry THREE result tokens (Old/RV/Final Result). Only the
+        # last (Final Result, already resolved into `grade` above) is
+        # authoritative — joining all of them would false-positive on a
+        # rejected Old/RV Result of "F" even when Final Result is "P".
+        result_str = grade
+    else:
+        result_str = " ".join(non_nums) if non_nums else grade
     raw_res = (result_str or '').strip().upper()
     is_res_fail = bool(re.search(r'\b(F|FAIL|FAILED)\b', raw_res))
     is_cie_only = is_cie_only_course(code)

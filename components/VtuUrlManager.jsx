@@ -556,7 +556,7 @@ export default function VtuUrlManager({ facultyId }) {
                     ) : vtuUrls.map(u => (
                         <div key={u.id} style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            flexWrap: 'wrap', gap: 'var(--space-3)',
+                            flexWrap: 'wrap', gap: 'var(--space-3)', minWidth: 0,
                             padding: 'var(--space-4) var(--space-5)', background: 'var(--surface-low)',
                             borderRadius: 'var(--radius-6)',
                             border: `1px solid ${u.is_active ? (selectedScheme === '2025' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(37, 99, 235, 0.4)') : 'var(--border)'}`,

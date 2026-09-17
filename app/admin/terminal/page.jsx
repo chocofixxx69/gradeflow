@@ -1641,7 +1641,7 @@ function AdminPanelContent() {
                     </div>
 
                     {/* ── TWO-COLUMN ANALYTICS SECTION: Branch Matrix, Batches & Academic Telemetry ── */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.35fr) minmax(0, 1fr)', gap: '24px', marginBottom: '32px', alignItems: 'start' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1.35fr) minmax(0, 1fr)', gap: '24px', marginBottom: '32px', alignItems: 'start' }}>
                         
                         {/* Left Column: Department Matrix + Academic Admission Batches */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1727,7 +1727,7 @@ function AdminPanelContent() {
                                     </button>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))', gap: '10px' }}>
                                     {batchBreakdown.batches.map(b => (
                                         <div
                                             key={b.code}
@@ -1774,7 +1774,7 @@ function AdminPanelContent() {
                                     <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>groups</span>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100px, 100%), 1fr))', gap: '10px' }}>
                                     {semesterBreakdown.map(([sem, count]) => (
                                         <div
                                             key={sem}
@@ -2557,7 +2557,7 @@ function AdminPanelContent() {
                     </div>
 
                     {/* Faculty KPI Metric Cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '14px', marginBottom: '20px' }}>
                         <div style={c.statCard}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Total Faculty</span>
@@ -3078,7 +3078,7 @@ function AdminPanelContent() {
 
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr)',
+                        gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1.4fr) minmax(0, 1fr)',
                         gap: '24px',
                         alignItems: 'start',
                         width: '100%',
@@ -3921,9 +3921,9 @@ function AdminPanelContent() {
                         </p>
                         {addError && <div style={{ padding: '10px 14px', background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: '10px', fontSize: '12px', color: 'var(--red)', fontWeight: 600, marginBottom: '16px' }}>{addError}</div>}
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>USN *</label>
-                        <input style={c.input} placeholder="e.g. 4AB22CS001" value={newStudent.usn} onChange={e => setNewStudent(p => ({ ...p, usn: e.target.value.toUpperCase() }))} />
+                        <input style={c.input} placeholder="e.g. 2AB23CS063" value={newStudent.usn} onChange={e => setNewStudent(p => ({ ...p, usn: e.target.value.toUpperCase() }))} />
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Student Name</label>
-                        <input style={c.input} placeholder="Full Name" value={newStudent.name} onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))} />
+                        <input style={c.input} placeholder="e.g. Rawahah Ruknuddin" value={newStudent.name} onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))} />
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Branch</label>
                         <input style={c.input} placeholder="e.g. CSE, ISE, ECE" value={newStudent.branch} onChange={e => setNewStudent(p => ({ ...p, branch: e.target.value }))} />
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -4200,7 +4200,7 @@ function AdminPanelContent() {
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Institutional Email *</label>
                         <input style={c.input} type="email" placeholder="e.g. ramesh@anjuman.edu.in" value={newFaculty.email} onChange={e => setNewFaculty(p => ({ ...p, email: e.target.value }))} />
                         
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Department</label>
@@ -4272,7 +4272,7 @@ function AdminPanelContent() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                             <div>
                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Employee ID</label>
                                 <input style={c.input} placeholder="e.g. AITM-CS-042" value={newFaculty.employee_id} onChange={e => setNewFaculty(p => ({ ...p, employee_id: e.target.value }))} />
@@ -4307,7 +4307,7 @@ function AdminPanelContent() {
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Institutional Email</label>
                         <input style={c.input} value={editingFaculty.email || ''} onChange={e => setEditingFaculty(p => ({ ...p, email: e.target.value }))} />
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase' }}>Department</label>
@@ -4382,7 +4382,7 @@ function AdminPanelContent() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                             <div>
                                 <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Employee ID</label>
                                 <input style={c.input} value={editingFaculty.employee_id || ''} onChange={e => setEditingFaculty(p => ({ ...p, employee_id: e.target.value }))} />

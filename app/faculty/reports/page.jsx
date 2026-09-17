@@ -431,7 +431,7 @@ function ReportsContent() {
 
     const c = {
         page: { padding: 'var(--page-py) var(--page-px)', maxWidth: '1240px', margin: '0 auto', fontFamily: "'Plus Jakarta Sans', sans-serif" },
-        statGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' },
+        statGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' },
         statCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-6)', padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' },
         statLabel: { fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-2)' },
         statVal: { fontSize: '30px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.04em' },
@@ -861,7 +861,7 @@ function ReportsContent() {
                     {/* Performance Distribution Summary Strip */}
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))',
                         gap: '12px',
                         marginTop: '16px',
                         paddingTop: '16px',
@@ -919,7 +919,7 @@ function ReportsContent() {
             </Card>
 
             {/* Top Students + Class Pass Rates */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px', marginBottom: '24px' }}>
                 {/* Top 5 Students */}
                 {stats.topStudents.length > 0 && (
                     <Card style={{ marginBottom: 0 }}>

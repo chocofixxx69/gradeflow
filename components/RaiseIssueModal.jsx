@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { apiRequest } from '../lib/api/client';
 
 export default function RaiseIssueModal({
@@ -117,15 +118,14 @@ export default function RaiseIssueModal({
         onClose();
     };
 
-    return (
+    return createPortal((
         <>
         {/* Inject mobile styles */}
         <style>{`
             @keyframes raiseFadeIn { from { opacity:0; transform: scale(0.97); } to { opacity:1; transform: scale(1); } }
             @keyframes raiseSlideUp { from { opacity:0; transform: translateY(24px); } to { opacity:1; transform: translateY(0); } }
             .ri-overlay {
-                position: fixed; inset: 0; left: 0; top: 0;
-                width: 100vw; height: 100dvh;
+                position: fixed; inset: 0;
                 z-index: 9999;
                 background: rgba(10, 24, 28, 0.65);
                 backdrop-filter: blur(6px);
@@ -347,14 +347,14 @@ export default function RaiseIssueModal({
                             </div>
 
                             {/* Contact & Name Details (2-Column Grid) */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(210px, 100%), 1fr))', gap: '10px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--tx-main, #0a181c)', marginBottom: '4px' }}>
                                         Full Name <span style={{ color: 'var(--tx-muted, #586c6d)', fontWeight: '400' }}>(Optional)</span>
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder={userType === 'faculty' ? 'e.g. Dr. A. K. Sharma' : 'e.g. Rahul Sharma'}
+                                        placeholder={userType === 'faculty' ? 'e.g. Dr. A. K. Sharma' : 'e.g. Rawahah Ruknuddin'}
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         style={{
@@ -564,5 +564,5 @@ export default function RaiseIssueModal({
             </div>
         </div>
         </>
-    );
+    ), document.body);
 }

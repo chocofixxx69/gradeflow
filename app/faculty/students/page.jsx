@@ -554,7 +554,7 @@ function StudentsDirectoryContent() {
                 <CardContent style={{ padding: '18px 20px' }}>
                     {/* Top Row: Prominent Wide Search & Display Controls */}
                     <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '16px' }}>
-                        <div style={{ flex: '1 1 340px', minWidth: '280px', position: 'relative' }}>
+                        <div style={{ flex: '1 1 340px', minWidth: 0, position: 'relative' }}>
                             <Input
                                 label={
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -563,7 +563,7 @@ function StudentsDirectoryContent() {
                                         {search && <span style={activeBadgeStyle}>SEARCH ACTIVE</span>}
                                     </span>
                                 }
-                                placeholder="Search by Student USN, Full Name, Email, or Mobile..."
+                                placeholder="Search by Student USN, Full Name (e.g. Rawahah, 2AB23CS063)..."
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
                                 onKeyDown={e => {

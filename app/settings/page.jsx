@@ -686,7 +686,7 @@ function SettingsContent() {
                 {/* Decorative top accent line */}
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--primary) 0%, #3A6A6D 50%, #789397 100%)' }} />
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', minWidth: '280px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', minWidth: 0 }}>
                     {/* Hero Avatar with Quick Upload Trigger */}
                     <div
                         role="button"
@@ -737,7 +737,7 @@ function SettingsContent() {
                         </div>
                     </div>
 
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
                             <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>
                                 {userType === 'student'
@@ -767,8 +767,8 @@ function SettingsContent() {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>mail</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)', flexShrink: 0 }}>mail</span>
                                 {editEmail || (userType === 'student' ? getStudentDefaultEmail(session?.usn) : session?.email) || '—'}
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -950,7 +950,7 @@ function SettingsContent() {
                             <CardTitle>Personal & Academic Details</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
                                 <div>
                                     <Input
                                         label="Full Name"
@@ -1274,7 +1274,7 @@ function SettingsContent() {
             {activeTab === 'workload' && userType === 'faculty' && (
                 <div style={{ display: 'grid', gap: '24px' }}>
                     {/* Workload KPIs */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
                         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', marginBottom: '8px' }}>
                                 <span className="material-icons-round" style={{ fontSize: '24px' }}>library_books</span>

@@ -18,15 +18,30 @@ import { writeWorkbook } from '@/lib/workbook-export';
 import { fmtNum } from '@/lib/format';
 
 export default function InstitutionalIntelligencePage() {
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     return (
         <AuthGuard role="faculty">
-            <Suspense fallback={
-                <div style={{ padding: '40px 24px', maxWidth: '1400px', margin: '0 auto', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                    Loading Institutional Intelligence...
+            {!mounted ? (
+                <div style={{ padding: '60px 24px', maxWidth: '1400px', margin: '0 auto', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                    <div className="gf-spin" style={{ display: 'inline-block', marginBottom: '12px' }}>
+                        <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--primary)' }}>sync</span>
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: 600 }}>Loading Performance Comparison...</div>
                 </div>
-            }>
-                <InstitutionalIntelligenceContent />
-            </Suspense>
+            ) : (
+                <Suspense fallback={
+                    <div style={{ padding: '40px 24px', maxWidth: '1400px', margin: '0 auto', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                        Loading Institutional Intelligence...
+                    </div>
+                }>
+                    <InstitutionalIntelligenceContent />
+                </Suspense>
+            )}
         </AuthGuard>
     );
 }
@@ -153,6 +168,37 @@ function CustomClassificationTooltip({ active, payload, label }) {
     );
 }
 
+function HighlightMatch({ text, query }) {
+    if (!text) return null;
+    const str = String(text);
+    if (!query || !query.trim()) return <span>{str}</span>;
+    const q = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${q})`, 'gi');
+    const parts = str.split(regex);
+    return (
+        <span>
+            {parts.map((part, i) =>
+                part.toLowerCase() === query.trim().toLowerCase() ? (
+                    <mark
+                        key={i}
+                        style={{
+                            background: 'rgba(99, 102, 241, 0.18)',
+                            color: 'var(--primary)',
+                            fontWeight: 800,
+                            borderRadius: '3px',
+                            padding: '0 2px'
+                        }}
+                    >
+                        {part}
+                    </mark>
+                ) : (
+                    <span key={i}>{part}</span>
+                )
+            )}
+        </span>
+    );
+}
+
 function InstitutionalIntelligenceContent() {
     const searchParams = useSearchParams();
     const initialSaved = getSavedFilters();
@@ -239,13 +285,19 @@ function InstitutionalIntelligenceContent() {
     const [studentSearchResults, setStudentSearchResults] = useState([]);
     const [isSearchingStudents, setIsSearchingStudents] = useState(false);
     const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+    const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+    const [checkedUsns, setCheckedUsns] = useState(new Set());
     const [subjectSearch, setSubjectSearch] = useState('');
     const [subjectFilterMode, setSubjectFilterMode] = useState('all'); // 'all' | 'delta' | 'fails'
     const [classPickerOpen, setClassPickerOpen] = useState(false);
     const [selectedPickerClassId, setSelectedPickerClassId] = useState('');
+    const [availableClasses, setAvailableClasses] = useState([]);
+    const [isLoadingClasses, setIsLoadingClasses] = useState(false);
     const [classRosterStudents, setClassRosterStudents] = useState([]);
     const [rosterSearch, setRosterSearch] = useState('');
     const [isLoadingRoster, setIsLoadingRoster] = useState(false);
+    const [rosterCheckedUsns, setRosterCheckedUsns] = useState(new Set());
+    const [rosterFilterMode, setRosterFilterMode] = useState('all'); // 'all' | 'unadded' | 'added'
     const [trajectoryScale, setTrajectoryScale] = useState('focus'); // 'focus' | 'full'
     const searchContainerRef = useRef(null);
 
@@ -576,25 +628,104 @@ function InstitutionalIntelligenceContent() {
         let clean = (usnToAdd || usnInput).trim();
         if (!clean) return;
 
-        // If user typed a search query that matches dropdown results and isn't a 10-char USN, use the first match
+        // If user typed a search query that matches dropdown results and isn't a 10-char USN, use the active or first match
         if (!usnToAdd && studentSearchResults.length > 0 && clean.length >= 2 && !/^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/i.test(clean)) {
-            clean = studentSearchResults[0].usn;
+            const target = activeSearchIndex >= 0 && studentSearchResults[activeSearchIndex]
+                ? studentSearchResults[activeSearchIndex]
+                : studentSearchResults[0];
+            clean = target.usn;
         }
 
         clean = clean.toUpperCase();
         if (usnList.includes(clean)) {
             setUsnInput('');
             setSearchDropdownOpen(false);
+            setActiveSearchIndex(-1);
+            setCheckedUsns(new Set());
             return;
         }
         setUsnList(prev => [...prev, clean]);
         setUsnInput('');
         setSearchDropdownOpen(false);
+        setActiveSearchIndex(-1);
+        setCheckedUsns(new Set());
+    };
+
+    // Add a single student without closing dropdown if closeDropdown is false (allows chaining multiple adds)
+    const handleAddSingleStudent = (stu, closeDropdown = false) => {
+        if (!stu || !stu.usn) return;
+        const clean = stu.usn.toUpperCase();
+        if (!usnList.includes(clean)) {
+            setUsnList(prev => [...prev, clean]);
+        }
+        setCheckedUsns(prev => {
+            if (!prev.has(clean)) return prev;
+            const next = new Set(prev);
+            next.delete(clean);
+            return next;
+        });
+        if (closeDropdown) {
+            setUsnInput('');
+            setSearchDropdownOpen(false);
+            setActiveSearchIndex(-1);
+        }
     };
 
     const handleSelectStudent = (stu) => {
         if (!stu || !stu.usn) return;
-        handleAddUsn(stu.usn);
+        handleAddSingleStudent(stu, false);
+    };
+
+    // Multi-select checkbox toggle for search results
+    const handleToggleCheckStudent = (usn) => {
+        const clean = usn.toUpperCase();
+        setCheckedUsns(prev => {
+            const next = new Set(prev);
+            if (next.has(clean)) {
+                next.delete(clean);
+            } else {
+                next.add(clean);
+            }
+            return next;
+        });
+    };
+
+    // Add all currently checked students to comparator
+    const handleAddCheckedStudents = () => {
+        if (checkedUsns.size === 0) return;
+        const toAdd = Array.from(checkedUsns).filter(u => !usnList.includes(u));
+        if (toAdd.length > 0) {
+            setUsnList(prev => [...prev, ...toAdd]);
+        }
+        setCheckedUsns(new Set());
+        setSearchDropdownOpen(false);
+        setUsnInput('');
+        setActiveSearchIndex(-1);
+    };
+
+    // Add all students in search results that are not yet added
+    const handleAddAllSearchResults = () => {
+        const toAdd = studentSearchResults
+            .map(s => s.usn.toUpperCase())
+            .filter(u => !usnList.includes(u));
+        if (toAdd.length > 0) {
+            setUsnList(prev => [...prev, ...toAdd]);
+        }
+        setCheckedUsns(new Set());
+        setSearchDropdownOpen(false);
+        setUsnInput('');
+        setActiveSearchIndex(-1);
+    };
+
+    // Select or deselect all unadded students in current search results
+    const handleToggleSelectAll = () => {
+        const unadded = studentSearchResults.filter(s => !usnList.includes(s.usn.toUpperCase()));
+        const allChecked = unadded.length > 0 && unadded.every(s => checkedUsns.has(s.usn.toUpperCase()));
+        if (allChecked) {
+            setCheckedUsns(new Set());
+        } else {
+            setCheckedUsns(new Set(unadded.map(s => s.usn.toUpperCase())));
+        }
     };
 
     const handleRemoveUsn = (u) => setUsnList(prev => prev.filter(x => x !== u));
@@ -604,12 +735,16 @@ function InstitutionalIntelligenceContent() {
         const handleClickOutside = (e) => {
             if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
                 setSearchDropdownOpen(false);
+                setActiveSearchIndex(-1);
+                setCheckedUsns(new Set());
             }
         };
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 setClassPickerOpen(false);
                 setSearchDropdownOpen(false);
+                setActiveSearchIndex(-1);
+                setCheckedUsns(new Set());
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -620,13 +755,135 @@ function InstitutionalIntelligenceContent() {
         };
     }, []);
 
+    // Toggle checking a student in the class roster picker
+    const handleToggleCheckRosterStudent = useCallback((usn) => {
+        if (!usn) return;
+        const clean = usn.toUpperCase();
+        setRosterCheckedUsns(prev => {
+            const next = new Set(prev);
+            if (next.has(clean)) {
+                next.delete(clean);
+            } else {
+                next.add(clean);
+            }
+            return next;
+        });
+    }, []);
+
+    // Toggle select all unadded students in current class roster view
+    const handleToggleSelectAllRoster = useCallback((studentsInView) => {
+        const unadded = (studentsInView || []).filter(s => !usnList.some(u => u.toUpperCase() === (s.usn || '').toUpperCase()));
+        const allChecked = unadded.length > 0 && unadded.every(s => rosterCheckedUsns.has(s.usn.toUpperCase()));
+        if (allChecked) {
+            setRosterCheckedUsns(new Set());
+        } else {
+            setRosterCheckedUsns(new Set(unadded.map(s => s.usn.toUpperCase())));
+        }
+    }, [usnList, rosterCheckedUsns]);
+
+    // Add all checked roster students to the comparator cohort
+    const handleAddCheckedRosterStudents = useCallback(() => {
+        if (rosterCheckedUsns.size === 0) return;
+        const toAdd = Array.from(rosterCheckedUsns);
+        setUsnList(prev => {
+            const set = new Set(prev);
+            toAdd.forEach(u => set.add(u.toUpperCase()));
+            return Array.from(set);
+        });
+        setRosterCheckedUsns(new Set());
+    }, [rosterCheckedUsns]);
+
+    // Add entire class to the comparator cohort
+    const handleAddAllClassStudents = useCallback((students = classRosterStudents) => {
+        if (!students || students.length === 0) return;
+        const toAdd = students.map(s => s.usn.toUpperCase());
+        setUsnList(prev => {
+            const set = new Set(prev);
+            toAdd.forEach(u => set.add(u));
+            return Array.from(set);
+        });
+        setRosterCheckedUsns(new Set());
+    }, [classRosterStudents]);
+
+    // Add top N rankers from this class section
+    const handleAddTopRankersClass = useCallback((count = 5) => {
+        if (!classRosterStudents || classRosterStudents.length === 0) return;
+        const sorted = [...classRosterStudents].sort((a, b) => (b.cgpa || 0) - (a.cgpa || 0));
+        const top = sorted.slice(0, count).map(s => s.usn.toUpperCase());
+        setUsnList(prev => {
+            const set = new Set(prev);
+            top.forEach(u => set.add(u));
+            return Array.from(set);
+        });
+        setRosterCheckedUsns(new Set());
+    }, [classRosterStudents]);
+
+    // Add remedial / at-risk students with backlogs from this class section
+    const handleAddRemedialClass = useCallback(() => {
+        if (!classRosterStudents || classRosterStudents.length === 0) return;
+        const withBacklogs = classRosterStudents.filter(s => (s.total_backlogs || 0) > 0);
+        const target = withBacklogs.length > 0 ? withBacklogs : [...classRosterStudents].sort((a, b) => (a.cgpa || 0) - (b.cgpa || 0)).slice(0, 5);
+        const usns = target.map(s => s.usn.toUpperCase());
+        setUsnList(prev => {
+            const set = new Set(prev);
+            usns.forEach(u => set.add(u));
+            return Array.from(set);
+        });
+        setRosterCheckedUsns(new Set());
+    }, [classRosterStudents]);
+
+    // Fetch complete classes list from /api/classes
+    const loadAllClasses = useCallback(async () => {
+        setIsLoadingClasses(true);
+        try {
+            const res = await apiRequest('/api/classes', { cacheTtl: 30_000 });
+            if (res?.classes && Array.isArray(res.classes) && res.classes.length > 0) {
+                setAvailableClasses(res.classes);
+                return res.classes;
+            }
+        } catch (err) {
+            console.warn('Failed to fetch /api/classes, falling back to meta:', err);
+        } finally {
+            setIsLoadingClasses(false);
+        }
+        if (meta?.classes && meta.classes.length > 0) {
+            setAvailableClasses(meta.classes);
+            return meta.classes;
+        }
+        return [];
+    }, [meta?.classes]);
+
+    // Preload classes on mount
+    useEffect(() => {
+        loadAllClasses();
+    }, [loadAllClasses]);
+
+    // Complete deduplicated list of all institutional classes from /api/classes, meta, or classReport
+    const allClassesList = useMemo(() => {
+        const pool = [
+            ...(availableClasses || []),
+            ...(meta?.classes || []),
+            ...(classReport?.classes || [])
+        ];
+        const seen = new Set();
+        const list = [];
+        for (const c of pool) {
+            if (c && c.id && !seen.has(c.id)) {
+                seen.add(c.id);
+                list.push(c);
+            }
+        }
+        return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [availableClasses, meta?.classes, classReport?.classes]);
+
     // Load roster when class is picked in Class Picker
     const loadClassRoster = useCallback(async (cId) => {
         if (!cId) return;
         setIsLoadingRoster(true);
+        setRosterCheckedUsns(new Set());
         try {
             const res = await apiRequest('/api/faculty/students', {
-                query: { classId: cId, limit: 100, fresh: '1' }
+                query: { classId: cId, limit: 200, fresh: '1' }
             });
             if (res?.students) {
                 setClassRosterStudents(res.students);
@@ -638,17 +895,38 @@ function InstitutionalIntelligenceContent() {
         }
     }, []);
 
+    // Filtered roster students according to search query and filter mode
+    const filteredRosterStudents = useMemo(() => {
+        let list = filterAndRankStudents(classRosterStudents, rosterSearch);
+        if (rosterFilterMode === 'unadded') {
+            list = list.filter(s => !usnList.some(u => u.toUpperCase() === (s.usn || '').toUpperCase()));
+        } else if (rosterFilterMode === 'added') {
+            list = list.filter(s => usnList.some(u => u.toUpperCase() === (s.usn || '').toUpperCase()));
+        }
+        return list;
+    }, [classRosterStudents, rosterSearch, rosterFilterMode, usnList]);
+
+    const unaddedStudentsInView = useMemo(() => {
+        return (filteredRosterStudents || []).filter(s => !usnList.some(u => u.toUpperCase() === (s.usn || '').toUpperCase()));
+    }, [filteredRosterStudents, usnList]);
+
+    const allEligibleChecked = unaddedStudentsInView.length > 0 && unaddedStudentsInView.every(s => rosterCheckedUsns.has(s.usn.toUpperCase()));
+
+    // Synchronize selected class and load student roster when class picker opens or classes load
     useEffect(() => {
         if (classPickerOpen) {
-            const defaultClassId = selectedPickerClassId || classReport?.classes?.[0]?.id || '';
-            if (defaultClassId && defaultClassId !== selectedPickerClassId) {
-                setSelectedPickerClassId(defaultClassId);
-            }
-            if (defaultClassId) {
-                loadClassRoster(defaultClassId);
+            if (allClassesList.length === 0) {
+                loadAllClasses();
+            } else {
+                const currentValid = selectedPickerClassId && allClassesList.some(c => c.id === selectedPickerClassId);
+                const targetId = currentValid ? selectedPickerClassId : allClassesList[0].id;
+                if (targetId !== selectedPickerClassId) {
+                    setSelectedPickerClassId(targetId);
+                }
+                loadClassRoster(targetId);
             }
         }
-    }, [classPickerOpen, selectedPickerClassId, classReport?.classes, loadClassRoster]);
+    }, [classPickerOpen, allClassesList, selectedPickerClassId, loadClassRoster, loadAllClasses]);
 
     // Debounced live student search by name or USN
     useEffect(() => {
@@ -656,6 +934,7 @@ function InstitutionalIntelligenceContent() {
         if (!q || q.length < 2) {
             setStudentSearchResults([]);
             setSearchDropdownOpen(false);
+            setActiveSearchIndex(-1);
             return;
         }
         let active = true;
@@ -663,18 +942,19 @@ function InstitutionalIntelligenceContent() {
             setIsSearchingStudents(true);
             try {
                 const res = await apiRequest('/api/faculty/students', {
-                    query: { search: q, limit: 6 }
+                    query: { search: q, limit: 8 }
                 });
-                if (active && res?.students) {
-                    setStudentSearchResults(res.students);
+                if (active) {
+                    setStudentSearchResults(res?.students || []);
                     setSearchDropdownOpen(true);
+                    setActiveSearchIndex(-1);
                 }
             } catch (err) {
                 console.error('Failed to search students for comparator:', err);
             } finally {
                 if (active) setIsSearchingStudents(false);
             }
-        }, 250);
+        }, 200);
         return () => {
             active = false;
             clearTimeout(timer);
@@ -1180,7 +1460,7 @@ function InstitutionalIntelligenceContent() {
     };
 
     return (
-        <div style={{ padding: 'var(--page-py) var(--page-px)', maxWidth: '1400px', margin: '0 auto' }} className="gf-fade-up">
+        <div style={{ padding: 'var(--page-py) var(--page-px)', maxWidth: '1400px', margin: '0 auto' }} className="gf-fade-up" suppressHydrationWarning>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <PageHeader style={{ marginBottom: 0 }}>
@@ -1480,6 +1760,7 @@ function InstitutionalIntelligenceContent() {
                                         {/* Chart Type Switcher */}
                                         <div style={{
                                             display: 'flex',
+                                            flexWrap: 'wrap',
                                             gap: '4px',
                                             background: 'var(--surface-low)',
                                             padding: '4px',
@@ -1804,7 +2085,7 @@ function InstitutionalIntelligenceContent() {
                                             </button>
                                         </CardHeader>
                                         <CardContent style={{ padding: '20px' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '16px', marginBottom: '20px' }}>
                                                 <div style={{ background: 'var(--surface-low)', padding: '12px 16px', borderRadius: '8px' }}>
                                                     <div style={{ fontSize: '11px', color: 'var(--tx-dim)', textTransform: 'uppercase', fontWeight: 800 }}>Faculty In Charge</div>
                                                     <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)', marginTop: '4px' }}>{expClass.facultyName}</div>
@@ -1833,7 +2114,7 @@ function InstitutionalIntelligenceContent() {
                                                     <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '10px' }}>
                                                         Subject Breakdown for {expClass.name}
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '10px' }}>
                                                         {expClass.subjectSummary.map(sub => (
                                                             <div key={sub.code} style={{ background: 'var(--surface-low)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2644,8 +2925,8 @@ function InstitutionalIntelligenceContent() {
             {viewTab === 'compare' && (
                 <>
                     {/* Search & Selector Card */}
-                    <Card style={{ marginBottom: '24px', position: 'relative' }}>
-                        <CardContent style={{ padding: '20px' }}>
+                    <Card style={{ marginBottom: '24px', position: 'relative', overflow: 'visible', zIndex: 30 }}>
+                        <CardContent style={{ padding: '20px', overflow: 'visible' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                                 <div>
                                     <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--tx-main)' }}>
@@ -2659,7 +2940,7 @@ function InstitutionalIntelligenceContent() {
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            if (!classReport?.classes?.length) loadClassesData();
+                                            if (allClassesList.length === 0) loadAllClasses();
                                             setClassPickerOpen(prev => !prev);
                                         }}
                                         style={{
@@ -2677,10 +2958,10 @@ function InstitutionalIntelligenceContent() {
                                             transition: 'all 0.15s ease'
                                         }}
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>
-                                            {classPickerOpen ? 'close' : 'groups'}
+                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>
+                                            {classPickerOpen ? 'expand_less' : 'groups'}
                                         </span>
-                                        {classPickerOpen ? 'Hide Class Roster' : '📋 Pick from Class Roster'}
+                                        {classPickerOpen ? 'Hide Class Roster' : 'Pick from Class Roster'}
                                     </button>
                                     <button
                                         type="button"
@@ -2752,30 +3033,57 @@ function InstitutionalIntelligenceContent() {
                             {/* Inline Class Roster Drawer (Eliminating Black Screen Overlay) */}
                             {classPickerOpen && (
                                 <div style={{
-                                    marginBottom: '16px',
+                                    marginBottom: '20px',
                                     background: 'var(--surface)',
                                     border: '1px solid var(--border)',
                                     borderRadius: '12px',
                                     overflow: 'hidden',
-                                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.05)',
+                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
                                     transition: 'all 0.2s ease'
                                 }}>
                                     {/* Panel Header */}
                                     <div style={{
-                                        padding: '14px 18px',
+                                        padding: '14px 20px',
                                         borderBottom: '1px solid var(--border)',
                                         background: 'var(--surface-low)',
                                         display: 'flex',
                                         justifyContent: 'space-between',
-                                        alignItems: 'center'
+                                        alignItems: 'center',
+                                        gap: '12px',
+                                        flexWrap: 'wrap'
                                     }}>
-                                        <div>
-                                            <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>groups</span>
-                                                Pick Students from Class Roster
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{
+                                                width: '34px',
+                                                height: '34px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(99, 102, 241, 0.12)',
+                                                color: 'var(--primary)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0
+                                            }}>
+                                                <span className="material-icons-round" style={{ fontSize: '20px' }}>groups</span>
                                             </div>
-                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                Select a class section below and click "+ Compare" to add students to the comparison cohort ({usnList.length} selected).
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    Pick Students from Class Roster
+                                                    <span style={{
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        padding: '1px 8px',
+                                                        borderRadius: '12px',
+                                                        background: usnList.length > 0 ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface)',
+                                                        color: usnList.length > 0 ? '#16A34A' : 'var(--tx-muted)',
+                                                        border: '1px solid var(--border)'
+                                                    }}>
+                                                        {usnList.length} in comparator
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '11.5px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                    Select a class section, use multi-select checkboxes or presets, and add students side-by-side.
+                                                </div>
                                             </div>
                                         </div>
                                         <button
@@ -2785,7 +3093,7 @@ function InstitutionalIntelligenceContent() {
                                                 background: 'var(--surface)',
                                                 border: '1px solid var(--border)',
                                                 borderRadius: '6px',
-                                                padding: '4px 10px',
+                                                padding: '5px 12px',
                                                 fontSize: '12px',
                                                 fontWeight: 700,
                                                 color: 'var(--tx-muted)',
@@ -2795,31 +3103,55 @@ function InstitutionalIntelligenceContent() {
                                                 gap: '4px'
                                             }}
                                         >
-                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>close</span>
+                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>close</span>
                                             Close
                                         </button>
                                     </div>
 
+                                    {/* Reassuring Data Safety Notice: Zero Data Loss Guarantee */}
+                                    <div style={{
+                                        padding: '7px 20px',
+                                        background: 'rgba(59, 130, 246, 0.05)',
+                                        borderBottom: '1px solid rgba(59, 130, 246, 0.15)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        fontSize: '11.5px',
+                                        color: 'var(--tx-muted)'
+                                    }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: '#3B82F6', flexShrink: 0 }}>verified_user</span>
+                                        <span>
+                                            <strong style={{ color: 'var(--tx-main)', fontWeight: 700 }}>Safe & Non-Destructive:</strong> Adding or removing students here only affects your temporary comparison view. Student marks, grades, and database records are <em>never modified or deleted</em>.
+                                        </span>
+                                    </div>
+
                                     {/* Controls: Target Class Section & Search */}
                                     <div style={{
-                                        padding: '12px 18px',
+                                        padding: '12px 20px',
                                         borderBottom: '1px solid var(--border)',
                                         background: 'var(--surface)',
                                         display: 'flex',
-                                        gap: '12px',
+                                        gap: '14px',
                                         flexWrap: 'wrap',
                                         alignItems: 'flex-end'
                                     }}>
-                                        <div style={{ flex: '1', minWidth: '220px' }}>
-                                            <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.05em' }}>
-                                                Target Class Section
-                                            </label>
+                                        <div style={{ flex: '1 1 280px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                <label style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                    Target Class Section
+                                                </label>
+                                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-muted)' }}>
+                                                    {isLoadingRoster ? 'Loading students...' : `${classRosterStudents.length} enrolled`}
+                                                </span>
+                                            </div>
                                             <select
                                                 value={selectedPickerClassId}
                                                 onChange={e => {
-                                                    setSelectedPickerClassId(e.target.value);
-                                                    loadClassRoster(e.target.value);
+                                                    const newId = e.target.value;
+                                                    setSelectedPickerClassId(newId);
+                                                    loadClassRoster(newId);
                                                 }}
+                                                disabled={allClassesList.length === 0}
                                                 style={{
                                                     width: '100%',
                                                     padding: '8px 12px',
@@ -2829,100 +3161,363 @@ function InstitutionalIntelligenceContent() {
                                                     color: 'var(--tx-main)',
                                                     fontSize: '12px',
                                                     fontWeight: 700,
-                                                    outline: 'none'
+                                                    outline: 'none',
+                                                    cursor: allClassesList.length === 0 ? 'not-allowed' : 'pointer'
                                                 }}
                                             >
-                                                {(classReport?.classes || []).map(c => (
-                                                    <option key={c.id} value={c.id}>
-                                                        {c.name} {c.section ? `(Sec ${c.section})` : ''} • Sem {c.semester} • Batch {c.batch}
-                                                    </option>
-                                                ))}
+                                                {allClassesList.length === 0 ? (
+                                                    <option value="">{isLoadingClasses ? 'Loading classes...' : 'No classes available'}</option>
+                                                ) : (
+                                                    allClassesList.map(c => {
+                                                        const rawSec = (c.section || '').toString().trim();
+                                                        const secClean = rawSec.replace(/^(sec|section)\s*/i, '');
+                                                        return (
+                                                            <option key={c.id} value={c.id}>
+                                                                {c.name} {secClean ? `• Sec ${secClean}` : ''} • Sem {c.semester} • Batch {c.batch}
+                                                            </option>
+                                                        );
+                                                    })
+                                                )}
                                             </select>
                                         </div>
-                                        <div style={{ flex: '1', minWidth: '200px' }}>
-                                            <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.05em' }}>
+                                        <div style={{ flex: '1 1 240px' }}>
+                                            <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.05em' }}>
                                                 Search Students in Class
                                             </label>
-                                            <input
-                                                type="text"
-                                                placeholder="Filter by name or USN..."
-                                                value={rosterSearch}
-                                                onChange={e => setRosterSearch(e.target.value)}
+                                            <div style={{ position: 'relative' }}>
+                                                <span className="material-icons-round" style={{
+                                                    position: 'absolute',
+                                                    left: '10px',
+                                                    top: '50%',
+                                                    transform: 'translateY(-50%)',
+                                                    fontSize: '16px',
+                                                    color: 'var(--tx-dim)',
+                                                    pointerEvents: 'none'
+                                                }}>
+                                                    search
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Filter by name or USN..."
+                                                    value={rosterSearch}
+                                                    onChange={e => setRosterSearch(e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '8px 30px 8px 32px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid var(--border)',
+                                                        background: 'var(--surface-low)',
+                                                        color: 'var(--tx-main)',
+                                                        fontSize: '12px',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                                {rosterSearch && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setRosterSearch('')}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            right: '8px',
+                                                            top: '50%',
+                                                            transform: 'translateY(-50%)',
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: 'var(--tx-muted)',
+                                                            cursor: 'pointer',
+                                                            padding: '2px',
+                                                            display: 'flex',
+                                                            alignItems: 'center'
+                                                        }}
+                                                    >
+                                                        <span className="material-icons-round" style={{ fontSize: '15px' }}>cancel</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Quick Batch Presets & Filter Pills */}
+                                    <div style={{
+                                        padding: '10px 20px',
+                                        background: 'var(--surface-low)',
+                                        borderBottom: '1px solid var(--border)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        flexWrap: 'wrap',
+                                        gap: '10px'
+                                    }}>
+                                        {/* 1-Click Quick Batch Actions */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                Quick Batch:
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddAllClassStudents(classRosterStudents)}
+                                                disabled={classRosterStudents.length === 0}
                                                 style={{
-                                                    width: '100%',
-                                                    padding: '8px 12px',
-                                                    borderRadius: '8px',
-                                                    border: '1px solid var(--border)',
-                                                    background: 'var(--surface-low)',
-                                                    color: 'var(--tx-main)',
-                                                    fontSize: '12px',
-                                                    outline: 'none'
+                                                    background: 'rgba(99, 102, 241, 0.1)',
+                                                    color: 'var(--primary)',
+                                                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                                                    borderRadius: '6px',
+                                                    padding: '4px 10px',
+                                                    fontSize: '11.5px',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    transition: 'all 0.15s ease'
                                                 }}
-                                            />
+                                                title="Add all students in this class to comparator"
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>group_add</span>
+                                                Add Entire Class ({classRosterStudents.length})
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddTopRankersClass(5)}
+                                                disabled={classRosterStudents.length === 0}
+                                                style={{
+                                                    background: 'rgba(16, 185, 129, 0.1)',
+                                                    color: '#16A34A',
+                                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                                    borderRadius: '6px',
+                                                    padding: '4px 10px',
+                                                    fontSize: '11.5px',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                                title="Add top 5 CGPA students from this class"
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>military_tech</span>
+                                                Top 5 Rankers
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddRemedialClass()}
+                                                disabled={classRosterStudents.length === 0 || classRosterStudents.filter(s => s.total_backlogs > 0).length === 0}
+                                                style={{
+                                                    background: 'rgba(239, 68, 68, 0.1)',
+                                                    color: '#DC2626',
+                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    borderRadius: '6px',
+                                                    padding: '4px 10px',
+                                                    fontSize: '11.5px',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                                title="Add all students with backlogs from this class"
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '14px' }}>warning_amber</span>
+                                                Backlogs ({classRosterStudents.filter(s => s.total_backlogs > 0).length})
+                                            </button>
+                                        </div>
+
+                                        {/* View Filter Pills */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {[
+                                                { id: 'all', label: `All (${classRosterStudents.length})` },
+                                                { id: 'unadded', label: `Not Added (${classRosterStudents.filter(s => !usnList.some(u => u.toUpperCase() === (s.usn || '').toUpperCase())).length})` },
+                                                { id: 'added', label: `In Comparator (${classRosterStudents.filter(s => usnList.some(u => u.toUpperCase() === (s.usn || '').toUpperCase())).length})` }
+                                            ].map(tab => (
+                                                <button
+                                                    key={tab.id}
+                                                    type="button"
+                                                    onClick={() => setRosterFilterMode(tab.id)}
+                                                    style={{
+                                                        background: rosterFilterMode === tab.id ? 'var(--primary)' : 'var(--surface)',
+                                                        color: rosterFilterMode === tab.id ? '#FFFFFF' : 'var(--tx-muted)',
+                                                        border: '1px solid',
+                                                        borderColor: rosterFilterMode === tab.id ? 'var(--primary)' : 'var(--border)',
+                                                        borderRadius: '6px',
+                                                        padding: '3px 9px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                >
+                                                    {tab.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Master Select All Toolbar */}
+                                    <div style={{
+                                        padding: '8px 20px',
+                                        background: 'var(--surface)',
+                                        borderBottom: '1px solid var(--border)',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        fontSize: '11.5px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: unaddedStudentsInView.length === 0 ? 'default' : 'pointer', fontWeight: 700, color: 'var(--tx-main)' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={allEligibleChecked}
+                                                    onChange={() => handleToggleSelectAllRoster(filteredRosterStudents)}
+                                                    disabled={unaddedStudentsInView.length === 0}
+                                                    style={{ width: '15px', height: '15px', cursor: unaddedStudentsInView.length === 0 ? 'default' : 'pointer', accentColor: 'var(--primary)' }}
+                                                />
+                                                <span>
+                                                    {rosterCheckedUsns.size > 0
+                                                        ? `${rosterCheckedUsns.size} selected`
+                                                        : `Select All (${unaddedStudentsInView.length} eligible)`}
+                                                </span>
+                                            </label>
+                                            {rosterCheckedUsns.size > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRosterCheckedUsns(new Set())}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: 'var(--tx-muted)',
+                                                        textDecoration: 'underline',
+                                                        cursor: 'pointer',
+                                                        fontSize: '11px',
+                                                        padding: '0 4px'
+                                                    }}
+                                                >
+                                                    Deselect
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div style={{ color: 'var(--tx-muted)', fontSize: '11px' }}>
+                                            Showing {filteredRosterStudents.length} of {classRosterStudents.length} students
                                         </div>
                                     </div>
 
                                     {/* Student Roster List */}
                                     <div style={{
-                                        padding: '12px 18px',
-                                        maxHeight: '340px',
+                                        padding: '12px 20px',
+                                        maxHeight: '360px',
                                         overflowY: 'auto',
                                         display: 'flex',
                                         flexDirection: 'column',
                                         gap: '8px'
                                     }}>
                                         {isLoadingRoster ? (
-                                            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-muted)' }}>
-                                                <span className="material-icons-round gf-spin" style={{ fontSize: '24px', color: 'var(--primary)', marginBottom: '6px' }}>sync</span>
+                                            <div style={{ padding: '36px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                <span className="material-icons-round gf-spin" style={{ fontSize: '26px', color: 'var(--primary)', marginBottom: '8px' }}>sync</span>
                                                 <div style={{ fontSize: '12px', fontWeight: 700 }}>Loading class roster...</div>
                                             </div>
                                         ) : classRosterStudents.length === 0 ? (
-                                            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                            <div style={{ padding: '36px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                 <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--tx-main)' }}>No students found in this class</div>
-                                                <div style={{ fontSize: '11px', marginTop: '2px' }}>Try selecting another class section above.</div>
+                                                <div style={{ fontSize: '11.5px', marginTop: '4px' }}>Try selecting another class section above.</div>
+                                            </div>
+                                        ) : filteredRosterStudents.length === 0 ? (
+                                            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--tx-main)' }}>No students match your filter or search</div>
+                                                <div style={{ fontSize: '11px', marginTop: '3px' }}>Clear the search query or toggle filter tabs above.</div>
                                             </div>
                                         ) : (
-                                            filterAndRankStudents(classRosterStudents, rosterSearch).map(stu => {
-                                                const isAdded = usnList.includes(stu.usn);
+                                            filteredRosterStudents.map(stu => {
+                                                const stuUsn = (stu.usn || '').toUpperCase();
+                                                const isAdded = usnList.some(u => u.toUpperCase() === stuUsn);
+                                                const isChecked = rosterCheckedUsns.has(stuUsn);
+
                                                 return (
                                                     <div
                                                         key={stu.usn}
+                                                        onClick={() => {
+                                                            if (!isAdded) {
+                                                                handleToggleCheckRosterStudent(stuUsn);
+                                                            }
+                                                        }}
                                                         style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'space-between',
-                                                            padding: '8px 12px',
+                                                            padding: '9px 12px',
                                                             borderRadius: '8px',
-                                                            border: `1px solid ${isAdded ? 'var(--primary)' : 'var(--border)'}`,
-                                                            background: isAdded ? 'rgba(99, 102, 241, 0.05)' : 'var(--surface-low)',
+                                                            border: `1px solid ${
+                                                                isAdded
+                                                                    ? 'rgba(16, 185, 129, 0.4)'
+                                                                    : isChecked
+                                                                        ? 'var(--primary)'
+                                                                        : 'var(--border)'
+                                                            }`,
+                                                            background: isAdded
+                                                                ? 'rgba(16, 185, 129, 0.04)'
+                                                                : isChecked
+                                                                    ? 'rgba(99, 102, 241, 0.05)'
+                                                                    : 'var(--surface-low)',
+                                                            cursor: isAdded ? 'default' : 'pointer',
                                                             transition: 'all 0.15s ease'
                                                         }}
                                                     >
+                                                        {/* Left Side: Checkbox + Avatar + Name + USN */}
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isAdded || isChecked}
+                                                                    disabled={isAdded}
+                                                                    onChange={() => handleToggleCheckRosterStudent(stuUsn)}
+                                                                    style={{
+                                                                        width: '16px',
+                                                                        height: '16px',
+                                                                        cursor: isAdded ? 'default' : 'pointer',
+                                                                        accentColor: isAdded ? '#10B981' : 'var(--primary)'
+                                                                    }}
+                                                                    title={isAdded ? "Already in comparison cohort" : "Select student"}
+                                                                />
+                                                            </div>
                                                             <div style={{
-                                                                width: '30px',
-                                                                height: '30px',
+                                                                width: '32px',
+                                                                height: '32px',
                                                                 borderRadius: '50%',
-                                                                background: isAdded ? 'var(--primary)' : 'var(--border)',
-                                                                color: isAdded ? '#FFFFFF' : 'var(--tx-muted)',
+                                                                background: isAdded ? 'rgba(16, 185, 129, 0.15)' : 'var(--border)',
+                                                                color: isAdded ? '#16A34A' : 'var(--tx-muted)',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
                                                                 fontWeight: 800,
-                                                                fontSize: '11px'
+                                                                fontSize: '11px',
+                                                                flexShrink: 0
                                                             }}>
                                                                 {(stu.name || stu.usn).slice(0, 2).toUpperCase()}
                                                             </div>
                                                             <div>
-                                                                <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)' }}>
-                                                                    {stu.name || stu.usn}
+                                                                <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)' }}>
+                                                                    <HighlightMatch text={stu.name || stu.usn} query={rosterSearch} />
                                                                 </div>
-                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace' }}>
-                                                                    {stu.usn} {stu.section ? `• Sec ${stu.section}` : ''}
+                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <HighlightMatch text={stu.usn} query={rosterSearch} />
+                                                                    {stu.section && (
+                                                                        <span style={{
+                                                                            fontSize: '10px',
+                                                                            fontWeight: 700,
+                                                                            padding: '1px 5px',
+                                                                            borderRadius: '4px',
+                                                                            background: 'var(--surface)',
+                                                                            border: '1px solid var(--border)'
+                                                                        }}>
+                                                                            Sec {stu.section.replace(/^(sec|section)\s*/i, '')}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+
+                                                        {/* Right Side: CGPA + Backlogs + Action Button */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
                                                             {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
                                                                 <span style={{
                                                                     fontSize: '11px',
@@ -2947,29 +3542,70 @@ function InstitutionalIntelligenceContent() {
                                                                     {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
                                                                 </span>
                                                             )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if (isAdded) {
-                                                                        handleRemoveUsn(stu.usn);
-                                                                    } else {
-                                                                        handleAddUsn(stu.usn);
-                                                                    }
-                                                                }}
-                                                                style={{
-                                                                    padding: '5px 10px',
-                                                                    borderRadius: '6px',
-                                                                    border: 'none',
-                                                                    fontSize: '11px',
-                                                                    fontWeight: 800,
-                                                                    cursor: 'pointer',
-                                                                    background: isAdded ? 'rgba(239, 68, 68, 0.1)' : 'var(--primary)',
-                                                                    color: isAdded ? '#DC2626' : '#FFFFFF',
-                                                                    transition: 'all 0.15s ease'
-                                                                }}
-                                                            >
-                                                                {isAdded ? 'Remove' : '+ Compare'}
-                                                            </button>
+
+                                                            {isAdded ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <span style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '3px',
+                                                                        fontSize: '11px',
+                                                                        fontWeight: 700,
+                                                                        color: '#16A34A',
+                                                                        background: 'rgba(16, 185, 129, 0.12)',
+                                                                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                                                                        padding: '4px 8px',
+                                                                        borderRadius: '6px'
+                                                                    }}>
+                                                                        <span className="material-icons-round" style={{ fontSize: '13px' }}>check_circle</span>
+                                                                        Added
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRemoveUsn(stu.usn)}
+                                                                        title="Remove from comparison view (safe: does not delete student data)"
+                                                                        style={{
+                                                                            padding: '4px 8px',
+                                                                            borderRadius: '6px',
+                                                                            border: '1px solid var(--border)',
+                                                                            fontSize: '11px',
+                                                                            fontWeight: 700,
+                                                                            cursor: 'pointer',
+                                                                            background: 'var(--surface)',
+                                                                            color: 'var(--tx-muted)',
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '2px',
+                                                                            transition: 'all 0.15s ease'
+                                                                        }}
+                                                                    >
+                                                                        <span className="material-icons-round" style={{ fontSize: '13px', color: '#DC2626' }}>close</span>
+                                                                        Remove
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleAddSingleStudent(stu, false)}
+                                                                    style={{
+                                                                        padding: '5px 12px',
+                                                                        borderRadius: '6px',
+                                                                        border: 'none',
+                                                                        fontSize: '11px',
+                                                                        fontWeight: 800,
+                                                                        cursor: 'pointer',
+                                                                        background: 'var(--primary)',
+                                                                        color: '#FFFFFF',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        transition: 'all 0.15s ease'
+                                                                    }}
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>add</span>
+                                                                    Add
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );
@@ -2977,18 +3613,97 @@ function InstitutionalIntelligenceContent() {
                                         )}
                                     </div>
 
+                                    {/* Sticky Batch Selection Bar when Checkboxes are Selected */}
+                                    {rosterCheckedUsns.size > 0 && (
+                                        <div style={{
+                                            padding: '10px 20px',
+                                            background: 'rgba(99, 102, 241, 0.08)',
+                                            borderTop: '2px solid var(--primary)',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            flexWrap: 'wrap',
+                                            gap: '10px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>check_box</span>
+                                                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                    {rosterCheckedUsns.size} student{rosterCheckedUsns.size > 1 ? 's' : ''} selected
+                                                </span>
+                                                <span style={{ fontSize: '11.5px', color: 'var(--tx-muted)' }}>
+                                                    (ready to add)
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRosterCheckedUsns(new Set())}
+                                                    style={{
+                                                        background: 'var(--surface)',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: '6px',
+                                                        padding: '5px 12px',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: 700,
+                                                        color: 'var(--tx-muted)',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Cancel Selection
+                                                </button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="primary"
+                                                    onClick={handleAddCheckedRosterStudents}
+                                                    style={{
+                                                        padding: '6px 16px',
+                                                        fontWeight: 800,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)'
+                                                    }}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '16px' }}>group_add</span>
+                                                    Add Selected ({rosterCheckedUsns.size}) to Comparison
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Panel Footer */}
                                     <div style={{
-                                        padding: '10px 18px',
+                                        padding: '12px 20px',
                                         borderTop: '1px solid var(--border)',
                                         background: 'var(--surface-low)',
                                         display: 'flex',
                                         justifyContent: 'space-between',
                                         alignItems: 'center'
                                     }}>
-                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 700 }}>
-                                            {usnList.length} student{usnList.length === 1 ? '' : 's'} in comparison cohort
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ fontSize: '11.5px', color: 'var(--tx-muted)', fontWeight: 700 }}>
+                                                {usnList.length} student{usnList.length === 1 ? '' : 's'} in comparison cohort
+                                            </span>
+                                            {usnList.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setUsnList([])}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: '#DC2626',
+                                                        cursor: 'pointer',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        textDecoration: 'underline',
+                                                        padding: '0 4px'
+                                                    }}
+                                                    title="Clear comparison view (safe: does not delete any student marks or records)"
+                                                >
+                                                    Clear Cohort
+                                                </button>
+                                            )}
+                                        </div>
                                         <Button size="sm" variant="primary" onClick={() => setClassPickerOpen(false)}>
                                             Done
                                         </Button>
@@ -3005,164 +3720,530 @@ function InstitutionalIntelligenceContent() {
                                             left: '12px',
                                             top: '50%',
                                             transform: 'translateY(-50%)',
-                                            color: 'var(--tx-muted)',
+                                            color: searchDropdownOpen ? 'var(--primary)' : 'var(--tx-muted)',
                                             fontSize: '18px',
-                                            pointerEvents: 'none'
+                                            pointerEvents: 'none',
+                                            transition: 'color 0.15s ease'
                                         }}>
                                             person_search
                                         </span>
                                         <input
                                             type="text"
-                                            placeholder="Type Student Name or USN (e.g. Ainan, 2AB23CS061)..."
+                                            placeholder="Type Student Name or USN (e.g. Rawahah, Ainan, 2AB23CS063)..."
                                             value={usnInput}
-                                            onChange={e => setUsnInput(e.target.value)}
+                                            onChange={e => {
+                                                setUsnInput(e.target.value);
+                                                if (e.target.value.trim().length >= 2) {
+                                                    setSearchDropdownOpen(true);
+                                                }
+                                            }}
                                             onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                    handleAddUsn();
+                                                if (e.key === 'ArrowDown') {
+                                                    if (searchDropdownOpen && studentSearchResults.length > 0) {
+                                                        e.preventDefault();
+                                                        setActiveSearchIndex(prev => (prev < studentSearchResults.length - 1 ? prev + 1 : 0));
+                                                    }
+                                                } else if (e.key === 'ArrowUp') {
+                                                    if (searchDropdownOpen && studentSearchResults.length > 0) {
+                                                        e.preventDefault();
+                                                        setActiveSearchIndex(prev => (prev > 0 ? prev - 1 : studentSearchResults.length - 1));
+                                                    }
+                                                } else if (e.key === ' ') {
+                                                    // Space key toggles check on highlighted student in results
+                                                    if (searchDropdownOpen && activeSearchIndex >= 0 && studentSearchResults[activeSearchIndex]) {
+                                                        e.preventDefault();
+                                                        const target = studentSearchResults[activeSearchIndex];
+                                                        if (!usnList.includes(target.usn.toUpperCase())) {
+                                                            handleToggleCheckStudent(target.usn);
+                                                        }
+                                                    }
+                                                } else if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    if (checkedUsns.size > 0) {
+                                                        handleAddCheckedStudents();
+                                                    } else if (searchDropdownOpen && activeSearchIndex >= 0 && studentSearchResults[activeSearchIndex]) {
+                                                        handleAddSingleStudent(studentSearchResults[activeSearchIndex], true);
+                                                    } else {
+                                                        handleAddUsn();
+                                                    }
+                                                } else if (e.key === 'Escape') {
+                                                    setSearchDropdownOpen(false);
+                                                    setActiveSearchIndex(-1);
+                                                    setCheckedUsns(new Set());
                                                 }
                                             }}
                                             onFocus={() => {
-                                                if (studentSearchResults.length > 0) setSearchDropdownOpen(true);
+                                                if (usnInput.trim().length >= 2) setSearchDropdownOpen(true);
                                             }}
                                             style={{
                                                 width: '100%',
-                                                padding: '11px 14px 11px 38px',
+                                                padding: '11px 40px 11px 38px',
                                                 borderRadius: '8px',
-                                                border: '1px solid var(--border)',
+                                                border: searchDropdownOpen ? '1px solid var(--primary)' : '1px solid var(--border)',
                                                 background: 'var(--surface-low)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '13px',
                                                 outline: 'none',
-                                                transition: 'border-color 0.15s ease'
+                                                boxShadow: searchDropdownOpen ? '0 0 0 3px rgba(99, 102, 241, 0.15)' : 'none',
+                                                transition: 'all 0.15s ease'
                                             }}
                                         />
-                                        {isSearchingStudents && (
-                                            <span className="material-icons-round gf-spin" style={{
-                                                position: 'absolute',
-                                                right: '12px',
-                                                top: '50%',
-                                                transform: 'translateY(-50%)',
-                                                color: 'var(--primary)',
-                                                fontSize: '18px'
-                                            }}>
-                                                sync
-                                            </span>
-                                        )}
+
+                                        {/* Actions inside input: Spinner & Clear button */}
+                                        <div style={{
+                                            position: 'absolute',
+                                            right: '12px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}>
+                                            {isSearchingStudents && (
+                                                <span className="material-icons-round gf-spin" style={{
+                                                    color: 'var(--primary)',
+                                                    fontSize: '18px'
+                                                }}>
+                                                    sync
+                                                </span>
+                                            )}
+                                            {usnInput && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setUsnInput('');
+                                                        setStudentSearchResults([]);
+                                                        setSearchDropdownOpen(false);
+                                                        setActiveSearchIndex(-1);
+                                                        setCheckedUsns(new Set());
+                                                    }}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        color: 'var(--tx-muted)',
+                                                        fontSize: '18px',
+                                                        padding: 0,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        lineHeight: 1
+                                                    }}
+                                                    title="Clear search"
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '18px' }}>close</span>
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Floating Autocomplete Popover Anchored to Input */}
+                                        {searchDropdownOpen && usnInput.trim().length >= 2 && (() => {
+                                            const unaddedStudents = studentSearchResults.filter(s => !usnList.includes(s.usn.toUpperCase()));
+                                            const unaddedCount = unaddedStudents.length;
+                                            const isAllUnaddedChecked = unaddedCount > 0 && unaddedStudents.every(s => checkedUsns.has(s.usn.toUpperCase()));
+
+                                            return (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: 'calc(100% + 6px)',
+                                                    left: 0,
+                                                    right: 0,
+                                                    background: 'var(--surface)',
+                                                    border: '1px solid var(--border)',
+                                                    boxShadow: '0 16px 36px -4px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+                                                    borderRadius: '10px',
+                                                    zIndex: 1000,
+                                                    overflow: 'hidden'
+                                                }}>
+                                                    {/* Popover Header with Multi-Select Controls */}
+                                                    <div style={{
+                                                        padding: '9px 14px',
+                                                        background: 'var(--surface-low)',
+                                                        borderBottom: '1px solid var(--border)',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        flexWrap: 'wrap',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>
+                                                                    groups
+                                                                </span>
+                                                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                                                    Matching Students {studentSearchResults.length > 0 ? `(${studentSearchResults.length})` : ''}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Select All Checkbox */}
+                                                            {unaddedCount > 0 && (
+                                                                <label style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '5px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 700,
+                                                                    color: isAllUnaddedChecked ? 'var(--primary)' : 'var(--tx-muted)',
+                                                                    background: isAllUnaddedChecked ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
+                                                                    padding: '2px 7px',
+                                                                    borderRadius: '5px',
+                                                                    border: isAllUnaddedChecked ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isAllUnaddedChecked}
+                                                                        onChange={handleToggleSelectAll}
+                                                                        style={{ cursor: 'pointer', accentColor: 'var(--primary)', width: '13px', height: '13px' }}
+                                                                    />
+                                                                    <span>Select All ({unaddedCount})</span>
+                                                                </label>
+                                                            )}
+
+                                                            {/* Quick Add All Button */}
+                                                            {unaddedCount > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleAddAllSearchResults}
+                                                                    style={{
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: '5px',
+                                                                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                                                                        background: 'rgba(99, 102, 241, 0.1)',
+                                                                        color: 'var(--primary)',
+                                                                        fontSize: '11px',
+                                                                        fontWeight: 800,
+                                                                        cursor: 'pointer',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        transition: 'all 0.15s ease'
+                                                                    }}
+                                                                    title="Add all matching unadded students in one click"
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '13px' }}>playlist_add</span>
+                                                                    Add All ({unaddedCount})
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        <div style={{ fontSize: '10px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                                            <span style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px', marginRight: '3px' }}>↑↓</span> navigate
+                                                            <span style={{ margin: '0 4px' }}>•</span>
+                                                            <span style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px', marginRight: '3px' }}>Space</span> check
+                                                            <span style={{ margin: '0 4px' }}>•</span>
+                                                            <span style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px', marginRight: '3px' }}>↵</span> add
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Popover Content */}
+                                                    {studentSearchResults.length > 0 ? (
+                                                        <div style={{ maxHeight: '310px', overflowY: 'auto', padding: '5px' }}>
+                                                            {studentSearchResults.map((stu, idx) => {
+                                                                const isSelected = usnList.includes(stu.usn.toUpperCase());
+                                                                const isChecked = checkedUsns.has(stu.usn.toUpperCase());
+                                                                const isActive = activeSearchIndex === idx;
+                                                                const initials = (stu.name || stu.usn).trim().slice(0, 2).toUpperCase();
+
+                                                                return (
+                                                                    <div
+                                                                        key={stu.usn}
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            if (!isSelected) {
+                                                                                handleToggleCheckStudent(stu.usn);
+                                                                            }
+                                                                        }}
+                                                                        onMouseEnter={() => setActiveSearchIndex(idx)}
+                                                                        style={{
+                                                                            padding: '9px 12px',
+                                                                            borderRadius: '8px',
+                                                                            margin: '2px 0',
+                                                                            display: 'flex',
+                                                                            justifyContent: 'space-between',
+                                                                            alignItems: 'center',
+                                                                            cursor: isSelected ? 'default' : 'pointer',
+                                                                            background: isChecked
+                                                                                ? 'rgba(99, 102, 241, 0.12)'
+                                                                                : isActive
+                                                                                    ? 'rgba(99, 102, 241, 0.07)'
+                                                                                    : isSelected
+                                                                                        ? 'var(--surface-low)'
+                                                                                        : 'transparent',
+                                                                            border: isChecked
+                                                                                ? '1px solid rgba(99, 102, 241, 0.4)'
+                                                                                : isActive
+                                                                                    ? '1px solid rgba(99, 102, 241, 0.25)'
+                                                                                    : '1px solid transparent',
+                                                                            opacity: isSelected ? 0.7 : 1,
+                                                                            transition: 'all 0.12s ease'
+                                                                        }}
+                                                                    >
+                                                                        {/* Checkbox + Student Identity */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                                                                            {/* Checkbox */}
+                                                                            <div
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    if (!isSelected) handleToggleCheckStudent(stu.usn);
+                                                                                }}
+                                                                                style={{
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'center',
+                                                                                    width: '20px',
+                                                                                    height: '20px',
+                                                                                    cursor: isSelected ? 'default' : 'pointer',
+                                                                                    flexShrink: 0
+                                                                                }}
+                                                                            >
+                                                                                {isSelected ? (
+                                                                                    <span className="material-icons-round" style={{ fontSize: '18px', color: '#16A34A' }}>
+                                                                                        check_circle
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={isChecked}
+                                                                                        onChange={() => handleToggleCheckStudent(stu.usn)}
+                                                                                        style={{
+                                                                                            width: '15px',
+                                                                                            height: '15px',
+                                                                                            cursor: 'pointer',
+                                                                                            accentColor: 'var(--primary)'
+                                                                                        }}
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+
+                                                                            {/* Avatar */}
+                                                                            <div style={{
+                                                                                width: '32px',
+                                                                                height: '32px',
+                                                                                borderRadius: '50%',
+                                                                                background: isChecked
+                                                                                    ? 'var(--primary)'
+                                                                                    : 'linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(16, 185, 129, 0.18))',
+                                                                                color: isChecked ? '#FFFFFF' : 'var(--primary)',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center',
+                                                                                fontWeight: 900,
+                                                                                fontSize: '12px',
+                                                                                flexShrink: 0,
+                                                                                border: `1px solid ${isChecked ? 'var(--primary)' : 'rgba(99, 102, 241, 0.2)'}`,
+                                                                                transition: 'all 0.15s ease'
+                                                                            }}>
+                                                                                {initials}
+                                                                            </div>
+
+                                                                            {/* Details */}
+                                                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                                                <div style={{
+                                                                                    fontWeight: 800,
+                                                                                    fontSize: '13px',
+                                                                                    color: 'var(--tx-main)',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '6px',
+                                                                                    overflow: 'hidden',
+                                                                                    textOverflow: 'ellipsis',
+                                                                                    whiteSpace: 'nowrap'
+                                                                                }}>
+                                                                                    <HighlightMatch text={stu.name || stu.usn} query={usnInput} />
+                                                                                    {isSelected && (
+                                                                                        <span style={{
+                                                                                            fontSize: '9px',
+                                                                                            fontWeight: 800,
+                                                                                            color: 'var(--tx-muted)',
+                                                                                            background: 'var(--surface-low)',
+                                                                                            border: '1px solid var(--border)',
+                                                                                            padding: '1px 5px',
+                                                                                            borderRadius: '4px'
+                                                                                        }}>
+                                                                                            Added
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div style={{
+                                                                                    fontSize: '11px',
+                                                                                    color: 'var(--tx-muted)',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '6px',
+                                                                                    marginTop: '1px'
+                                                                                }}>
+                                                                                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--tx-main)' }}>
+                                                                                        <HighlightMatch text={stu.usn} query={usnInput} />
+                                                                                    </span>
+                                                                                    <span>•</span>
+                                                                                    <span>{stu.branch || 'CSE'}</span>
+                                                                                    {stu.section && (
+                                                                                        <>
+                                                                                            <span>•</span>
+                                                                                            <span>Sec {stu.section}</span>
+                                                                                        </>
+                                                                                    )}
+                                                                                    <span>•</span>
+                                                                                    <span>Sem {stu.semester || '6'}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Student Stats & Action */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '10px' }}>
+                                                                            {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
+                                                                                <span style={{
+                                                                                    fontSize: '11px',
+                                                                                    fontWeight: 800,
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '6px',
+                                                                                    background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(99, 102, 241, 0.12)',
+                                                                                    color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)',
+                                                                                    border: `1px solid ${stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(99, 102, 241, 0.25)'}`
+                                                                                }}>
+                                                                                    {fmtNum(stu.cgpa)} CGPA
+                                                                                </span>
+                                                                            )}
+                                                                            {stu.total_backlogs > 0 && (
+                                                                                <span style={{
+                                                                                    fontSize: '11px',
+                                                                                    fontWeight: 800,
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '6px',
+                                                                                    background: 'rgba(239, 68, 68, 0.12)',
+                                                                                    color: '#DC2626',
+                                                                                    border: '1px solid rgba(239, 68, 68, 0.25)'
+                                                                                }}>
+                                                                                    {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
+                                                                                </span>
+                                                                            )}
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    if (!isSelected) handleAddSingleStudent(stu, false);
+                                                                                }}
+                                                                                disabled={isSelected}
+                                                                                style={{
+                                                                                    padding: '4px 10px',
+                                                                                    borderRadius: '6px',
+                                                                                    border: 'none',
+                                                                                    fontSize: '11px',
+                                                                                    fontWeight: 800,
+                                                                                    cursor: isSelected ? 'default' : 'pointer',
+                                                                                    background: isSelected ? 'var(--surface-low)' : 'var(--primary)',
+                                                                                    color: isSelected ? 'var(--tx-muted)' : '#FFFFFF',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '4px',
+                                                                                    boxShadow: isSelected ? 'none' : '0 2px 5px rgba(99, 102, 241, 0.25)',
+                                                                                    transition: 'all 0.15s ease'
+                                                                                }}
+                                                                            >
+                                                                                <span className="material-icons-round" style={{ fontSize: '13px' }}>
+                                                                                    {isSelected ? 'check' : 'add'}
+                                                                                </span>
+                                                                                {isSelected ? 'Added' : 'Add'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : isSearchingStudents ? (
+                                                        <div style={{
+                                                            padding: '24px 20px',
+                                                            textAlign: 'center',
+                                                            color: 'var(--tx-muted)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            gap: '8px',
+                                                            fontSize: '12px',
+                                                            fontWeight: 700
+                                                        }}>
+                                                            <span className="material-icons-round gf-spin" style={{ fontSize: '18px', color: 'var(--primary)' }}>sync</span>
+                                                            Searching students...
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{
+                                                            padding: '24px 20px',
+                                                            textAlign: 'center',
+                                                            color: 'var(--tx-muted)'
+                                                        }}>
+                                                            <span className="material-icons-round" style={{ fontSize: '28px', color: 'var(--tx-dim)', marginBottom: '4px', display: 'inline-block' }}>
+                                                                person_off
+                                                            </span>
+                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', marginBottom: '2px' }}>
+                                                                No students found matching &ldquo;{usnInput}&rdquo;
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                                Search by student name or full/partial USN.
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Sticky Multi-Select Action Bar Footer */}
+                                                    {checkedUsns.size > 0 && (
+                                                        <div style={{
+                                                            padding: '10px 14px',
+                                                            background: 'var(--surface-low)',
+                                                            borderTop: '1px solid var(--border)',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>
+                                                                    check_circle
+                                                                </span>
+                                                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                                    {checkedUsns.size} student{checkedUsns.size === 1 ? '' : 's'} selected
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setCheckedUsns(new Set())}
+                                                                    style={{
+                                                                        background: 'transparent',
+                                                                        border: 'none',
+                                                                        color: 'var(--tx-muted)',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                        textDecoration: 'underline',
+                                                                        padding: '0 4px'
+                                                                    }}
+                                                                >
+                                                                    Clear
+                                                                </button>
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="primary"
+                                                                    onClick={handleAddCheckedStudents}
+                                                                    style={{ padding: '6px 14px', fontSize: '12px', fontWeight: 800 }}
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '15px', marginRight: '4px' }}>
+                                                                        person_add
+                                                                    </span>
+                                                                    Add Selected ({checkedUsns.size})
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
-                                    <Button onClick={() => handleAddUsn()} variant="primary" style={{ padding: '10px 18px' }}>
+                                    <Button onClick={() => handleAddUsn()} variant="primary" style={{ padding: '10px 18px', whiteSpace: 'nowrap' }}>
                                         <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>add</span>
                                         Add USN
                                     </Button>
                                 </div>
-
-                                {/* Floating Autocomplete Dropdown */}
-                                {searchDropdownOpen && studentSearchResults.length > 0 && (
-                                    <div style={{
-                                        position: 'absolute',
-                                        top: 'calc(100% + 6px)',
-                                        left: 0,
-                                        right: 0,
-                                        background: 'var(--surface)',
-                                        border: '1px solid var(--border)',
-                                        boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
-                                        borderRadius: '10px',
-                                        zIndex: 50,
-                                        maxHeight: '280px',
-                                        overflowY: 'auto',
-                                        padding: '6px'
-                                    }}>
-                                        <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                            Matching Students
-                                        </div>
-                                        {studentSearchResults.map(stu => {
-                                            const isSelected = usnList.includes(stu.usn);
-                                            return (
-                                                <div
-                                                    key={stu.usn}
-                                                    onMouseDown={(e) => {
-                                                        e.preventDefault();
-                                                        if (!isSelected) handleSelectStudent(stu);
-                                                    }}
-                                                    style={{
-                                                        padding: '10px 12px',
-                                                        borderRadius: '8px',
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        alignItems: 'center',
-                                                        cursor: isSelected ? 'default' : 'pointer',
-                                                        background: isSelected ? 'var(--surface-low)' : 'transparent',
-                                                        opacity: isSelected ? 0.6 : 1,
-                                                        transition: 'background 0.15s ease'
-                                                    }}
-                                                    onMouseEnter={e => {
-                                                        if (!isSelected) e.currentTarget.style.background = 'var(--surface-low)';
-                                                    }}
-                                                    onMouseLeave={e => {
-                                                        if (!isSelected) e.currentTarget.style.background = 'transparent';
-                                                    }}
-                                                >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <div style={{
-                                                            width: '32px',
-                                                            height: '32px',
-                                                            borderRadius: '50%',
-                                                            background: 'var(--primary-low)',
-                                                            color: 'var(--primary)',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            fontWeight: 800,
-                                                            fontSize: '12px'
-                                                        }}>
-                                                            {(stu.name || stu.usn).slice(0, 2).toUpperCase()}
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)' }}>
-                                                                {stu.name || stu.usn}
-                                                            </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
-                                                                {stu.usn} • {stu.branch || 'CSE'} {stu.section ? `(Sec ${stu.section})` : ''} • Sem {stu.semester || '6'}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        {typeof stu.cgpa === 'number' && stu.cgpa > 0 && (
-                                                            <span style={{
-                                                                fontSize: '11px',
-                                                                fontWeight: 800,
-                                                                padding: '3px 8px',
-                                                                borderRadius: '6px',
-                                                                background: stu.cgpa >= 7.75 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
-                                                                color: stu.cgpa >= 7.75 ? '#16A34A' : 'var(--primary)'
-                                                            }}>
-                                                                {fmtNum(stu.cgpa)} CGPA
-                                                            </span>
-                                                        )}
-                                                        {stu.total_backlogs > 0 && (
-                                                            <span style={{
-                                                                fontSize: '11px',
-                                                                fontWeight: 800,
-                                                                padding: '3px 8px',
-                                                                borderRadius: '6px',
-                                                                background: 'rgba(239, 68, 68, 0.1)',
-                                                                color: '#DC2626'
-                                                            }}>
-                                                                {stu.total_backlogs} Backlog{stu.total_backlogs > 1 ? 's' : ''}
-                                                            </span>
-                                                        )}
-                                                        <span style={{
-                                                            fontSize: '12px',
-                                                            fontWeight: 700,
-                                                            color: isSelected ? 'var(--tx-dim)' : 'var(--primary)'
-                                                        }}>
-                                                            {isSelected ? 'Added ✓' : '+ Add'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
                             </div>
 
                             {/* Active Student Ribbon Chips */}
@@ -3274,7 +4355,7 @@ function InstitutionalIntelligenceContent() {
                                         Diagnose Remedial Students
                                     </Button>
                                     <Button onClick={() => {
-                                        if (!classReport?.classes?.length) loadClassesData();
+                                        if (allClassesList.length === 0) loadAllClasses();
                                         setClassPickerOpen(true);
                                     }} variant="secondary">
                                         <span className="material-icons-round" style={{ fontSize: '16px', marginRight: '6px' }}>groups</span>

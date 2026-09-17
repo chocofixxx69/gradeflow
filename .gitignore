@@ -35,6 +35,7 @@ backend/students.csv
 backend/usn_list.txt
 backend/unscraped_leads_to_run.*
 *.csv
+scripts/*.json
 
 # PDF/Temp files
 *.pdf
