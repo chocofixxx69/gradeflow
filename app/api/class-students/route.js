@@ -137,25 +137,29 @@ export async function GET(req) {
             };
         });
 
-        const exportSem = searchParams.get('export_sem');
+        const exportSem = searchParams.get('export_sem') || searchParams.get('sem');
+        const includeMarks = searchParams.get('include_marks') === '1' || searchParams.get('include_marks') === 'true';
         let exportMarksData = null;
         let exportCatData = null;
 
-        if (exportSem) {
-            const semNum = Number(exportSem);
-            exportMarksData = (marks || []).filter(m => Number(m.semester) === semNum);
+        if (exportSem || includeMarks) {
+            const semNum = exportSem ? Number(exportSem) : null;
+            exportMarksData = semNum ? (marks || []).filter(m => Number(m.semester) === semNum) : (marks || []);
             
             // subject_catalog stores branch under its canonical short code (e.g. "AI"),
             // but classes.branch can hold whatever label the class was created with
             // (e.g. "AIML") — normalize the same way the SGPA/credit engine already
             // does (lib/vtuAcademicEngine.js) so the catalog lookup actually matches.
             const catalogBranch = normalizeBranch(classData?.branch) || 'CS';
-            const { data: catData } = await supabaseAdmin
+            let catQuery = supabaseAdmin
                 .from('subject_catalog')
                 .select('id, subject_code, subject_name, credits')
                 .eq('scheme', classData?.scheme || '2022')
-                .eq('branch', catalogBranch)
-                .eq('semester', semNum);
+                .eq('branch', catalogBranch);
+            if (semNum) {
+                catQuery = catQuery.eq('semester', semNum);
+            }
+            const { data: catData } = await catQuery;
 
             // Ground truth only: a subject column exists if and only if at least one real
             // mark row exists for it among this roster. subject_catalog is used purely to

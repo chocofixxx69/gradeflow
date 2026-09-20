@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment, Component } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest, clearApiCache } from '../lib/api/client';
 import { useRouter } from 'next/navigation';
@@ -12,9 +12,52 @@ import { recordFacultyAction } from '../lib/api/faculty-action';
 // Loaded on demand instead; every caller below is already an async handler.
 const loadExportUtils = () => import('../lib/export-utils');
 import { downloadCSV, downloadWorkbook } from '../lib/workbook-export';
-import { isFailedSubject } from '../lib/vtuGrades';
+import { isFailedSubject, resolveCanonicalGrade } from '../lib/vtuGrades';
 import { normalizePortalScheme } from '../lib/vtu-portals';
 import { ConfirmDialog } from './ui';
+
+class LedgerErrorBoundary extends Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+    componentDidCatch(error, errorInfo) {
+        console.error('[LedgerErrorBoundary caught error]:', error, errorInfo);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: '48px 24px', textAlign: 'center', background: 'var(--surface)', borderRadius: '12px', margin: '20px', border: '1px solid var(--border)' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+                        <span className="material-icons-round" style={{ fontSize: '28px', color: 'var(--red)' }}>error_outline</span>
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '8px' }}>
+                        Ledger View Notice
+                    </div>
+                    <div style={{ fontSize: '13px', color: 'var(--tx-muted)', maxWidth: '480px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
+                        {this.state.error?.message || 'A calculation error occurred while rendering the tabulation matrix.'}
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                this.setState({ hasError: false, error: null });
+                                this.props.onReset?.();
+                            }}
+                            style={{ padding: '8px 18px', borderRadius: '8px', background: 'var(--primary)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}
+                        >
+                            Return to Roster View
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const USN_RE = /^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$/;
@@ -122,6 +165,8 @@ export function ClassesContent({ embedded = false }) {
     const router = useRouter();
     const [semFilter, setSemFilter] = useState('all');
     const [classTab, setClassTab] = useState('roster');
+    const [rosterViewMode, setRosterViewMode] = useState('roster'); // 'roster' (standard list) | 'ledger' (Class Analysis Master Matrix)
+    const [loadingLedger, setLoadingLedger] = useState(false);
     const [viewingList, setViewingList] = useState(null);
     const [availableSems, setAvailableSems] = useState([]);
     const [subjectToppers, setSubjectToppers] = useState([]);
@@ -293,9 +338,23 @@ export function ClassesContent({ embedded = false }) {
 
         let resolvedFaculty = {};
         try {
-            const res = await fetch(`/api/class-students?class_id=${selectedClass.id}&export_sem=${targetSem}`);
-            const json = await res.json();
-            if (json.success) {
+            let json = null;
+            try {
+                json = await apiRequest('/api/class-students', {
+                    query: {
+                        class_id: selectedClass.id,
+                        export_sem: targetSem,
+                        include_marks: '1',
+                        _t: Date.now()
+                    }
+                });
+            } catch (apiErr) {
+                console.warn('[ClassesContent] loadSemesterExportData apiRequest fallback:', apiErr);
+                const raw = await fetch(`/api/class-students?class_id=${selectedClass.id}&export_sem=${targetSem}&include_marks=1&_t=${Date.now()}`, { cache: 'no-store', credentials: 'include' });
+                if (raw.ok) json = await raw.json();
+            }
+
+            if (json && json.success) {
                 const marksData = json.marksData || [];
                 const catData = json.catData || [];
                 setAllMarks(marksData);
@@ -335,6 +394,9 @@ export function ClassesContent({ embedded = false }) {
 
         setFacultyMap(resolvedFaculty);
     };
+
+    // Alias for ledger and export compatibility
+    const loadExportData = loadSemesterExportData;
 
     const openPdfExportModal = async () => {
         if (!selectedClass) return;
@@ -1502,6 +1564,136 @@ export function ClassesContent({ embedded = false }) {
         return filterAndRankStudents(students, rosterSearch);
     }, [students, rosterSearch]);
 
+    // ── Master Tabulation Ledger (Class Analysis) Helpers ───────
+    const activeLedgerSem = useMemo(() => {
+        if (semFilter !== 'all') return Number(semFilter);
+
+        // Find highest semester that students in this class actually have results for
+        let highestStudentSem = 0;
+        (students || []).forEach(st => {
+            if (st.semester_data) {
+                Object.keys(st.semester_data).forEach(k => {
+                    const n = Number(k);
+                    if (!isNaN(n) && n > highestStudentSem) highestStudentSem = n;
+                });
+            }
+            if (st.has_data && st.semester) {
+                const n = Number(st.semester);
+                if (!isNaN(n) && n > highestStudentSem) highestStudentSem = n;
+            }
+        });
+
+        if (highestStudentSem > 0) return highestStudentSem;
+        return Number(selectedClass?.semester) || (availableSems.length > 0 ? availableSems[availableSems.length - 1] : 1);
+    }, [semFilter, selectedClass?.semester, availableSems, students]);
+
+    // Automatically load marks data when ledger view is enabled or semester changes
+    useEffect(() => {
+        if (!selectedClass || rosterViewMode !== 'ledger') return;
+        const semNum = Number(activeLedgerSem);
+        const hasMarksForSem = (allMarks || []).some(m => Number(m.semester) === semNum);
+        if (!hasMarksForSem || classSubjects.length === 0) {
+            setLoadingLedger(true);
+            loadSemesterExportData(semNum).finally(() => setLoadingLedger(false));
+        }
+    }, [selectedClass?.id, rosterViewMode, activeLedgerSem]);
+
+    // Active subjects for Master Ledger Matrix view (combines catalog + actual student marks)
+    const activeLedgerSubjects = useMemo(() => {
+        const semNum = Number(activeLedgerSem);
+        const semMarks = (allMarks || []).filter(m => Number(m.semester) === semNum);
+        const subMap = new Map();
+
+        // 1. From catalog subjects
+        (classSubjects || []).forEach(s => {
+            const code = (s.code || s.subject_code || '').trim().toUpperCase();
+            if (code) {
+                subMap.set(code, {
+                    code,
+                    name: s.name || s.subject_name || code,
+                    credits: s.credits ?? null
+                });
+            }
+        });
+
+        // 2. From marks data (ensures any subject taken by a student is included)
+        semMarks.forEach(m => {
+            const code = (m.subject_code || '').trim().toUpperCase();
+            if (code && !subMap.has(code)) {
+                subMap.set(code, {
+                    code,
+                    name: m.subject_name || code,
+                    credits: m.credits ?? null
+                });
+            }
+        });
+
+        return Array.from(subMap.values()).sort((a, b) => a.code.localeCompare(b.code));
+    }, [allMarks, classSubjects, activeLedgerSem]);
+
+    // Student marks keyed by uppercase USN and uppercase subject_code
+    const ledgerStudentMarksMap = useMemo(() => {
+        const semNum = Number(activeLedgerSem);
+        const semMarks = (allMarks || []).filter(m => Number(m.semester) === semNum);
+        const map = {};
+        semMarks.forEach(m => {
+            const u = (m.usn || '').trim().toUpperCase();
+            const code = (m.subject_code || '').trim().toUpperCase();
+            if (!u || !code) return;
+            if (!map[u]) map[u] = {};
+            const existing = map[u][code];
+            // Deduplicate: pick attempt with higher total marks
+            if (!existing || Number(m.totalMarks ?? m.total_marks ?? m.total ?? 0) > Number(existing.totalMarks ?? existing.total_marks ?? existing.total ?? 0)) {
+                map[u][code] = m;
+            }
+        });
+        return map;
+    }, [allMarks, activeLedgerSem]);
+
+    // Class performance summary metrics for the ledger view
+    const ledgerSummaryStats = useMemo(() => {
+        let appeared = 0;
+        let allClear = 0;
+        let totalBacklogs = 0;
+        let sgpaSum = 0;
+        let sgpaCount = 0;
+
+        filteredStudents.forEach(s => {
+            const u = (s.usn || '').trim().toUpperCase();
+            const uMarks = ledgerStudentMarksMap[u] || {};
+            const marksList = Object.values(uMarks);
+            if (marksList.length > 0) {
+                appeared++;
+                let hasFail = false;
+                marksList.forEach(m => {
+                    if (isFailedSubject(m)) {
+                        hasFail = true;
+                        totalBacklogs++;
+                    }
+                });
+                if (!hasFail) allClear++;
+            }
+            const semData = s.semester_data?.[activeLedgerSem];
+            if (semData?.sgpa != null && Number(semData.sgpa) > 0) {
+                sgpaSum += Number(semData.sgpa);
+                sgpaCount++;
+            }
+        });
+
+        const passRate = appeared > 0 ? ((allClear / appeared) * 100).toFixed(1) : '—';
+        const avgSgpa = sgpaCount > 0 ? (sgpaSum / sgpaCount).toFixed(2) : '—';
+
+        return {
+            total: filteredStudents.length,
+            appeared,
+            allClear,
+            failed: appeared - allClear,
+            totalBacklogs,
+            passRate,
+            avgSgpa
+        };
+    }, [filteredStudents, ledgerStudentMarksMap, activeLedgerSem]);
+
     const top10 = [...students].filter(s => s.cgpa !== null).sort((a, b) => b.cgpa - a.cgpa).slice(0, 10);
     const totalBacklogs = students.reduce((s, st) => s + (st.total_backlogs || 0), 0);
     const withCgpa = students.filter(s => s.cgpa !== null);
@@ -1705,7 +1897,67 @@ export function ClassesContent({ embedded = false }) {
 
                     <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>Student Roster</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <div style={{ fontSize: '14px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.02em' }}>
+                                    {rosterViewMode === 'ledger' ? 'Class Analysis' : 'Student Roster'}
+                                </div>
+                                <div style={{ display: 'inline-flex', background: 'var(--surface-low)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setRosterViewMode('roster')}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '11px',
+                                            fontWeight: 800,
+                                            background: rosterViewMode === 'roster' ? 'var(--surface)' : 'transparent',
+                                            color: rosterViewMode === 'roster' ? 'var(--primary)' : 'var(--tx-muted)',
+                                            boxShadow: rosterViewMode === 'roster' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title="Standard Student Roster list view"
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>view_list</span>
+                                        Roster View
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setRosterViewMode('ledger');
+                                            const target = semFilter !== 'all' ? Number(semFilter) : activeLedgerSem;
+                                            const hasSem = (allMarks || []).some(m => Number(m.semester) === target);
+                                            if (!hasSem || classSubjects.length === 0) {
+                                                setLoadingLedger(true);
+                                                loadSemesterExportData(target).finally(() => setLoadingLedger(false));
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '11px',
+                                            fontWeight: 800,
+                                            background: rosterViewMode === 'ledger' ? 'var(--surface)' : 'transparent',
+                                            color: rosterViewMode === 'ledger' ? 'var(--primary)' : 'var(--tx-muted)',
+                                            boxShadow: rosterViewMode === 'ledger' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title="Master Tabulation Ledger with Int/Ext/Total/Grade per subject (Competitor Class Analysis)"
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>grid_on</span>
+                                        Class Analysis (Ledger)
+                                    </button>
+                                </div>
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <div style={{ position: 'relative', width: '200px' }}>
                                     <input
@@ -1760,16 +2012,21 @@ export function ClassesContent({ embedded = false }) {
                                 </button>
                                 <button
                                     style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    onClick={() => fetchClassStudents(selectedClass, true)}
-                                    disabled={loadingStudents}
-                                    title="Refresh student roster for this class"
+                                    onClick={() => {
+                                        fetchClassStudents(selectedClass, true);
+                                        if (rosterViewMode === 'ledger') {
+                                            loadSemesterExportData(activeLedgerSem);
+                                        }
+                                    }}
+                                    disabled={loadingStudents || loadingLedger}
+                                    title="Refresh student roster and marks for this class"
                                 >
                                     <span
                                         className="material-icons-round"
                                         style={{
                                             fontSize: '16px',
                                             color: 'var(--primary)',
-                                            animation: loadingStudents ? 'spin 1s linear infinite' : 'none'
+                                            animation: (loadingStudents || loadingLedger) ? 'spin 1s linear infinite' : 'none'
                                         }}
                                     >
                                         refresh
@@ -1805,7 +2062,473 @@ export function ClassesContent({ embedded = false }) {
                         )}
 
                         {loadingStudents ? <div style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>Loading…</div>
-                            : (
+                            : rosterViewMode === 'ledger' ? (
+                                <LedgerErrorBoundary onReset={() => setRosterViewMode('roster')}>
+                                <div>
+                                    {/* Sub-toolbar with legend & summary stats */}
+                                    <div style={{ background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', padding: '10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                            <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                Int = Internal • Ext = External • Total = Total Marks • G = Grade
+                                            </span>
+                                            <span style={{ color: 'var(--border)' }}>|</span>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                <span style={{ width: '11px', height: '11px', borderRadius: '3px', background: 'rgba(239, 68, 68, 0.18)', border: '1px solid rgba(239, 68, 68, 0.4)', display: 'inline-block' }} />
+                                                Failed cell (Ext &lt; 18 / Tot &lt; 40 / Grade F)
+                                            </span>
+                                            <span style={{ color: 'var(--border)' }}>|</span>
+                                            <span style={{ color: 'var(--tx-dim)' }}>
+                                                <strong style={{ opacity: 0.7 }}>—</strong> = Subject not in dept/cycle
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                            {/* Quick Semester Switcher */}
+                                            {availableSems.length > 1 && (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--surface)', border: '1px solid var(--border)', padding: '2px 4px', borderRadius: '6px', marginRight: '4px' }}>
+                                                    <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', padding: '0 3px' }}>Sem:</span>
+                                                    {availableSems.map(s => {
+                                                        const isCurrent = Number(s) === Number(activeLedgerSem);
+                                                        return (
+                                                            <button
+                                                                key={s}
+                                                                type="button"
+                                                                onClick={() => setSemFilter(String(s))}
+                                                                style={{
+                                                                    border: 'none',
+                                                                    background: isCurrent ? 'var(--primary)' : 'transparent',
+                                                                    color: isCurrent ? '#fff' : 'var(--tx-muted)',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: isCurrent ? 800 : 600,
+                                                                    padding: '2px 7px',
+                                                                    borderRadius: '4px',
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                                title={`Switch to Semester ${s}`}
+                                                            >
+                                                                {s}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--surface)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '6px', color: 'var(--primary)' }}>
+                                                Sem {activeLedgerSem}
+                                            </span>
+                                            <span style={{ fontSize: '11px', fontWeight: 700, background: 'var(--surface)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '6px', color: 'var(--tx-main)' }}>
+                                                {activeLedgerSubjects.length} Subject{activeLedgerSubjects.length === 1 ? '' : 's'}
+                                            </span>
+                                            <span style={{ fontSize: '11px', fontWeight: 700, background: 'var(--surface)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '6px', color: ledgerSummaryStats.passRate !== '—' && Number(ledgerSummaryStats.passRate) >= 75 ? 'var(--green)' : 'var(--amber)' }}>
+                                                Pass: {ledgerSummaryStats.passRate}%
+                                            </span>
+                                            <span style={{ fontSize: '11px', fontWeight: 700, background: 'var(--surface)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '6px', color: 'var(--primary)' }}>
+                                                Avg SGPA: {ledgerSummaryStats.avgSgpa}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {loadingLedger ? (
+                                        <div style={{ padding: '60px 24px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                            <div style={{ display: 'inline-block', marginBottom: '12px' }}>
+                                                <span className="material-icons-round" style={{ fontSize: '32px', color: 'var(--primary)', animation: 'spin 1s linear infinite' }}>sync</span>
+                                            </div>
+                                            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                Loading Master Tabulation Ledger for Semester {activeLedgerSem}…
+                                            </div>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-dim)', marginTop: '4px' }}>
+                                                Resolving CIE/SEE marks, letter grades, and catalog subjects
+                                            </div>
+                                        </div>
+                                    ) : activeLedgerSubjects.length === 0 ? (
+                                        <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--tx-dim)' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '36px', color: 'var(--tx-dim)', marginBottom: '8px', opacity: 0.6 }}>grid_off</span>
+                                            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                                No Subject Marks Recorded for Semester {activeLedgerSem}
+                                            </div>
+                                            <div style={{ fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '440px', margin: '0 auto 16px auto' }}>
+                                                No marks records were found for Semester {activeLedgerSem} in this class roster. Use &ldquo;Fetch Results&rdquo; to pull the latest university marks or switch semesters.
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                <button
+                                                    style={{ ...btn('primary'), padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                    onClick={() => openScrapeModal('all')}
+                                                >
+                                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>cloud_download</span>
+                                                    Fetch Results from VTU
+                                                </button>
+                                                {availableSems.filter(s => s !== activeLedgerSem).map(s => (
+                                                    <button
+                                                        key={s}
+                                                        style={{ ...btn('ghost'), padding: '6px 12px', fontSize: '12px' }}
+                                                        onClick={() => setSemFilter(String(s))}
+                                                    >
+                                                        View Sem {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: '72vh', position: 'relative' }}>
+                                            <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '11px', textAlign: 'left' }}>
+                                                <thead>
+                                                    {/* Header Row 1 */}
+                                                    <tr style={{ position: 'sticky', top: 0, zIndex: 20 }}>
+                                                        <th style={{ ...S.th, position: 'sticky', left: 0, top: 0, zIndex: 25, width: '42px', minWidth: '42px', textAlign: 'center', background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }} rowSpan={2}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={filteredStudents.length > 0 && selectedUsns.size === filteredStudents.length}
+                                                                onChange={() => toggleSelectAll(filteredStudents)}
+                                                                style={{ cursor: 'pointer', width: '14px', height: '14px' }}
+                                                                title="Select All Students"
+                                                            />
+                                                        </th>
+                                                        <th style={{ ...S.th, position: 'sticky', left: '42px', top: 0, zIndex: 25, width: '38px', minWidth: '38px', textAlign: 'center', background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }} rowSpan={2}>
+                                                            #
+                                                        </th>
+                                                        <th style={{ ...S.th, position: 'sticky', left: '80px', top: 0, zIndex: 25, width: '115px', minWidth: '115px', background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }} rowSpan={2}>
+                                                            USN
+                                                        </th>
+                                                        <th style={{ ...S.th, position: 'sticky', left: '195px', top: 0, zIndex: 25, width: '165px', minWidth: '165px', background: 'var(--surface-low)', borderBottom: '1px solid var(--border)' }} rowSpan={2}>
+                                                            Student Name
+                                                        </th>
+                                                        <th style={{ ...S.th, position: 'sticky', left: '360px', top: 0, zIndex: 25, width: '52px', minWidth: '52px', textAlign: 'center', background: 'var(--surface-low)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)', boxShadow: '4px 0 6px -2px rgba(0,0,0,0.08)' }} rowSpan={2}>
+                                                            Dept
+                                                        </th>
+                                                        {activeLedgerSubjects.map((sub, sIdx) => (
+                                                            <th
+                                                                key={`${sub.code}-${sIdx}`}
+                                                                colSpan={4}
+                                                                style={{
+                                                                    ...S.th,
+                                                                    top: 0,
+                                                                    textAlign: 'center',
+                                                                    background: 'var(--surface-low)',
+                                                                    borderBottom: '1px solid var(--border)',
+                                                                    borderRight: '1px solid var(--border)',
+                                                                    borderLeft: '1px solid var(--border)',
+                                                                    padding: '6px 4px'
+                                                                }}
+                                                                title={`${sub.code} — ${sub.name}${sub.credits ? ` (${sub.credits} Credits)` : ''}`}
+                                                            >
+                                                                <div style={{ fontSize: '11px', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '0.04em' }}>
+                                                                    {sub.code}
+                                                                </div>
+                                                                <div style={{ fontSize: '9px', fontWeight: 600, color: 'var(--tx-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px', margin: '0 auto' }}>
+                                                                    {sub.credits ? `${sub.credits} Cr • ` : ''}{sub.name || sub.code}
+                                                                </div>
+                                                            </th>
+                                                        ))}
+                                                        <th
+                                                            colSpan={3}
+                                                            style={{
+                                                                ...S.th,
+                                                                top: 0,
+                                                                textAlign: 'center',
+                                                                background: 'var(--surface-low)',
+                                                                borderBottom: '1px solid var(--border)',
+                                                                borderLeft: '1px solid var(--border)',
+                                                                padding: '6px 6px'
+                                                            }}
+                                                        >
+                                                            <div style={{ fontSize: '11px', fontWeight: 900, color: 'var(--primary)', letterSpacing: '0.04em' }}>
+                                                                Summary
+                                                            </div>
+                                                            <div style={{ fontSize: '9px', fontWeight: 600, color: 'var(--tx-dim)' }}>
+                                                                Sem {activeLedgerSem}
+                                                            </div>
+                                                        </th>
+                                                    </tr>
+                                                    {/* Header Row 2 */}
+                                                    <tr style={{ position: 'sticky', top: '39px', zIndex: 19 }}>
+                                                        {activeLedgerSubjects.map((sub, sIdx) => (
+                                                            <Fragment key={`${sub.code}-${sIdx}`}>
+                                                                <th style={{ ...S.th, top: '39px', width: '38px', minWidth: '38px', textAlign: 'center', padding: '4px 2px', borderBottom: '1px solid var(--border)', fontSize: '9px' }}>
+                                                                    Int
+                                                                </th>
+                                                                <th style={{ ...S.th, top: '39px', width: '38px', minWidth: '38px', textAlign: 'center', padding: '4px 2px', borderBottom: '1px solid var(--border)', fontSize: '9px' }}>
+                                                                    Ext
+                                                                </th>
+                                                                <th style={{ ...S.th, top: '39px', width: '42px', minWidth: '42px', textAlign: 'center', padding: '4px 2px', borderBottom: '1px solid var(--border)', fontSize: '9px' }}>
+                                                                    Total
+                                                                </th>
+                                                                <th style={{ ...S.th, top: '39px', width: '38px', minWidth: '38px', textAlign: 'center', padding: '4px 2px', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)', fontSize: '9px' }}>
+                                                                    G
+                                                                </th>
+                                                            </Fragment>
+                                                        ))}
+                                                        <th style={{ ...S.th, top: '39px', width: '55px', minWidth: '55px', textAlign: 'center', padding: '4px 3px', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)', fontSize: '9px' }}>
+                                                            SGPA
+                                                        </th>
+                                                        <th style={{ ...S.th, top: '39px', width: '52px', minWidth: '52px', textAlign: 'center', padding: '4px 3px', borderBottom: '1px solid var(--border)', fontSize: '9px' }}>
+                                                            %age
+                                                        </th>
+                                                        <th style={{ ...S.th, top: '39px', width: '64px', minWidth: '64px', textAlign: 'center', padding: '4px 3px', borderBottom: '1px solid var(--border)', fontSize: '9px' }}>
+                                                            Backlogs
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {filteredStudents.map((s, idx) => {
+                                                        const isSelected = selectedUsns.has(s.usn);
+                                                        const rowBg = isSelected ? 'var(--surface-low)' : 'var(--surface)';
+                                                        const u = (s.usn || '').trim().toUpperCase();
+                                                        const uMarks = ledgerStudentMarksMap[u] || {};
+                                                        const deptCode = s.branch || (s.usn && s.usn.length >= 7 ? s.usn.substring(5, 7).toUpperCase() : '—');
+                                                        const isLateral = Boolean(s.lateral_entry || (s.usn && s.usn.length === 10 && (s.usn[7] === '4' || s.usn[7] === '5')));
+
+                                                        // Compute summary stats for this student in this semester
+                                                        const semData = s.semester_data?.[activeLedgerSem] || s.semester_data?.[String(activeLedgerSem)];
+                                                        const marksList = Object.values(uMarks);
+                                                        const hasResults = marksList.length > 0;
+
+                                                        let failedCount = 0;
+                                                        let totalEarnedMarks = 0;
+                                                        let totalPossibleMarks = 0;
+                                                        marksList.forEach(m => {
+                                                            let mFail = false;
+                                                            try {
+                                                                mFail = isFailedSubject(m);
+                                                            } catch {
+                                                                const g = String(m?.grade || '').toUpperCase().trim();
+                                                                mFail = ['F', 'AB', 'FAIL', 'A', 'NE', 'X'].includes(g);
+                                                            }
+                                                            if (mFail) failedCount++;
+                                                            const t = Number(m.totalMarks ?? m.total_marks ?? m.total);
+                                                            if (!isNaN(t) && t > 0) totalEarnedMarks += t;
+                                                            totalPossibleMarks += 100;
+                                                        });
+
+                                                        const displaySgpa = semData?.sgpa != null && Number(semData.sgpa) > 0
+                                                            ? Number(semData.sgpa).toFixed(2)
+                                                            : (semData?.sgpa === 0 ? '0.00' : (s.cgpa != null ? Number(s.cgpa).toFixed(2) : '—'));
+
+                                                        const displayPct = (hasResults && totalPossibleMarks > 0 && totalEarnedMarks > 0)
+                                                            ? `${((totalEarnedMarks / totalPossibleMarks) * 100).toFixed(1)}%`
+                                                            : (displaySgpa !== '—' && Number(displaySgpa) > 0 ? `${Math.max(0, ((Number(displaySgpa) - 0.75) * 10)).toFixed(1)}%` : '—');
+
+                                                        const displayBacklogs = semData?.backlogs != null ? semData.backlogs : (hasResults ? failedCount : null);
+
+                                                        return (
+                                                            <tr
+                                                                key={`${s.usn || 'student'}-${idx}`}
+                                                                style={{ background: rowBg, borderBottom: '1px solid var(--border)' }}
+                                                            >
+                                                                {/* Sticky Left: Checkbox */}
+                                                                <td style={{ ...S.td, position: 'sticky', left: 0, zIndex: 10, background: rowBg, width: '42px', minWidth: '42px', textAlign: 'center', padding: '8px 2px' }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        onChange={() => toggleSelectStudent(s.usn)}
+                                                                        style={{ cursor: 'pointer', width: '14px', height: '14px' }}
+                                                                    />
+                                                                </td>
+                                                                {/* Sticky Left: Sl No */}
+                                                                <td style={{ ...S.td, position: 'sticky', left: '42px', zIndex: 10, background: rowBg, width: '38px', minWidth: '38px', textAlign: 'center', fontSize: '11px', color: 'var(--tx-dim)', padding: '8px 2px' }}>
+                                                                    {idx + 1}
+                                                                </td>
+                                                                {/* Sticky Left: USN */}
+                                                                <td
+                                                                    style={{ ...S.td, position: 'sticky', left: '80px', zIndex: 10, background: rowBg, width: '115px', minWidth: '115px', fontFamily: 'monospace', fontWeight: 800, fontSize: '11px', color: 'var(--primary)', cursor: 'pointer', padding: '8px 8px' }}
+                                                                    onClick={() => router.push(`/faculty/students/${encodeURIComponent(s.usn)}`)}
+                                                                    title={`View academic record for ${s.usn}`}
+                                                                >
+                                                                    {s.usn}
+                                                                </td>
+                                                                {/* Sticky Left: Student Name */}
+                                                                <td
+                                                                    style={{ ...S.td, position: 'sticky', left: '195px', zIndex: 10, background: rowBg, width: '165px', minWidth: '165px', fontWeight: 700, fontSize: '11.5px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', padding: '8px 8px' }}
+                                                                    onClick={() => router.push(`/faculty/students/${encodeURIComponent(s.usn)}`)}
+                                                                    title={s.name}
+                                                                >
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                                                                        {isLateral && (
+                                                                            <span style={{ fontSize: '9px', fontWeight: 800, padding: '1px 4px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#6366F1' }} title="Lateral Entry / Diploma Student">
+                                                                                LE
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                {/* Sticky Left: Dept */}
+                                                                <td style={{ ...S.td, position: 'sticky', left: '360px', zIndex: 10, background: rowBg, width: '52px', minWidth: '52px', textAlign: 'center', borderRight: '2px solid var(--border)', boxShadow: '4px 0 6px -2px rgba(0,0,0,0.08)', padding: '8px 4px' }}>
+                                                                    <span style={{
+                                                                        fontSize: '10px',
+                                                                        fontWeight: 800,
+                                                                        padding: '2px 5px',
+                                                                        borderRadius: '4px',
+                                                                        background: 'var(--surface-low)',
+                                                                        color: 'var(--tx-main)',
+                                                                        border: '1px solid var(--border)',
+                                                                        display: 'inline-block'
+                                                                    }}>
+                                                                        {deptCode}
+                                                                    </span>
+                                                                </td>
+
+                                                                {/* Dynamic Subject Marks Cells */}
+                                                                {activeLedgerSubjects.map((sub, sIdx) => {
+                                                                    const sm = uMarks[sub.code];
+                                                                    if (!sm) {
+                                                                        return (
+                                                                            <Fragment key={`${sub.code}-${sIdx}`}>
+                                                                                <td style={{ ...S.td, textAlign: 'center', padding: '8px 2px', color: 'var(--tx-dim)', opacity: 0.35 }}>—</td>
+                                                                                <td style={{ ...S.td, textAlign: 'center', padding: '8px 2px', color: 'var(--tx-dim)', opacity: 0.35 }}>—</td>
+                                                                                <td style={{ ...S.td, textAlign: 'center', padding: '8px 2px', color: 'var(--tx-dim)', opacity: 0.35 }}>—</td>
+                                                                                <td style={{ ...S.td, textAlign: 'center', padding: '8px 2px', color: 'var(--tx-dim)', opacity: 0.35, borderRight: '1px solid var(--border)' }}>—</td>
+                                                                            </Fragment>
+                                                                        );
+                                                                    }
+
+                                                                    const intVal = sm.internalMarks ?? sm.cie_marks ?? sm.internal ?? '—';
+                                                                    const extVal = sm.seeMarks ?? sm.see_marks ?? sm.external ?? '—';
+                                                                    const totVal = sm.totalMarks ?? sm.total_marks ?? sm.total ?? '—';
+
+                                                                    let grade = '—';
+                                                                    try {
+                                                                        grade = resolveCanonicalGrade(sm, selectedClass?.scheme || '2022');
+                                                                    } catch {
+                                                                        grade = sm.grade || '—';
+                                                                    }
+
+                                                                    let isFail = false;
+                                                                    try {
+                                                                        isFail = isFailedSubject(sm);
+                                                                    } catch {
+                                                                        const g = String(sm.grade || '').toUpperCase().trim();
+                                                                        isFail = ['F', 'AB', 'FAIL', 'A', 'NE', 'X'].includes(g);
+                                                                    }
+
+                                                                    const extNum = (extVal !== '—' && extVal !== null && !isNaN(Number(extVal))) ? Number(extVal) : null;
+                                                                    const totNum = (totVal !== '—' && totVal !== null && !isNaN(Number(totVal))) ? Number(totVal) : null;
+
+                                                                    const isExtFail = isFail || (extNum !== null && extNum < 18);
+                                                                    const isTotFail = isFail || (totNum !== null && totNum < 40);
+                                                                    const isGradeFail = isFail || ['F', 'AB', 'A', 'FAIL', 'NE', 'X'].includes(grade);
+
+                                                                    // Letter Grade Color Token
+                                                                    let gradeColor = 'var(--tx-main)';
+                                                                    let gradeBg = 'transparent';
+                                                                    if (isGradeFail) {
+                                                                        gradeColor = '#DC2626';
+                                                                        gradeBg = 'rgba(220, 38, 38, 0.15)';
+                                                                    } else if (['O', 'S'].includes(grade)) {
+                                                                        gradeColor = '#10b981';
+                                                                    } else if (['A+', 'A'].includes(grade)) {
+                                                                        gradeColor = '#059669';
+                                                                    } else if (['B+', 'B'].includes(grade)) {
+                                                                        gradeColor = '#0284c7';
+                                                                    } else if (grade === 'C') {
+                                                                        gradeColor = '#d97706';
+                                                                    } else if (grade === 'P') {
+                                                                        gradeColor = '#64748b';
+                                                                    }
+
+                                                                    return (
+                                                                        <Fragment key={`${sub.code}-${sIdx}`}>
+                                                                            {/* Int */}
+                                                                            <td style={{ ...S.td, textAlign: 'center', padding: '8px 2px', fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                                                {intVal}
+                                                                            </td>
+                                                                            {/* Ext */}
+                                                                            <td style={{
+                                                                                ...S.td,
+                                                                                textAlign: 'center',
+                                                                                padding: '8px 2px',
+                                                                                fontSize: '11px',
+                                                                                background: isExtFail ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                                                                                color: isExtFail ? '#DC2626' : 'var(--tx-main)',
+                                                                                fontWeight: isExtFail ? 800 : 600
+                                                                            }}>
+                                                                                {extVal}
+                                                                            </td>
+                                                                            {/* Total */}
+                                                                            <td style={{
+                                                                                ...S.td,
+                                                                                textAlign: 'center',
+                                                                                padding: '8px 2px',
+                                                                                fontSize: '11.5px',
+                                                                                background: isTotFail ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                                                                                color: isTotFail ? '#DC2626' : 'var(--tx-main)',
+                                                                                fontWeight: 800
+                                                                            }}>
+                                                                                {totVal}
+                                                                            </td>
+                                                                            {/* Grade */}
+                                                                            <td style={{
+                                                                                ...S.td,
+                                                                                textAlign: 'center',
+                                                                                padding: '8px 2px',
+                                                                                borderRight: '1px solid var(--border)',
+                                                                                background: isGradeFail ? 'rgba(239, 68, 68, 0.08)' : 'transparent'
+                                                                            }}>
+                                                                                <span style={{
+                                                                                    fontSize: '10.5px',
+                                                                                    fontWeight: 900,
+                                                                                    color: gradeColor,
+                                                                                    background: gradeBg,
+                                                                                    padding: isGradeFail ? '2px 5px' : '0',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    {grade}
+                                                                                </span>
+                                                                            </td>
+                                                                        </Fragment>
+                                                                    );
+                                                                })}
+
+                                                                {/* Summary: SGPA */}
+                                                                <td style={{
+                                                                    ...S.td,
+                                                                    textAlign: 'center',
+                                                                    padding: '8px 4px',
+                                                                    borderLeft: '1px solid var(--border)',
+                                                                    fontWeight: 900,
+                                                                    fontSize: '12px',
+                                                                    color: displaySgpa !== '—' ? 'var(--primary)' : 'var(--tx-dim)'
+                                                                }}>
+                                                                    {displaySgpa}
+                                                                </td>
+                                                                {/* Summary: %age */}
+                                                                <td style={{
+                                                                    ...S.td,
+                                                                    textAlign: 'center',
+                                                                    padding: '8px 4px',
+                                                                    fontWeight: 700,
+                                                                    fontSize: '11px',
+                                                                    color: 'var(--tx-main)'
+                                                                }}>
+                                                                    {displayPct}
+                                                                </td>
+                                                                {/* Summary: Backlogs */}
+                                                                <td style={{
+                                                                    ...S.td,
+                                                                    textAlign: 'center',
+                                                                    padding: '8px 4px'
+                                                                }}>
+                                                                    {displayBacklogs != null ? (
+                                                                        <span style={{
+                                                                            fontWeight: 800,
+                                                                            fontSize: '11px',
+                                                                            padding: '2px 7px',
+                                                                            borderRadius: '6px',
+                                                                            color: displayBacklogs > 0 ? '#DC2626' : '#16A34A',
+                                                                            background: displayBacklogs > 0 ? 'rgba(220, 38, 38, 0.12)' : 'rgba(22, 163, 74, 0.12)'
+                                                                        }}>
+                                                                            {displayBacklogs}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span style={{ color: 'var(--tx-dim)', fontSize: '11px' }}>—</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                                </LedgerErrorBoundary>
+                            ) : (
                                 <>
                                     <div style={S.tableWrap} className="gf-desktop-table-wrap">
                                         <table style={{ width: '100%', minWidth: '660px', borderCollapse: 'collapse' }}>
