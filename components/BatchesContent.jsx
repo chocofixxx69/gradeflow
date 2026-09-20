@@ -307,7 +307,7 @@ export function BatchesContent({ embedded = false, showHeader = false, onNavigat
             )}
 
             {/* Telemetry Metric Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px' }}>
                 <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px', padding: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Configured Batches</span>
@@ -376,7 +376,7 @@ export function BatchesContent({ embedded = false, showHeader = false, onNavigat
                     <h2 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>Register New Academic Batch</h2>
                 </div>
 
-                <form onSubmit={handleCreateBatch} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', alignItems: 'flex-end' }}>
+                <form onSubmit={handleCreateBatch} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(210px, 100%), 1fr))', gap: '16px', alignItems: 'flex-end' }}>
                     <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.04em' }}>
                             Batch Year (4 Digits) *

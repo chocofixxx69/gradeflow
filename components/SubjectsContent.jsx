@@ -791,7 +791,7 @@ export function SubjectsContent() {
         </div>
 
         {/* View Mode & Secondary View Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* List vs Analytics tab */}
           <div style={{ display: 'inline-flex', background: 'var(--surface-low, #FDF6ED)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <button

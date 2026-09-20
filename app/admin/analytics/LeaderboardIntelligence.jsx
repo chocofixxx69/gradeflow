@@ -22,7 +22,7 @@ function Podium({ rows, scoreLabel }) {
 
     return (
         <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))',
             gap: 'var(--space-4)', marginBottom: 'var(--space-5)'
         }}>
             {top3.map(row => {

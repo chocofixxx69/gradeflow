@@ -94,7 +94,7 @@ const S = {
     label: { display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.06em' },
     th: { padding: '10px var(--space-4)', background: 'var(--surface-low)', fontSize: '9px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'left' },
     td: { padding: '13px var(--space-4)', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: 600, color: 'var(--tx-main)' },
-    modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box' },
+    modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box' },
     mbox: (w = '540px') => ({ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: `min(94vw, ${w})`, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', margin: 'auto' }),
     tableWrap: { overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
     drawer: { position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: '720px', background: 'var(--surface)', borderLeft: '1px solid var(--border)', zIndex: 1100, overflowY: 'hidden', padding: 'max(var(--space-6), env(safe-area-inset-top)) clamp(var(--space-6),4vw,var(--space-9)) max(var(--space-6), env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-lg)' },
@@ -2220,7 +2220,7 @@ export function ClassesContent({ embedded = false }) {
                                     autoFocus
                                 />
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Branch</label>
                                     <select style={S.sel} value={newClass.branch} onChange={e => handleNewClassChange({ branch: e.target.value })}>
@@ -2235,7 +2235,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Section *</label>
                                     <div style={{ display: 'flex', gap: '6px' }}>
@@ -2273,7 +2273,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Academic Year</label>
                                     <input
@@ -2368,7 +2368,7 @@ export function ClassesContent({ embedded = false }) {
                                     autoFocus
                                 />
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Branch</label>
                                     <select style={S.sel} value={editClassForm.branch} onChange={e => setEditClassForm(p => ({ ...p, branch: e.target.value }))}>
@@ -2383,7 +2383,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Section *</label>
                                     <div style={{ display: 'flex', gap: '6px' }}>
@@ -2421,7 +2421,7 @@ export function ClassesContent({ embedded = false }) {
                                     </select>
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={S.label}>Academic Year</label>
                                     <input
@@ -2749,7 +2749,7 @@ export function ClassesContent({ embedded = false }) {
                                     <label style={S.label}>Student USN & Name List</label>
                                     <textarea
                                         style={{ ...S.input, minHeight: '130px', resize: 'vertical', fontFamily: 'monospace' }}
-                                        placeholder={"Enter USN or line-by-line format:\n2AB23CS001, Student Name\n2AB23CS002, Another Student\n2AB23CS003"}
+                                        placeholder={"Enter USN or line-by-line format:\n2AB23CS063, Rawahah\n2AB23CS043, Mohammed Ainan\n2AB23CS001, Student Name"}
                                         value={addUsn}
                                         onChange={e => setAddUsn(e.target.value)}
                                         autoFocus
@@ -2960,7 +2960,7 @@ export function ClassesContent({ embedded = false }) {
                         {/* ── 1. Students ── */}
                         <div>
                             <label style={S.label}>1 · Which students</label>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '8px' }}>
                                 {[
                                     { key: 'all', label: 'Whole class', icon: 'groups' },
                                     { key: 'selected', label: 'Ticked in roster', icon: 'check_box' },

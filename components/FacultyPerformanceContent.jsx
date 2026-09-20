@@ -1073,7 +1073,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
             </div>
 
             {/* Executive KPI Scorecards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: '16px', marginBottom: '24px' }}>
                 {/* 1. Overall Pass Average */}
                 <div style={{
                     background: 'var(--surface)',
@@ -1292,7 +1292,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                 {/* Unified Filter Controls Grid */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))',
                     gap: '16px',
                     alignItems: 'start',
                     marginBottom: '16px'
@@ -1674,6 +1674,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                         {/* Tab Switcher */}
                         <div style={{
                             display: 'inline-flex',
+                            flexWrap: 'wrap',
                             background: 'var(--surface-low)',
                             borderRadius: '10px',
                             padding: '3px',
@@ -1834,7 +1835,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                         {/* Performance Demonstration Summary Highlights */}
                                         <div style={{
                                             display: 'grid',
-                                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))',
                                             gap: '12px',
                                             marginTop: '16px',
                                             paddingTop: '16px',
@@ -1902,7 +1903,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                         <div style={{ fontSize: '12px', marginTop: '4px' }}>Student grade distribution will appear automatically once exam marks are ingested.</div>
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '20px' }}>
                                         {/* Donut Chart: Accreditation Tiers */}
                                         <div style={{ background: 'var(--surface-low)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
                                             <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
@@ -2633,8 +2634,6 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                     style={{
                         position: 'fixed',
                         inset: 0,
-                        width: '100vw',
-                        height: '100vh',
                         background: 'rgba(15, 23, 42, 0.65)',
                         backdropFilter: 'blur(8px)',
                         WebkitBackdropFilter: 'blur(8px)',
@@ -2796,7 +2795,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                             </div>
 
                             {/* 2. BRANCH & SEMESTER GRID */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px' }}>
                                 <div>
                                     <Select
                                         label="Branch *"
@@ -2859,7 +2858,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                 </div>
 
                                 {/* Radio Scope Options */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '10px' }}>
                                     <button
                                         type="button"
                                         onClick={() => setAssignScope('class')}
@@ -3036,7 +3035,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                                 No classes match the filter. Click &quot;All Branches&quot; or &quot;All Semesters&quot; above to choose classes.
                                             </div>
                                         ) : (
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(210px, 100%), 1fr))', gap: '8px' }}>
                                                 {modalAvailableClasses.map(c => {
                                                     const isSelected = assignClassIds.includes(c.id);
                                                     return (
@@ -3144,7 +3143,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
                                 {manualSubjectMode ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr)) auto', gap: '8px', alignItems: 'center' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr)) auto', gap: '8px', alignItems: 'center' }}>
                                             <Input
                                                 placeholder="Code (e.g. BCS601)"
                                                 value={assignCustomCode}

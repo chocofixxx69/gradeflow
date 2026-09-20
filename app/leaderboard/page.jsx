@@ -133,15 +133,16 @@ export default function LeaderboardPage() {
                     </div>
 
                     {/* Department Cohort Selector & Export Actions */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Department:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: '1 1 auto' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)', flexShrink: 0 }}>Department:</span>
                             <select
                                 value={selectedBatch || data?.batch || 'CS'}
                                 onChange={(e) => handleBatchChange(e.target.value)}
                                 style={{
                                     padding: '8px 14px', minHeight: '40px', borderRadius: '8px', border: '1px solid var(--border)',
-                                    background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem'
+                                    background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem',
+                                    minWidth: 0, maxWidth: '100%', flexShrink: 1
                                 }}
                             >
                                 <option value="CS">Computer Science & Engineering (86 Students)</option>
@@ -333,7 +334,7 @@ export default function LeaderboardPage() {
                         <span className="material-icons-round" style={{ color: 'var(--tx-muted)', fontSize: '18px' }}>search</span>
                         <input
                             type="text"
-                            placeholder="Search classmate name or USN..."
+                            placeholder="Search classmate name or USN (e.g. Rawahah, 2AB23CS063)..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             style={{ border: 'none', outline: 'none', width: '100%', fontSize: '0.88rem', background: 'transparent', color: 'var(--tx-main)' }}
@@ -403,15 +404,15 @@ export default function LeaderboardPage() {
 
                     {/* Subject Selector for Subject Tab */}
                     {activeTab === 'subject' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Subject:</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--tx-muted)', flexShrink: 0 }}>Subject:</span>
                             <select
                                 value={selectedSubjectCode || data?.currentSubject?.subject_code || ''}
                                 onChange={(e) => handleSubjectChange(e.target.value)}
                                 style={{
                                     padding: '7px 12px', borderRadius: '6px', border: '1px solid var(--border)',
                                     background: '#ffffff', color: 'var(--tx-main)', fontWeight: 600, fontSize: '0.85rem',
-                                    maxWidth: '300px'
+                                    minWidth: 0, maxWidth: '100%', flexShrink: 1
                                 }}
                             >
                                 {(data?.availableSubjects || [])
@@ -429,7 +430,7 @@ export default function LeaderboardPage() {
                 {/* Podium Display for Top 3 */}
                 {!searchQuery && (
                     <div style={{
-                        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))',
                         gap: '16px', marginBottom: '24px'
                     }}>
                         {(activeTab === 'overall' ? top3Overall : activeTab === 'semester' ? top3Semester : top3Subject).map((topper, idx) => {

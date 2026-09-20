@@ -163,7 +163,7 @@ function CalculatorContent() {
             fontFamily: 'inherit', transition: 'border-color 0.2s',
         },
 
-        semGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 'var(--space-2)' },
+        semGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(64px, 100%), 1fr))', gap: 'var(--space-2)' },
         semBtn: (active) => ({
             minHeight: '44px', borderRadius: 'var(--radius-3)', fontWeight: 800, fontSize: '13px',
             border: 'none', cursor: 'pointer',
@@ -244,7 +244,7 @@ function CalculatorContent() {
                             <Input
                                 label="Identity (USN)"
                                 style={{ background: loggedInUser ? 'var(--surface-low)' : 'var(--bg)' }}
-                                placeholder="e.g. 1VT22CS001"
+                                placeholder="e.g. 2AB23CS063"
                                 value={usn}
                                 readOnly={!!loggedInUser}
                                 onChange={e => setUsn(e.target.value.toUpperCase())}

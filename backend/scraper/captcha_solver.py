@@ -45,7 +45,11 @@ def get_easyocr():
                         mode_str = "Forced CPU" if force_cpu else f"CPU Multi-Core ({cores} cores, {opt_threads} worker threads)"
                         print(f"[CAPTCHA] Engine: {mode_str}", file=sys.stderr)
 
-                    reader = easyocr.Reader(['en'], gpu=_has_gpu, verbose=False)
+                    # detector=False: this module only ever calls reader.recognize()
+                    # (never .readtext()), so the ~77MB CRAFT text-detection network is
+                    # unused. Skipping it avoids downloading/loading a model this code
+                    # never touches; recognition (english_g2.pth) is unaffected.
+                    reader = easyocr.Reader(['en'], gpu=_has_gpu, verbose=False, detector=False)
 
                     # Warmup run: compiles kernels / graphs and eliminates first-request cold-start
                     try:
@@ -57,7 +61,8 @@ def get_easyocr():
 
                 except Exception as e:
                     print(f"[CAPTCHA] Failed to load EasyOCR: {e}", file=sys.stderr)
-    return reader
+                    reader = False
+    return reader if reader is not False else None
 
 def preprocess_vtu_primary(gray_up):
     """Primary VTU-tailored image preprocessing:
@@ -140,7 +145,27 @@ def solve_captcha(image_bytes: bytes) -> str:
         if not variants: return ""
 
         ocr = get_easyocr()
-        if ocr is None: return ""
+        if ocr is None:
+            try:
+                import ddddocr
+                global _dddd_instance
+                if '_dddd_instance' not in globals() or _dddd_instance is None:
+                    _dddd_instance = ddddocr.DdddOcr(show_ad=False)
+                for v in variants:
+                    # variants can be numpy arrays or bytes
+                    if isinstance(v, np.ndarray):
+                        _, enc = cv2.imencode('.png', v)
+                        v_bytes = enc.tobytes()
+                    else:
+                        v_bytes = v
+                    pred = _dddd_instance.classification(v_bytes).strip()
+                    if len(pred) == 6 and pred.isalnum():
+                        return pred
+                raw_pred = _dddd_instance.classification(image_bytes).strip()
+                return clean_ocr_result(raw_pred)
+            except Exception as d_err:
+                print(f"[CAPTCHA] ddddocr fallback error: {d_err}", file=sys.stderr)
+                return ""
 
         import torch
 

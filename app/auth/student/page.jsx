@@ -38,7 +38,7 @@ function StudentAuthContent() {
         setSuccess('');
 
         try {
-            // Derive USN from email (e.g. 1vt22cs001@anjuman.edu.in → 1VT22CS001)
+            // Derive USN from email (e.g. 2ab23cs063@anjuman.edu.in → 2AB23CS063)
             // or accept direct USN input
             const input = email.toLowerCase().trim();
             const usn = (input.includes('@') ? input.split('@')[0] : input).toUpperCase();
@@ -282,7 +282,7 @@ function StudentAuthContent() {
                                 <Input
                                     label="University Seat Number (USN)"
                                     type="text"
-                                    placeholder="e.g. 1VT22CS001"
+                                    placeholder="e.g. 2AB23CS063"
                                     value={email}
                                     onChange={e => setEmail(e.target.value.toUpperCase())}
                                 />
@@ -315,7 +315,7 @@ function StudentAuthContent() {
                                 <Input
                                     label="Institutional Email or USN"
                                     type="text"
-                                    placeholder="USN (e.g. 1VT22CS001) or email"
+                                    placeholder="USN (e.g. 2AB23CS063) or email"
                                     value={email}
                                     onChange={e => setEmail(e.target.value.toLowerCase())}
                                     onKeyDown={e => { if (e.key === 'Enter' && mode === 'login') handleLogin(); }}

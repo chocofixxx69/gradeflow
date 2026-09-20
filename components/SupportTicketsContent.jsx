@@ -424,7 +424,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
             )}
 
             {/* Interactive Stats Overview Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '14px', marginBottom: '20px' }}>
                 <div
                     onClick={() => setStatusFilter('all')}
                     style={{
@@ -998,7 +998,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '16px', marginBottom: '16px' }}>
                         <div>
                             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Requester</div>
                             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--tx-main)', marginTop: '2px' }}>
@@ -1365,7 +1365,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                             </div>
 
                             {/* Identifier & Name */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                                         {newTicketForm.user_type === 'student' ? 'Student USN *' : 'Faculty Email *'}
@@ -1400,7 +1400,7 @@ export function SupportTicketsContent({ onStatsUpdate }) {
                             </div>
 
                             {/* Category & Initial Status */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '12px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--tx-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                                         Issue Category *

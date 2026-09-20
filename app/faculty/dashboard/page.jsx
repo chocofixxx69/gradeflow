@@ -91,6 +91,7 @@ function FacultyDashboardView({
     handleAddSubject,
     handleRemoveAssignment,
     removingAssignmentId = null,
+    setAssignmentToConfirmRemove,
     loadAssignments = null,
     assignmentSyncMsg = '',
 }) {
@@ -278,7 +279,7 @@ function FacultyDashboardView({
                     <SearchInput
                         label="Student USN"
                         hideLabel
-                        placeholder={isMultiUsn ? `${parsedUsns.length} USNs entered for batch lookup...` : "Enter Student USN(s) (e.g. 2AB23CS043, 2AB23CS015)"}
+                        placeholder={isMultiUsn ? `${parsedUsns.length} USNs entered for batch lookup...` : "Enter Student USN(s) (e.g. 2AB23CS063, 2AB23CS043)"}
                         value={usn}
                         onChange={(event) => {
                             const raw = event.target.value;
@@ -1307,7 +1308,7 @@ function FacultyDashboardView({
                                 {addSubjectError}
                             </div>
                         )}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', alignItems: 'end' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '10px', alignItems: 'end' }}>
                             <Select
                                 label="Branch"
                                 options={BRANCH_OPTIONS}
@@ -1424,7 +1425,7 @@ function FacultyDashboardView({
                                 <div key={a.id} className={styles.assignedCard} style={{ position: 'relative' }}>
                                     <button
                                         type="button"
-                                        onClick={() => handleRemoveAssignment?.(a.id)}
+                                        onClick={() => setAssignmentToConfirmRemove ? setAssignmentToConfirmRemove(a) : handleRemoveAssignment?.(a.id)}
                                         disabled={removingAssignmentId === a.id}
                                         aria-label={`Remove ${a.subject_code} from my teaching load`}
                                         title="Remove from my teaching load"
@@ -1575,6 +1576,7 @@ function FacultyDashboardContent() {
     const [addSubjectSaving, setAddSubjectSaving] = useState(false);
     const [addSubjectError, setAddSubjectError] = useState('');
     const [removingAssignmentId, setRemovingAssignmentId] = useState(null);
+    const [assignmentToConfirmRemove, setAssignmentToConfirmRemove] = useState(null);
     // The scrape job currently being watched: { id, usn, startedAt } or null.
     const [scrapeJob, setScrapeJob] = useState(null);
     const backlogDialogRef = useRef(null);
@@ -2296,8 +2298,23 @@ function FacultyDashboardContent() {
             handleAddSubject={handleAddSubject}
             handleRemoveAssignment={handleRemoveAssignment}
             removingAssignmentId={removingAssignmentId}
+            setAssignmentToConfirmRemove={setAssignmentToConfirmRemove}
             loadAssignments={loadAssignments}
             assignmentSyncMsg={assignmentSyncMsg}
+        />
+        <ConfirmDialog
+            open={Boolean(assignmentToConfirmRemove)}
+            title="Remove Subject from Teaching Load?"
+            description={`Are you sure you want to remove ${assignmentToConfirmRemove?.subject_code || ''}${assignmentToConfirmRemove?.subject_catalog?.subject_name ? ` (${assignmentToConfirmRemove.subject_catalog.subject_name})` : ''} from your active teaching load? This unassigns the course from your personal roster, but will NOT delete any student marks, grades, or curriculum catalog records.`}
+            confirmLabel="Remove from Load"
+            busy={removingAssignmentId === assignmentToConfirmRemove?.id}
+            onCancel={() => setAssignmentToConfirmRemove(null)}
+            onConfirm={async () => {
+                if (!assignmentToConfirmRemove) return;
+                const targetId = assignmentToConfirmRemove.id;
+                setAssignmentToConfirmRemove(null);
+                await handleRemoveAssignment(targetId);
+            }}
         />
         <ConfirmDialog
             open={confirmingDeleteStudent}

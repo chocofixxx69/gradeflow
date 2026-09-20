@@ -132,7 +132,7 @@ export default function AcademicProgressionNavigator({
 
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`,
+                gridTemplateColumns: `repeat(auto-fit, minmax(min(140px, 100%), 1fr))`,
                 gap: '12px',
                 width: '100%',
                 boxSizing: 'border-box'

@@ -114,7 +114,16 @@ export async function GET(req) {
         // ── Class membership → section ────────────────────────────────────────
         const classById = new Map((rawClasses || []).map(c => [c.id, c]));
         const usnToClassMap = new Map();
+        const classIdToUsnsMap = new Map();
         (rawClassStudents || []).forEach(cs => {
+            if (cs.class_id && cs.usn) {
+                const cid = String(cs.class_id).trim();
+                if (!classIdToUsnsMap.has(cid)) {
+                    classIdToUsnsMap.set(cid, new Set());
+                }
+                classIdToUsnsMap.get(cid).add(String(cs.usn).toUpperCase().trim());
+            }
+
             const c = classById.get(cs.class_id);
             if (!c) return;
             const key = String(cs.usn || '').toUpperCase().trim();
@@ -240,7 +249,12 @@ export async function GET(req) {
                 if (section === 'UNASSIGNED') return !r.section;
                 return r.section === section;
             },
-            classId: r => !classId || r.classInfo?.classId === classId,
+            classId: r => {
+                if (!classId) return true;
+                if (r.classInfo?.classId === classId) return true;
+                const set = classIdToUsnsMap.get(classId);
+                return Boolean(set && set.has(String(r.usn || '').toUpperCase().trim()));
+            },
             status: r => {
                 if (status === 'active') return !r.identity.isInactive;
                 if (status === 'inactive') return r.identity.isInactive;

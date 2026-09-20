@@ -1005,7 +1005,7 @@ export function FacultyActivityContent({
                 {/* Faculty Quick Cards Grid */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
                     gap: '10px',
                 }}>
                     {facultyPresenceList.map(faculty => {
@@ -2214,7 +2214,7 @@ export function FacultyActivityContent({
                             {selectedRecord.metadata && Object.keys(selectedRecord.metadata).length > 0 && (
                                 <div style={{ background: 'var(--surface-low)', padding: '12px', borderRadius: '10px' }}>
                                     <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Contextual Metadata</span>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '8px' }}>
                                         {Object.entries(selectedRecord.metadata).map(([k, v]) => {
                                             if (typeof v === 'object' && v !== null) v = JSON.stringify(v);
                                             return (
