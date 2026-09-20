@@ -124,6 +124,28 @@ export async function POST(req) {
         }
 
         const targetSchemes = scheme === 'both' ? ['2022', '2025'] : [scheme || '2022'];
+
+        // Normalize URL for duplicate comparison
+        const cleanIncoming = String(url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+
+        // Check if this URL is already registered for this faculty under target scheme(s)
+        const { data: existingRecords } = await supabase
+            .from('faculty_vtu_urls')
+            .select('id, url, exam_name, scheme')
+            .eq('faculty_id', faculty_id)
+            .in('scheme', targetSchemes);
+
+        const duplicate = (existingRecords || []).find(r => {
+            const cleanExisting = String(r.url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+            return cleanExisting === cleanIncoming;
+        });
+
+        if (duplicate) {
+            return NextResponse.json({
+                error: `This URL is already registered as "${duplicate.exam_name}" for ${duplicate.scheme} Scheme. Duplicate URLs are not allowed.`
+            }, { status: 409 });
+        }
+
         const records = targetSchemes.map(s => ({
             faculty_id,
             url,

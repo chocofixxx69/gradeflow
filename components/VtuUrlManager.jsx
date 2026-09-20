@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Input, Button } from '@/components/ui/Foundation';
@@ -40,6 +40,8 @@ export default function VtuUrlManager({ facultyId }) {
     const [message, setMessage] = useState('');
     const [confirmingRemove, setConfirmingRemove] = useState(null);
     const [removing, setRemoving] = useState(false);
+    const [portalTypeFilter, setPortalTypeFilter] = useState('ALL'); // 'ALL' | 'REVAL' | 'REGULAR'
+    const [portalSearchFilter, setPortalSearchFilter] = useState('');
 
     const fetchVtuUrls = useCallback(async (schemeToFetch = selectedScheme, isManual = false) => {
         if (!facultyId) return;
@@ -85,7 +87,31 @@ export default function VtuUrlManager({ facultyId }) {
         setSelectedScheme(scheme);
         setAddToBothUgSchemes(false);
         setMessage('');
+        setPortalTypeFilter('ALL');
+        setPortalSearchFilter('');
     };
+
+    const isRevalPortal = (u) => {
+        const name = (u.exam_name || u.url || '').toLowerCase();
+        return name.includes('reval') || name.includes('rv');
+    };
+
+    const filteredVtuUrls = useMemo(() => {
+        return (vtuUrls || []).filter(u => {
+            if (portalTypeFilter === 'REVAL' && !isRevalPortal(u)) return false;
+            if (portalTypeFilter === 'REGULAR' && isRevalPortal(u)) return false;
+            if (portalSearchFilter.trim()) {
+                const q = portalSearchFilter.toLowerCase();
+                const matchName = (u.exam_name || '').toLowerCase().includes(q);
+                const matchUrl = (u.url || '').toLowerCase().includes(q);
+                if (!matchName && !matchUrl) return false;
+            }
+            return true;
+        });
+    }, [vtuUrls, portalTypeFilter, portalSearchFilter]);
+
+    const revalCount = useMemo(() => (vtuUrls || []).filter(isRevalPortal).length, [vtuUrls]);
+    const regularCount = (vtuUrls?.length || 0) - revalCount;
 
     const addVtuUrl = async () => {
         if (!facultyId) return;
@@ -93,6 +119,19 @@ export default function VtuUrlManager({ facultyId }) {
             setMessage('URL must be from results.vtu.ac.in');
             return;
         }
+
+        // Duplicate URL validation (normalized comparison)
+        const cleanIncoming = newUrl.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+        const duplicate = vtuUrls.find(u => {
+            const cleanExisting = (u.url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+            return cleanExisting === cleanIncoming;
+        });
+
+        if (duplicate) {
+            setMessage(`⚠️ Duplicate URL: This portal is already registered as "${duplicate.exam_name}" for ${schemeLabel(duplicate.scheme || selectedScheme)} Scheme.`);
+            return;
+        }
+
         const effectiveScheme = (addToBothUgSchemes && (selectedScheme === '2022' || selectedScheme === '2025'))
             ? 'both'
             : selectedScheme;
@@ -251,6 +290,20 @@ export default function VtuUrlManager({ facultyId }) {
                 display: 'inline-flex', alignItems: 'center', gap: '4px'
             };
         },
+        typeBadge: (reval) => ({
+            fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+            textTransform: 'uppercase', letterSpacing: '0.03em',
+            background: reval ? 'rgba(245, 158, 11, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+            color: reval ? '#D97706' : '#2563EB',
+            border: `1px solid ${reval ? 'rgba(245, 158, 11, 0.25)' : 'rgba(59, 130, 246, 0.25)'}`
+        }),
+        quickFilterBtn: (active) => ({
+            padding: '6px 12px', borderRadius: 'var(--radius-3, 6px)',
+            border: `1px solid ${active ? 'var(--primary, #2563eb)' : 'var(--border, #e2e8f0)'}`,
+            background: active ? 'rgba(37, 99, 235, 0.1)' : 'var(--surface, #fff)',
+            color: active ? 'var(--primary, #2563eb)' : 'var(--tx-muted, #64748b)',
+            fontWeight: 700, fontSize: '12px', cursor: 'pointer'
+        }),
         msg: (ok) => ({
             fontSize: '13px', fontWeight: 700, color: ok ? 'var(--green, #0d9f57)' : 'var(--red, #e02424)',
             marginBottom: 'var(--space-4)',
@@ -547,13 +600,43 @@ export default function VtuUrlManager({ facultyId }) {
                     </div>
                 </div>
 
+                {/* Reval / Regular Quick Filter + Search — mirrors the Target Portal picker on the dashboard */}
+                {!fetching && vtuUrls.length > 0 && (
+                    <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" style={c.quickFilterBtn(portalTypeFilter === 'ALL')} onClick={() => setPortalTypeFilter('ALL')}>
+                                All ({vtuUrls.length})
+                            </button>
+                            <button type="button" style={c.quickFilterBtn(portalTypeFilter === 'REVAL')} onClick={() => setPortalTypeFilter('REVAL')}>
+                                Reval Only ({revalCount})
+                            </button>
+                            <button type="button" style={c.quickFilterBtn(portalTypeFilter === 'REGULAR')} onClick={() => setPortalTypeFilter('REGULAR')}>
+                                Regular Only ({regularCount})
+                            </button>
+                        </div>
+                        <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
+                            <input
+                                type="text"
+                                placeholder="Filter portals by exam name or URL..."
+                                value={portalSearchFilter}
+                                onChange={e => setPortalSearchFilter(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '9px 12px', fontSize: '12.5px',
+                                    borderRadius: 'var(--radius-3, 6px)', border: '1px solid var(--border, #e2e8f0)',
+                                    background: 'var(--surface, #fff)', color: 'var(--tx-main)'
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+
                 {/* Portals List */}
                 <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
                     {fetching ? (
                         <div style={{ textAlign: 'center', padding: '40px', color: 'var(--tx-dim)' }}>
                             Loading {schemeLabel(selectedScheme)} Scheme portals...
                         </div>
-                    ) : vtuUrls.map(u => (
+                    ) : filteredVtuUrls.map(u => (
                         <div key={u.id} style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                             flexWrap: 'wrap', gap: 'var(--space-3)',
@@ -570,6 +653,9 @@ export default function VtuUrlManager({ facultyId }) {
                                     </span>
                                     <span style={c.schemeBadge(u.scheme || selectedScheme)}>
                                         {schemeLabel(u.scheme || selectedScheme)}
+                                    </span>
+                                    <span style={c.typeBadge(isRevalPortal(u))}>
+                                        {isRevalPortal(u) ? 'Reval' : 'Regular'}
                                     </span>
                                 </div>
                                 <div style={{
@@ -638,6 +724,12 @@ export default function VtuUrlManager({ facultyId }) {
                             <p style={{ fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '400px', margin: '0 auto' }}>
                                 Add a new result URL above or click &ldquo;Register URL&rdquo; to set up your first result portal for {schemeLabel(selectedScheme)} Scheme.
                             </p>
+                        </div>
+                    )}
+
+                    {!fetching && vtuUrls.length > 0 && filteredVtuUrls.length === 0 && (
+                        <div style={{ padding: '24px', textAlign: 'center', fontSize: '12.5px', color: 'var(--tx-muted)' }}>
+                            No matching portals found.
                         </div>
                     )}
                 </div>

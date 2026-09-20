@@ -38,7 +38,7 @@ const TAB_METADATA = {
     batches: { label: 'Academic Batches & Admission Cohorts', icon: 'calendar_month', shortLabel: 'Batches' },
     classes: { label: 'Classes & Academic Structure', icon: 'groups', shortLabel: 'Classes' },
     assignments: { label: 'Faculty Subject Assignments & Mapping', icon: 'assignment_ind', shortLabel: 'Subject Assignments' },
-    teachingPerformance: { label: 'Faculty Teaching Performance & Attribution', icon: 'supervisor_account', shortLabel: 'Teaching Performance' },
+    teachingPerformance: { label: 'Faculty Teaching Insights & Attribution', icon: 'supervisor_account', shortLabel: 'Teaching Insights' },
     subjects: { label: 'Subject Catalog & Credit Registry', icon: 'library_books', shortLabel: 'Subjects Catalog' },
     requests: { label: 'Faculty Access & Credentials', icon: 'verified_user', shortLabel: 'Faculty Access' },
     vtuUrls: { label: 'VTU Result Portal Configuration', icon: 'link', shortLabel: 'VTU URLs' },

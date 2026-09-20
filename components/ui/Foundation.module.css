@@ -436,6 +436,9 @@
   background-position: right 12px center;
   background-size: 15px 15px;
   cursor: pointer;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .selectControlCompact {

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getAdminClient } from '../../../../lib/analytics-data';
+import { getAdminClient, invalidateAnalyticsCache } from '../../../../lib/analytics-data';
 import { requireStaff } from '../../../../lib/server-session';
 import { logFacultyActivityServer } from '../../../../lib/server-audit';
+import { invalidateTableCache } from '../../../../lib/table-cache';
+import { invalidateStudentRecords } from '../../../../lib/student-record';
+import { clearServerCache } from '../../../../lib/server-cache';
 
 const supabaseAdmin = getAdminClient();
 
@@ -22,6 +25,27 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Source and destination classes cannot be the same.' }, { status: 400 });
         }
 
+        // 1. Fetch Target & Source Class Metadata
+        const [{ data: targetClass, error: targetErr }, { data: sourceClass, error: sourceErr }] = await Promise.all([
+            supabaseAdmin
+                .from('classes')
+                .select('id, name, branch, branch_code, semester, section, batch, scheme')
+                .eq('id', target_class_id)
+                .maybeSingle(),
+            source_class_id
+                ? supabaseAdmin
+                    .from('classes')
+                    .select('id, name, branch, branch_code, semester, section, batch, scheme')
+                    .eq('id', source_class_id)
+                    .maybeSingle()
+                : Promise.resolve({ data: null, error: null })
+        ]);
+
+        if (targetErr || !targetClass) {
+            return NextResponse.json({ error: 'Destination class not found or invalid.' }, { status: 404 });
+        }
+
+        // 2. Resolve USNs to transfer
         let usnsToTransfer = [];
 
         if (transfer_all && source_class_id) {
@@ -45,64 +69,60 @@ export async function POST(req) {
         // Deduplicate
         usnsToTransfer = Array.from(new Set(usnsToTransfer));
 
-        // 1. Fetch existing members in target class to prevent duplicates
-        const { data: existingInTarget } = await supabaseAdmin
-            .from('class_students')
-            .select('usn')
-            .eq('class_id', target_class_id);
+        // 3. Realign (move only) + insert into target + remove from source —
+        // all inside transfer_class_students(), one DB transaction. If the
+        // insert is rejected (e.g. the strict membership trigger catches
+        // something unexpected on a 'copy'), the whole call rolls back,
+        // including any profile realignment — no partial state is possible.
+        const { data: rpcResult, error: rpcErr } = await supabaseAdmin.rpc('transfer_class_students', {
+            p_usns: usnsToTransfer,
+            p_source_class_id: source_class_id || null,
+            p_target_class_id: target_class_id,
+            p_mode: mode,
+            p_added_by: session?.email || session?.id || 'Faculty Transfer'
+        });
 
-        const existingTargetSet = new Set((existingInTarget || []).map(m => m.usn.toUpperCase().trim()));
-        const newUsnsForTarget = usnsToTransfer.filter(u => !existingTargetSet.has(u));
-
-        // 2. Insert into target class
-        if (newUsnsForTarget.length > 0) {
-            const insertRows = newUsnsForTarget.map(u => ({
-                class_id: target_class_id,
-                usn: u
-            }));
-
-            for (let i = 0; i < insertRows.length; i += 100) {
-                const { error: insErr } = await supabaseAdmin
-                    .from('class_students')
-                    .insert(insertRows.slice(i, i + 100));
-                if (insErr) {
-                    console.error('[POST /api/class-students/transfer] insert error:', insErr);
-                }
-            }
+        if (rpcErr) {
+            console.error('[POST /api/class-students/transfer] rpc error:', rpcErr);
+            return NextResponse.json({
+                error: `Could not transfer student(s) to "${targetClass.name}": ${rpcErr.message || 'Database error during class enrollment.'}`
+            }, { status: 400 });
         }
 
-        // 3. If mode === 'move', remove from source class
-        let removedCount = 0;
-        if (mode === 'move' && source_class_id) {
-            for (let i = 0; i < usnsToTransfer.length; i += 100) {
-                const chunk = usnsToTransfer.slice(i, i + 100);
-                const { error: delErr } = await supabaseAdmin
-                    .from('class_students')
-                    .delete()
-                    .eq('class_id', source_class_id)
-                    .in('usn', chunk);
-                if (delErr) {
-                    console.error('[POST /api/class-students/transfer] delete error:', delErr);
-                } else {
-                    removedCount += chunk.length;
-                }
-            }
-        }
+        const newTargetCount = rpcResult?.added_to_target ?? 0;
+        const removedCount = rpcResult?.removed_from_source ?? 0;
 
-        // Audit log in faculty_activity
+        // 4. Invalidate all institutional in-memory & whole-table caches
+        // This guarantees that Class Roster, Students Directory, Result Sheets,
+        // Rankings, Backlogs, Comparison, and Hall Tickets immediately reflect the transfer.
+        invalidateTableCache();
+        invalidateAnalyticsCache();
+        invalidateStudentRecords();
+        clearServerCache();
+
+        // 5. Audit log in faculty_activity
         logFacultyActivityServer(req, {
             action_type: 'CLASS_STUDENTS_TRANSFER',
             context_module: 'Faculty Portal > Classes > Section Roster',
             reason: 'Departmental student section reallocation or class re-balancing.',
-            details: `Transferred ${usnsToTransfer.length} student(s) (${mode.toUpperCase()}) to destination class`,
-            metadata: { source_class_id, target_class_id, count: usnsToTransfer.length, mode, sampleUsns: usnsToTransfer.slice(0, 10) }
+            details: `Transferred ${usnsToTransfer.length} student(s) (${mode.toUpperCase()}) from "${sourceClass?.name || 'source'}" to "${targetClass.name}"`,
+            metadata: {
+                source_class_id,
+                source_class_name: sourceClass?.name,
+                target_class_id,
+                target_class_name: targetClass.name,
+                count: usnsToTransfer.length,
+                mode,
+                sampleUsns: usnsToTransfer.slice(0, 10)
+            }
         }).catch(() => {});
 
         return NextResponse.json({
             success: true,
             transferred_count: usnsToTransfer.length,
-            added_to_target: newUsnsForTarget.length,
+            added_to_target: newTargetCount,
             removed_from_source: mode === 'move' ? removedCount : 0,
+            target_class_name: targetClass.name,
             mode
         });
     } catch (err) {

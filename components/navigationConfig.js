@@ -22,7 +22,7 @@ export const NAV_CONFIG = {
 
     // Teaching & Courses
     { key: 'subjectAnalytics', label: 'Subject Performance', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Courses' },
-    { key: 'facultyPerformance', label: 'Teaching Performance', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Courses' },
+    { key: 'facultyPerformance', label: 'Teaching Insights', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Courses' },
     { key: 'subjects', label: 'Subject Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Courses' },
 
     // Exam Tools
@@ -38,7 +38,7 @@ export const NAV_CONFIG = {
     { key: 'students', label: 'Students', href: '/admin/terminal?tab=students', icon: 'school', group: 'Institution' },
     { key: 'classes', label: 'Classes', href: '/admin/classes', icon: 'groups', group: 'Institution' },
     { key: 'assignments', label: 'Subject Assignments', href: '/admin/faculty-assignments', icon: 'assignment_ind', group: 'Institution' },
-    { key: 'teachingPerformance', label: 'Teaching Performance', href: '/admin/faculty-performance', icon: 'supervisor_account', group: 'Institution' },
+    { key: 'teachingPerformance', label: 'Teaching Insights', href: '/admin/faculty-performance', icon: 'supervisor_account', group: 'Institution' },
     { key: 'subjects', label: 'Subjects Catalog', href: '/admin/subjects', icon: 'library_books', group: 'Institution' },
     { key: 'requests', label: 'Faculty Access', href: '/admin/terminal?tab=requests', icon: 'verified_user', group: 'Institution' },
     { key: 'vtuUrls', label: 'VTU Result URLs', href: '/admin/vtu-urls', icon: 'link', group: 'Institution' },
@@ -109,7 +109,7 @@ export const ROUTE_LABELS = {
   '/faculty/analytics/batch-report': 'Multi-Semester Batch Report',
   '/faculty/analytics/subject': 'Subject Performance',
   '/faculty/analytics/compare': 'Student Comparator',
-  '/faculty/analytics/faculty-performance': 'Teaching Performance',
+  '/faculty/analytics/faculty-performance': 'Teaching Insights',
   '/faculty/analytics/eligibility': 'Eligibility Register',
   '/faculty/analytics/department': 'Department Overview',
   '/faculty/analytics/merit-list': 'Batch Merit List',
@@ -127,8 +127,8 @@ export const ROUTE_LABELS = {
   '/admin/batches': 'Academic Batches',
   '/admin/classes': 'Classes',
   '/admin/faculty-assignments': 'Faculty Assignments',
-  '/admin/faculty-performance': 'Teaching Performance',
-  '/admin/teaching-performance': 'Teaching Performance',
+  '/admin/faculty-performance': 'Teaching Insights',
+  '/admin/teaching-performance': 'Teaching Insights',
   '/admin/subjects': 'Subject Catalog',
   '/admin/vtu-urls': 'VTU Result Links',
   '/admin/analytics': 'Analytics',

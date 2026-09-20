@@ -315,7 +315,7 @@ function SubjectAnalyticsContent() {
         // Sorting
         const sorted = [...list].sort((a, b) => {
             let res = 0;
-            if (sortBy === 'rank') res = (a.rank || 0) - (b.rank || 0);
+            if (sortBy === 'rank') res = (a.rank ?? Infinity) - (b.rank ?? Infinity);
             else if (sortBy === 'total') res = (Number(b.total) || 0) - (Number(a.total) || 0);
             else if (sortBy === 'see') res = (Number(b.external) || 0) - (Number(a.external) || 0);
             else if (sortBy === 'cie') res = (Number(b.internal) || 0) - (Number(a.internal) || 0);
@@ -374,8 +374,8 @@ function SubjectAnalyticsContent() {
 
         // 3. Full Student Roster Sheet
         const rosterHeaders = ['Rank', 'USN', 'Student Name', 'Branch', 'Internal (CIE)', 'External (SEE)', 'Total', 'Grade', 'Result'];
-        const rosterRows = (analytics.roster || []).map((r, idx) => [
-            r.rank || idx + 1, r.usn, r.name, r.branch, r.internal ?? '—', r.external ?? '—', r.total ?? '—', r.grade, r.isFail ? 'FAIL' : 'PASS'
+        const rosterRows = (analytics.roster || []).map(r => [
+            r.rank ?? '—', r.usn, r.name, r.branch, r.internal ?? '—', r.external ?? '—', r.total ?? '—', r.grade, r.isFail ? 'FAIL' : 'PASS'
         ]);
         const wsRoster = XLSX.utils.aoa_to_sheet([rosterHeaders, ...rosterRows]);
         XLSX.utils.book_append_sheet(wb, wsRoster, 'Complete Roster');
@@ -422,8 +422,8 @@ function SubjectAnalyticsContent() {
         doc.text('Complete Student Scores Roster', 14, lastY + 10);
 
         const rosterHead = [['Rank', 'USN', 'Name', 'Int', 'Ext', 'Total', 'Grade', 'Result']];
-        const rosterBody = (filteredRoster || []).map((r, i) => [
-            `#${r.rank || i + 1}`, r.usn, r.name, r.internal ?? '—', r.external ?? '—', r.total ?? '—', r.grade, r.isFail ? 'FAIL' : 'PASS'
+        const rosterBody = (filteredRoster || []).map(r => [
+            r.rank != null ? `#${r.rank}` : '—', r.usn, r.name, r.internal ?? '—', r.external ?? '—', r.total ?? '—', r.grade, r.isFail ? 'FAIL' : 'PASS'
         ]);
 
         autoTable(doc, {
@@ -1202,7 +1202,7 @@ function SubjectAnalyticsContent() {
                                     filteredRoster.map((r, idx) => (
                                         <tr key={r.usn} style={{ borderBottom: '1px solid var(--border-low)', background: r.isFail ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
                                             <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--tx-dim)' }}>
-                                                #{r.rank || idx + 1}
+                                                {r.rank != null ? `#${r.rank}` : '—'}
                                             </td>
                                             <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace' }}>
                                                 {r.usn}

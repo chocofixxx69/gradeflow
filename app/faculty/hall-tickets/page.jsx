@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 import HallTicketSheet from '@/components/hall-tickets/HallTicketSheet';
-import TimetableEditor from '@/components/hall-tickets/TimetableEditor';
+import TimetableEditor, { parseSlotInterval, doIntervalsOverlap, toISO } from '@/components/hall-tickets/TimetableEditor';
 import { getJsPDF } from '@/lib/lazy-export-libs';
 import { recordFacultyAction } from '@/lib/api/faculty-action';
 
@@ -499,19 +499,42 @@ function HallTicketsContent() {
         if (selectedStudentsList.length === 0) issues.push('No students selected.');
         if (timetable.length === 0) issues.push('No exam subjects added to the timetable.');
         timetable.forEach((row, idx) => {
-            if (!row.date?.trim()) issues.push(`Row ${idx + 1}: missing exam date.`);
-            if (!row.time?.trim()) issues.push(`Row ${idx + 1}: missing exam time slot.`);
-            if (!row.subjectCode?.trim()) issues.push(`Row ${idx + 1}: missing subject code.`);
+            if (!row.date?.trim()) issues.push(`Subject ${idx + 1}: missing exam date.`);
+            if (!row.time?.trim()) issues.push(`Subject ${idx + 1}: missing exam time slot.`);
+            if (!row.subjectCode?.trim()) issues.push(`Subject ${idx + 1}: missing subject code.`);
         });
-        const codeCounts = {};
-        timetable.forEach(row => {
+
+        // Duplicate subject code check
+        const codeMap = {};
+        timetable.forEach((row, idx) => {
             const code = (row.subjectCode || '').trim().toUpperCase();
             if (!code) return;
-            codeCounts[code] = (codeCounts[code] || 0) + 1;
+            if (!codeMap[code]) codeMap[code] = [];
+            codeMap[code].push(idx + 1);
         });
-        Object.entries(codeCounts).filter(([, n]) => n > 1).forEach(([code]) => {
-            issues.push(`Subject code ${code} appears more than once in the timetable.`);
+        Object.entries(codeMap).filter(([, rows]) => rows.length > 1).forEach(([code, rows]) => {
+            issues.push(`Duplicate subject ${code}: appears in Subject ${rows.join(' and Subject ')}.`);
         });
+
+        // Time slot collision check on the same date
+        for (let i = 0; i < timetable.length; i++) {
+            const r1 = timetable[i];
+            const d1 = toISO(r1.date);
+            if (!d1) continue;
+            const int1 = parseSlotInterval(r1.time);
+            if (!int1) continue;
+            for (let j = i + 1; j < timetable.length; j++) {
+                const r2 = timetable[j];
+                const d2 = toISO(r2.date);
+                if (!d2 || d1 !== d2) continue;
+                const int2 = parseSlotInterval(r2.time);
+                if (!int2) continue;
+                if (doIntervalsOverlap(int1, int2)) {
+                    issues.push(`Time clash on ${r1.date}: Subject ${i + 1} (${r1.time}) overlaps with Subject ${j + 1} (${r2.time}).`);
+                }
+            }
+        }
+
         if (!examTitle?.trim()) issues.push('Examination title is empty.');
         return issues;
     }, [selectedStudentsList.length, timetable, examTitle]);
@@ -555,6 +578,11 @@ function HallTicketsContent() {
 
     // ── Direct Browser Print ──
     const handlePrint = () => {
+        const hasConflicts = readinessIssues.some(i => i.toLowerCase().includes('clash') || i.toLowerCase().includes('duplicate'));
+        if (hasConflicts) {
+            const proceed = window.confirm('⚠️ Timetable Warning:\n\n' + readinessIssues.join('\n') + '\n\nDo you want to proceed with printing anyway?');
+            if (!proceed) return;
+        }
         try {
             const count = selectedStudentsList.length;
             recordFacultyAction(null, 'HALL_TICKET_GENERATE', selectedStudentsList[0]?.usn || null, {
@@ -594,6 +622,11 @@ function HallTicketsContent() {
     // ── Download PDF (Matching 29-page reference layout with exact signature spacing & logo) ──
     const handleDownloadPDF = async () => {
         if (selectedStudentsList.length === 0) return;
+        const hasConflicts = readinessIssues.some(i => i.toLowerCase().includes('clash') || i.toLowerCase().includes('duplicate'));
+        if (hasConflicts) {
+            const proceed = window.confirm('⚠️ Timetable Warning:\n\n' + readinessIssues.join('\n') + '\n\nDo you want to proceed with PDF download anyway?');
+            if (!proceed) return;
+        }
 
         const { jsPDF } = await getJsPDF();
         const logoData = await getLogoDataUrl();

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/server-session';
 import { getAdminClient } from '@/lib/analytics-data';
-import { readTable, invalidateTableCache, SELECTS } from '@/lib/table-cache';
+import { readTable, invalidateTableCache, getLastTableInvalidation, SELECTS } from '@/lib/table-cache';
 import { canonicalBranch, branchLabelFor, getStudentDefaultEmail } from '@/lib/vtu-identity';
 import { loadStudentRecords, toSummary } from '@/lib/student-record';
 import { matchesStudent, scoreStudentMatch } from '@/lib/search-utils';
@@ -55,7 +55,8 @@ const DATASET_TTL_MS = 5 * 60_000;
 let datasetCache = { at: 0, promise: null };
 
 function loadDataset(supabaseAdmin, { fresh = false } = {}) {
-    if (!fresh && datasetCache.promise && Date.now() - datasetCache.at < DATASET_TTL_MS) {
+    const lastInv = typeof getLastTableInvalidation === 'function' ? getLastTableInvalidation() : 0;
+    if (!fresh && datasetCache.promise && (Date.now() - datasetCache.at < DATASET_TTL_MS) && datasetCache.at >= lastInv) {
         return datasetCache.promise;
     }
 
@@ -250,6 +251,11 @@ export async function GET(req) {
                 if (entryFilter === 'regular') return !r.identity.lateral.isLateral;
                 return true;
             },
+            backlogsFilter: r => {
+                if (backlogsFilter === 'clear') return r.record.totalActiveBacklogs === 0;
+                if (backlogsFilter === 'backlogs') return r.record.totalActiveBacklogs > 0;
+                return true;
+            },
             search: r => {
                 if (!search) return true;
                 return matchesStudent({
@@ -272,6 +278,7 @@ export async function GET(req) {
             classId: Boolean(classId),
             status: status !== 'all',
             entry: entryFilter !== 'all',
+            backlogsFilter: backlogsFilter !== 'all',
             search: Boolean(search)
         };
         const activeFilterNames = Object.keys(predicates).filter(n => isActive[n]);
@@ -378,6 +385,7 @@ export async function GET(req) {
             classId: 'Class',
             status: `Status "${status}"`,
             entry: entryFilter === 'lateral' ? 'Lateral entry only' : 'Regular intake only',
+            backlogsFilter: backlogsFilter === 'clear' ? 'All clear (0 arrears)' : 'Carrying backlogs',
             search: `Search "${search}"`
         };
 
@@ -453,25 +461,10 @@ export async function GET(req) {
             };
         });
 
-        let totalStudents = matched.length;
-        let pagedEnriched = [];
-
-        if (backlogsFilter === 'all') {
-            const startIndex = isAll ? 0 : (page - 1) * limit;
-            const endIndex = isAll ? matched.length : (startIndex + limit);
-            pagedEnriched = enrichList(matched.slice(startIndex, endIndex));
-        } else {
-            // Backlog status is only knowable after enrichment, so the whole
-            // candidate set is enriched before paging.
-            const allEnriched = enrichList(matched);
-            const filtered = allEnriched.filter(s =>
-                backlogsFilter === 'clear' ? s.total_backlogs === 0 : s.total_backlogs > 0
-            );
-            totalStudents = filtered.length;
-            const startIndex = isAll ? 0 : (page - 1) * limit;
-            const endIndex = isAll ? filtered.length : (startIndex + limit);
-            pagedEnriched = filtered.slice(startIndex, endIndex);
-        }
+        const totalStudents = matched.length;
+        const startIndex = isAll ? 0 : (page - 1) * limit;
+        const endIndex = isAll ? matched.length : (startIndex + limit);
+        const pagedEnriched = enrichList(matched.slice(startIndex, endIndex));
 
         // Quality summary across the whole matched set, not just this page, so the
         // header can say how much of the current selection is questionable.

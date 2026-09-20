@@ -313,20 +313,29 @@ export async function GET(req) {
             return (a.usn || '').localeCompare(b.usn || '');
         });
 
-        let curRank = 1;
+        // Rank is a merit position, so a failed student can't hold one — ranking
+        // is dense over students who passed the subject only. A fail still gets
+        // its row (rank: null, rendered as "—"), never dropped from the roster.
+        let curRank = 0;
         let lastScore = null;
-        const studentRoster = sortedMarks.map((m, idx) => {
+        let seenAnyPassed = false;
+        const studentRoster = sortedMarks.map((m) => {
             const normUsn = (m.usn || '').toUpperCase().trim();
             const st = studentMap.get(normUsn) || studentMap.get(m.usn);
             const score = Number(m.total) || 0;
-            if (idx === 0) {
-                curRank = 1;
-                lastScore = score;
-            } else if (score === lastScore) {
-                // Tied score
-            } else {
-                curRank = curRank + 1; // Dense ranking
-                lastScore = score;
+            const failedSubject = isFailedSubject(m);
+
+            let rank = null;
+            if (!failedSubject) {
+                if (!seenAnyPassed) {
+                    curRank = 1;
+                    lastScore = score;
+                    seenAnyPassed = true;
+                } else if (score !== lastScore) {
+                    curRank = curRank + 1; // Dense ranking
+                    lastScore = score;
+                }
+                rank = curRank;
             }
 
             const cohort = st ? getStudentAcademicBatch(st) : getStudentAcademicBatch(m.usn);
@@ -345,7 +354,7 @@ export async function GET(req) {
             const resolvedBranch = formatBranchDisplay(st?.branch || branch, m.usn);
 
             return {
-                rank: curRank,
+                rank,
                 usn: m.usn,
                 name: resolvedName,
                 branch: resolvedBranch,
@@ -353,7 +362,7 @@ export async function GET(req) {
                 external: m.external,
                 total: m.total,
                 grade: m._canonicalGrade || resolveCanonicalGrade(m, scheme),
-                isFail: isFailedSubject(m),
+                isFail: failedSubject,
                 isLateral,
                 entryMode: isLateral ? 'LATERAL_DIPLOMA' : 'REGULAR',
                 admissionYear,
@@ -361,8 +370,10 @@ export async function GET(req) {
             };
         });
 
-        // 6. Top 10 Performers with real letter grades & lateral tags
-        const topPerformers = studentRoster.slice(0, 10).map(r => ({
+        // 6. Top 10 Performers with real letter grades & lateral tags — ranked
+        // students only, so a fail (rank: null) never displaces an actual
+        // performer when fewer than 10 students passed.
+        const topPerformers = studentRoster.filter(r => r.rank !== null).slice(0, 10).map(r => ({
             rank: r.rank,
             usn: r.usn,
             name: r.name,

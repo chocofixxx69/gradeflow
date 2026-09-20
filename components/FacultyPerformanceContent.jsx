@@ -270,18 +270,18 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                     } else {
                         setRefreshStatus({
                             type: 'current',
-                            msg: `✓ Live sync verified: Teaching performance is fully up to date (${newFaculty.length} faculty).`
+                            msg: `✓ Live sync verified: Teaching insights are fully up to date (${newFaculty.length} faculty).`
                         });
                     }
                     setTimeout(() => setRefreshStatus(null), 5000);
                 }
             }
         } catch (err) {
-            console.error('Failed to load faculty performance:', err);
+            console.error('Failed to load faculty insights:', err);
             if (isManual) {
                 setRefreshStatus({
                     type: 'error',
-                    msg: 'Failed to refresh teaching performance: ' + (err.message || 'Unknown error')
+                    msg: 'Failed to refresh teaching insights: ' + (err.message || 'Unknown error')
                 });
                 setTimeout(() => setRefreshStatus(null), 5000);
             }
@@ -597,8 +597,8 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
         ]);
 
         const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-        XLSX.utils.book_append_sheet(wb, ws, 'Teaching Performance');
-        writeWorkbook(XLSX, wb, `Faculty_Teaching_Performance_${branch || 'All'}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, 'Teaching Insights');
+        writeWorkbook(XLSX, wb, `Faculty_Teaching_Insights_${branch || 'All'}.xlsx`);
     };
 
     // 9. PDF Export
@@ -608,7 +608,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
 
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text('GradeFlow - Faculty Teaching Performance & Attribution Report', 14, 15);
+        doc.text('GradeFlow - Faculty Teaching Insights & Attribution Report', 14, 15);
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
@@ -636,7 +636,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
             headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] }
         });
 
-        doc.save(`Faculty_Performance_${branch || 'All'}.pdf`);
+        doc.save(`Faculty_Teaching_Insights_${branch || 'All'}.pdf`);
     };
 
     // 10. Filtered Faculty List
@@ -864,9 +864,9 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                             {isInstitutionalAdmin ? 'Accreditation & Institutional Governance Suite' : 'Accreditation & HOD Command Suite'}
                         </span>
                     </PageHeaderEyebrow>
-                    <PageHeaderTitle>Faculty Teaching Performance</PageHeaderTitle>
+                    <PageHeaderTitle>Faculty Teaching Insights</PageHeaderTitle>
                     <PageHeaderSubtitle>
-                        Attribution of student examination outcomes, pass percentages, and NAAC/NBA grade distribution across departments and classes.
+                        Comprehensive pedagogical insights on student learning outcomes, pass percentages, and NAAC/NBA grade distribution across departments and classes to support academic growth.
                     </PageHeaderSubtitle>
                 </PageHeader>
 
@@ -1648,7 +1648,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>insights</span>
                             <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                {viewPerspective === 'my' ? 'My Performance & Course Analytics' : 'Teaching Performance & Visual Demonstration Suite'}
+                                {viewPerspective === 'my' ? 'My Teaching Insights & Course Analytics' : 'Teaching Insights & Visual Demonstration Suite'}
                             </span>
                             <span style={{
                                 padding: '3px 8px',
@@ -2069,7 +2069,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                 }}>
                     <div>
                         <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                            Faculty Attribution &amp; Performance Roster
+                            Faculty Attribution &amp; Teaching Insights Roster
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--tx-muted)' }}>
                             Showing {displayedFaculty.length} educators {hasActiveFilters ? '(filtered)' : ''}
@@ -2440,7 +2440,7 @@ export function FacultyPerformanceContent({ role = 'faculty', embedded = false, 
                                                         }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                                                                 <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.04em' }}>
-                                                                    Subject &amp; Class-wise Performance Breakdown for {f.faculty_name}
+                                                                    Subject &amp; Class-wise Teaching Insights for {f.faculty_name}
                                                                 </div>
                                                                 {canAssign && (
                                                                     <button

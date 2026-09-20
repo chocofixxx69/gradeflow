@@ -694,7 +694,7 @@ function StudentsDirectoryContent() {
                     {/* Middle Section: Academic Filters Grid with Visible Active Highlighting */}
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
                         gap: '14px',
                         alignItems: 'flex-end',
                         paddingTop: '16px',

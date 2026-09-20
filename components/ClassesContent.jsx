@@ -856,7 +856,8 @@ export function ClassesContent({ embedded = false }) {
         setTransferScope('single');
         setTransferMode('move');
         const otherClasses = classes.filter(c => c.id !== selectedClass?.id);
-        setTransferTargetClassId(otherClasses[0]?.id || '');
+        const sameBatchClasses = otherClasses.filter(c => String(c.batch || '') === String(selectedClass?.batch || ''));
+        setTransferTargetClassId(sameBatchClasses[0]?.id || otherClasses[0]?.id || '');
         setShowTransferModal(true);
     };
 
@@ -865,7 +866,8 @@ export function ClassesContent({ embedded = false }) {
         setTransferScope(scope);
         setTransferMode('move');
         const otherClasses = classes.filter(c => c.id !== selectedClass?.id);
-        setTransferTargetClassId(otherClasses[0]?.id || '');
+        const sameBatchClasses = otherClasses.filter(c => String(c.batch || '') === String(selectedClass?.batch || ''));
+        setTransferTargetClassId(sameBatchClasses[0]?.id || otherClasses[0]?.id || '');
         setShowTransferModal(true);
     };
 
@@ -911,12 +913,13 @@ export function ClassesContent({ embedded = false }) {
                     transfer_all: transferAll
                 })
             });
-            const j = await r.json();
-            if (j.success) {
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                clearApiCache();
                 setShowTransferModal(false);
                 setSelectedUsns(new Set());
                 const actionVerb = transferMode === 'move' ? 'Transferred' : 'Copied';
-                setMsg(`✓ ${actionVerb} ${j.transferred_count} student(s) to "${targetClassObj?.name || 'target class'}".`);
+                setMsg(`✓ ${actionVerb} ${j.transferred_count} student(s) to "${targetClassObj?.name || j.target_class_name || 'target class'}".`);
 
                 // Optimistic instant state update
                 if (transferMode === 'move') {
@@ -927,9 +930,9 @@ export function ClassesContent({ embedded = false }) {
                         setStudents(prev => prev.filter(s => !transferredSet.has(s.usn)));
                     }
                 }
-                logActivity('CLASS_STUDENTS_TRANSFER', `${selectedClass.name} -> ${targetClassObj?.name} (${j.transferred_count} students)`);
-                fetchClassStudents(selectedClass);
-                fetchClasses();
+                logActivity('CLASS_STUDENTS_TRANSFER', `${selectedClass.name} -> ${targetClassObj?.name || j.target_class_name} (${j.transferred_count} students)`);
+                await fetchClassStudents(selectedClass, true);
+                await fetchClasses(true);
             } else {
                 setMsg(j.error || 'Failed to transfer students.');
             }
@@ -2588,23 +2591,69 @@ export function ClassesContent({ embedded = false }) {
                             {/* Target Class Dropdown */}
                             <div>
                                 <label style={S.label}>Destination Target Class / Section *</label>
-                                <select
-                                    style={S.sel}
-                                    value={transferTargetClassId}
-                                    onChange={e => setTransferTargetClassId(e.target.value)}
-                                >
-                                    <option value="">-- Choose Destination Class / Section --</option>
-                                    {classes.filter(c => c.id !== selectedClass?.id).map(c => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} {c.batch ? `· ${c.batch} Batch` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
-                                        </option>
-                                    ))}
-                                </select>
-                                {classes.filter(c => c.id !== selectedClass?.id).length === 0 && (
-                                    <div style={{ fontSize: '12px', color: 'var(--red)', marginTop: '6px', fontWeight: 600 }}>
-                                        ⚠️ No other classes found. Please create another class/section first.
-                                    </div>
-                                )}
+                                {(() => {
+                                    const otherClasses = classes.filter(c => c.id !== selectedClass?.id);
+                                    const sameBatchClasses = otherClasses.filter(c => String(c.batch || '') === String(selectedClass?.batch || ''));
+                                    const otherBatchClasses = otherClasses.filter(c => String(c.batch || '') !== String(selectedClass?.batch || ''));
+                                    const selectedTarget = classes.find(c => c.id === transferTargetClassId);
+                                    const isCrossBatch = selectedClass?.batch && selectedTarget?.batch && String(selectedClass.batch) !== String(selectedTarget.batch);
+
+                                    return (
+                                        <>
+                                            <select
+                                                style={S.sel}
+                                                value={transferTargetClassId}
+                                                onChange={e => setTransferTargetClassId(e.target.value)}
+                                            >
+                                                <option value="">-- Choose Destination Class / Section --</option>
+                                                {sameBatchClasses.length > 0 && (
+                                                    <optgroup label={`Same Batch (${selectedClass?.batch ? `${selectedClass.batch} Batch` : 'Current Cohort'}) — Section & Branch Transfer`}>
+                                                        {sameBatchClasses.map(c => (
+                                                            <option key={c.id} value={c.id}>
+                                                                {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                {otherBatchClasses.length > 0 && (
+                                                    <optgroup label="Other Batches — Year Repeat, Detained & Lateral Cohorts">
+                                                        {otherBatchClasses.map(c => (
+                                                            <option key={c.id} value={c.id}>
+                                                                {c.name} ({c.branch} · Sem {c.semester} {c.section ? `· Sec ${c.section}` : ''} {c.batch ? `· ${c.batch} Batch` : ''} · {c.student_count ?? 0} students · 👨‍🏫 {c.faculty_name || 'Shared'})
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                            </select>
+
+                                            {isCrossBatch && (
+                                                <div style={{
+                                                    marginTop: '8px',
+                                                    padding: '8px 12px',
+                                                    borderRadius: '8px',
+                                                    background: 'rgba(59, 130, 246, 0.08)',
+                                                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                                                    fontSize: '12px',
+                                                    color: 'var(--tx-main)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px'
+                                                }}>
+                                                    <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)' }}>info</span>
+                                                    <span>
+                                                        <strong>Cross-Batch Transfer:</strong> Moving student from <strong>{selectedClass.batch} Batch</strong> to <strong>{selectedTarget.batch} Batch</strong> ({selectedTarget.name}). Cross-batch transfers are supported for detained / year-repeat students.
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {otherClasses.length === 0 && (
+                                                <div style={{ fontSize: '12px', color: 'var(--red)', marginTop: '6px', fontWeight: 600 }}>
+                                                    ⚠️ No other classes found. Please create another class/section first.
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
                             </div>
 
                             {/* Transfer Mode */}

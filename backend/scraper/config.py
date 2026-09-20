@@ -66,24 +66,31 @@ def get_vtu_urls(faculty_id=None, scheme=None):
     try:
         scheme_str = str(scheme).strip() if scheme else None
         if faculty_id:
-            # Check if this faculty has active URLs for this specific scheme
+            # Check if this faculty has active URLs for this specific scheme (or all schemes if 'all')
             query = supabase.table("faculty_vtu_urls")\
                 .select("url")\
                 .eq("faculty_id", faculty_id)\
                 .eq("is_active", True)
             
-            if scheme_str:
+            if scheme_str and scheme_str.lower() != 'all':
                 query = query.eq("scheme", scheme_str)
             
             resp = query.order("sort_order", desc=False).execute()
             if resp.data is not None and len(resp.data) > 0:
-                return [r["url"] for r in resp.data]
+                urls, seen = [], set()
+                for r in resp.data:
+                    u = r["url"].strip()
+                    if u and u not in seen:
+                        seen.add(u)
+                        urls.append(u)
+                if urls:
+                    return urls
             
             # If faculty explicitly configured this scheme and turned all URLs OFF, respect that and return []!
             all_for_scheme = supabase.table("faculty_vtu_urls")\
                 .select("id")\
                 .eq("faculty_id", faculty_id)
-            if scheme_str:
+            if scheme_str and scheme_str.lower() != 'all':
                 all_for_scheme = all_for_scheme.eq("scheme", scheme_str)
             check_exist = all_for_scheme.limit(1).execute()
             if check_exist.data and len(check_exist.data) > 0:
@@ -93,7 +100,7 @@ def get_vtu_urls(faculty_id=None, scheme=None):
         tables = {
             "2022": ["vtu_urls_2022_scheme"],
             "2025": ["vtu_urls_2025_scheme"],
-        }.get(scheme_str, ["vtu_urls_2022_scheme"] if scheme_str == "2022" else (["vtu_urls_2025_scheme"] if scheme_str == "2025" else ["vtu_urls_2022_scheme", "vtu_urls_2025_scheme"]))
+        }.get(scheme_str, ["vtu_urls_2022_scheme", "vtu_urls_2025_scheme"])
 
         urls, seen = [], set()
         for table in tables:

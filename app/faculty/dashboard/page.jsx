@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { apiRequest, clearApiCache } from '../../../lib/api/client';
 import { useLive, LIVE } from '../../../lib/api/live';
 import { recordFacultyAction } from '../../../lib/api/faculty-action';
@@ -525,9 +526,27 @@ function FacultyDashboardView({
 
                                 <div className={styles.targetPortalFooter}>
                                     <span>{selectedPortalUrls.length} selected</span>
-                                    <Button size="sm" variant="secondary" onClick={() => setPortalDropdownOpen(false)}>
-                                        Done
-                                    </Button>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                        <Link
+                                            href="/faculty/vtu-urls"
+                                            style={{
+                                                color: 'var(--primary)',
+                                                fontWeight: 700,
+                                                fontSize: '12px',
+                                                textDecoration: 'none',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                            title="Manage VTU result portal URLs"
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>tune</span>
+                                            Manage Portals
+                                        </Link>
+                                        <Button size="sm" variant="secondary" onClick={() => setPortalDropdownOpen(false)}>
+                                            Done
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1521,7 +1540,17 @@ function FacultyDashboardContent() {
     const [assignedSubjects, setAssignedSubjects] = useState([]);
     const [assignedClasses, setAssignedClasses] = useState([]);
     const [assignedLoading, setAssignedLoading] = useState(true);
-    const [availablePortals, setAvailablePortals] = useState([]);
+    // All schemes (2022, 2025, MBA, MCA), polled through useLive so a portal
+    // added or toggled from the Manage Portals page (or another tab) shows up
+    // here on the next poll tick / focus revalidation, with no manual refresh.
+    const { data: portalsData } = useLive(faculty?.id ? '/api/vtu-urls' : null, {
+        query: { faculty_id: faculty?.id },
+        interval: LIVE.NORMAL,
+    });
+    const availablePortals = useMemo(
+        () => (portalsData?.urls || []).filter(u => u.is_active),
+        [portalsData]
+    );
     const [selectedPortalUrl, setSelectedPortalUrl] = useState('ALL');
     const [selectedPortalUrls, setSelectedPortalUrls] = useState([]);
     const [customPortalUrl, setCustomPortalUrl] = useState('');
@@ -1617,25 +1646,6 @@ function FacultyDashboardContent() {
         }
     }, []);
 
-    // Load active VTU examination & revaluation portals for targeted quick-scrape
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const facId = faculty?.id;
-                const endpoint = facId ? `/api/vtu-urls?faculty_id=${facId}&scheme=2022` : '/api/vtu-urls?scheme=2022';
-                const res = await fetch(endpoint);
-                const json = await res.json();
-                if (!cancelled && json.success && Array.isArray(json.urls)) {
-                    const active = json.urls.filter(u => u.is_active);
-                    setAvailablePortals(active);
-                }
-            } catch (err) {
-                console.error('Failed to load active portals for selector:', err);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [faculty?.id]);
     // What this faculty member is actually assigned to teach — sourced from
     // the real faculty_subject_assignments table via the server session,
     // never guessed from which classes/students they happen to have browsed.

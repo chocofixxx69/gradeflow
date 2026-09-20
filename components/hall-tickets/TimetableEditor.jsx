@@ -89,7 +89,7 @@ function normalizeTimeRange(raw) {
     return str;
 }
 
-function timeToMinutes(timeStr) {
+export function timeToMinutes(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return 9999;
     const m = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
     if (!m) return 9999;
@@ -104,23 +104,77 @@ function timeToMinutes(timeStr) {
     return h * 60 + min;
 }
 
-function toISO(raw) {
+export function parseSlotInterval(slotStr) {
+    if (!slotStr || typeof slotStr !== 'string') return null;
+    const parts = slotStr.split(/\s*(?:to|-)\s*/i);
+    if (parts.length !== 2) return null;
+    const startMin = timeToMinutes(parts[0]);
+    let endMin = timeToMinutes(parts[1]);
+    if (startMin >= 9999 || endMin >= 9999) return null;
+    if (endMin <= startMin && endMin < 720) {
+        endMin += 720;
+    }
+    return { start: startMin, end: endMin };
+}
+
+export function doIntervalsOverlap(intA, intB) {
+    if (!intA || !intB) return false;
+    return (intA.start < intB.end && intA.end > intB.start);
+}
+
+export function toISO(raw) {
     if (!raw) return '';
     const s = String(raw).trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const m = s.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
-    return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+    const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (!m) return '';
+    const p1 = parseInt(m[1], 10);
+    const p2 = parseInt(m[2], 10);
+    const y = m[3];
+    let d = p1;
+    let mo = p2;
+    // If p1 <= 12 and p2 > 12, p2 is day and p1 is month (MM/DD/YYYY input)
+    if (p1 <= 12 && p2 > 12) {
+        mo = p1;
+        d = p2;
+    }
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-function toDisplay(raw) {
+export function toDisplay(raw) {
     if (!raw) return '';
     const s = String(raw).trim();
-    const m = s.match(/^(\d{4})[/-](\d{2})[/-](\d{2})$/);
-    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
-    const m2 = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-    if (m2) return `${m2[1]}/${m2[2]}/${m2[3]}`;
+    const m = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    if (m) return `${String(m[3]).padStart(2, '0')}/${String(m[2]).padStart(2, '0')}/${m[1]}`;
+    const m2 = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (m2) {
+        const p1 = parseInt(m2[1], 10);
+        const p2 = parseInt(m2[2], 10);
+        const y = m2[3];
+        let d = p1;
+        let mo = p2;
+        if (p1 <= 12 && p2 > 12) {
+            mo = p1;
+            d = p2;
+        }
+        return `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')}/${y}`;
+    }
     return s;
+}
+
+export function formatFriendlyDate(raw) {
+    const iso = toISO(raw);
+    if (!iso) return '';
+    try {
+        const [y, m, d] = iso.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        if (isNaN(dateObj.getTime())) return '';
+        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+        const monthName = dateObj.toLocaleDateString('en-US', { month: 'short' });
+        return `${dayName}, ${String(d).padStart(2, '0')} ${monthName} ${y}`;
+    } catch {
+        return '';
+    }
 }
 
 function abbreviate(name) {
@@ -299,26 +353,71 @@ export default function TimetableEditor({
         onChange(sorted);
     };
 
+    // Interval-based time slot collision map: index -> array of { index, row }
+    const timeCollisionMap = useMemo(() => {
+        const collisions = new Map();
+        for (let i = 0; i < timetable.length; i++) {
+            const r1 = timetable[i];
+            const d1 = toISO(r1.date);
+            if (!d1) continue;
+            const int1 = parseSlotInterval(r1.time);
+            if (!int1) continue;
+
+            for (let j = i + 1; j < timetable.length; j++) {
+                const r2 = timetable[j];
+                const d2 = toISO(r2.date);
+                if (!d2 || d1 !== d2) continue;
+                const int2 = parseSlotInterval(r2.time);
+                if (!int2) continue;
+
+                if (doIntervalsOverlap(int1, int2)) {
+                    if (!collisions.has(i)) collisions.set(i, []);
+                    if (!collisions.has(j)) collisions.set(j, []);
+                    collisions.get(i).push({ index: j, row: r2 });
+                    collisions.get(j).push({ index: i, row: r1 });
+                }
+            }
+        }
+        return collisions;
+    }, [timetable]);
+
+    // Duplicate subject detection map: index -> { code, otherIndices: number[] }
+    const duplicateSubjectMap = useMemo(() => {
+        const codeMap = new Map();
+        timetable.forEach((r, idx) => {
+            const code = (r.subjectCode || '').trim().toUpperCase();
+            if (!code) return;
+            if (!codeMap.has(code)) codeMap.set(code, []);
+            codeMap.get(code).push(idx);
+        });
+
+        const dupMap = new Map();
+        codeMap.forEach((indices, code) => {
+            if (indices.length > 1) {
+                indices.forEach(idx => {
+                    dupMap.set(idx, {
+                        code,
+                        otherIndices: indices.filter(i => i !== idx)
+                    });
+                });
+            }
+        });
+        return dupMap;
+    }, [timetable]);
+
     const scheduleSummary = useMemo(() => {
         const isoDates = timetable.map(r => toISO(r.date)).filter(Boolean).sort();
         if (!isoDates.length) return null;
         const unique = [...new Set(isoDates)];
-        const collisions = [];
-        const seen = new Map();
-        timetable.forEach((r) => {
-            const key = `${toISO(r.date)}|${String(r.time || '').trim().toLowerCase()}`;
-            if (!toISO(r.date)) return;
-            if (seen.has(key)) collisions.push(key);
-            else seen.set(key, true);
-        });
         return {
             days: unique.length,
             first: toDisplay(unique[0]),
             last: toDisplay(unique[unique.length - 1]),
-            collisions: collisions.length,
+            collisionRows: timeCollisionMap.size,
+            duplicateRows: duplicateSubjectMap.size,
             undated: timetable.filter(r => !toISO(r.date)).length,
         };
-    }, [timetable]);
+    }, [timetable, timeCollisionMap, duplicateSubjectMap]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
@@ -328,7 +427,7 @@ export default function TimetableEditor({
                        Catalog Subject (a full course name) gets the rest. Fixed
                        tracks, not auto-fit, so all 5 fields share one row instead
                        of one wrapping alone onto its own line. */
-                    grid-template-columns: 118px 150px 1.6fr 1fr 0.9fr;
+                    grid-template-columns: 140px 170px 1.5fr 1.1fr 0.9fr;
                 }
                 @media (max-width: 900px) {
                     .tt-field-grid {
@@ -423,9 +522,16 @@ export default function TimetableEditor({
                         exam {scheduleSummary.days === 1 ? 'day' : 'days'} · {scheduleSummary.first}
                         {scheduleSummary.last !== scheduleSummary.first ? ` to ${scheduleSummary.last}` : ''}
                     </span>
-                    {scheduleSummary.collisions > 0 && (
-                        <span style={{ color: '#DC2626', fontWeight: 700 }}>
-                            {scheduleSummary.collisions} slot clash{scheduleSummary.collisions === 1 ? '' : 'es'} — two papers at the same time
+                    {scheduleSummary.collisionRows > 0 && (
+                        <span style={{ color: '#DC2626', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '14px' }}>warning</span>
+                            {scheduleSummary.collisionRows} row{scheduleSummary.collisionRows === 1 ? '' : 's'} with overlapping time slots
+                        </span>
+                    )}
+                    {scheduleSummary.duplicateRows > 0 && (
+                        <span style={{ color: '#DC2626', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span className="material-icons-round" style={{ fontSize: '14px' }}>error</span>
+                            {scheduleSummary.duplicateRows} row{scheduleSummary.duplicateRows === 1 ? '' : 's'} with duplicate subject codes
                         </span>
                     )}
                     {scheduleSummary.undated > 0 && (
@@ -433,6 +539,54 @@ export default function TimetableEditor({
                             {scheduleSummary.undated} row{scheduleSummary.undated === 1 ? '' : 's'} without a valid date
                         </span>
                     )}
+                </div>
+            )}
+
+            {/* Error Alert: Time Slot Overlaps */}
+            {timeCollisionMap.size > 0 && (
+                <div style={{
+                    background: '#FEF2F2',
+                    border: '1.5px solid #EF4444',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    color: '#991B1B'
+                }}>
+                    <span className="material-icons-round" style={{ fontSize: '20px', color: '#DC2626', marginTop: '1px' }}>error</span>
+                    <div style={{ flex: 1, fontSize: '12px' }}>
+                        <strong style={{ display: 'block', fontSize: '12.5px', marginBottom: '2px', color: '#DC2626' }}>
+                            ⚠️ Time Slot Overlap Conflict Detected!
+                        </strong>
+                        <span>
+                            Two or more examination papers overlap on the same date. Check the red highlighted time slots below so papers do not clash.
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {/* Error Alert: Duplicate Subjects */}
+            {duplicateSubjectMap.size > 0 && (
+                <div style={{
+                    background: '#FEF2F2',
+                    border: '1.5px solid #EF4444',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    color: '#991B1B'
+                }}>
+                    <span className="material-icons-round" style={{ fontSize: '20px', color: '#DC2626', marginTop: '1px' }}>error</span>
+                    <div style={{ flex: 1, fontSize: '12px' }}>
+                        <strong style={{ display: 'block', fontSize: '12.5px', marginBottom: '2px', color: '#DC2626' }}>
+                            ⚠️ Duplicate Subject Detected!
+                        </strong>
+                        <span>
+                            The same subject code appears multiple times in the schedule ({Array.from(new Set(Array.from(duplicateSubjectMap.values()).map(d => d.code))).join(', ')}). Each subject should appear only once in the exam schedule.
+                        </span>
+                    </div>
                 </div>
             )}
 
@@ -448,16 +602,63 @@ export default function TimetableEditor({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {timetable.map((row, idx) => {
                     const isCustom = customRowFlags[idx] ?? row.isCustom ?? (Boolean(row.time) && !STANDARD_TIME_SLOTS.includes(row.time));
-                    // Fixed-height label (room for the longest 2-line label in this
-                    // set, e.g. "SUBJECT CODE (EDITABLE)") so every field's input
-                    // starts at the same y regardless of whether its own label
-                    // happens to wrap to one line or two — that's what was making
-                    // inputs across a row drift up/down against each other.
+                    const hasClash = timeCollisionMap.has(idx);
+                    const clashDetails = timeCollisionMap.get(idx) || [];
+                    const hasDuplicate = duplicateSubjectMap.has(idx);
+                    const dupDetails = duplicateSubjectMap.get(idx);
+
+                    // Fixed-height label so inputs across a row align vertically
                     const fieldLabel = { fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px', display: 'block', minHeight: '26px', lineHeight: '1.3' };
                     return (
-                        <div key={idx} style={{ border: '1px solid var(--border-low)', borderRadius: '10px', padding: '12px', background: 'var(--surface)' }}>
+                        <div
+                            key={idx}
+                            style={{
+                                border: (hasClash || hasDuplicate) ? '1.5px solid #EF4444' : '1px solid var(--border-low)',
+                                borderRadius: '10px',
+                                padding: '12px',
+                                background: (hasClash || hasDuplicate) ? 'rgba(239, 68, 68, 0.03)' : 'var(--surface)',
+                                boxShadow: (hasClash || hasDuplicate) ? '0 0 0 1px rgba(239, 68, 68, 0.15)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-muted)' }}>Subject {idx + 1}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 800, color: (hasClash || hasDuplicate) ? '#DC2626' : 'var(--tx-muted)' }}>
+                                        Subject {idx + 1}
+                                    </span>
+                                    {hasClash && (
+                                        <span style={{
+                                            fontSize: '10px',
+                                            fontWeight: 800,
+                                            color: '#DC2626',
+                                            background: '#FEF2F2',
+                                            border: '1px solid rgba(220, 38, 38, 0.3)',
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px'
+                                        }}>
+                                            ⚠️ Time Conflict
+                                        </span>
+                                    )}
+                                    {hasDuplicate && (
+                                        <span style={{
+                                            fontSize: '10px',
+                                            fontWeight: 800,
+                                            color: '#DC2626',
+                                            background: '#FEF2F2',
+                                            border: '1px solid rgba(220, 38, 38, 0.3)',
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px'
+                                        }}>
+                                            ⚠️ Duplicate Subject ({dupDetails.code})
+                                        </span>
+                                    )}
+                                </div>
                                 <button
                                     type="button"
                                     onClick={() => handleRemoveRow(idx)}
@@ -501,6 +702,26 @@ export default function TimetableEditor({
                                             boxSizing: 'border-box'
                                         }}
                                     />
+                                    {row.date && (
+                                        <div style={{
+                                            fontSize: '10px',
+                                            color: 'var(--tx-muted)',
+                                            marginTop: '3px',
+                                            fontWeight: 700,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            lineHeight: 1.2
+                                        }}>
+                                            <span style={{ color: 'var(--primary)' }}>📅</span>
+                                            <span>{toDisplay(row.date)}</span>
+                                            {formatFriendlyDate(row.date) && (
+                                                <span style={{ color: 'var(--tx-dim)', fontWeight: 500 }}>
+                                                    ({formatFriendlyDate(row.date)})
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label style={fieldLabel}>Time Slot</label>
@@ -512,8 +733,8 @@ export default function TimetableEditor({
                                                 width: '100%',
                                                 padding: '5px 8px',
                                                 borderRadius: '6px',
-                                                border: '1px solid var(--border)',
-                                                background: 'var(--surface)',
+                                                border: hasClash ? '1.5px solid #DC2626' : '1px solid var(--border)',
+                                                background: hasClash ? '#FEF2F2' : 'var(--surface)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '11.5px',
                                                 fontWeight: 600,
@@ -541,6 +762,26 @@ export default function TimetableEditor({
                                             </optgroup>
                                             <option value="__custom__">⚙️ Custom time (type or pick)...</option>
                                         </select>
+                                        {hasClash && (
+                                            <div style={{
+                                                fontSize: '10px',
+                                                fontWeight: 700,
+                                                color: '#DC2626',
+                                                background: '#FEF2F2',
+                                                border: '1px solid rgba(220, 38, 38, 0.25)',
+                                                padding: '3px 6px',
+                                                borderRadius: '4px',
+                                                display: 'flex',
+                                                alignItems: 'flex-start',
+                                                gap: '4px',
+                                                lineHeight: 1.3
+                                            }}>
+                                                <span className="material-icons-round" style={{ fontSize: '13px', marginTop: '1px' }}>error</span>
+                                                <span>
+                                                    Clashes with {clashDetails.map(c => `Subject ${c.index + 1} (${c.row.time})`).join(', ')}
+                                                </span>
+                                            </div>
+                                        )}
                                         {isCustom && (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -555,8 +796,8 @@ export default function TimetableEditor({
                                                             width: '100%',
                                                             padding: '4px 22px 4px 8px',
                                                             borderRadius: '6px',
-                                                            border: '1.5px solid var(--primary)',
-                                                            background: 'var(--surface)',
+                                                            border: hasClash ? '1.5px solid #DC2626' : '1.5px solid var(--primary)',
+                                                            background: hasClash ? '#FEF2F2' : 'var(--surface)',
                                                             color: 'var(--tx-main)',
                                                             fontSize: '11px',
                                                             fontWeight: 600,
@@ -585,14 +826,12 @@ export default function TimetableEditor({
                                                     )}
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                                    <span style={{ fontSize: '9.5px', color: 'var(--tx-dim)' }}>Quick:</span>
                                                     <button
                                                         type="button"
                                                         onClick={() => handleUpdateRow(idx, 'time', '09:00 am to 10:00 am')}
                                                         style={{
-                                                            background: row.time === '09:00 am to 10:00 am' ? 'var(--primary)' : 'rgba(59, 130, 246, 0.08)',
-                                                            color: row.time === '09:00 am to 10:00 am' ? '#FFFFFF' : 'var(--primary)',
-                                                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                            background: 'var(--surface-low)',
+                                                            border: '1px solid var(--border)',
                                                             borderRadius: '4px',
                                                             padding: '1px 5px',
                                                             fontSize: '9.5px',
@@ -604,11 +843,10 @@ export default function TimetableEditor({
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleUpdateRow(idx, 'time', '09:30 am to 10:30 am')}
+                                                        onClick={() => handleUpdateRow(idx, 'time', '11:00 am to 12:00 pm')}
                                                         style={{
-                                                            background: row.time === '09:30 am to 10:30 am' ? 'var(--primary)' : 'rgba(59, 130, 246, 0.08)',
-                                                            color: row.time === '09:30 am to 10:30 am' ? '#FFFFFF' : 'var(--primary)',
-                                                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                            background: 'var(--surface-low)',
+                                                            border: '1px solid var(--border)',
                                                             borderRadius: '4px',
                                                             padding: '1px 5px',
                                                             fontSize: '9.5px',
@@ -616,15 +854,14 @@ export default function TimetableEditor({
                                                             fontWeight: 600
                                                         }}
                                                     >
-                                                        9:30-10:30 AM
+                                                        11-12 PM
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => handleUpdateRow(idx, 'time', '02:30 pm to 03:30 pm')}
                                                         style={{
-                                                            background: row.time === '02:30 pm to 03:30 pm' ? 'var(--primary)' : 'rgba(59, 130, 246, 0.08)',
-                                                            color: row.time === '02:30 pm to 03:30 pm' ? '#FFFFFF' : 'var(--primary)',
-                                                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                            background: 'var(--surface-low)',
+                                                            border: '1px solid var(--border)',
                                                             borderRadius: '4px',
                                                             padding: '1px 5px',
                                                             fontSize: '9.5px',
@@ -688,8 +925,8 @@ export default function TimetableEditor({
                                                 width: '100%',
                                                 padding: '5px 8px',
                                                 borderRadius: '6px',
-                                                border: '1px solid var(--border)',
-                                                background: 'var(--surface)',
+                                                border: hasDuplicate ? '1.5px solid #DC2626' : '1px solid var(--border)',
+                                                background: hasDuplicate ? '#FEF2F2' : 'var(--surface)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '11.5px',
                                                 cursor: 'pointer'
@@ -725,10 +962,10 @@ export default function TimetableEditor({
                                                 minWidth: '85px',
                                                 padding: '5px 20px 5px 8px', // right space reserved for the native list-picker arrow, so it never overlaps typed text
                                                 borderRadius: '6px',
-                                                border: `1px solid ${
-                                                    !row.subjectCode || lookup(row.subjectCode) ? 'var(--border)' : '#B45309'
+                                                border: `1.5px solid ${
+                                                    hasDuplicate ? '#DC2626' : (!row.subjectCode || lookup(row.subjectCode) ? 'var(--border)' : '#B45309')
                                                 }`,
-                                                background: 'var(--surface)',
+                                                background: hasDuplicate ? '#FEF2F2' : 'var(--surface)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '12px',
                                                 fontWeight: 800,
@@ -736,7 +973,25 @@ export default function TimetableEditor({
                                                 boxSizing: 'border-box'
                                             }}
                                         />
-                                        {row.subjectCode && (
+                                        {hasDuplicate ? (
+                                            <div style={{
+                                                marginTop: '3px',
+                                                fontSize: '9.5px',
+                                                fontWeight: 700,
+                                                color: '#DC2626',
+                                                background: '#FEF2F2',
+                                                border: '1px solid rgba(220, 38, 38, 0.25)',
+                                                padding: '2px 5px',
+                                                borderRadius: '4px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                lineHeight: 1.2
+                                            }}>
+                                                <span className="material-icons-round" style={{ fontSize: '11px' }}>error</span>
+                                                <span>Duplicate code (also in Subject {dupDetails.otherIndices.map(i => i + 1).join(', ')})</span>
+                                            </div>
+                                        ) : row.subjectCode ? (
                                             <div style={{
                                                 marginTop: '3px',
                                                 fontSize: '9.5px',
@@ -747,7 +1002,7 @@ export default function TimetableEditor({
                                                     ? lookup(row.subjectCode).name
                                                     : 'Not in this class’s catalog'}
                                             </div>
-                                        )}
+                                        ) : null}
                                 </div>
                                 <div>
                                     <label style={fieldLabel}>Subject (Short) <span style={{ textTransform: 'none', fontWeight: 500 }}>(editable)</span></label>

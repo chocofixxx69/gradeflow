@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 import { fetchByChunks } from '../../../lib/supabase-utils';
 import { calculateAcademicRecord, normalizeBranch } from '../../../lib/vtuAcademicEngine';
 import { fetchCatalogIndex } from '../../../lib/subjectCreditResolver';
-import { getAdminClient, findFacultyAssignment } from '../../../lib/analytics-data';
+import { getAdminClient, findFacultyAssignment, invalidateAnalyticsCache } from '../../../lib/analytics-data';
 import { requireStaff } from '../../../lib/server-session';
 import { generateFormulaPassword, hashStudentPassword } from '../../../lib/student-auth';
 import { logFacultyActivityServer } from '../../../lib/server-audit';
+import { invalidateTableCache } from '../../../lib/table-cache';
+import { invalidateStudentRecords } from '../../../lib/student-record';
+import { clearServerCache } from '../../../lib/server-cache';
 
 const supabaseAdmin = getAdminClient();
 
@@ -310,8 +313,15 @@ export async function POST(req) {
                     .insert(rows.slice(i, i + 100));
                 if (insErr) {
                     console.error('[POST /api/class-students] class_students insert error:', insErr);
+                    throw insErr;
                 }
             }
+
+            // Invalidate system-wide caches
+            invalidateTableCache();
+            invalidateAnalyticsCache();
+            invalidateStudentRecords();
+            clearServerCache();
 
             // Audit log in faculty_activity
             const isBulk = newUsnsToInsert.length > 1;
@@ -353,6 +363,12 @@ export async function DELETE(req) {
             .eq('usn', cleanUsn);
 
         if (error) throw error;
+
+        // Invalidate system-wide caches
+        invalidateTableCache();
+        invalidateAnalyticsCache();
+        invalidateStudentRecords();
+        clearServerCache();
 
         // Audit log in faculty_activity
         logFacultyActivityServer(req, {

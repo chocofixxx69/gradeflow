@@ -10,7 +10,7 @@ const TABS = [
     { href: '/admin/analytics/classes', label: 'Classes' },
     { href: '/admin/analytics/subjects', label: 'Subjects' },
     { href: '/admin/analytics/faculty', label: 'Faculty' },
-    { href: '/admin/faculty-performance', label: 'Teaching Performance' },
+    { href: '/admin/faculty-performance', label: 'Teaching Insights' },
     { href: '/admin/analytics/rankings', label: 'Rankings' },
     { href: '/admin/analytics/leaderboard', label: 'Leaderboard' },
     { href: '/admin/analytics/backlogs', label: 'Backlogs' },
