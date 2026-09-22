@@ -97,7 +97,134 @@ function resolveCohortConfig(batchOrBranch, currentUsn, currentIsLateral = null,
     };
 }
 
-async function getOrComputeCohortData(cohortConfig) {
+const STUDENT_SELECT_COLS = 'id, usn, name, branch, scheme, semester, year, lateral_entry';
+
+// The whole-batch fallback used only when a student hasn't been placed into
+// any faculty-created class yet: same branch AND the same real academic
+// cohort year — matchesBatch resolves year-backs, reassignments and lateral
+// students accurately.
+async function resolveBatchStudents(cohortConfig) {
+    if (!cohortConfig.cohortYear) return [];
+
+    const { data: allStudents, error: stuErr } = await supabaseAdmin
+        .from('students')
+        .select(STUDENT_SELECT_COLS)
+        .order('usn', { ascending: true });
+
+    if (stuErr) throw stuErr;
+
+    return (allStudents || []).filter(s => {
+        if (extractBranchFromUsn(s.usn) !== cohortConfig.branch) return false;
+        return matchesBatch(s, cohortConfig.cohortYear);
+    });
+}
+
+// The actual roster of the faculty-created class — this is "the class" the
+// student sees on the faculty portal, not a department-wide admission-year
+// cohort.
+async function resolveClassStudents(classId) {
+    const { data: rosterRows, error: rErr } = await supabaseAdmin
+        .from('class_students')
+        .select('student_id')
+        .eq('class_id', classId);
+
+    if (rErr) throw rErr;
+
+    const studentIds = [...new Set((rosterRows || []).map(r => r.student_id).filter(Boolean))];
+    if (studentIds.length === 0) return [];
+
+    const { data: students, error: sErr } = await supabaseAdmin
+        .from('students')
+        .select(STUDENT_SELECT_COLS)
+        .in('id', studentIds)
+        .order('usn', { ascending: true });
+
+    if (sErr) throw sErr;
+    return students || [];
+}
+
+// Short in-memory cache (mirrors cohortCache below) so switching semester/
+// subject tabs — which each refetch this endpoint — doesn't re-query the
+// class roster tables on every click.
+const primaryClassCache = new Map();
+
+// A student can sit in more than one class row (e.g. a backlog student added
+// to a senior class to sit a re-attempt). The class whose semester matches
+// the student's own current semester (semester_mismatch = false) is their
+// real home class for ranking purposes; among ties, the most recently
+// created class wins.
+async function resolveStudentPrimaryClass(studentId) {
+    const now = Date.now();
+    const cached = primaryClassCache.get(studentId);
+    if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+        return cached.data;
+    }
+
+    const { data: memberships, error: mErr } = await supabaseAdmin
+        .from('class_students')
+        .select('class_id, semester_mismatch, added_at')
+        .eq('student_id', studentId);
+
+    if (mErr || !memberships || memberships.length === 0) {
+        primaryClassCache.set(studentId, { timestamp: now, data: null });
+        return null;
+    }
+
+    const classIds = [...new Set(memberships.map(m => m.class_id).filter(Boolean))];
+    if (classIds.length === 0) {
+        primaryClassCache.set(studentId, { timestamp: now, data: null });
+        return null;
+    }
+
+    const { data: classRows, error: cErr } = await supabaseAdmin
+        .from('classes')
+        .select('id, name, branch, branch_code, semester, section, batch, academic_year, scheme, created_at')
+        .in('id', classIds);
+
+    if (cErr || !classRows || classRows.length === 0) {
+        primaryClassCache.set(studentId, { timestamp: now, data: null });
+        return null;
+    }
+
+    const membershipByClassId = new Map(memberships.map(m => [m.class_id, m]));
+    const candidates = classRows.map(c => ({
+        ...c,
+        semester_mismatch: membershipByClassId.get(c.id)?.semester_mismatch || false,
+        added_at: membershipByClassId.get(c.id)?.added_at || null,
+    }));
+
+    candidates.sort((a, b) => {
+        if (a.semester_mismatch !== b.semester_mismatch) return a.semester_mismatch ? 1 : -1;
+        const aTime = new Date(a.created_at || a.added_at || 0).getTime();
+        const bTime = new Date(b.created_at || b.added_at || 0).getTime();
+        return bTime - aTime;
+    });
+
+    const primary = candidates[0] || null;
+    primaryClassCache.set(studentId, { timestamp: now, data: primary });
+    return primary;
+}
+
+// Builds the cohortConfig-shaped scope for a resolved faculty-created class.
+function buildClassCohortConfig(primaryClass, currentUsn) {
+    const branchCode = primaryClass.branch_code || extractBranchFromUsn(currentUsn) || '';
+    const sectionLabel = primaryClass.section ? primaryClass.section.trim().toUpperCase() : '';
+    const semLabel = primaryClass.semester ? `-S${primaryClass.semester}` : '';
+    const secSuffix = sectionLabel ? `-${sectionLabel}` : '';
+
+    return {
+        branch: branchCode,
+        code: `${branchCode || 'CLASS'}${semLabel}${secSuffix}`,
+        name: primaryClass.name
+            || `${BRANCH_NAMES[branchCode] || branchCode || 'Class'}${primaryClass.semester ? ` — Semester ${primaryClass.semester}` : ''}${sectionLabel ? ` · Section ${sectionLabel}` : ''}`,
+        cohortYear: null,
+        cohortId: `class:${primaryClass.id}`,
+        classId: primaryClass.id,
+        section: sectionLabel || null,
+    };
+}
+
+async function getOrComputeCohortData(cohortConfig, resolveStudents) {
     const cacheKey = cohortConfig.cohortId;
     const now = Date.now();
     const cached = cohortCache.get(cacheKey);
@@ -106,22 +233,10 @@ async function getOrComputeCohortData(cohortConfig) {
         return cached.data;
     }
 
-    // 1. Fetch students for this cohort
-    const { data: allStudents, error: stuErr } = await supabaseAdmin
-        .from('students')
-        .select('id, usn, name, branch, scheme, semester, year, lateral_entry')
-        .order('usn', { ascending: true });
-
-    if (stuErr) throw stuErr;
-
-    // Same branch AND the same real academic cohort year — matchesBatch
-    // resolves year-backs, reassignments and lateral students accurately.
-    const students = cohortConfig.cohortYear
-        ? (allStudents || []).filter(s => {
-            if (extractBranchFromUsn(s.usn) !== cohortConfig.branch) return false;
-            return matchesBatch(s, cohortConfig.cohortYear);
-        })
-        : [];
+    // 1. Fetch students for this scope — either the faculty-created class
+    // roster, or (when the student isn't in any class yet) the whole-batch
+    // fallback.
+    const students = await resolveStudents();
 
     const studentUsns = students.map(s => s.usn);
     const studentMap = Object.fromEntries(students.map(s => [s.usn, s]));
@@ -407,16 +522,33 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const { data: currentStudent } = await supabaseAdmin
             .from('students')
-            .select('lateral_entry, year')
+            .select('id, lateral_entry, year')
             .eq('usn', currentUsn)
             .maybeSingle();
 
         const requestedBatch = searchParams.get('batch');
-        const cohortConfig = resolveCohortConfig(requestedBatch, currentUsn, currentStudent?.lateral_entry, currentStudent?.year);
         const selectedSemParam = parseInt(searchParams.get('semester')) || null;
         const selectedSubjectParam = searchParams.get('subject_code') || null;
 
-        const cohortData = await getOrComputeCohortData(cohortConfig);
+        // A student's leaderboard is scoped to the actual class their faculty
+        // created and rostered them into (app/faculty/classes), not a
+        // department-wide admission-year cohort. An explicit `batch` override
+        // (not used by the student UI today, kept for compatibility) bypasses
+        // class detection; a student not yet placed in any class falls back
+        // to the old whole-batch scope so their leaderboard isn't empty.
+        const primaryClass = (!requestedBatch && currentStudent?.id)
+            ? await resolveStudentPrimaryClass(currentStudent.id)
+            : null;
+
+        const cohortConfig = primaryClass
+            ? buildClassCohortConfig(primaryClass, currentUsn)
+            : resolveCohortConfig(requestedBatch, currentUsn, currentStudent?.lateral_entry, currentStudent?.year);
+
+        const resolveStudents = primaryClass
+            ? () => resolveClassStudents(primaryClass.id)
+            : () => resolveBatchStudents(cohortConfig);
+
+        const cohortData = await getOrComputeCohortData(cohortConfig, resolveStudents);
         const {
             students,
             studentMap,

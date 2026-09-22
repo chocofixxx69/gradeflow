@@ -22,8 +22,9 @@ function normalizeBranch(br) {
 }
 
 export async function GET(req) {
-    const { error: authError } = requireStaff(req, ['faculty', 'admin']);
-    if (authError) return authError;
+    // Subject catalog is institutional curriculum specification — read access is open
+    // so students, curriculum explorer, and calculators can load official subjects.
+    // (Mutating POST, PUT, DELETE operations below remain strictly protected by requireStaff).
 
     const { searchParams } = new URL(req.url);
     const reqScheme = searchParams.get('scheme');

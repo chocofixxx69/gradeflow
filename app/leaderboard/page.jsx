@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiRequest, getStudentAuthHeaders } from '../../lib/api/client';
 // Loaded on demand — see components/ClassesContent.jsx for why: jsPDF and the
 // embedded crest are ~500 kB that nothing on first paint needs.
@@ -18,10 +18,31 @@ export default function LeaderboardPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [entryFilter, setEntryFilter] = useState('all'); // 'all' | 'regular' | 'lateral'
 
+    // Session-scoped cache of already-fetched sem/subject combos, keyed by
+    // `${sem}|${sub}` — flipping back and forth between tabs a student has
+    // already visited is then instant instead of round-tripping again.
+    // A monotonic request id lets us drop a response that resolves after a
+    // newer request was already fired (e.g. rapid clicking between tabs), so
+    // the screen never gets overwritten by an out-of-order, now-stale reply.
+    const leaderboardCacheRef = useRef(new Map());
+    const requestIdRef = useRef(0);
+
     // No batch/department param here on purpose — the API resolves the logged-in
     // student's own class from their session, so students can only ever see their
     // own class leaderboard (department switching is a faculty-only capability).
     const fetchLeaderboard = useCallback(async (sem = null, sub = null) => {
+        const myRequestId = ++requestIdRef.current;
+        const cacheKey = `${sem || ''}|${sub || ''}`;
+        const cached = leaderboardCacheRef.current.get(cacheKey);
+
+        if (cached) {
+            // Cache hit: swap instantly, no spinner, no network round trip.
+            setData(cached);
+            setLoading(false);
+            setError('');
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
@@ -37,20 +58,32 @@ export default function LeaderboardPage() {
                 query
             });
 
+            if (myRequestId !== requestIdRef.current) return; // a newer request superseded this one
+
+            leaderboardCacheRef.current.set(cacheKey, res);
             setData(res);
-            if (!selectedSemester && res?.targetSemester) {
-                setSelectedSemester(res.targetSemester);
+            // Functional updaters read the latest state without needing selectedSemester/
+            // selectedSubjectCode in this callback's own dependency array. That matters:
+            // this only ever runs for the initial no-args mount fetch (sem/sub both still
+            // null then), so depending on the two state vars here would give this callback
+            // a new identity on every tab click, re-triggering the mount effect below and
+            // firing a stray extra no-args fetch right after each explicit one — which used
+            // to race the real request and occasionally overwrite it with the server's
+            // default semester instead of the one just clicked.
+            if (res?.targetSemester) {
+                setSelectedSemester(prev => prev === null ? res.targetSemester : prev);
             }
-            if (!selectedSubjectCode && res?.currentSubject?.subject_code) {
-                setSelectedSubjectCode(res.currentSubject.subject_code);
+            if (res?.currentSubject?.subject_code) {
+                setSelectedSubjectCode(prev => prev ? prev : res.currentSubject.subject_code);
             }
         } catch (err) {
+            if (myRequestId !== requestIdRef.current) return;
             console.error('Fetch leaderboard error:', err);
             setError(err.message || 'Failed to load class leaderboard.');
         } finally {
-            setLoading(false);
+            if (myRequestId === requestIdRef.current) setLoading(false);
         }
-    }, [selectedSemester, selectedSubjectCode]);
+    }, []);
 
     useEffect(() => {
         fetchLeaderboard();
@@ -120,7 +153,7 @@ export default function LeaderboardPage() {
                             </h1>
                         </div>
                         <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--tx-muted)' }}>
-                            Department: <strong>{data?.batchName || data?.batch || 'Class'}</strong> — Total <strong>{data?.totalStudents || 0} Students</strong>
+                            Class: <strong>{data?.batchName || data?.batch || 'Class'}</strong> — Total <strong>{data?.totalStudents || 0} Students</strong>
                             {data?.lateralCount > 0 && ` (${data.regularCount} Regular + ${data.lateralCount} Lateral Entry)`}.
                         </p>
                     </div>
@@ -409,6 +442,16 @@ export default function LeaderboardPage() {
                     )}
                 </div>
 
+                {/* Podium + Ranking Table — dimmed and non-interactive while a
+                    fresh sem/subject/tab fetch is in flight (cache miss), so
+                    switching tabs visibly loads instead of appearing frozen
+                    on the previous selection. Cache hits skip this entirely
+                    since `loading` never turns on for them. */}
+                <div style={{
+                    opacity: loading ? 0.45 : 1,
+                    pointerEvents: loading ? 'none' : 'auto',
+                    transition: 'opacity 0.15s ease'
+                }}>
                 {/* Podium Display for Top 3 */}
                 {!searchQuery && (
                     <div className="lbPodium" style={{
@@ -491,6 +534,16 @@ export default function LeaderboardPage() {
                             {activeTab === 'semester' && `Semester ${activeSemester} SGPA Ranking (${filteredSemester.length} Students)`}
                             {activeTab === 'subject' && `${data?.currentSubject?.subject_name || 'Subject'} Marks Leaderboard (${filteredSubject.length} Students)`}
                         </div>
+                        {loading && (
+                            <span
+                                aria-label="Loading"
+                                style={{
+                                    width: '16px', height: '16px', borderRadius: '50%',
+                                    border: '2px solid var(--border)', borderTopColor: 'var(--primary)',
+                                    animation: 'lbSpin 0.7s linear infinite'
+                                }}
+                            />
+                        )}
                     </div>
 
                     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -674,9 +727,13 @@ export default function LeaderboardPage() {
                         </table>
                     </div>
                 </div>
+                </div>
             </div>
 
             <style jsx>{`
+                @keyframes lbSpin {
+                    to { transform: rotate(360deg); }
+                }
                 @media (max-width: 640px) {
                     .lbPage {
                         padding: 14px 12px !important;
