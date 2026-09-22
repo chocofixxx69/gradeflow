@@ -59,8 +59,7 @@ export default function LandingPage() {
                         variant="primary"
                         size="lg"
                         iconEnd="arrow_forward"
-                        className={styles.heroCtaBtn}
-                        style={{ height: '46px', fontSize: '14.5px' }}
+                        className={`${styles.heroCtaBtn} ${styles.heroStudentBtn}`}
                     >
                         Sign in as Student
                     </Button>
@@ -70,8 +69,8 @@ export default function LandingPage() {
                         variant="secondary"
                         size="lg"
                         iconStart="school"
-                        className={styles.heroCtaBtn}
-                        style={{ height: '46px', fontSize: '14.5px' }}
+                        iconEnd="arrow_forward"
+                        className={`${styles.heroCtaBtn} ${styles.heroFacultyBtn}`}
                     >
                         Faculty Access
                     </Button>

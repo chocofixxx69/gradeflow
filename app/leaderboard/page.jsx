@@ -16,10 +16,12 @@ export default function LeaderboardPage() {
     const [selectedSemester, setSelectedSemester] = useState(null);
     const [selectedSubjectCode, setSelectedSubjectCode] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedBatch, setSelectedBatch] = useState('');
     const [entryFilter, setEntryFilter] = useState('all'); // 'all' | 'regular' | 'lateral'
 
-    const fetchLeaderboard = useCallback(async (sem = null, sub = null, batch = null) => {
+    // No batch/department param here on purpose — the API resolves the logged-in
+    // student's own class from their session, so students can only ever see their
+    // own class leaderboard (department switching is a faculty-only capability).
+    const fetchLeaderboard = useCallback(async (sem = null, sub = null) => {
         setLoading(true);
         setError('');
         try {
@@ -29,7 +31,6 @@ export default function LeaderboardPage() {
             const query = {};
             if (sem) query.semester = sem;
             if (sub) query.subject_code = sub;
-            if (batch) query.batch = batch;
 
             const res = await apiRequest('/api/student/leaderboard', {
                 headers: getStudentAuthHeaders(session),
@@ -43,16 +44,13 @@ export default function LeaderboardPage() {
             if (!selectedSubjectCode && res?.currentSubject?.subject_code) {
                 setSelectedSubjectCode(res.currentSubject.subject_code);
             }
-            if (!selectedBatch && res?.batch) {
-                setSelectedBatch(res.batch);
-            }
         } catch (err) {
             console.error('Fetch leaderboard error:', err);
             setError(err.message || 'Failed to load class leaderboard.');
         } finally {
             setLoading(false);
         }
-    }, [selectedSemester, selectedSubjectCode, selectedBatch]);
+    }, [selectedSemester, selectedSubjectCode]);
 
     useEffect(() => {
         fetchLeaderboard();
@@ -67,17 +65,12 @@ export default function LeaderboardPage() {
         if (nextSubCode) {
             setSelectedSubjectCode(nextSubCode);
         }
-        fetchLeaderboard(sem, nextSubCode || null, selectedBatch);
+        fetchLeaderboard(sem, nextSubCode || null);
     };
 
     const handleSubjectChange = (subCode) => {
         setSelectedSubjectCode(subCode);
-        fetchLeaderboard(activeSemester, subCode, selectedBatch);
-    };
-
-    const handleBatchChange = (batch) => {
-        setSelectedBatch(batch);
-        fetchLeaderboard(activeSemester, selectedSubjectCode, batch);
+        fetchLeaderboard(activeSemester, subCode);
     };
 
     // Filtered lists based on search query & entry filter
@@ -116,13 +109,13 @@ export default function LeaderboardPage() {
 
     return (
         <AuthGuard role="student">
-            <div style={{ maxWidth: '1280px', margin: '0 auto', padding: 'var(--page-py, 24px) var(--page-px, 20px)' }}>
+            <div className="lbPage" style={{ maxWidth: '1280px', margin: '0 auto', padding: 'var(--page-py, 24px) var(--page-px, 20px)' }}>
                 {/* Header & Cohort Info */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <div className="lbHeader" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                             <span className="material-icons-round" style={{ color: 'var(--primary)', fontSize: '28px' }}>emoji_events</span>
-                            <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.03em' }}>
+                            <h1 className="lbTitle" style={{ margin: 0, fontSize: '1.8rem', fontWeight: 900, color: 'var(--tx-main)', letterSpacing: '-0.03em' }}>
                                 Class Leaderboard & Toppers
                             </h1>
                         </div>
@@ -132,26 +125,8 @@ export default function LeaderboardPage() {
                         </p>
                     </div>
 
-                    {/* Department Cohort Selector & Export Actions */}
+                    {/* Export Actions — students only ever see their own class, so no department picker here */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: '1 1 auto' }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--tx-muted)', flexShrink: 0 }}>Department:</span>
-                            <select
-                                value={selectedBatch || data?.batch || 'CS'}
-                                onChange={(e) => handleBatchChange(e.target.value)}
-                                style={{
-                                    padding: '8px 14px', minHeight: '40px', borderRadius: '8px', border: '1px solid var(--border)',
-                                    background: '#ffffff', color: 'var(--tx-main)', fontWeight: 700, fontSize: '0.9rem',
-                                    minWidth: 0, maxWidth: '100%', flexShrink: 1
-                                }}
-                            >
-                                <option value="CS">Computer Science & Engineering (86 Students)</option>
-                                <option value="CI">AI & Design / IoT (33 Students)</option>
-                                <option value="CD">Data Science (28 Students)</option>
-                                <option value="CV">Civil Engineering (3 Students)</option>
-                            </select>
-                        </div>
-
                         <div style={{ display: 'flex', gap: '6px' }}>
                             <button
                                 onClick={async () => {
@@ -214,14 +189,14 @@ export default function LeaderboardPage() {
 
                 {/* Logged-In Student Quick Standing Banner */}
                 {data?.currentUser && (
-                    <div style={{
+                    <div className="lbStanding" style={{
                         background: 'linear-gradient(135deg, rgba(23, 75, 77, 0.08) 0%, rgba(23, 75, 77, 0.02) 100%)',
                         border: '1.5px solid rgba(23, 75, 77, 0.25)',
                         borderRadius: '14px', padding: '18px 22px', marginBottom: '24px',
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <div style={{
+                            <div className="lbStandingAvatar" style={{
                                 width: '48px', height: '48px', borderRadius: '12px',
                                 background: 'var(--primary)', color: '#ffffff',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -249,24 +224,24 @@ export default function LeaderboardPage() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+                        <div className="lbStandingStats" style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
                             <div style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Overall Rank</div>
-                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary)' }}>
+                                <div className="lbStandingValue" style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary)' }}>
                                     #{data.currentUser.overallRank || '—'} <span style={{ fontSize: '0.85rem', color: 'var(--tx-muted)', fontWeight: 600 }}>/ {data.totalStudents}</span>
                                 </div>
                             </div>
 
                             <div style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Overall CGPA</div>
-                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--tx-main)' }}>
+                                <div className="lbStandingValue" style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--tx-main)' }}>
                                     {data.currentUser.overallCGPA !== null ? data.currentUser.overallCGPA.toFixed(2) : '—'}
                                 </div>
                             </div>
 
                             <div style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Sem {activeSemester} SGPA</div>
-                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#047857' }}>
+                                <div className="lbStandingValue" style={{ fontSize: '1.4rem', fontWeight: 900, color: '#047857' }}>
                                     {(() => {
                                         const semInfo = data.currentUser.semesters?.[activeSemester];
                                         if (semInfo && semInfo.sgpa > 0) return semInfo.sgpa.toFixed(2);
@@ -280,11 +255,12 @@ export default function LeaderboardPage() {
                 )}
 
                 {/* View Tabs */}
-                <div style={{
+                <div className="lbTabs" style={{
                     display: 'flex', gap: '8px', borderBottom: '2px solid var(--border)',
                     marginBottom: '24px', overflowX: 'auto', paddingBottom: '2px'
                 }}>
                     <button
+                        className="lbTabBtn"
                         onClick={() => setActiveTab('overall')}
                         style={{
                             padding: '10px 18px', border: 'none', background: 'transparent',
@@ -299,6 +275,7 @@ export default function LeaderboardPage() {
                     </button>
 
                     <button
+                        className="lbTabBtn"
                         onClick={() => setActiveTab('semester')}
                         style={{
                             padding: '10px 18px', border: 'none', background: 'transparent',
@@ -313,6 +290,7 @@ export default function LeaderboardPage() {
                     </button>
 
                     <button
+                        className="lbTabBtn"
                         onClick={() => setActiveTab('subject')}
                         style={{
                             padding: '10px 18px', border: 'none', background: 'transparent',
@@ -328,7 +306,7 @@ export default function LeaderboardPage() {
                 </div>
 
                 {/* Sub-Filters, Selectors & Entry Filter */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div className="lbSubFilters" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                     {/* Search Bar */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', minWidth: '240px', flex: '1 1 240px' }}>
                         <span className="material-icons-round" style={{ color: 'var(--tx-muted)', fontSize: '18px' }}>search</span>
@@ -343,8 +321,9 @@ export default function LeaderboardPage() {
 
                     {/* Entry Type Filter Pills */}
                     {data?.lateralCount > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--surface-low)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <div className="lbEntryPills" style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--surface-low)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                             <button
+                                className="lbPillBtn"
                                 onClick={() => setEntryFilter('all')}
                                 style={{
                                     padding: '5px 10px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -356,6 +335,7 @@ export default function LeaderboardPage() {
                                 All ({data.totalStudents})
                             </button>
                             <button
+                                className="lbPillBtn"
                                 onClick={() => setEntryFilter('regular')}
                                 style={{
                                     padding: '5px 10px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -367,6 +347,7 @@ export default function LeaderboardPage() {
                                 Regular ({data.regularCount})
                             </button>
                             <button
+                                className="lbPillBtn"
                                 onClick={() => setEntryFilter('lateral')}
                                 style={{
                                     padding: '5px 10px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -382,11 +363,12 @@ export default function LeaderboardPage() {
 
                     {/* Semester Selector for Semester or Subject Tab */}
                     {(activeTab === 'semester' || activeTab === 'subject') && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <div className="lbSemRow" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--tx-muted)' }}>Semester:</span>
                             {(data?.availableSemesters || [1,2,3,4,5,6]).map(sem => (
                                 <button
                                     key={sem}
+                                    className="lbPillBtn"
                                     onClick={() => handleSemesterChange(sem)}
                                     style={{
                                         padding: '6px 12px', minHeight: '40px', display: 'inline-flex', alignItems: 'center', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 700,
@@ -429,7 +411,7 @@ export default function LeaderboardPage() {
 
                 {/* Podium Display for Top 3 */}
                 {!searchQuery && (
-                    <div style={{
+                    <div className="lbPodium" style={{
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))',
                         gap: '16px', marginBottom: '24px'
                     }}>
@@ -444,6 +426,7 @@ export default function LeaderboardPage() {
                             return (
                                 <div
                                     key={topper.usn}
+                                    className="lbPodiumCard"
                                     style={{
                                         background: topper.isCurrentUser ? 'rgba(23, 75, 77, 0.05)' : 'var(--surface)',
                                         border: topper.isCurrentUser ? '2px solid var(--primary)' : '1px solid var(--border)',
@@ -453,7 +436,7 @@ export default function LeaderboardPage() {
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                                        <div style={{
+                                        <div className="lbMedal" style={{
                                             fontSize: '1.8rem', width: '42px', height: '42px', borderRadius: '50%',
                                             background: medal.bg, display: 'flex', alignItems: 'center', justifyContent: 'center'
                                         }}>
@@ -498,11 +481,11 @@ export default function LeaderboardPage() {
                 )}
 
                 {/* Full Class Ranking Table */}
-                <div style={{
+                <div className="lbRankingCard" style={{
                     background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px',
                     overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
                 }}>
-                    <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="lbRankingHeader" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-low)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--tx-main)' }}>
                             {activeTab === 'overall' && `Complete Class Ranking — Overall CGPA (${filteredOverall.length} Students)`}
                             {activeTab === 'semester' && `Semester ${activeSemester} SGPA Ranking (${filteredSemester.length} Students)`}
@@ -514,31 +497,31 @@ export default function LeaderboardPage() {
                         <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid var(--border)', background: '#ffffff' }}>
-                                    <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', width: '80px' }}>Rank</th>
-                                    <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)' }}>Student Name</th>
-                                    <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)' }}>USN</th>
+                                    <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', width: '80px' }}>Rank</th>
+                                    <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)' }}>Student Name</th>
+                                    <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)' }}>USN</th>
 
                                     {activeTab === 'overall' && (
                                         <>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>CGPA</th>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Semesters</th>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Backlogs</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>CGPA</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Semesters</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Backlogs</th>
                                         </>
                                     )}
 
                                     {activeTab === 'semester' && (
                                         <>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>SGPA</th>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Credits</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>SGPA</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Credits</th>
                                         </>
                                     )}
 
                                     {activeTab === 'subject' && (
                                         <>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>CIE /50</th>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>SEE /50</th>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Total /100</th>
-                                            <th style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Grade</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>CIE /50</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>SEE /50</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Total /100</th>
+                                            <th className="lbTh" style={{ padding: '12px 18px', fontWeight: 700, color: 'var(--tx-muted)', textAlign: 'center' }}>Grade</th>
                                         </>
                                     )}
                                 </tr>
@@ -558,7 +541,7 @@ export default function LeaderboardPage() {
                                                 transition: 'background 0.15s ease'
                                             }}
                                         >
-                                            <td style={{ padding: '14px 18px' }}>
+                                            <td className="lbTd" style={{ padding: '14px 18px' }}>
                                                 {medal ? (
                                                     <span style={{ fontSize: '1.2rem' }}>{medal.icon}</span>
                                                 ) : (
@@ -571,7 +554,7 @@ export default function LeaderboardPage() {
                                                 )}
                                             </td>
 
-                                            <td style={{ padding: '14px 18px' }}>
+                                            <td className="lbTd" style={{ padding: '14px 18px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                     <span style={{ color: isMe ? 'var(--primary)' : 'var(--tx-main)', fontWeight: isMe ? 800 : 700 }}>
                                                         {item.name}
@@ -595,13 +578,13 @@ export default function LeaderboardPage() {
                                                 </div>
                                             </td>
 
-                                            <td style={{ padding: '14px 18px', fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '0.84rem' }}>
+                                            <td className="lbTd" style={{ padding: '14px 18px', fontFamily: 'monospace', color: 'var(--tx-muted)', fontSize: '0.84rem' }}>
                                                 {item.usn}
                                             </td>
 
                                             {activeTab === 'overall' && (
                                                 <>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center' }}>
                                                         <span style={{
                                                             fontWeight: 900, fontSize: '1.05rem',
                                                             color: item.cgpa >= 8.5 ? '#047857' : item.cgpa >= 7.0 ? 'var(--primary)' : 'var(--tx-main)'
@@ -609,10 +592,10 @@ export default function LeaderboardPage() {
                                                             {item.cgpa ? item.cgpa.toFixed(2) : '—'}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                         {item.semestersTracked} Sems
                                                     </td>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center' }}>
                                                         <span style={{
                                                             padding: '2px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800,
                                                             background: item.totalBacklogs > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
@@ -626,7 +609,7 @@ export default function LeaderboardPage() {
 
                                             {activeTab === 'semester' && (
                                                 <>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center' }}>
                                                         {item.hasAppeared && item.sgpa !== null ? (
                                                             <span style={{
                                                                 fontWeight: 900, fontSize: '1.05rem',
@@ -644,7 +627,7 @@ export default function LeaderboardPage() {
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                         {item.hasAppeared ? `${item.credits || 20} Credits` : '—'}
                                                     </td>
                                                 </>
@@ -652,18 +635,18 @@ export default function LeaderboardPage() {
 
                                             {activeTab === 'subject' && (
                                                 <>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                         {item.internal}
                                                     </td>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--tx-muted)' }}>
                                                         {item.external}
                                                     </td>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center' }}>
                                                         <span style={{ fontWeight: 900, fontSize: '1.05rem', color: item.total >= 90 ? '#047857' : 'var(--tx-main)' }}>
                                                             {item.total}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                                                    <td className="lbTd" style={{ padding: '14px 18px', textAlign: 'center' }}>
                                                         {(() => {
                                                             const g = (item.grade || '').trim().toUpperCase();
                                                             const isHigh = g === 'O' || g === 'A+';
@@ -692,6 +675,91 @@ export default function LeaderboardPage() {
                     </div>
                 </div>
             </div>
+
+            <style jsx>{`
+                @media (max-width: 640px) {
+                    .lbPage {
+                        padding: 14px 12px !important;
+                    }
+                    .lbHeader {
+                        margin-bottom: 14px !important;
+                        gap: 10px !important;
+                    }
+                    .lbTitle {
+                        font-size: 1.25rem !important;
+                    }
+                    .lbStanding {
+                        padding: 12px 14px !important;
+                        gap: 10px !important;
+                        margin-bottom: 12px !important;
+                    }
+                    .lbStandingAvatar {
+                        width: 36px !important;
+                        height: 36px !important;
+                        font-size: 1rem !important;
+                    }
+                    .lbStandingStats {
+                        width: 100% !important;
+                        justify-content: space-between !important;
+                        gap: 8px !important;
+                    }
+                    .lbStandingValue {
+                        font-size: 1.1rem !important;
+                    }
+                    .lbPodium {
+                        grid-template-columns: repeat(2, 1fr) !important;
+                        gap: 8px !important;
+                        margin-bottom: 12px !important;
+                    }
+                    .lbPodiumCard {
+                        padding: 10px 12px !important;
+                    }
+                    .lbMedal {
+                        width: 30px !important;
+                        height: 30px !important;
+                        font-size: 1.3rem !important;
+                    }
+                    .lbRankingHeader {
+                        padding: 10px 14px !important;
+                    }
+                    .lbTabs {
+                        margin-bottom: 10px !important;
+                        gap: 2px !important;
+                    }
+                    :global(.lbTabBtn) {
+                        padding: 8px 10px !important;
+                        font-size: 0.82rem !important;
+                    }
+                    .lbSubFilters {
+                        margin-bottom: 10px !important;
+                        gap: 8px !important;
+                    }
+                    .lbSemRow {
+                        width: 100% !important;
+                    }
+                    :global(.lbPillBtn) {
+                        min-height: 34px !important;
+                        padding: 5px 9px !important;
+                        font-size: 0.74rem !important;
+                    }
+                    :global(.lbEntryPills) {
+                        width: 100% !important;
+                        justify-content: space-between !important;
+                    }
+                    :global(.lbEntryPills > button) {
+                        flex: 1 1 0 !important;
+                        justify-content: center !important;
+                    }
+                    :global(.lbTh) {
+                        padding: 8px 10px !important;
+                        font-size: 0.68rem !important;
+                    }
+                    :global(.lbTd) {
+                        padding: 8px 10px !important;
+                        font-size: 0.78rem !important;
+                    }
+                }
+            `}</style>
         </AuthGuard>
     );
 }

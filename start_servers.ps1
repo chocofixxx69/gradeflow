@@ -1,5 +1,5 @@
 # Start both servers
-$projectDir = "C:\Users\datas\Downloads\vtu-intern-dev-main\vtu-intern-dev-main"
+$projectDir = $PSScriptRoot
 
 # Activate venv and start backend
 Write-Host "Starting Backend Server on port 8000..." -ForegroundColor Cyan

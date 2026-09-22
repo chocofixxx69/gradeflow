@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import styles from './AcademicProgressionNavigator.module.css';
 
 /**
  * Academic Progression & Semester Navigator component
@@ -84,59 +85,20 @@ export default function AcademicProgressionNavigator({
     if (progressionData.length === 0) return null;
 
     return (
-        <section style={{
-            background: 'var(--surface-low, #FFFBF5)',
-            border: '1px solid var(--border)',
-            borderRadius: '16px',
-            padding: '16px 20px',
-            marginBottom: '24px',
-            width: '100%',
-            boxSizing: 'border-box'
-        }}>
-            <div style={{
-                display: 'flex',
-                justify: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '10px',
-                marginBottom: '14px'
-            }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '15px',
-                    fontWeight: 800,
-                    color: 'var(--tx-main)'
-                }}>
-                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>show_chart</span>
-                    Academic Progression &amp; Semester Navigator
+        <section className={styles.container} aria-label="Academic Progression and Semester Navigator">
+            <div className={styles.header}>
+                <div className={styles.titleGroup}>
+                    <span className={`material-icons-round ${styles.titleIcon}`}>show_chart</span>
+                    <span>Academic Progression &amp; Semester Navigator</span>
                 </div>
                 {trajectoryBadge && (
-                    <div style={{
-                        background: 'rgba(16, 185, 129, 0.08)',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        color: '#059669',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        padding: '3px 10px',
-                        borderRadius: '20px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                    }}>
+                    <div className={styles.trajectoryBadge}>
                         {trajectoryBadge}
                     </div>
                 )}
             </div>
 
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(auto-fit, minmax(min(140px, 100%), 1fr))`,
-                gap: '12px',
-                width: '100%',
-                boxSizing: 'border-box'
-            }}>
+            <div className={styles.rail}>
                 {progressionData.map(item => {
                     const hasBacklog = item.backlogs > 0;
                     const isSelected = activeSemester === item.semStr;
@@ -146,85 +108,44 @@ export default function AcademicProgressionNavigator({
                             key={item.semStr}
                             type="button"
                             onClick={() => onSelectSemester(item.semStr)}
-                            style={{
-                                background: isSelected
-                                    ? 'rgba(59, 130, 246, 0.06)'
-                                    : hasBacklog
-                                        ? 'rgba(239, 68, 68, 0.04)'
-                                        : 'var(--surface, #FFFFFF)',
-                                border: isSelected
-                                    ? '2px solid var(--primary)'
-                                    : hasBacklog
-                                        ? '1px solid rgba(239, 68, 68, 0.35)'
-                                        : '1px solid var(--border)',
-                                borderRadius: '10px',
-                                padding: '10px 12px',
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '6px',
-                                boxSizing: 'border-box',
-                                outline: 'none'
-                            }}
+                            className={`${styles.card} ${isSelected ? styles.cardActive : ''} ${hasBacklog ? styles.cardBacklog : ''}`}
+                            title={`Jump to Semester ${item.semNum}`}
                         >
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                fontSize: '11px',
-                                fontWeight: 800
-                            }}>
-                                <span style={{ color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            <div className={styles.cardHeader}>
+                                <span className={styles.semLabel}>
                                     SEM {item.semNum}
                                 </span>
-                                <span style={{
-                                    fontSize: '10.5px',
-                                    fontWeight: 700,
-                                    color: item.deltaType === 'positive' ? '#059669' : item.deltaType === 'negative' ? '#DC2626' : 'var(--tx-dim)'
-                                }}>
+                                <span className={`${styles.delta} ${
+                                    item.deltaType === 'positive'
+                                        ? styles.deltaPositive
+                                        : item.deltaType === 'negative'
+                                            ? styles.deltaNegative
+                                            : styles.deltaNeutral
+                                }`}>
                                     {item.delta}
                                 </span>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                                <span style={{
-                                    fontSize: '22px',
-                                    fontWeight: 900,
-                                    color: hasBacklog ? '#DC2626' : 'var(--tx-main)',
-                                    lineHeight: 1.1
-                                }}>
+                            <div className={styles.sgpaRow}>
+                                <span className={`${styles.sgpaValue} ${hasBacklog ? styles.sgpaValueBacklog : ''}`}>
                                     {item.sgpa > 0 ? item.sgpa.toFixed(2) : '0.00'}
                                 </span>
-                                <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--tx-dim)' }}>
+                                <span className={styles.sgpaLabel}>
                                     SGPA
                                 </span>
                             </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px', fontSize: '10px' }}>
+                            <div className={styles.footerRow}>
                                 {hasBacklog ? (
-                                    <span style={{
-                                        background: 'rgba(239, 68, 68, 0.12)',
-                                        color: '#DC2626',
-                                        padding: '1px 6px',
-                                        borderRadius: '4px',
-                                        fontWeight: 800
-                                    }}>
+                                    <span className={styles.statusPillBacklog}>
                                         {item.backlogs} Backlog
                                     </span>
                                 ) : (
-                                    <span style={{
-                                        background: 'rgba(16, 185, 129, 0.12)',
-                                        color: '#059669',
-                                        padding: '1px 6px',
-                                        borderRadius: '4px',
-                                        fontWeight: 800
-                                    }}>
+                                    <span className={styles.statusPillClear}>
                                         All Clear
                                     </span>
                                 )}
-                                <span style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>
+                                <span className={styles.creditsText}>
                                     {item.earnedCredits}/{item.totalCredits || item.earnedCredits} Cr
                                 </span>
                             </div>

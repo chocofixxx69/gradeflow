@@ -1404,3 +1404,358 @@ html.gf-sidebar-is-collapsed .gf-sidebar-footer {
   }
 }
 
+/* ── RESPONSIVE AUTHENTICATION PAGES (Expert Mobile & Desktop UX) ── */
+.gf-auth-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 4vw, 48px) clamp(16px, 4vw, 24px);
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(23, 75, 77, 0.08) 0%, transparent 70%);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.gf-auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid rgba(209, 216, 218, 0.85);
+  border-radius: 20px;
+  box-shadow: 0 10px 32px -4px rgba(10, 24, 28, 0.07), 0 2px 8px -1px rgba(10, 24, 28, 0.04);
+  padding: clamp(26px, 6vw, 38px) clamp(20px, 5vw, 32px);
+  box-sizing: border-box;
+  margin: auto 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.gf-auth-card-lg {
+  max-width: 520px;
+}
+
+.gf-auth-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx-muted);
+  margin-bottom: 22px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transition-fast), transform var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gf-auth-back:hover {
+  color: var(--tx-main);
+  transform: translateX(-2px);
+}
+
+.gf-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.gf-auth-brand-logo {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--primary) 0%, #0e3032 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-weight: 900;
+  font-size: 16px;
+  box-shadow: 0 2px 8px rgba(23, 75, 77, 0.25);
+  flex-shrink: 0;
+}
+
+.gf-auth-brand-title {
+  font-weight: 800;
+  font-size: 16.5px;
+  color: var(--tx-main);
+  letter-spacing: -0.02em;
+}
+
+.gf-auth-brand-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--primary);
+  background: rgba(23, 75, 77, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-left: 2px;
+  border: none;
+}
+
+.gf-auth-heading {
+  font-size: clamp(22px, 5.5vw, 26px);
+  font-weight: 800;
+  color: var(--tx-main);
+  letter-spacing: -0.03em;
+  margin: 0 0 6px 0;
+  line-height: 1.25;
+}
+
+.gf-auth-subtext {
+  font-size: 13.5px;
+  color: var(--tx-muted);
+  line-height: 1.55;
+  margin: 0 0 22px 0;
+}
+
+.gf-auth-pwd-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  margin-bottom: 20px;
+  gap: 8px;
+}
+
+.gf-auth-forgot-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 4px;
+  margin: -6px -4px;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  text-decoration: none;
+}
+
+.gf-auth-forgot-btn:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.gf-auth-issue-btn {
+  background: none;
+  border: none;
+  color: var(--tx-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.gf-auth-issue-btn:hover {
+  background: var(--surface-low);
+  color: var(--tx-main);
+}
+
+.gf-auth-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 20px 0;
+  width: 100%;
+}
+
+.gf-auth-footer-link {
+  text-align: center;
+  font-size: 13px;
+  color: var(--tx-muted);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.gf-auth-footer-link a {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: none;
+  margin-left: 4px;
+}
+
+.gf-auth-footer-link a:hover {
+  text-decoration: underline;
+}
+
+/* Chrome/Edge/Safari Autofill Styling — eliminate the blue background */
+.gf-auth-card input:-webkit-autofill,
+.gf-auth-card input:-webkit-autofill:hover,
+.gf-auth-card input:-webkit-autofill:focus,
+.gf-auth-card input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+  -webkit-text-fill-color: var(--tx-main) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Mobile Media Queries for Auth */
+@media (max-width: 640px) {
+  .gf-auth-page {
+    min-height: 100dvh;
+    padding: 20px 16px;
+    justify-content: center;
+  }
+
+  .gf-auth-card {
+    max-width: 100%;
+    border-radius: 18px;
+    padding: 24px 18px;
+    box-shadow: 0 4px 20px -2px rgba(10, 24, 28, 0.08);
+  }
+
+  .gf-auth-back {
+    margin-bottom: 16px;
+    font-size: 12.5px;
+  }
+
+  .gf-auth-brand {
+    margin-bottom: 16px;
+  }
+
+  .gf-auth-heading {
+    font-size: 22px;
+  }
+
+  .gf-auth-subtext {
+    font-size: 13px;
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+
+  .gf-auth-pwd-row {
+    margin-bottom: 18px;
+  }
+}
+
+@media (max-width: 380px) {
+  .gf-auth-page {
+    padding: 16px 12px;
+  }
+
+  .gf-auth-card {
+    padding: 20px 14px;
+    border-radius: 14px;
+  }
+
+  .gf-auth-heading {
+    font-size: 20px;
+  }
+}
+
+/* ── RESPONSIVE GLOBAL FOOTER ── */
+.gf-footer {
+  text-align: center;
+  padding: 32px 20px 28px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  margin-top: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gf-footer-public {
+  background: transparent;
+  border-top: 1px solid rgba(209, 216, 218, 0.5);
+}
+
+.gf-footer-container {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.gf-footer-copy {
+  font-size: 12.5px;
+  color: var(--tx-muted);
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.gf-dev-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  padding: 7px 18px;
+  background: var(--surface-low);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+
+.gf-dev-label {
+  font-size: 11px;
+  color: var(--tx-dim);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.gf-dev-link {
+  font-size: 12.5px;
+  color: var(--tx-main);
+  font-weight: 800;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.gf-dev-link:hover {
+  color: var(--primary);
+}
+
+.gf-dev-amp {
+  color: var(--primary);
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.gf-footer-dept {
+  font-size: 12px;
+  color: var(--tx-muted);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .gf-footer {
+    padding: 22px 14px 26px;
+  }
+
+  .gf-footer-copy {
+    font-size: 11.5px;
+  }
+
+  .gf-dev-badge {
+    padding: 6px 12px;
+    border-radius: 12px;
+    gap: 4px 8px;
+  }
+
+  .gf-dev-label {
+    font-size: 10px;
+  }
+
+  .gf-dev-link {
+    font-size: 11.5px;
+  }
+
+  .gf-footer-dept {
+    font-size: 11px;
+  }
+}
+
+

@@ -54,27 +54,36 @@ function StudentDashboardView({
     }, [showBacklogModal]);
 
     const GradeBadge = ({ grade }) => {
-        const tone = getGradeBadgeTone(grade);
-        const displayText = grade || '—';
+        const g = (grade || '').trim().toUpperCase();
+        let bg = '#586C6D'; // var(--tx-muted)
+        if (g === 'O' || g === 'S') bg = '#166534'; // var(--success)
+        else if (g === 'A+' || g === 'A') bg = '#174B4D'; // var(--primary)
+        else if (g === 'B+' || g === 'B') bg = '#3A6A6D'; // var(--secondary)
+        else if (g === 'C') bg = '#B45309'; // var(--warm-highlight)
+        else if (g === 'P') bg = '#789397'; // var(--accent)
+        else if (g === 'F' || g === 'FAIL' || g === 'AB' || g === 'NP' || g === 'ABSENT') bg = '#B91C1C'; // var(--destructive)
+
         return (
-            <Badge
-                tone={tone}
-                size="sm"
+            <span
                 style={{
-                    fontWeight: 900,
-                    minWidth: '32px',
-                    height: '24px',
-                    padding: '0 8px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    borderRadius: 'var(--radius-full)',
-                    fontSize: '12px',
-                    letterSpacing: '0.04em'
+                    minWidth: '28px',
+                    height: '22px',
+                    padding: '0 6px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#FFFFFF',
+                    backgroundColor: bg,
+                    lineHeight: 1,
+                    letterSpacing: '0.02em',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.12)'
                 }}
             >
-                {displayText}
-            </Badge>
+                {grade || '—'}
+            </span>
         );
     };
 
@@ -95,6 +104,7 @@ function StudentDashboardView({
 
     const latestSem = sortedSemesters.length > 0 ? sortedSemesters[0][0] : null;
     const [expandedSemesters, setExpandedSemesters] = useState({});
+    const [viewMode, setViewMode] = useState('cards');
 
     const isExpanded = (sem) => {
         if (expandedSemesters[sem] !== undefined) {
@@ -130,16 +140,18 @@ function StudentDashboardView({
             <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
                 <section className={styles.section} aria-labelledby="student-profile-title">
                     <div className={styles.profileHeader}>
-                        <div className={styles.avatar} aria-hidden="true">
-                            {(student?.name?.[0] || student?.usn?.[0] || 'S').toUpperCase()}
-                        </div>
-                        <div>
-                            <h1 id="student-profile-title" className={styles.sectionTitle}>
-                                {student?.name && student.name !== student.usn ? student.name : 'Academic Dashboard'}
-                            </h1>
-                            <p className={styles.meta}>
-                                {student?.usn || 'USN'} · {student?.branch || 'General'} · Scheme {student?.scheme || '2022'}
-                            </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                            <div className={styles.avatar} aria-hidden="true">
+                                {(student?.name?.[0] || student?.usn?.[0] || 'S').toUpperCase()}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                                <h1 id="student-profile-title" className={styles.sectionTitle} style={{ margin: 0, fontSize: '18px' }}>
+                                    {student?.name && student.name !== student.usn ? student.name : 'Academic Dashboard'}
+                                </h1>
+                                <p className={styles.meta} style={{ marginTop: '2px', fontSize: '12px' }}>
+                                    {student?.usn || 'USN'} · {student?.branch || 'General'} · Scheme {student?.scheme || '2022'}
+                                </p>
+                            </div>
                         </div>
                         <div className={styles.profileActions}>
                             <Button variant="primary" iconStart="emoji_events" onClick={() => router.push('/leaderboard')} density="compact">
@@ -231,278 +243,233 @@ function StudentDashboardView({
                 {semesterCount > 0 ? (
                     <section className={styles.section} aria-labelledby="student-records-title">
                         <div className={styles.sectionHeader}>
-                            <div>
-                                <h2 id="student-records-title" className={styles.sectionTitle}>Semester Records</h2>
-                                <p className={styles.meta}>Click any semester to expand or collapse details</p>
+                            <div className={styles.resultsTitleGroup}>
+                                <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--primary)' }}>menu_book</span>
+                                <h2 id="student-records-title" className={styles.sectionTitle} style={{ margin: 0 }}>Semester Results</h2>
+                                <span className={styles.resultsCountBadge}>
+                                    {sortedSemesters.length} {sortedSemesters.length === 1 ? 'semester' : 'semesters'}
+                                </span>
                             </div>
                             <div className={styles.chipRow}>
-                                <Button
-                                    variant="ghost"
-                                    density="compact"
-                                    iconStart={allExpanded ? 'unfold_less' : 'unfold_more'}
-                                    onClick={toggleAll}
-                                >
-                                    {allExpanded ? 'Collapse All' : 'Expand All'}
-                                </Button>
-                                {sortedSemesters.map(([sem]) => (
-                                    <Badge key={sem} tone="info" size="sm">
-                                        S{sem}: {(sgpas[sem] || 0).toFixed(2)}
-                                    </Badge>
-                                ))}
+                                <div className={styles.viewModeToggle}>
+                                    <button
+                                        type="button"
+                                        className={`${styles.viewModeBtn} ${viewMode === 'cards' ? styles.viewModeBtnActive : ''}`}
+                                        onClick={() => setViewMode('cards')}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>view_agenda</span>
+                                        Mark Sheets
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.viewModeBtn} ${viewMode === 'table' ? styles.viewModeBtnActive : ''}`}
+                                        onClick={() => setViewMode('table')}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>table_chart</span>
+                                        Summary Table
+                                    </button>
+                                </div>
+                                {viewMode === 'cards' && (
+                                    <Button
+                                        variant="ghost"
+                                        density="compact"
+                                        iconStart={allExpanded ? 'unfold_less' : 'unfold_more'}
+                                        onClick={toggleAll}
+                                    >
+                                        {allExpanded ? 'Collapse All' : 'Expand All'}
+                                    </Button>
+                                )}
                             </div>
                         </div>
 
-                        <div className={styles.tableWrap}>
-                            <table className={styles.table}>
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Semester</th>
-                                        <th scope="col" className={styles.center}>SGPA</th>
-                                        <th scope="col" className={styles.center}>Credits Attempted</th>
-                                        <th scope="col" className={styles.center}>Credits Earned</th>
-                                        <th scope="col" className={styles.center}>Grade Points</th>
-                                        <th scope="col" className={styles.center}>Backlogs</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sortedSemesters.map(([sem]) => {
-                                        const stat = semStats[sem] || { sgpa: 0, totalCredits: 0, earnedCredits: 0, gradePoints: 0, backlogs: 0 };
-                                        return (
-                                            <tr key={sem}>
-                                                <th scope="row"><strong>Semester {sem}</strong></th>
-                                                <td className={styles.center}><strong>{stat.sgpa.toFixed(2)}</strong></td>
-                                                <td className={styles.center}>{stat.totalCredits}</td>
-                                                <td className={styles.center}>{stat.earnedCredits}</td>
-                                                <td className={styles.center}>{stat.gradePoints.toFixed(2)}</td>
-                                                <td className={styles.center}>
-                                                    <Badge tone={stat.backlogs > 0 ? 'danger' : 'success'} size="sm">
-                                                        {stat.backlogs === 0 ? 'Clear' : stat.backlogs}
-                                                    </Badge>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                        {viewMode === 'table' ? (
+                            <div className={styles.tableWrap} style={{ display: 'block' }}>
+                                <table className={styles.table}>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Semester</th>
+                                            <th scope="col" className={styles.center}>SGPA</th>
+                                            <th scope="col" className={styles.center}>Credits Attempted</th>
+                                            <th scope="col" className={styles.center}>Credits Earned</th>
+                                            <th scope="col" className={styles.center}>Grade Points</th>
+                                            <th scope="col" className={styles.center}>Backlogs</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sortedSemesters.map(([sem]) => {
+                                            const stat = semStats[sem] || { sgpa: 0, totalCredits: 0, earnedCredits: 0, gradePoints: 0, backlogs: 0 };
+                                            return (
+                                                <tr key={sem}>
+                                                    <th scope="row"><strong>Semester {sem}</strong></th>
+                                                    <td className={styles.center}><strong>{stat.sgpa.toFixed(2)}</strong></td>
+                                                    <td className={styles.center}>{stat.totalCredits}</td>
+                                                    <td className={styles.center}>{stat.earnedCredits}</td>
+                                                    <td className={styles.center}>{stat.gradePoints.toFixed(2)}</td>
+                                                    <td className={styles.center}>
+                                                        <Badge tone={stat.backlogs > 0 ? 'danger' : 'success'} size="sm">
+                                                            {stat.backlogs === 0 ? 'Clear' : stat.backlogs}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className={styles.records}>
+                                {sortedSemesters.map(([sem, subjects]) => {
+                                    const open = isExpanded(sem);
+                                    const stat = semStats[sem] || {};
+                                    const semSgpa = Number(sgpas[sem] || stat.sgpa || 0);
+                                    const semBacklogs = subjects.filter(s => s.isFailed || isFailedSubject(s));
+                                    const backlogCount = stat.backlogs != null ? stat.backlogs : semBacklogs.length;
+                                    const hasBacklog = backlogCount > 0;
+                                    const clearedCount = subjects.filter(s => s.isPassed && !s.isFailed && !isFailedSubject(s)).length;
 
-                        <div className={styles.mobileSubjectList}>
-                            {sortedSemesters.map(([sem]) => {
-                                const stat = semStats[sem] || { sgpa: 0, totalCredits: 0, earnedCredits: 0, gradePoints: 0, backlogs: 0 };
-                                return (
-                                    <div key={sem} className={styles.mobileSubjectCard}>
-                                        <div className={styles.mobileSubjectHeader}>
-                                            <strong>Semester {sem}</strong>
-                                            <Badge tone={stat.backlogs > 0 ? 'danger' : 'success'} size="sm">
-                                                {stat.backlogs === 0 ? 'Clear' : `${stat.backlogs} Backlog${stat.backlogs > 1 ? 's' : ''}`}
-                                            </Badge>
-                                        </div>
-                                        <div className={styles.mobileSubjectStats}>
-                                            <div className={styles.mobileStatItem}>
-                                                <span className={styles.statMiniLabel}>SGPA:</span>
-                                                <strong>{stat.sgpa.toFixed(2)}</strong>
-                                            </div>
-                                            <div className={styles.mobileStatItem}>
-                                                <span className={styles.statMiniLabel}>Attempted:</span>
-                                                <span>{stat.totalCredits}</span>
-                                            </div>
-                                            <div className={styles.mobileStatItem}>
-                                                <span className={styles.statMiniLabel}>Earned:</span>
-                                                <span>{stat.earnedCredits}</span>
-                                            </div>
-                                            <div className={styles.mobileStatItem}>
-                                                <span className={styles.statMiniLabel}>GP:</span>
-                                                <span>{stat.gradePoints.toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className={styles.records}>
-                            {sortedSemesters.map(([sem, subjects]) => {
-                                const open = isExpanded(sem);
-                                const stat = semStats[sem] || {};
-                                const semSgpa = Number(sgpas[sem] || stat.sgpa || 0);
-                                const semBacklogs = subjects.filter(s => s.isFailed || isFailedSubject(s));
-                                const backlogCount = stat.backlogs != null ? stat.backlogs : semBacklogs.length;
-                                const hasBacklog = backlogCount > 0;
-                                const backlogCodes = semBacklogs.map(b => b.subjectCode || b.subject_code || b.code).filter(Boolean).join(', ');
-
-                                return (
-                                    <article key={sem} id={`student-sem-card-${sem}`} className={styles.semesterCard}>
-                                        <div
-                                            className={styles.semesterHeader}
-                                            onClick={() => toggleSemester(sem)}
-                                            style={{
-                                                cursor: 'pointer',
-                                                userSelect: 'none',
-                                            }}
-                                            role="button"
-                                            tabIndex={0}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' || e.key === ' ') {
-                                                    e.preventDefault();
-                                                    toggleSemester(sem);
-                                                }
-                                            }}
-                                            aria-expanded={open}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div style={{
-                                                    width: '32px',
-                                                    height: '32px',
-                                                    borderRadius: 'var(--radius-3)',
-                                                    background: open ? 'var(--primary)' : 'var(--surface)',
-                                                    border: open ? '1px solid var(--primary)' : '1px solid var(--border)',
-                                                    color: open ? '#FFFFFF' : 'var(--tx-muted)',
-                                                    fontWeight: 900,
-                                                    fontSize: '14px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    transition: 'all var(--transition-fast)'
-                                                }}>
-                                                    {sem}
-                                                </div>
-                                                <div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <h3 className={styles.semesterTitle} style={{ margin: 0 }}>Semester {sem}</h3>
-                                                        {hasBacklog && (
-                                                            <Badge tone="danger" size="sm">
-                                                                {backlogCount} {backlogCount === 1 ? 'Backlog' : 'Backlogs'}
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                    <p className={styles.meta} style={{ margin: 0 }}>
-                                                        {subjects.length} Subjects Listed{hasBacklog && backlogCodes ? ` · ${backlogCodes}` : ''}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className={styles.semesterActions}>
-                                                <Badge tone="info" size="sm">SGPA: {semSgpa > 0 ? semSgpa.toFixed(2) : (sgpas[sem] ? Number(sgpas[sem]).toFixed(2) : '0.00')}</Badge>
-                                                <Button
-                                                    variant="secondary"
-                                                    density="compact"
-                                                    iconStart="download"
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        try {
-                                                            const { generateResultPDF } = await import('../../lib/generatePDF');
-                                                            await generateResultPDF({
-                                                                studentName: student.name || 'Student',
-                                                                usn: student.usn || 'N/A',
-                                                                branch: student.branch || '',
-                                                                scheme: student.scheme || '2022',
-                                                                semesterMarks: { [sem]: subjects },
-                                                                cgpa: semSgpa,
-                                                                isLateralEntry: isLateralEntryUSN(student.usn || ''),
-                                                                // "5th Sem Result - 2AB23CS043.pdf"
-                                                                fileName: resultFileName({ semester: sem, usn: student.usn })
-                                                            });
-                                                        } catch (err) {
-                                                            setPdfMsg('Error generating semester PDF: ' + err.message);
-                                                        }
-                                                    }}
-                                                >
-                                                    Sem {sem} PDF
-                                                </Button>
-                                                <IconButton
-                                                    icon={open ? 'expand_less' : 'expand_more'}
-                                                    variant="ghost"
-                                                    density="compact"
-                                                    aria-label={open ? `Collapse Semester ${sem}` : `Expand Semester ${sem}`}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
+                                    return (
+                                        <article key={sem} id={`student-sem-card-${sem}`} className={`${styles.semesterCard} ${open ? styles.semesterCardOpen : ''}`}>
+                                            <div
+                                                className={styles.semesterHeader}
+                                                onClick={() => toggleSemester(sem)}
+                                                role="button"
+                                                tabIndex={0}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
                                                         toggleSemester(sem);
-                                                    }}
-                                                />
+                                                    }
+                                                }}
+                                                aria-expanded={open}
+                                            >
+                                                <div className={styles.semLeftGroup}>
+                                                    <div className={styles.semNumberBadge}>
+                                                        {sem}
+                                                    </div>
+                                                    <div className={styles.semInfo}>
+                                                        <div className={styles.semTitleRow}>
+                                                            <h3 className={styles.semTitle}>Semester {sem}</h3>
+                                                            {hasBacklog && (
+                                                                <span className={styles.semBacklogPill}>
+                                                                    {backlogCount} {backlogCount === 1 ? 'Backlog' : 'Backlogs'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className={styles.semSubtitle}>
+                                                            {subjects.length} subj · {clearedCount} cleared
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className={styles.semRightGroup}>
+                                                    <div className={styles.semSgpaBlock}>
+                                                        <span className={styles.semSgpaValue}>
+                                                            {semSgpa > 0 ? semSgpa.toFixed(2) : (sgpas[sem] ? Number(sgpas[sem]).toFixed(2) : '0.00')}
+                                                        </span>
+                                                        <span className={styles.semSgpaLabel}>SGPA</span>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        className={styles.semPdfBtn}
+                                                        title={`Download Semester ${sem} Marksheet PDF`}
+                                                        aria-label={`Download Semester ${sem} Marksheet PDF`}
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            try {
+                                                                const { generateResultPDF } = await import('../../lib/generatePDF');
+                                                                await generateResultPDF({
+                                                                    studentName: student.name || 'Student',
+                                                                    usn: student.usn || 'N/A',
+                                                                    branch: student.branch || '',
+                                                                    scheme: student.scheme || '2022',
+                                                                    semesterMarks: { [sem]: subjects },
+                                                                    cgpa: semSgpa,
+                                                                    isLateralEntry: isLateralEntryUSN(student.usn || ''),
+                                                                    fileName: resultFileName({ semester: sem, usn: student.usn })
+                                                                });
+                                                            } catch (err) {
+                                                                setPdfMsg('Error generating semester PDF: ' + err.message);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>download</span>
+                                                        <span className={styles.semPdfText}>Sem {sem}</span>
+                                                    </button>
+
+                                                    <div className={`${styles.semChevron} ${open ? styles.semChevronOpen : ''}`}>
+                                                        <span className="material-icons-round" style={{ fontSize: '22px' }}>
+                                                            {open ? 'expand_less' : 'expand_more'}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        {open && (
-                                            <div className="gf-fade-in">
-                                                <Divider />
-                                                <div className={styles.tableWrap}>
-                                                    <table className={`${styles.table} ${styles.subjectTable}`}>
-                                                        <thead>
-                                                            <tr>
-                                                                <th scope="col">Code</th>
-                                                                <th scope="col">Subject</th>
-                                                                <th scope="col" className={styles.center}>CR</th>
-                                                                <th scope="col" className={styles.center}>INT</th>
-                                                                <th scope="col" className={styles.center}>EXT</th>
-                                                                <th scope="col" className={styles.center}>Total</th>
-                                                                <th scope="col" className={styles.center}>Grade</th>
-                                                                <th scope="col" className={styles.center}>GP</th>
-                                                                <th scope="col" className={styles.center}>Result</th>
-                                                                <th scope="col">Session</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {subjects.map((m, idx) => {
-                                                                const isPass = m.isPassed && !m.isFailed && !isFailedSubject(m);
-                                                                return (
-                                                                    <tr key={m.id || idx}>
-                                                                        <th scope="row" className={styles.code}>{m.subjectCode || m.subject_code || m.code || '—'}</th>
-                                                                        <td>{m.subjectName || m.subject_name || m.name || 'Unknown'}</td>
-                                                                        <td className={styles.center}><strong>{m.credits}</strong></td>
-                                                                        <td className={styles.center}>{m.internalMarks ?? m.cie_marks ?? m.internal ?? '—'}</td>
-                                                                        <td className={styles.center}>{m.seeMarks ?? m.see_marks ?? m.external ?? '—'}</td>
-                                                                        <td className={styles.center}><strong>{m.totalMarks ?? m.total_marks ?? m.total ?? '—'}</strong></td>
-                                                                        <td className={styles.center}><GradeBadge grade={m.grade} /></td>
-                                                                        <td className={styles.center}><strong>{m.gpFormatted || (m.gradePoint != null ? m.gradePoint.toFixed(2) : '0.00')}</strong></td>
-                                                                        <td className={styles.center}>
-                                                                            <Badge tone={isPass ? 'success' : 'danger'} size="sm">
-                                                                                {isPass ? 'Pass' : 'Fail'}
-                                                                            </Badge>
-                                                                        </td>
-                                                                        <td className={styles.nowrap}>{m.announcedDate || m.announced_date || m.exam_date || 'Regular'}</td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-
-                                                <div className={styles.mobileSubjectList}>
-                                                    {subjects.map((m, idx) => {
-                                                        return (
-                                                            <div key={m.id || idx} className={styles.mobileSubjectCard}>
-                                                                <div className={styles.mobileSubjectHeader}>
-                                                                    <div className={styles.mobileSubjectTitleGroup}>
-                                                                        <span className={styles.code}>{m.subjectCode || m.subject_code || m.code || '—'}</span>
-                                                                        <span className={styles.subjectName}>{m.subjectName || m.subject_name || m.name || 'Unknown'}</span>
-                                                                    </div>
-                                                                    <GradeBadge grade={m.grade} />
-                                                                </div>
-                                                                <div className={styles.mobileSubjectStats}>
-                                                                    <div className={styles.mobileStatItem}>
-                                                                        <span className={styles.statMiniLabel}>Credits:</span>
-                                                                        <span>{m.credits}</span>
-                                                                    </div>
-                                                                    <div className={styles.mobileStatItem}>
-                                                                        <span className={styles.statMiniLabel}>CIE:</span>
-                                                                        <span>{m.internalMarks ?? m.cie_marks ?? m.internal ?? '—'}</span>
-                                                                    </div>
-                                                                    <div className={styles.mobileStatItem}>
-                                                                        <span className={styles.statMiniLabel}>SEE:</span>
-                                                                        <span>{m.seeMarks ?? m.see_marks ?? m.external ?? '—'}</span>
-                                                                    </div>
-                                                                    <div className={styles.mobileStatItem}>
-                                                                        <span className={styles.statMiniLabel}>Total:</span>
-                                                                        <strong>{m.totalMarks ?? m.total_marks ?? m.total ?? '—'}</strong>
-                                                                    </div>
-                                                                    <div className={styles.mobileStatItem}>
-                                                                        <span className={styles.statMiniLabel}>GP:</span>
-                                                                        <strong>{m.gpFormatted || (m.gradePoint != null ? m.gradePoint.toFixed(2) : '0.00')}</strong>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
+                                            {open && (
+                                                <div className="gf-fade-in">
+                                                    <div className={styles.tableWrap}>
+                                                        <table className={`${styles.table} ${styles.subjectTable}`}>
+                                                            <thead>
+                                                                <tr>
+                                                                    <th scope="col">Code</th>
+                                                                    <th scope="col">Subject</th>
+                                                                    <th scope="col" className={styles.center}>INT</th>
+                                                                    <th scope="col" className={styles.center}>EXT</th>
+                                                                    <th scope="col" className={styles.center}>Total</th>
+                                                                    <th scope="col" className={styles.center}>Grade</th>
+                                                                    <th scope="col" className={styles.center}>GP</th>
+                                                                    <th scope="col" className={styles.center}>CR</th>
+                                                                    <th scope="col" className={styles.center}>Result</th>
+                                                                    <th scope="col">Session</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {subjects.map((m, idx) => {
+                                                                    const isPass = m.isPassed && !m.isFailed && !isFailedSubject(m);
+                                                                    return (
+                                                                        <tr key={m.id || idx}>
+                                                                            <th scope="row" className={styles.code}>
+                                                                                {m.subjectCode || m.subject_code || m.code || '—'}
+                                                                            </th>
+                                                                            <td className={styles.subjectCell} title={m.subjectName || m.subject_name || m.name || 'Unknown'}>
+                                                                                {m.subjectName || m.subject_name || m.name || 'Unknown'}
+                                                                            </td>
+                                                                            <td className={styles.center} style={{ color: 'var(--tx-muted)' }}>
+                                                                                {m.internalMarks ?? m.cie_marks ?? m.internal ?? '—'}
+                                                                            </td>
+                                                                            <td className={styles.center} style={{ color: 'var(--tx-muted)' }}>
+                                                                                {m.seeMarks ?? m.see_marks ?? m.external ?? '—'}
+                                                                            </td>
+                                                                            <td className={styles.center}>
+                                                                                <strong style={{ color: 'var(--tx-main)', fontWeight: 800 }}>
+                                                                                    {m.totalMarks ?? m.total_marks ?? m.total ?? '—'}
+                                                                                </strong>
+                                                                            </td>
+                                                                            <td className={styles.center}>
+                                                                                <GradeBadge grade={m.grade} />
+                                                                            </td>
+                                                                            <td className={styles.center}>
+                                                                                <strong style={{ color: 'var(--tx-main)' }}>
+                                                                                    {m.gpFormatted || (m.gradePoint != null ? m.gradePoint.toFixed(2) : '0.00')}
+                                                                                </strong>
+                                                                            </td>
+                                                                            <td className={styles.center}>
+                                                                                <span style={{ color: 'var(--tx-muted)', fontWeight: 600 }}>{m.credits}</span>
+                                                                            </td>
+                                                                            <td className={styles.center}>
+                                                                                <Badge tone={isPass ? 'success' : 'danger'} size="sm">
+                                                                                    {isPass ? 'Pass' : 'Fail'}
+                                                                                </Badge>
+                                                                            </td>
+                                                                            <td className={styles.nowrap}>
+                                                                                {m.announcedDate || m.announced_date || m.exam_date || 'Regular'}
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
 
                                                 {student?.history?.[sem] && student.history[sem].length > 0 && (
                                                     <div className={styles.historyPanel}>
@@ -534,6 +501,7 @@ function StudentDashboardView({
                                 );
                             })}
                         </div>
+                    )}
                     </section>
                 ) : (
                     <EmptyState

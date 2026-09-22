@@ -196,6 +196,50 @@
   min-width: 180px;
 }
 
+.heroStudentBtn {
+  min-width: 200px;
+  height: 48px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  background: var(--primary) !important;
+  color: #FFFFFF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(23, 75, 77, 0.25) !important;
+  border: 1.5px solid var(--primary) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.heroStudentBtn:hover {
+  background: var(--primary-hover) !important;
+  box-shadow: 0 6px 22px rgba(23, 75, 77, 0.35) !important;
+  transform: translateY(-2px);
+}
+
+.heroFacultyBtn {
+  min-width: 200px;
+  height: 48px !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  background: #FFFFFF !important;
+  color: var(--primary) !important;
+  border: 2px solid var(--primary) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(23, 75, 77, 0.14) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.heroFacultyBtn:hover {
+  background: var(--primary) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 6px 22px rgba(23, 75, 77, 0.3) !important;
+  transform: translateY(-2px);
+}
+
+.heroFacultyBtn:active,
+.heroStudentBtn:active {
+  transform: translateY(0);
+}
+
 .heroQuickLink {
   display: inline-flex;
   align-items: center;

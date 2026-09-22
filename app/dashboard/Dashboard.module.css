@@ -22,8 +22,7 @@
 }
 
 .sectionHeader,
-.profileHeader,
-.semesterHeader {
+.profileHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -189,57 +188,265 @@
   margin-top: var(--space-5);
 }
 
-.semesterCard {
-  padding: var(--space-5);
-}
-
 .notice,
 .statCard,
 .statCardButton,
-.resultBar,
-.semesterCard {
+.resultBar {
   background: var(--surface-low);
   border: 1px solid var(--border);
   border-radius: var(--radius-4);
 }
 
-.subjectName {
-  color: var(--tx-main);
-  font-size: 13px;
-  font-weight: 600;
+.semesterCard {
+  background: var(--surface, #FFFFFF);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
-.semesterActions {
-  align-items: center;
+.semesterCard:hover {
+  border-color: var(--border-strong);
+}
+
+.semesterCardOpen {
+  border-color: var(--primary);
+  box-shadow: 0 4px 16px rgba(23, 75, 77, 0.08), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.semesterHeader {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
 }
 
+.semesterHeader:hover {
+  background: var(--surface-hover);
+}
+
+.semLeftGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.semNumberBadge {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: #FFFFFF;
+  font-weight: 800;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(23, 75, 77, 0.25);
+  flex-shrink: 0;
+}
+
+.semInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.semTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.semTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--tx-main);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.semSubtitle {
+  color: var(--tx-muted);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.semBacklogPill {
+  background: var(--destructive-bg, #FFEBEE);
+  color: var(--destructive, #B91C1C);
+  border: 1px solid var(--destructive-border, #FFCDD2);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.5;
+}
+
+.semRightGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.semSgpaBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 44px;
+}
+
+.semSgpaValue {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+.semSgpaLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tx-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 3px;
+  line-height: 1;
+}
+
+.semPdfBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-2, 8px);
+  border: 1px solid var(--border);
+  background: var(--surface, #FFFFFF);
+  color: var(--tx-main);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.semPdfBtn:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.semChevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--tx-dim);
+  transition: transform 0.2s ease, color 0.15s ease;
+}
+
+.semChevronOpen {
+  transform: rotate(180deg);
+}
+
+.semesterHeader:hover .semChevron {
+  color: var(--primary);
+}
+
+/* ─── Results Section Header ─────────────────────────────── */
+.resultsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.resultsTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resultsCountBadge {
+  background: var(--surface-low);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ─── Tables (compact ledger with horizontal swipe) ──────── */
 .tableWrap {
-  margin-top: var(--space-5);
+  margin-top: 0;
   overflow-x: auto;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
+  border-top: 1px solid var(--border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.tableWrap::-webkit-scrollbar {
+  height: 5px;
+}
+
+.tableWrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tableWrap::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+.tableWrap::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 .table {
   border-collapse: collapse;
-  min-width: 500px;
+  min-width: 600px;
   width: 100%;
 }
 
 .table th,
 .table td,
 .table tbody th {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
   color: var(--tx-main);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  padding: var(--space-3);
+  padding: 10px 12px;
   text-align: left;
   vertical-align: middle;
   background: transparent;
@@ -249,16 +456,22 @@
 
 .table thead th {
   color: var(--tx-dim);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  background: var(--surface-low, #F8FAFC);
+  border-bottom: 1px solid var(--border);
 }
-
 
 .table tr:last-child td,
 .table tr:last-child th {
   border-bottom: 0;
+}
+
+.table tr:hover td,
+.table tr:hover th {
+  background: var(--surface-hover);
 }
 
 .subjectTable {
@@ -270,15 +483,28 @@
 }
 
 .code {
+  color: var(--primary) !important;
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.subjectCell {
   color: var(--tx-main);
-  font-family: monospace;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 220px;
+  min-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nowrap {
   color: var(--tx-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -387,11 +613,15 @@
 .mobileSubjectTitleGroup {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .mobileSubjectStats {
   display: flex;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+  gap: var(--space-2) var(--space-4);
   font-size: 12px;
 }
 
@@ -472,35 +702,172 @@
 }
 
 @media (max-width: 640px) {
+  .page {
+    gap: var(--space-4);
+  }
+
+  .section,
+  .dangerZone {
+    padding: var(--space-4);
+  }
+
   .tableWrap {
-    display: none;
+    display: block !important;
   }
 
   .mobileSubjectList {
-    display: grid;
+    display: none !important;
+  }
+
+  .semesterHeader {
+    flex-direction: row !important;
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .semNumberBadge {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    border-radius: 9px;
+    font-size: 14px;
+  }
+
+  .semTitle {
+    font-size: 14px;
+  }
+
+  .semSubtitle {
+    font-size: 11px;
+    max-width: 150px;
+  }
+
+  .semRightGroup {
+    gap: 8px;
+  }
+
+  .semSgpaValue {
+    font-size: 18px;
+  }
+
+  .semPdfText {
+    display: none;
+  }
+
+  .semPdfBtn {
+    padding: 6px;
+    min-width: 32px;
+    min-height: 32px;
+    justify-content: center;
   }
 
   .resultBar {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-3);
-  }
-
-  .chipRow {
-    justify-content: flex-start;
+    padding: var(--space-4);
   }
 
   .profileHeader {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .avatar {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    font-size: 17px !important;
+    border-radius: 10px !important;
   }
 
   .profileActions {
     margin-left: 0;
     width: 100%;
-    flex-wrap: wrap;
+    display: flex;
+    gap: 8px;
   }
 
   .profileActions > * {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    height: 36px;
+    font-size: 12px;
   }
+
+  /* Stats grid: compact 2-column mobile ribbon */
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
+  }
+
+  .statCard,
+  .statCardButton {
+    padding: 8px 12px !important;
+    border-radius: 10px !important;
+    background: var(--surface, #FFFFFF) !important;
+    border: 1px solid var(--border) !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 56px;
+  }
+
+  .statLabel {
+    font-size: 9.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    color: var(--tx-dim) !important;
+    line-height: 1.2 !important;
+  }
+
+  .statValue {
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    margin-top: 2px !important;
+    line-height: 1.1 !important;
+  }
+
+  .sectionHeader {
+    flex-wrap: wrap;
+  }
+
+  .chipRow {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* ─── View mode toggle (Mark Sheets / Summary Table) ────────── */
+.viewModeToggle {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: 3px;
+  gap: 4px;
+}
+
+.viewModeBtn {
+  padding: 5px 12px;
+  border-radius: calc(var(--radius-2) - 2px);
+  border: none;
+  background: transparent;
+  color: var(--tx-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.viewModeBtnActive {
+  background: var(--primary);
+  color: #FFFFFF;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
 }

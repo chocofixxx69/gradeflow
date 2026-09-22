@@ -161,15 +161,18 @@ function StudentAuthContent() {
 
     const s = {
         page: {
-            minHeight: '100vh', background: 'var(--bg)',
+            minHeight: '100dvh', background: 'var(--bg)',
+            backgroundImage: 'radial-gradient(ellipse 90% 60% at 50% -10%, rgba(23, 75, 77, 0.08) 0%, transparent 70%)',
             display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', padding: 'var(--space-10) var(--page-px)',
+            justifyContent: 'center', padding: 'clamp(20px, 4vw, 48px) clamp(14px, 3vw, 24px)',
+            boxSizing: 'border-box',
         },
         card: {
             width: '100%', maxWidth: '440px',
             background: 'var(--surface)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-4)', padding: 'clamp(24px, 6vw, 48px)',
-            boxShadow: 'var(--shadow-base)',
+            borderRadius: '16px', padding: 'clamp(22px, 5vw, 36px)',
+            boxShadow: '0 4px 24px -2px rgba(10, 24, 28, 0.06), 0 2px 6px -1px rgba(10, 24, 28, 0.04)',
+            boxSizing: 'border-box',
         },
         backLink: {
             display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
