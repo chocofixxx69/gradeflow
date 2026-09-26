@@ -36,10 +36,12 @@ const DEFAULT_TIMETABLES = {
         { date: '21/05/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS456C', subjectName: 'UI/UX Design' }
     ],
     3: [
-        { date: '15/11/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS301', subjectName: 'Mathematics for Computer Science' },
-        { date: '15/11/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS302', subjectName: 'Digital Design & Computer Organization' },
-        { date: '16/11/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS303', subjectName: 'Operating Systems' },
-        { date: '16/11/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS304', subjectName: 'Data Structures and Applications' }
+        { date: '28/09/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS301', subjectName: 'Mathematics for Computer Science' },
+        { date: '28/09/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS302', subjectName: 'Digital Design and Computer Organization' },
+        { date: '29/09/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS303', subjectName: 'Operating Systems' },
+        { date: '29/09/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS304', subjectName: 'Data Structures and Applications' },
+        { date: '30/09/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS306A', subjectName: 'Object Oriented Programming with Java' },
+        { date: '30/09/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCSC307', subjectName: 'Social Connect and Responsibility' }
     ],
     1: [
         { date: '10/01/2026', time: '10:00 am to 11:00 am', subjectCode: 'BMATS101', subjectName: 'Mathematics-I for CSE Stream' },
@@ -87,17 +89,6 @@ const KNOWN_VTU_ACRONYMS = {
     'PROJECT PHASE I': 'PRJ-1'
 };
 
-function getSubjectShortName(name, code) {
-    if (!name) return code || '';
-    const cleanUpper = name.replace(/[^a-zA-Z0-9\s&]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
-    if (KNOWN_VTU_ACRONYMS[cleanUpper]) return KNOWN_VTU_ACRONYMS[cleanUpper];
-
-    const words = cleanUpper.split(/\s+/).filter(w => !['AND', 'OF', 'THE', 'FOR', 'TO', 'IN', 'WITH', 'BY', '&'].includes(w));
-    if (words.length > 1) {
-        return words.map(w => w[0]).join('').slice(0, 5);
-    }
-    return (words[0] || code || '').slice(0, 5);
-}
 
 export default function HallTicketsPage() {
     return (
@@ -174,7 +165,6 @@ function HallTicketsContent() {
                     const formatted = res.subjects.map(s => ({
                         code: s.code,
                         name: resolveFullSubjectName(s.code, s.name),
-                        shortName: getSubjectShortName(s.name, s.code),
                         credits: s.credits
                     }));
                     setCatalogSubjects(formatted);
@@ -192,7 +182,6 @@ function HallTicketsContent() {
                 }).map(s => ({
                     code: s.code,
                     name: resolveFullSubjectName(s.code, s.name),
-                    shortName: getSubjectShortName(s.name, s.code),
                     credits: s.credits
                 }));
                 setCatalogSubjects(filtered);
@@ -1174,9 +1163,9 @@ function HallTicketsContent() {
                         font-weight: bold !important;
                     }
                     .aitm-card-timetable-grid table td {
-                        padding: 7px 4px !important;
-                        font-size: 10px !important;
-                        line-height: 1.35 !important;
+                        padding: 5.5px 4px !important;
+                        font-size: 9.8px !important;
+                        line-height: 1.28 !important;
                         vertical-align: middle !important;
                         border-color: #000000 !important;
                     }

@@ -159,12 +159,14 @@ export default function HallTicketCard({
                             <tbody>
                                 {timetable.map((row, idx) => {
                                     const fullName = resolveFullSubjectName(row.subjectCode, row.subjectName);
+                                    const rowPadY = timetable.length >= 6 ? '5.5px' : timetable.length === 5 ? '6.5px' : '8px';
+                                    const fontSz = timetable.length >= 6 ? '10px' : '10.5px';
                                     return (
                                         <tr key={idx} style={{ borderBottom: idx < timetable.length - 1 ? '1px solid #000000' : 'none' }}>
-                                            <td style={{ padding: '8px 4px', borderRight: '1.5px solid #000000', verticalAlign: 'middle', fontSize: '10.5px' }}>{row.date}</td>
-                                            <td style={{ padding: '8px 4px', borderRight: '1.5px solid #000000', verticalAlign: 'middle', fontSize: '10.5px' }}>{row.time}</td>
-                                            <td style={{ padding: '8px 4px', borderRight: '1.5px solid #000000', fontFamily: 'Courier, monospace', fontWeight: 'bold', verticalAlign: 'middle', fontSize: '11px' }}>{row.subjectCode}</td>
-                                            <td className="subject-name-cell" style={{ padding: '8px 8px', fontWeight: 'bold', textAlign: 'left', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'normal', lineHeight: '1.35', verticalAlign: 'middle', fontSize: '11px' }}>
+                                            <td style={{ padding: `${rowPadY} 4px`, borderRight: '1.5px solid #000000', verticalAlign: 'middle', fontSize: fontSz }}>{row.date}</td>
+                                            <td style={{ padding: `${rowPadY} 4px`, borderRight: '1.5px solid #000000', verticalAlign: 'middle', fontSize: fontSz }}>{row.time}</td>
+                                            <td style={{ padding: `${rowPadY} 4px`, borderRight: '1.5px solid #000000', fontFamily: 'Courier, monospace', fontWeight: 'bold', verticalAlign: 'middle', fontSize: fontSz }}>{row.subjectCode}</td>
+                                            <td className="subject-name-cell" style={{ padding: `${rowPadY} 8px`, fontWeight: 'bold', textAlign: 'left', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'normal', lineHeight: '1.35', verticalAlign: 'middle', fontSize: fontSz }}>
                                                 {fullName}
                                             </td>
                                         </tr>
