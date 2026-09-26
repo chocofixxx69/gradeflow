@@ -1206,13 +1206,18 @@ function HallTicketsContent() {
                                     <span style={{
                                         fontSize: '11px',
                                         fontWeight: 800,
-                                        color: '#1D4ED8',
-                                        background: '#EFF6FF',
-                                        border: '1px solid #BFDBFE',
+                                        color: 'var(--primary, #174B4D)',
+                                        background: 'var(--surface-low, #FDF6ED)',
+                                        border: '1px solid var(--border-strong, #789397)',
                                         padding: '3px 10px',
-                                        borderRadius: '12px'
+                                        borderRadius: '12px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        boxShadow: '0 1px 2px rgba(23, 75, 77, 0.08)'
                                     }}>
-                                        {selectedClassIds.length} {selectedClassIds.length === 1 ? 'Class' : 'Classes'} Active
+                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary, #174B4D)', display: 'inline-block' }}></span>
+                                        <span>{selectedClassIds.length} {selectedClassIds.length === 1 ? 'Class' : 'Classes'} Active</span>
                                     </span>
                                 )}
                             </div>
@@ -1224,10 +1229,10 @@ function HallTicketsContent() {
                                 display: 'grid',
                                 gridTemplateColumns: '1fr 1fr',
                                 gap: '6px',
-                                padding: '4px',
-                                background: 'var(--surface-low, #f1f5f9)',
+                                padding: '5px',
+                                background: 'var(--surface-low, #FDF6ED)',
                                 borderRadius: '10px',
-                                border: '1px solid var(--border, #e2e8f0)'
+                                border: '1px solid var(--border, #D1D8DA)'
                             }}>
                                 <button
                                     type="button"
@@ -1246,19 +1251,27 @@ function HallTicketsContent() {
                                         gap: '2px',
                                         padding: '10px 12px',
                                         borderRadius: '8px',
-                                        border: scopeMode === 'class' ? '1.5px solid #2563EB' : '1px solid transparent',
+                                        border: scopeMode === 'class' ? '1.5px solid var(--primary, #174B4D)' : '1px solid transparent',
                                         background: scopeMode === 'class' ? 'var(--surface, #ffffff)' : 'transparent',
-                                        color: scopeMode === 'class' ? '#1D4ED8' : 'var(--tx-muted, #64748b)',
-                                        boxShadow: scopeMode === 'class' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                                        color: scopeMode === 'class' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586C6D)',
+                                        boxShadow: scopeMode === 'class' ? '0 2px 8px rgba(23, 75, 77, 0.12)' : 'none',
                                         cursor: 'pointer',
                                         transition: 'all 0.15s ease'
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '13px' }}>
-                                        <span className="material-icons-round" style={{ fontSize: '16px', color: scopeMode === 'class' ? '#2563EB' : 'inherit' }}>groups</span>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: scopeMode === 'class' ? 'var(--primary, #174B4D)' : 'inherit' }}>groups</span>
                                         <span>Select by Class</span>
                                         {classes.length > 0 && (
-                                            <span style={{ fontSize: '10.5px', background: scopeMode === 'class' ? '#EFF6FF' : 'rgba(0,0,0,0.06)', padding: '1px 6px', borderRadius: '10px', fontWeight: 800 }}>
+                                            <span style={{
+                                                fontSize: '10.5px',
+                                                background: scopeMode === 'class' ? 'var(--surface-low, #FDF6ED)' : 'rgba(0,0,0,0.06)',
+                                                color: scopeMode === 'class' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586C6D)',
+                                                border: scopeMode === 'class' ? '1px solid rgba(23, 75, 77, 0.25)' : 'none',
+                                                padding: '1px 7px',
+                                                borderRadius: '10px',
+                                                fontWeight: 800
+                                            }}>
                                                 {classes.length}
                                             </span>
                                         )}
@@ -1282,16 +1295,16 @@ function HallTicketsContent() {
                                         gap: '2px',
                                         padding: '10px 12px',
                                         borderRadius: '8px',
-                                        border: scopeMode === 'cohort' ? '1.5px solid #2563EB' : '1px solid transparent',
+                                        border: scopeMode === 'cohort' ? '1.5px solid var(--primary, #174B4D)' : '1px solid transparent',
                                         background: scopeMode === 'cohort' ? 'var(--surface, #ffffff)' : 'transparent',
-                                        color: scopeMode === 'cohort' ? '#1D4ED8' : 'var(--tx-muted, #64748b)',
-                                        boxShadow: scopeMode === 'cohort' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                                        color: scopeMode === 'cohort' ? 'var(--primary, #174B4D)' : 'var(--tx-muted, #586C6D)',
+                                        boxShadow: scopeMode === 'cohort' ? '0 2px 8px rgba(23, 75, 77, 0.12)' : 'none',
                                         cursor: 'pointer',
                                         transition: 'all 0.15s ease'
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '13px' }}>
-                                        <span className="material-icons-round" style={{ fontSize: '16px', color: scopeMode === 'cohort' ? '#2563EB' : 'inherit' }}>apartment</span>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: scopeMode === 'cohort' ? 'var(--primary, #174B4D)' : 'inherit' }}>apartment</span>
                                         <span>By Dept &amp; Semester</span>
                                     </div>
                                     <span style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
@@ -1307,11 +1320,11 @@ function HallTicketsContent() {
                                         <div style={{
                                             padding: '24px 16px',
                                             textAlign: 'center',
-                                            background: 'var(--surface-low, #f8fafc)',
+                                            background: 'var(--surface-low, #FDF6ED)',
                                             borderRadius: '10px',
-                                            border: '1.5px dashed var(--border, #cbd5e1)'
+                                            border: '1.5px dashed var(--border, #D1D8DA)'
                                         }}>
-                                            <span className="material-icons-round" style={{ fontSize: '36px', color: 'var(--tx-dim)', marginBottom: '8px', display: 'block' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '36px', color: 'var(--primary, #174B4D)', marginBottom: '8px', display: 'block' }}>
                                                 school
                                             </span>
                                             <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
@@ -1331,11 +1344,12 @@ function HallTicketsContent() {
                                                         gap: '6px',
                                                         padding: '8px 16px',
                                                         borderRadius: '8px',
-                                                        background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                                        background: 'var(--primary, #174B4D)',
                                                         color: '#ffffff',
                                                         fontSize: '12.5px',
                                                         fontWeight: 800,
-                                                        textDecoration: 'none'
+                                                        textDecoration: 'none',
+                                                        boxShadow: '0 2px 5px rgba(23, 75, 77, 0.25)'
                                                     }}
                                                 >
                                                     <span>Open Classes Feature</span>
@@ -1348,7 +1362,7 @@ function HallTicketsContent() {
                                                         padding: '8px 16px',
                                                         borderRadius: '8px',
                                                         background: 'var(--surface, #ffffff)',
-                                                        border: '1px solid var(--border, #cbd5e1)',
+                                                        border: '1px solid var(--border, #D1D8DA)',
                                                         color: 'var(--tx-main)',
                                                         fontSize: '12.5px',
                                                         fontWeight: 700,
@@ -1368,43 +1382,46 @@ function HallTicketsContent() {
                                                 if (!cur) return null;
                                                 return (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                                        {/* Hero Active Class Card - Clean, Subdued Institutional Style */}
+                                                        {/* Hero Active Class Card - Clean GradeFlow Institutional Style */}
                                                         <div style={{
                                                             background: 'var(--surface, #ffffff)',
-                                                            border: '1px solid var(--border, #e2e8f0)',
+                                                            border: '1.5px solid var(--border, #D1D8DA)',
+                                                            borderLeft: '4px solid var(--primary, #174B4D)',
                                                             borderRadius: '10px',
                                                             padding: '16px 18px',
                                                             display: 'flex',
                                                             flexDirection: 'column',
-                                                            gap: '12px'
+                                                            gap: '12px',
+                                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
                                                         }}>
                                                             {/* Card Header */}
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                                                     <div style={{
-                                                                        width: '38px',
-                                                                        height: '38px',
+                                                                        width: '40px',
+                                                                        height: '40px',
                                                                         borderRadius: '8px',
-                                                                        background: '#0F172A',
+                                                                        background: 'linear-gradient(135deg, var(--primary, #174B4D) 0%, var(--secondary, #3A6A6D) 100%)',
                                                                         color: '#ffffff',
                                                                         display: 'flex',
                                                                         alignItems: 'center',
                                                                         justifyContent: 'center',
-                                                                        flexShrink: 0
+                                                                        flexShrink: 0,
+                                                                        boxShadow: '0 2px 6px rgba(23, 75, 77, 0.25)'
                                                                     }}>
-                                                                        <span className="material-icons-round" style={{ fontSize: '20px' }}>school</span>
+                                                                        <span className="material-icons-round" style={{ fontSize: '22px' }}>school</span>
                                                                     </div>
                                                                     <div>
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                                            <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                                            <span style={{ fontSize: '15.5px', fontWeight: 800, color: 'var(--tx-main)' }}>
                                                                                 {cur.name}
                                                                             </span>
                                                                             <span style={{
                                                                                 fontSize: '11px',
-                                                                                fontWeight: 600,
-                                                                                color: '#334155',
-                                                                                background: '#F1F5F9',
-                                                                                border: '1px solid #CBD5E1',
+                                                                                fontWeight: 700,
+                                                                                color: 'var(--primary, #174B4D)',
+                                                                                background: 'var(--surface-low, #FDF6ED)',
+                                                                                border: '1px solid var(--border, #D1D8DA)',
                                                                                 padding: '2px 8px',
                                                                                 borderRadius: '6px'
                                                                             }}>
@@ -1418,7 +1435,7 @@ function HallTicketsContent() {
                                                                 </div>
 
                                                                 {/* Action Buttons: Switch Class & Manage */}
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setClassPickerOpen(true)}
@@ -1426,18 +1443,25 @@ function HallTicketsContent() {
                                                                             display: 'inline-flex',
                                                                             alignItems: 'center',
                                                                             gap: '6px',
-                                                                            padding: '6px 14px',
-                                                                            borderRadius: '6px',
-                                                                            background: 'var(--surface, #ffffff)',
-                                                                            border: '1px solid #0F172A',
-                                                                            color: '#0F172A',
+                                                                            padding: '7px 15px',
+                                                                            borderRadius: '7px',
+                                                                            background: 'var(--primary, #174B4D)',
+                                                                            border: '1px solid var(--primary, #174B4D)',
+                                                                            color: '#FFFFFF',
                                                                             fontSize: '12px',
-                                                                            fontWeight: 700,
+                                                                            fontWeight: 800,
                                                                             cursor: 'pointer',
+                                                                            boxShadow: '0 2px 5px rgba(23, 75, 77, 0.2)',
                                                                             transition: 'all 0.15s ease'
                                                                         }}
-                                                                        onMouseEnter={e => { e.currentTarget.style.background = '#F8FAFC'; }}
-                                                                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface, #ffffff)'; }}
+                                                                        onMouseEnter={e => {
+                                                                            e.currentTarget.style.background = 'var(--primary-hover, #133D3F)';
+                                                                            e.currentTarget.style.borderColor = 'var(--primary-hover, #133D3F)';
+                                                                        }}
+                                                                        onMouseLeave={e => {
+                                                                            e.currentTarget.style.background = 'var(--primary, #174B4D)';
+                                                                            e.currentTarget.style.borderColor = 'var(--primary, #174B4D)';
+                                                                        }}
                                                                     >
                                                                         <span className="material-icons-round" style={{ fontSize: '15px' }}>swap_horiz</span>
                                                                         <span>Switch Class</span>
@@ -1453,9 +1477,9 @@ function HallTicketsContent() {
                                                                             gap: '4px',
                                                                             padding: '6px 10px',
                                                                             borderRadius: '6px',
-                                                                            color: 'var(--tx-muted)',
+                                                                            color: 'var(--secondary, #3A6A6D)',
                                                                             fontSize: '12px',
-                                                                            fontWeight: 600,
+                                                                            fontWeight: 700,
                                                                             textDecoration: 'none'
                                                                         }}
                                                                         title="Manage classes in separate tab"
@@ -1466,21 +1490,21 @@ function HallTicketsContent() {
                                                                 </div>
                                                             </div>
 
-                                                            {/* Class Badges Row - Clean Neutral Colors */}
-                                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--border, #E2E8F0)' }}>
+                                                            {/* Class Badges Row - Clean GradeFlow Institutional Style */}
+                                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--border, #D1D8DA)' }}>
                                                                 <span style={{
                                                                     fontSize: '11.5px',
                                                                     padding: '3px 10px',
                                                                     borderRadius: '6px',
-                                                                    background: '#F8FAFC',
-                                                                    border: '1px solid #CBD5E1',
-                                                                    color: '#0F172A',
-                                                                    fontWeight: 700,
+                                                                    background: 'var(--surface-low, #FDF6ED)',
+                                                                    border: '1px solid rgba(23, 75, 77, 0.3)',
+                                                                    color: 'var(--primary, #174B4D)',
+                                                                    fontWeight: 800,
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
                                                                     gap: '5px'
                                                                 }}>
-                                                                    <span className="material-icons-round" style={{ fontSize: '14px', color: '#475569' }}>groups</span>
+                                                                    <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #174B4D)' }}>groups</span>
                                                                     <span>{filteredStudents.length} Students Pulled</span>
                                                                 </span>
 
@@ -1488,9 +1512,9 @@ function HallTicketsContent() {
                                                                     fontSize: '11.5px',
                                                                     padding: '3px 9px',
                                                                     borderRadius: '6px',
-                                                                    background: '#F8FAFC',
-                                                                    border: '1px solid var(--border, #E2E8F0)',
-                                                                    color: 'var(--tx-main, #334155)',
+                                                                    background: 'var(--surface, #FFFFFF)',
+                                                                    border: '1px solid var(--border, #D1D8DA)',
+                                                                    color: 'var(--tx-main)',
                                                                     fontWeight: 600
                                                                 }}>
                                                                     Semester {cur.semester} ({ROMAN_SEMESTERS[cur.semester] || cur.semester})
@@ -1501,9 +1525,9 @@ function HallTicketsContent() {
                                                                         fontSize: '11.5px',
                                                                         padding: '3px 9px',
                                                                         borderRadius: '6px',
-                                                                        background: '#F8FAFC',
-                                                                        border: '1px solid var(--border, #E2E8F0)',
-                                                                        color: 'var(--tx-main, #334155)',
+                                                                        background: 'var(--surface, #FFFFFF)',
+                                                                        border: '1px solid var(--border, #D1D8DA)',
+                                                                        color: 'var(--tx-main)',
                                                                         fontWeight: 600
                                                                     }}>
                                                                         Section {cur.section}
@@ -1514,9 +1538,9 @@ function HallTicketsContent() {
                                                                     fontSize: '11.5px',
                                                                     padding: '3px 9px',
                                                                     borderRadius: '6px',
-                                                                    background: '#F8FAFC',
-                                                                    border: '1px solid var(--border, #E2E8F0)',
-                                                                    color: 'var(--tx-muted, #475569)',
+                                                                    background: 'var(--surface, #FFFFFF)',
+                                                                    border: '1px solid var(--border, #D1D8DA)',
+                                                                    color: 'var(--tx-muted)',
                                                                     fontWeight: 600
                                                                 }}>
                                                                     Dept: {cur.branch}
@@ -1527,9 +1551,9 @@ function HallTicketsContent() {
                                                                         fontSize: '11.5px',
                                                                         padding: '3px 9px',
                                                                         borderRadius: '6px',
-                                                                        background: '#F8FAFC',
-                                                                        border: '1px solid var(--border, #E2E8F0)',
-                                                                        color: 'var(--tx-muted, #64748B)',
+                                                                        background: 'var(--surface, #FFFFFF)',
+                                                                        border: '1px solid var(--border, #D1D8DA)',
+                                                                        color: 'var(--tx-muted)',
                                                                         fontWeight: 600
                                                                     }}>
                                                                         Batch {cur.batch}
@@ -1541,7 +1565,7 @@ function HallTicketsContent() {
                                                         {/* Toggle multi-class combination */}
                                                         {classes.length > 1 && (
                                                             <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: '2px' }}>
-                                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-muted)', cursor: 'pointer' }}>
+                                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-main)', cursor: 'pointer' }}>
                                                                     <input
                                                                         type="checkbox"
                                                                         checked={multiClassMode}
@@ -1549,7 +1573,7 @@ function HallTicketsContent() {
                                                                             setMultiClassMode(e.target.checked);
                                                                             if (e.target.checked) setClassPickerOpen(true);
                                                                         }}
-                                                                        style={{ accentColor: '#0F172A', cursor: 'pointer', width: '15px', height: '15px' }}
+                                                                        style={{ accentColor: 'var(--primary, #174B4D)', cursor: 'pointer', width: '15px', height: '15px' }}
                                                                     />
                                                                     <span>Combine multiple classes together (e.g. Sec A + Sec B)</span>
                                                                 </label>
@@ -1561,7 +1585,7 @@ function HallTicketsContent() {
                                                 /* Mode B: Modern Interactive Class Picker with Obvious Back Button */
                                                 <div style={{
                                                     background: 'var(--surface, #ffffff)',
-                                                    border: '1px solid var(--border, #cbd5e1)',
+                                                    border: '1px solid var(--border, #D1D8DA)',
                                                     borderRadius: '10px',
                                                     padding: '16px',
                                                     display: 'flex',
@@ -1569,7 +1593,7 @@ function HallTicketsContent() {
                                                     gap: '12px'
                                                 }}>
                                                     {/* Picker Header with obvious Back Button */}
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', paddingBottom: '10px', borderBottom: '1px solid var(--border, #e2e8f0)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', paddingBottom: '10px', borderBottom: '1px solid var(--border, #D1D8DA)' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                             {/* Primary Back Button */}
                                                             <button
@@ -1581,16 +1605,16 @@ function HallTicketsContent() {
                                                                     gap: '5px',
                                                                     padding: '5px 12px',
                                                                     borderRadius: '6px',
-                                                                    background: '#F1F5F9',
-                                                                    border: '1px solid #CBD5E1',
-                                                                    color: '#0F172A',
+                                                                    background: 'var(--surface-low, #FDF6ED)',
+                                                                    border: '1px solid var(--border, #D1D8DA)',
+                                                                    color: 'var(--primary, #174B4D)',
                                                                     fontSize: '12px',
                                                                     fontWeight: 700,
                                                                     cursor: 'pointer',
                                                                     transition: 'all 0.15s ease'
                                                                 }}
-                                                                onMouseEnter={e => { e.currentTarget.style.background = '#E2E8F0'; }}
-                                                                onMouseLeave={e => { e.currentTarget.style.background = '#F1F5F9'; }}
+                                                                onMouseEnter={e => { e.currentTarget.style.background = '#F5ECD9'; e.currentTarget.style.borderColor = 'var(--primary, #174B4D)'; }}
+                                                                onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-low, #FDF6ED)'; e.currentTarget.style.borderColor = 'var(--border, #D1D8DA)'; }}
                                                                 title="Go back to active class view"
                                                             >
                                                                 <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
@@ -1601,7 +1625,7 @@ function HallTicketsContent() {
                                                                 {multiClassMode ? 'Select Classes to Combine' : 'Choose Registered Class'}
                                                             </span>
 
-                                                            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', background: '#F1F5F9', border: '1px solid #E2E8F0', padding: '1px 7px', borderRadius: '6px' }}>
+                                                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary, #174B4D)', background: 'var(--surface-low, #FDF6ED)', border: '1px solid var(--border, #D1D8DA)', padding: '1px 7px', borderRadius: '6px' }}>
                                                                 {classes.length} registered
                                                             </span>
                                                         </div>
@@ -1612,7 +1636,7 @@ function HallTicketsContent() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setSelectedClassIds(classes.map(c => c.id))}
-                                                                        style={{ background: 'none', border: 'none', color: '#0F172A', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                                                                        style={{ background: 'none', border: 'none', color: 'var(--primary, #174B4D)', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                                                                     >
                                                                         Select All
                                                                     </button>
@@ -1632,7 +1656,7 @@ function HallTicketsContent() {
                                                                 href="/faculty/classes"
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                                                style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--secondary, #3A6A6D)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                                             >
                                                                 <span>Manage Classes</span>
                                                                 <span className="material-icons-round" style={{ fontSize: '13px' }}>open_in_new</span>
@@ -1646,13 +1670,13 @@ function HallTicketsContent() {
                                                         <div style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            background: 'var(--surface-low, #f8fafc)',
-                                                            border: '1px solid var(--border, #cbd5e1)',
+                                                            background: 'var(--surface-low, #FDF6ED)',
+                                                            border: '1px solid var(--border, #D1D8DA)',
                                                             borderRadius: '6px',
                                                             padding: '0 10px',
                                                             gap: '8px'
                                                         }}>
-                                                            <span className="material-icons-round" style={{ fontSize: '17px', color: 'var(--tx-muted)' }}>search</span>
+                                                            <span className="material-icons-round" style={{ fontSize: '17px', color: 'var(--primary, #174B4D)' }}>search</span>
                                                             <input
                                                                 type="text"
                                                                 value={classSearch}
@@ -1679,7 +1703,7 @@ function HallTicketsContent() {
                                                             )}
                                                         </div>
 
-                                                        {/* Filter chips - Clean, neutral */}
+                                                        {/* Filter chips - Clean GradeFlow Brand Colors */}
                                                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                             <button
                                                                 type="button"
@@ -1688,10 +1712,10 @@ function HallTicketsContent() {
                                                                     padding: '3px 9px',
                                                                     borderRadius: '5px',
                                                                     fontSize: '11px',
-                                                                    fontWeight: 600,
-                                                                    border: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '1px solid #0F172A' : '1px solid var(--border, #E2E8F0)',
-                                                                    background: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '#0F172A' : '#FFFFFF',
-                                                                    color: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '#FFFFFF' : 'var(--tx-muted, #64748B)',
+                                                                    fontWeight: 700,
+                                                                    border: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '1px solid var(--primary, #174B4D)' : '1px solid var(--border, #D1D8DA)',
+                                                                    background: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? 'var(--primary, #174B4D)' : '#FFFFFF',
+                                                                    color: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '#FFFFFF' : 'var(--tx-muted, #586C6D)',
                                                                     cursor: 'pointer'
                                                                 }}
                                                             >
@@ -1705,10 +1729,10 @@ function HallTicketsContent() {
                                                                     padding: '3px 9px',
                                                                     borderRadius: '5px',
                                                                     fontSize: '11px',
-                                                                    fontWeight: 600,
-                                                                    border: classOnlyWithStudents ? '1px solid #0F172A' : '1px solid var(--border, #E2E8F0)',
-                                                                    background: classOnlyWithStudents ? '#0F172A' : '#FFFFFF',
-                                                                    color: classOnlyWithStudents ? '#FFFFFF' : 'var(--tx-muted, #64748B)',
+                                                                    fontWeight: 700,
+                                                                    border: classOnlyWithStudents ? '1px solid var(--primary, #174B4D)' : '1px solid var(--border, #D1D8DA)',
+                                                                    background: classOnlyWithStudents ? 'var(--primary, #174B4D)' : '#FFFFFF',
+                                                                    color: classOnlyWithStudents ? '#FFFFFF' : 'var(--tx-muted, #586C6D)',
                                                                     cursor: 'pointer'
                                                                 }}
                                                             >
@@ -1727,10 +1751,10 @@ function HallTicketsContent() {
                                                                             padding: '3px 9px',
                                                                             borderRadius: '5px',
                                                                             fontSize: '11px',
-                                                                            fontWeight: 600,
-                                                                            border: isActive ? '1px solid #0F172A' : '1px solid var(--border, #E2E8F0)',
-                                                                            background: isActive ? '#0F172A' : '#FFFFFF',
-                                                                            color: isActive ? '#FFFFFF' : 'var(--tx-muted, #64748B)',
+                                                                            fontWeight: 700,
+                                                                            border: isActive ? '1px solid var(--primary, #174B4D)' : '1px solid var(--border, #D1D8DA)',
+                                                                            background: isActive ? 'var(--primary, #174B4D)' : '#FFFFFF',
+                                                                            color: isActive ? '#FFFFFF' : 'var(--tx-muted, #586C6D)',
                                                                             cursor: 'pointer'
                                                                         }}
                                                                     >
@@ -1751,7 +1775,7 @@ function HallTicketsContent() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => { setClassSearch(''); setClassSemFilter('ALL'); setClassOnlyWithStudents(false); }}
-                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', fontSize: '11.5px', color: '#0F172A', fontWeight: 600, cursor: 'pointer' }}
+                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', fontSize: '11.5px', color: 'var(--primary, #174B4D)', fontWeight: 700, cursor: 'pointer' }}
                                                                     >
                                                                         Reset Filters
                                                                     </button>
@@ -1778,20 +1802,20 @@ function HallTicketsContent() {
                                                                             justifyContent: 'space-between',
                                                                             padding: '11px 14px',
                                                                             borderRadius: '8px',
-                                                                            border: isSelected ? '1.5px solid #0F172A' : '1px solid var(--border, #e2e8f0)',
-                                                                            background: isSelected ? '#F8FAFC' : '#FFFFFF',
+                                                                            border: isSelected ? '1.5px solid var(--primary, #174B4D)' : '1px solid var(--border, #D1D8DA)',
+                                                                            background: isSelected ? 'var(--surface-low, #FDF6ED)' : '#FFFFFF',
                                                                             cursor: 'pointer',
                                                                             transition: 'all 0.15s ease'
                                                                         }}
                                                                         onMouseEnter={e => {
                                                                             if (!isSelected) {
-                                                                                e.currentTarget.style.borderColor = '#94A3B8';
-                                                                                e.currentTarget.style.background = '#F8FAFC';
+                                                                                e.currentTarget.style.borderColor = 'var(--border-strong, #789397)';
+                                                                                e.currentTarget.style.background = 'rgba(253, 246, 237, 0.4)';
                                                                             }
                                                                         }}
                                                                         onMouseLeave={e => {
                                                                             if (!isSelected) {
-                                                                                e.currentTarget.style.borderColor = 'var(--border, #e2e8f0)';
+                                                                                e.currentTarget.style.borderColor = 'var(--border, #D1D8DA)';
                                                                                 e.currentTarget.style.background = '#FFFFFF';
                                                                             }
                                                                         }}
@@ -1803,14 +1827,14 @@ function HallTicketsContent() {
                                                                                     type="checkbox"
                                                                                     checked={isSelected}
                                                                                     onChange={() => {}}
-                                                                                    style={{ cursor: 'pointer', accentColor: '#0F172A', width: '15px', height: '15px' }}
+                                                                                    style={{ cursor: 'pointer', accentColor: 'var(--primary, #174B4D)', width: '15px', height: '15px' }}
                                                                                 />
                                                                             )}
                                                                             <div>
                                                                                 <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                                                     <span>{c.name}</span>
                                                                                     {c.section && (
-                                                                                        <span style={{ fontSize: '10.5px', fontWeight: 600, color: '#475569', background: '#F1F5F9', border: '1px solid #E2E8F0', padding: '1px 6px', borderRadius: '4px' }}>
+                                                                                        <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--tx-main)', background: 'var(--surface, #FFFFFF)', border: '1px solid var(--border, #D1D8DA)', padding: '1px 6px', borderRadius: '4px' }}>
                                                                                             Sec {c.section}
                                                                                         </span>
                                                                                     )}
@@ -1835,23 +1859,23 @@ function HallTicketsContent() {
                                                                                 fontSize: '11px',
                                                                                 padding: '3px 8px',
                                                                                 borderRadius: '5px',
-                                                                                background: '#F8FAFC',
-                                                                                border: '1px solid #CBD5E1',
-                                                                                color: hasStudents ? '#0F172A' : '#94A3B8',
-                                                                                fontWeight: 600,
+                                                                                background: 'var(--surface-low, #FDF6ED)',
+                                                                                border: '1px solid var(--border, #D1D8DA)',
+                                                                                color: hasStudents ? 'var(--primary, #174B4D)' : 'var(--tx-dim)',
+                                                                                fontWeight: 700,
                                                                                 display: 'inline-flex',
                                                                                 alignItems: 'center',
                                                                                 gap: '4px'
                                                                             }}>
-                                                                                <span className="material-icons-round" style={{ fontSize: '13px', color: '#64748B' }}>groups</span>
+                                                                                <span className="material-icons-round" style={{ fontSize: '13px', color: 'var(--primary, #174B4D)' }}>groups</span>
                                                                                 <span>{c.student_count ?? 0} Students</span>
                                                                             </span>
 
                                                                             {!multiClassMode ? (
                                                                                 <span style={{
                                                                                     fontSize: '11.5px',
-                                                                                    fontWeight: 700,
-                                                                                    color: isSelected ? '#0F172A' : '#2563EB',
+                                                                                    fontWeight: 800,
+                                                                                    color: isSelected ? 'var(--primary, #174B4D)' : 'var(--secondary, #3A6A6D)',
                                                                                     display: 'inline-flex',
                                                                                     alignItems: 'center',
                                                                                     gap: '2px'
@@ -1861,8 +1885,8 @@ function HallTicketsContent() {
                                                                             ) : (
                                                                                 <span style={{
                                                                                     fontSize: '11.5px',
-                                                                                    fontWeight: 600,
-                                                                                    color: isSelected ? '#0F172A' : 'var(--tx-dim)'
+                                                                                    fontWeight: 700,
+                                                                                    color: isSelected ? 'var(--primary, #174B4D)' : 'var(--tx-dim)'
                                                                                 }}>
                                                                                     {isSelected ? '✓ Added' : '+ Add'}
                                                                                 </span>
@@ -1886,14 +1910,14 @@ function HallTicketsContent() {
                                                                         setSelectedClassIds([selectedClassIds[0]]);
                                                                     }
                                                                 }}
-                                                                style={{ accentColor: '#0F172A', cursor: 'pointer', width: '15px', height: '15px' }}
+                                                                style={{ accentColor: 'var(--primary, #174B4D)', cursor: 'pointer', width: '15px', height: '15px' }}
                                                             />
                                                             <span>Combine multiple classes together (e.g. Sec A + Sec B)</span>
                                                         </label>
 
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             {multiClassMode && (
-                                                                <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-main)' }}>
+                                                                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--primary, #174B4D)' }}>
                                                                     {selectedClassIds.length} classes • {filteredStudents.length} students
                                                                 </span>
                                                             )}
@@ -1901,15 +1925,18 @@ function HallTicketsContent() {
                                                                 type="button"
                                                                 onClick={() => setClassPickerOpen(false)}
                                                                 style={{
-                                                                    padding: '5px 12px',
+                                                                    padding: '6px 14px',
                                                                     borderRadius: '6px',
-                                                                    background: '#0F172A',
+                                                                    background: 'var(--primary, #174B4D)',
                                                                     color: '#ffffff',
                                                                     border: 'none',
                                                                     fontSize: '11.5px',
-                                                                    fontWeight: 700,
-                                                                    cursor: 'pointer'
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer',
+                                                                    boxShadow: '0 2px 4px rgba(23, 75, 77, 0.2)'
                                                                 }}
+                                                                onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary-hover, #133D3F)'; }}
+                                                                onMouseLeave={e => { e.currentTarget.style.background = 'var(--primary, #174B4D)'; }}
                                                             >
                                                                 Done
                                                             </button>
@@ -1948,8 +1975,9 @@ function HallTicketsContent() {
                                     <div style={{
                                         padding: '12px 14px',
                                         borderRadius: '8px',
-                                        border: '1.5px solid rgba(59, 130, 246, 0.3)',
-                                        background: 'rgba(59, 130, 246, 0.05)',
+                                        border: '1px solid var(--border, #D1D8DA)',
+                                        borderLeft: '4px solid var(--primary, #174B4D)',
+                                        background: 'var(--surface-low, #FDF6ED)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
@@ -1963,7 +1991,15 @@ function HallTicketsContent() {
                                                 Pulling all {filteredStudents.length} students enrolled in {branch} Semester {semester}.
                                             </div>
                                         </div>
-                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>
+                                        <span style={{
+                                            fontSize: '11px',
+                                            fontWeight: 800,
+                                            color: 'var(--primary, #174B4D)',
+                                            background: '#FFFFFF',
+                                            border: '1px solid var(--border, #D1D8DA)',
+                                            padding: '2px 8px',
+                                            borderRadius: '6px'
+                                        }}>
                                             Active Cohort
                                         </span>
                                     </div>
@@ -2001,7 +2037,7 @@ function HallTicketsContent() {
                     <Card>
                         <CardHeader>
                             <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '20px', color: '#6366F1' }}>event_note</span>
+                                <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary, #174B4D)' }}>event_note</span>
                                 Examination Details
                             </CardTitle>
                         </CardHeader>
@@ -2077,7 +2113,7 @@ function HallTicketsContent() {
                         <CardHeader>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                 <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span className="material-icons-round" style={{ fontSize: '20px', color: '#10B981' }}>checklist</span>
+                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary, #174B4D)' }}>checklist</span>
                                     Student Roster ({selectedStudentsList.length} of {filteredStudents.length} Selected)
                                     {rosterRefreshing && (
                                         <span
@@ -2094,9 +2130,9 @@ function HallTicketsContent() {
                                             type="button"
                                             onClick={() => setSelectedUsns(new Set(visibleStudentsInChecklist.map(s => s.usn)))}
                                             style={{
-                                                background: 'rgba(59, 130, 246, 0.12)',
-                                                border: '1px solid rgba(59, 130, 246, 0.3)',
-                                                color: 'var(--primary)',
+                                                background: 'var(--surface-low, #FDF6ED)',
+                                                border: '1px solid var(--border-strong, #789397)',
+                                                color: 'var(--primary, #174B4D)',
                                                 borderRadius: '6px',
                                                 padding: '4px 8px',
                                                 fontWeight: 700,
@@ -2176,7 +2212,7 @@ function HallTicketsContent() {
                                                     padding: '8px 12px',
                                                     borderBottom: '1px solid var(--border-low)',
                                                     cursor: 'pointer',
-                                                    background: isSelected ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                                                    background: isSelected ? 'rgba(23, 75, 77, 0.08)' : 'transparent',
                                                     transition: 'background 0.15s ease'
                                                 }}
                                             >
@@ -2185,7 +2221,7 @@ function HallTicketsContent() {
                                                         type="checkbox"
                                                         checked={isSelected}
                                                         onChange={() => {}}
-                                                        style={{ cursor: 'pointer' }}
+                                                        style={{ accentColor: 'var(--primary, #174B4D)', cursor: 'pointer' }}
                                                     />
                                                     <div>
                                                         <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2194,8 +2230,9 @@ function HallTicketsContent() {
                                                                 <span style={{
                                                                     fontSize: '9.5px',
                                                                     fontWeight: 800,
-                                                                    color: 'var(--primary)',
-                                                                    background: 'rgba(59, 130, 246, 0.12)',
+                                                                    color: 'var(--primary, #174B4D)',
+                                                                    background: 'var(--surface-low, #FDF6ED)',
+                                                                    border: '1px solid var(--border, #D1D8DA)',
                                                                     padding: '1px 5px',
                                                                     borderRadius: '6px'
                                                                 }}>
