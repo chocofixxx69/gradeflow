@@ -459,29 +459,14 @@ function CalculatorContent() {
 
             {/* Dual Mode Switch Tabs */}
             <Inline align="between" stackMobile>
-                <div style={{
-                    display: 'flex',
-                    background: 'var(--surface, #FFFFFF)',
-                    padding: '4px',
-                    borderRadius: '12px',
-                    border: '1px solid var(--border)',
-                    boxShadow: '0 2px 8px -2px rgba(10,24,28,0.04)'
-                }}>
+                <div className={styles.modeTabsContainer}>
                     <button
                         type="button"
+                        className={styles.modeTabBtn}
                         style={{
-                            padding: '10px 24px',
-                            borderRadius: '8px',
-                            border: 'none',
                             fontWeight: activeTab === 'sgpa' ? 800 : 700,
-                            fontSize: '13px',
-                            cursor: 'pointer',
                             background: activeTab === 'sgpa' ? 'var(--primary, #174B4D)' : 'transparent',
                             color: activeTab === 'sgpa' ? '#FFFFFF' : 'var(--tx-muted)',
-                            transition: 'all 0.15s ease',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
                         }}
                         onClick={() => setActiveTab('sgpa')}
                         aria-pressed={activeTab === 'sgpa'}
@@ -491,19 +476,11 @@ function CalculatorContent() {
                     </button>
                     <button
                         type="button"
+                        className={styles.modeTabBtn}
                         style={{
-                            padding: '10px 24px',
-                            borderRadius: '8px',
-                            border: 'none',
                             fontWeight: activeTab === 'cgpa' ? 800 : 700,
-                            fontSize: '13px',
-                            cursor: 'pointer',
                             background: activeTab === 'cgpa' ? 'var(--primary, #174B4D)' : 'transparent',
                             color: activeTab === 'cgpa' ? '#FFFFFF' : 'var(--tx-muted)',
-                            transition: 'all 0.15s ease',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
                         }}
                         onClick={() => setActiveTab('cgpa')}
                         aria-pressed={activeTab === 'cgpa'}
@@ -581,48 +558,49 @@ function CalculatorContent() {
                             </div>
                         )}
 
-                        {/* Program Branch Selection */}
-                        <div className={styles.controlGroup}>
-                            <label className={styles.controlLabel}>
-                                <span>Program Branch</span>
-                                <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 800 }}>VTU</span>
-                            </label>
-                            <select
-                                aria-label="Program branch"
-                                className={styles.selectStyled}
-                                value={branch}
-                                onChange={e => {
-                                    const b = e.target.value;
-                                    setBranch(b);
-                                    refreshMatrix(b, semester, scheme);
-                                }}
-                            >
-                                {Object.entries(VTU_BRANCHES).map(([code, name]) => (
-                                    <option key={code} value={code}>{name}</option>
-                                ))}
-                            </select>
-                        </div>
+                        {/* Program Branch & Teaching Scheme in responsive grid */}
+                        <div className={styles.branchSchemeGrid}>
+                            <div className={styles.controlGroup}>
+                                <label className={styles.controlLabel}>
+                                    <span>Program Branch</span>
+                                    <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 800 }}>VTU</span>
+                                </label>
+                                <select
+                                    aria-label="Program branch"
+                                    className={styles.selectStyled}
+                                    value={branch}
+                                    onChange={e => {
+                                        const b = e.target.value;
+                                        setBranch(b);
+                                        refreshMatrix(b, semester, scheme);
+                                    }}
+                                >
+                                    {Object.entries(VTU_BRANCHES).map(([code, name]) => (
+                                        <option key={code} value={code}>{name}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                        {/* VTU Scheme */}
-                        <div className={styles.controlGroup}>
-                            <label className={styles.controlLabel}>
-                                <span>Teaching Scheme</span>
-                                <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>NEP / CBCS</span>
-                            </label>
-                            <select
-                                aria-label="Scheme"
-                                className={styles.selectStyled}
-                                value={scheme}
-                                onChange={e => {
-                                    const s = e.target.value;
-                                    setScheme(s);
-                                    refreshMatrix(branch, semester, s);
-                                }}
-                            >
-                                {Object.keys(VTU_SCHEMES).map(k => (
-                                    <option key={k} value={k}>{k} Scheme</option>
-                                ))}
-                            </select>
+                            <div className={styles.controlGroup}>
+                                <label className={styles.controlLabel}>
+                                    <span>Teaching Scheme</span>
+                                    <span style={{ fontSize: '10px', color: 'var(--tx-dim)' }}>NEP / CBCS</span>
+                                </label>
+                                <select
+                                    aria-label="Scheme"
+                                    className={styles.selectStyled}
+                                    value={scheme}
+                                    onChange={e => {
+                                        const s = e.target.value;
+                                        setScheme(s);
+                                        refreshMatrix(branch, semester, s);
+                                    }}
+                                >
+                                    {Object.keys(VTU_SCHEMES).map(k => (
+                                        <option key={k} value={k}>{k} Scheme</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         {/* Interactive Semester Selector */}
@@ -655,13 +633,16 @@ function CalculatorContent() {
                         </div>
                     </div>
 
-                    {/* VTU Grading Scale Quick Reference Box */}
-                    <div className={styles.infoBox}>
-                        <div className={styles.infoTitle}>
-                            <span className="material-icons-round" style={{ fontSize: '14px' }}>rule</span>
-                            VTU NEP Grading Key
-                        </div>
-                        <div className={styles.gradeGrid}>
+                    {/* VTU Grading Scale Quick Reference Box (Collapsible Accordion on Mobile) */}
+                    <details className={styles.infoBox} open>
+                        <summary className={styles.infoToggleSummary}>
+                            <div className={styles.infoTitle} style={{ margin: 0 }}>
+                                <span className="material-icons-round" style={{ fontSize: '14px' }}>rule</span>
+                                VTU NEP Grading Key
+                            </div>
+                            <span className={styles.infoToggleHint}>Key ▾</span>
+                        </summary>
+                        <div className={styles.gradeGrid} style={{ marginTop: '10px' }}>
                             <div className={styles.gradeRow}>
                                 <span>90 - 100</span>
                                 <span className={styles.gradePillMini} style={{ background: '#dcfce7', color: '#15803d' }}>O (10)</span>
@@ -695,7 +676,7 @@ function CalculatorContent() {
                                 <span className={styles.gradePillMini} style={{ background: '#fee2e2', color: '#b91c1c' }}>F (0)</span>
                             </div>
                         </div>
-                    </div>
+                    </details>
                 </aside>
 
                 {/* Main Content Area */}
@@ -770,11 +751,11 @@ function CalculatorContent() {
                                     <table className={styles.ledgerTable}>
                                         <thead>
                                             <tr style={{ background: 'var(--surface-low, #fcfaf8)', borderBottom: '1px solid var(--border)' }}>
-                                                <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Course Name & Code</th>
-                                                <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '110px' }}>Credits</th>
-                                                <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '130px' }}>Final Score (0-100)</th>
-                                                <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '100px' }}>Grade</th>
-                                                <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '60px' }}></th>
+                                                <th className={`${styles.ledgerTh} ${styles.ledgerThName}`}>Course Name &amp; Code</th>
+                                                <th className={styles.ledgerTh} style={{ width: '90px' }}>Credits</th>
+                                                <th className={styles.ledgerTh} style={{ width: '100px' }}>Final Score</th>
+                                                <th className={styles.ledgerTh} style={{ width: '80px' }}>Grade</th>
+                                                <th className={styles.ledgerTh} style={{ width: '40px' }}></th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -801,7 +782,7 @@ function CalculatorContent() {
 
                                                     return (
                                                         <tr key={sub.id || idx} className={styles.ledgerRow}>
-                                                            <td style={{ padding: '16px 20px' }}>
+                                                            <td className={styles.ledgerTdName}>
                                                                 <div className={styles.subjectTitle}>{sub.name}</div>
                                                                 <div className={styles.subjectCodeRow}>
                                                                     <span className={styles.subjectCode}>{sub.code}</span>
@@ -810,24 +791,24 @@ function CalculatorContent() {
                                                                         {tag.label}
                                                                     </span>
                                                                     {sub.source === 'custom' && (
-                                                                        <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 800 }}>Custom Course</span>
+                                                                        <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 800 }}>Custom</span>
                                                                     )}
                                                                 </div>
                                                             </td>
 
-                                                            <td style={{ padding: '16px', textAlign: 'center' }}>
+                                                            <td className={styles.ledgerTdCredits}>
                                                                 {tag.isAudit ? (
                                                                     <span className={`${styles.creditPill} ${styles.creditPillAudit}`}>
-                                                                        0 CR (Audit)
+                                                                        0 CR
                                                                     </span>
                                                                 ) : (
                                                                     <span className={styles.creditPill}>
-                                                                        {sub.credits} {sub.credits === 1 ? 'Credit' : 'Credits'}
+                                                                        {sub.credits} {sub.credits === 1 ? 'CR' : 'CR'}
                                                                     </span>
                                                                 )}
                                                             </td>
 
-                                                            <td style={{ padding: '16px', textAlign: 'center' }}>
+                                                            <td className={styles.ledgerTdScore}>
                                                                 <div className={styles.scoreInputWrap}>
                                                                     <input
                                                                         className={`${styles.scoreInput} ${isInvalid ? styles.scoreInputInvalid : ''}`}
@@ -849,7 +830,7 @@ function CalculatorContent() {
                                                                 </div>
                                                             </td>
 
-                                                            <td style={{ padding: '16px', textAlign: 'center' }}>
+                                                            <td className={styles.ledgerTdGrade}>
                                                                 <div>
                                                                     <span
                                                                         className={styles.gradePill}
@@ -863,13 +844,13 @@ function CalculatorContent() {
                                                                     </span>
                                                                     {sub.total !== '' && (
                                                                         <div className={styles.gradePointsSub}>
-                                                                            {tag.isAudit ? 'Audit (0 GP)' : `${sub.credits} × ${gradeVisual.gp} = ${sub.credits * gradeVisual.gp} pts`}
+                                                                            {tag.isAudit ? 'Audit' : `${sub.credits}×${gradeVisual.gp}`}
                                                                         </div>
                                                                     )}
                                                                 </div>
                                                             </td>
 
-                                                            <td style={{ padding: '16px', textAlign: 'center' }}>
+                                                            <td className={styles.ledgerTdAction}>
                                                                 {sub.source === 'custom' && (
                                                                     <button
                                                                         type="button"
@@ -884,7 +865,7 @@ function CalculatorContent() {
                                                                         }}
                                                                         title="Remove subject"
                                                                     >
-                                                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>delete</span>
+                                                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>delete</span>
                                                                     </button>
                                                                 )}
                                                             </td>
