@@ -656,20 +656,42 @@ function SettingsContent() {
         <div className="gf-page" style={{ maxWidth: '1060px', margin: '0 auto', paddingBottom: '60px' }}>
             {/* Mobile compaction styles */}
             <style>{`
+                /* ── Settings Page Mobile Compaction (≤600px) ── */
                 @media (max-width: 600px) {
-                    .sf-header { margin-bottom: 12px !important; }
-                    .sf-hero { padding: 14px 16px !important; gap: 12px !important; margin-bottom: 16px !important; }
-                    .sf-hero h2 { font-size: 15px !important; }
-                    .sf-hero .sf-meta { font-size: 11px !important; gap: 8px !important; }
-                    .sf-tab-bar { gap: 4px !important; padding: 4px !important; margin-bottom: 16px !important; }
-                    .sf-tab-btn { padding: 7px 10px !important; font-size: 11px !important; gap: 4px !important; }
-                    .sf-tab-btn .sf-tab-icon { font-size: 16px !important; }
-                    .sf-cards { gap: 14px !important; }
-                    .sf-avatar-studio { flex-direction: row !important; align-items: center !important; gap: 14px !important; }
-                    .sf-avatar-preview { width: 56px !important; height: 56px !important; font-size: 20px !important; border-radius: 14px !important; flex-shrink: 0; }
-                    .sf-avatar-actions { min-width: 0 !important; flex: 1; }
-                    .sf-avatar-actions button { font-size: 12px !important; padding: 7px 12px !important; }
+                    /* Header */
+                    .sf-header { margin-bottom: 10px !important; }
+                    .sf-header [class*='PageHeaderEyebrow'] { font-size: 10px !important; }
+                    .sf-header [class*='PageHeaderTitle'] { font-size: 20px !important; }
+
+                    /* Hero card */
+                    .sf-hero { padding: 14px 14px !important; gap: 10px !important; margin-bottom: 14px !important; border-radius: 12px !important; }
+                    .sf-hero-avatar { width: 48px !important; height: 48px !important; font-size: 18px !important; border-width: 2px !important; }
+                    .sf-hero h2, .sf-hero-name { font-size: 14px !important; }
+                    .sf-hero-badge { font-size: 10px !important; padding: 2px 7px !important; }
+                    .sf-meta { font-size: 11px !important; gap: 6px !important; }
+                    .sf-meta .material-icons-round { font-size: 13px !important; }
+
+                    /* Tabs — icon only, all fit in row */
+                    .sf-tab-bar { gap: 2px !important; padding: 4px !important; margin-bottom: 14px !important; }
+                    .sf-tab-btn { padding: 8px 0 !important; flex: 1 !important; justify-content: center !important; flex-direction: column !important; gap: 2px !important; min-width: 0 !important; }
+                    .sf-tab-btn .sf-tab-label { font-size: 9px !important; line-height: 1.2 !important; text-align: center !important; white-space: normal !important; word-break: break-word !important; }
+                    .sf-tab-icon { font-size: 18px !important; }
+
+                    /* Cards */
+                    .sf-cards { gap: 12px !important; }
+
+                    /* Avatar studio — compact single row */
+                    .sf-avatar-studio { flex-direction: row !important; align-items: center !important; gap: 12px !important; flex-wrap: nowrap !important; }
+                    .sf-avatar-preview { width: 52px !important; height: 52px !important; font-size: 18px !important; border-radius: 12px !important; flex-shrink: 0 !important; }
+                    .sf-avatar-actions { flex: 1 !important; min-width: 0 !important; }
+                    .sf-upload-btn { font-size: 12px !important; padding: 7px 12px !important; width: 100% !important; justify-content: center !important; }
+                    .sf-upload-hint { font-size: 10px !important; margin-top: 4px !important; }
+
+                    /* Form */
                     .sf-form-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+
+                    /* Save button */
+                    .sf-save-btn { width: 100% !important; justify-content: center !important; }
                 }
             `}</style>
 
@@ -887,7 +909,7 @@ function SettingsContent() {
                             >
                                 {tab.icon}
                             </span>
-                            {tab.label}
+                            <span className="sf-tab-label">{tab.label}</span>
                         </button>
                     );
                 })}
@@ -902,7 +924,9 @@ function SettingsContent() {
                             <CardTitle>Avatar & Visual Identity</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }} className="sf-avatar-studio">
+                            {/* Avatar row: preview + upload action — all inline */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }} className="sf-avatar-studio">
+                                {/* Avatar preview */}
                                 <div
                                     className="sf-avatar-preview"
                                     style={{
@@ -918,9 +942,11 @@ function SettingsContent() {
                                         fontWeight: 900,
                                         color: 'var(--primary)',
                                         overflow: 'hidden',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                                        flexShrink: 0
+                                        flexShrink: 0,
+                                        cursor: 'pointer'
                                     }}
+                                    onClick={() => fileRef.current?.click()}
+                                    title="Click to change photo"
                                 >
                                     {activePhoto ? (
                                         <img src={activePhoto} alt="Profile Photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -929,30 +955,57 @@ function SettingsContent() {
                                     )}
                                 </div>
 
+                                {/* Upload controls */}
                                 <div style={{ flex: 1, minWidth: 0 }} className="sf-avatar-actions">
-                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                                        <Button
-                                            variant="primary"
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px' }}>
+                                        <button
+                                            className="sf-upload-btn"
                                             onClick={() => fileRef.current?.click()}
                                             disabled={uploading}
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '8px 16px',
+                                                background: 'var(--primary)',
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                fontSize: '13px',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                lineHeight: 1
+                                            }}
                                         >
-                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>upload</span>
-                                            Choose New Photo
-                                        </Button>
+                                            <span className="material-icons-round" style={{ fontSize: '15px', lineHeight: 1 }}>upload</span>
+                                            {uploading ? 'Uploading...' : 'Choose Photo'}
+                                        </button>
 
                                         {activePhoto && (
-                                            <Button
-                                                variant="outline"
+                                            <button
                                                 onClick={handleRemovePhoto}
-                                                style={{ borderColor: 'var(--border)' }}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '8px 12px',
+                                                    background: 'transparent',
+                                                    color: 'var(--destructive, #ef4444)',
+                                                    border: '1px solid var(--border)',
+                                                    borderRadius: '8px',
+                                                    fontSize: '13px',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    lineHeight: 1
+                                                }}
                                             >
-                                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--destructive)' }}>delete</span>
-                                                Remove Photo
-                                            </Button>
+                                                <span className="material-icons-round" style={{ fontSize: '14px', lineHeight: 1 }}>delete</span>
+                                                Remove
+                                            </button>
                                         )}
                                     </div>
-                                    <p style={{ fontSize: '12px', color: 'var(--tx-dim)', margin: 0 }}>
-                                        Supported formats: <strong>JPG, PNG, WebP, GIF</strong> · Maximum file size: <strong>25MB</strong>.
+                                    <p className="sf-upload-hint" style={{ fontSize: '11px', color: 'var(--tx-dim)', margin: 0, lineHeight: 1.4 }}>
+                                        JPG, PNG, WebP, GIF · Max 25MB
                                     </p>
                                     <input
                                         ref={fileRef}
