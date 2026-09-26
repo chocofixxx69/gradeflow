@@ -366,8 +366,9 @@ function FacultyDashboardView({
     // Debounced fetch of matching student records
     useEffect(() => {
         const query = (usn || '').trim();
-        if (isMultiUsn || query.length < 2) {
+        if (isMultiUsn || query.length < 2 || hasSubmitted) {
             setSuggestions([]);
+            setSuggestionsOpen(false);
             setSuggestionsLoading(false);
             return;
         }
@@ -398,15 +399,31 @@ function FacultyDashboardView({
                         return; // stop — don't open dropdown at all
                     }
 
-                    // Partial match — show dropdown normally
+                    // Also auto-select if typed USN is a complete 10-char valid USN format and matches a suggestion
+                    const matchingExact = list.find(s => s.usn && s.usn.toUpperCase() === query.toUpperCase());
+                    if (query.length >= 10 && matchingExact) {
+                        setSuggestions([]);
+                        setSuggestionsOpen(false);
+                        setActiveSuggestionIdx(-1);
+                        setHasSubmitted(true);
+                        lookupStudent?.(matchingExact.usn);
+                        return;
+                    }
+
+                    // Partial match — show dropdown normally if user hasn't submitted
                     setSuggestions(list);
-                    if (list.length > 0) {
+                    if (list.length > 0 && !hasSubmitted) {
                         setSuggestionsOpen(true);
+                    } else {
+                        setSuggestionsOpen(false);
                     }
                 }
             } catch (err) {
                 console.error('Autocomplete fetch error:', err);
-                if (isMounted) setSuggestions([]);
+                if (isMounted) {
+                    setSuggestions([]);
+                    setSuggestionsOpen(false);
+                }
             } finally {
                 if (isMounted) setSuggestionsLoading(false);
             }
@@ -416,7 +433,7 @@ function FacultyDashboardView({
             isMounted = false;
             clearTimeout(timer);
         };
-    }, [usn, isMultiUsn, lookupStudent]);
+    }, [usn, isMultiUsn, hasSubmitted, lookupStudent]);
 
     const handleSelectSuggestion = useCallback((suggestedUsn) => {
         setUsn?.(suggestedUsn);
