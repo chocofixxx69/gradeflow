@@ -23,11 +23,34 @@
 
 .sectionHeader,
 .profileHeader,
-.semesterHeader {
+.semesterHeader,
+.analyticsHeader {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-4);
+}
+
+.analyticsHeader {
+    margin-bottom: var(--space-6);
+}
+
+.statCardPrimary {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+.chartContainer {
+    height: 280px;
+    width: 100%;
+    margin-top: 12px;
+}
+
+.chartContainerSm {
+    height: 260px;
+    width: 100%;
+    margin-top: 8px;
 }
 
 .eyebrow {
@@ -396,6 +419,95 @@
 }
 
 @media (max-width: 768px) {
+    .page {
+        gap: var(--space-4) !important;
+    }
+
+    .analyticsHeader {
+        margin-bottom: var(--space-3) !important;
+    }
+
+    .eyebrow {
+        font-size: 10px !important;
+        letter-spacing: 0.06em !important;
+        margin-bottom: 2px !important;
+    }
+
+    .title {
+        font-size: clamp(20px, 5.5vw, 24px) !important;
+        line-height: 1.15 !important;
+    }
+
+    .subtitle {
+        font-size: 12px !important;
+        line-height: 1.4 !important;
+        margin-top: 4px !important;
+    }
+
+    /* Stats grid: compact 2-column mobile ribbon/grid */
+    .statsGrid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+        margin-top: 8px !important;
+        margin-bottom: 14px !important;
+    }
+
+    .statCard,
+    .statCardButton {
+        padding: 10px 12px !important;
+        border-radius: 12px !important;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 76px !important;
+        box-sizing: border-box;
+    }
+
+    .statLabel {
+        font-size: 9.5px !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.05em !important;
+        line-height: 1.2 !important;
+    }
+
+    .statValue {
+        font-size: 20px !important;
+        font-weight: 900 !important;
+        margin-top: 3px !important;
+        margin-bottom: 2px !important;
+        line-height: 1.1 !important;
+    }
+
+    .meta {
+        font-size: 10.5px !important;
+        font-weight: 600 !important;
+        margin-top: 2px !important;
+        line-height: 1.2 !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .section,
+    .dangerZone {
+        padding: 14px 14px !important;
+        border-radius: 12px !important;
+    }
+
+    .sectionTitle {
+        font-size: 15px !important;
+    }
+
+    .chartContainer {
+        height: 210px !important;
+        margin-top: 8px !important;
+    }
+
+    .chartContainerSm {
+        height: 195px !important;
+        margin-top: 6px !important;
+    }
+
     .sectionHeader,
     .profileHeader,
     .semesterHeader,

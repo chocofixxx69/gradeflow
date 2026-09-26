@@ -263,7 +263,7 @@ function AnalyticsContent() {
 
     return (
         <div className={`${styles.page} gf-page gf-page-default gf-fade-up`}>
-            <header className={styles.sectionHeader} style={{ marginBottom: 'var(--space-8)' }}>
+            <header className={styles.analyticsHeader}>
                 <div>
                     <span className={styles.eyebrow}>{userType === 'faculty' ? 'Institutional Intelligence' : 'Personal Academic Matrix'}</span>
                     <h1 className={styles.title}>Performance Analytics</h1>
@@ -278,12 +278,12 @@ function AnalyticsContent() {
             {userType === 'student' && (
                 <>
                     {/* Summary Matrix */}
-                    <ResponsiveGrid size="sm" className={styles.statsGrid} style={{ marginBottom: 'var(--space-8)' }}>
-                        <div className={styles.statCard} style={{ background: 'var(--primary)', color: 'white', border: 'none' }}>
-                            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.7)' }}>Current CGPA</div>
-                            <div className={styles.statValue} style={{ color: 'white' }}>{cgpa > 0 ? cgpa.toFixed(2) : '0.00'}</div>
-                            <div className={styles.meta} style={{ color: 'rgba(255,255,255,0.9)' }}>
-                                <span className="material-icons-round" style={{ fontSize: '14px', marginRight: '4px', verticalAlign: 'middle' }}>stars</span>
+                    <ResponsiveGrid size="sm" className={styles.statsGrid}>
+                        <div className={`${styles.statCard} ${styles.statCardPrimary}`}>
+                            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.75)' }}>Current CGPA</div>
+                            <div className={styles.statValue} style={{ color: '#ffffff' }}>{cgpa > 0 ? cgpa.toFixed(2) : '0.00'}</div>
+                            <div className={styles.meta} style={{ color: 'rgba(255,255,255,0.9)' }} title={classification}>
+                                <span className="material-icons-round" style={{ fontSize: '13px', marginRight: '3px', verticalAlign: '-2px' }}>stars</span>
                                 {classification}
                             </div>
                         </div>
@@ -339,7 +339,7 @@ function AnalyticsContent() {
                                 </div>
                             </div>
                             {semesterData.length > 0 ? (
-                                <div style={{ height: '280px', width: '100%', marginTop: '12px' }}>
+                                <div className={styles.chartContainer}>
                                     <ResponsiveContainer width="100%" height="100%">
                                         <AreaChart data={semesterData.map(s => ({ name: `Sem ${s.semester}`, sgpa: Number(s.sgpa.toFixed(2)) }))} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
                                             <defs>
@@ -376,7 +376,7 @@ function AnalyticsContent() {
                                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)' }}>Credit-weighted · Synced with Dashboard</span>
                             </div>
                             {semesterData.length > 0 ? (
-                                <div style={{ height: '260px', width: '100%', marginTop: '8px' }}>
+                                <div className={styles.chartContainerSm}>
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart
                                             data={semesterData.map(s => ({
@@ -441,11 +441,11 @@ function AnalyticsContent() {
             {userType === 'faculty' && (
                 <>
                     {/* Faculty Usage Matrix */}
-                    <ResponsiveGrid size="sm" className={styles.statsGrid} style={{ marginBottom: 'var(--space-8)' }}>
-                        <div className={styles.statCard} style={{ background: 'var(--primary)', color: '#fff', border: 'none' }}>
-                            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.6)' }}>Institutional Lookups</div>
-                            <div className={styles.statValue} style={{ color: '#fff' }}>{facultyActivity.length}</div>
-                            <div className={styles.meta} style={{ color: 'rgba(255,255,255,0.7)' }}>Total Queries Run</div>
+                    <ResponsiveGrid size="sm" className={styles.statsGrid}>
+                        <div className={`${styles.statCard} ${styles.statCardPrimary}`}>
+                            <div className={styles.statLabel} style={{ color: 'rgba(255,255,255,0.75)' }}>Institutional Lookups</div>
+                            <div className={styles.statValue} style={{ color: '#ffffff' }}>{facultyActivity.length}</div>
+                            <div className={styles.meta} style={{ color: 'rgba(255,255,255,0.85)' }}>Total Queries Run</div>
                         </div>
                         <div className={styles.statCard}>
                             <div className={styles.statLabel}>Success Rate</div>
