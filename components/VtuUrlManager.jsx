@@ -744,28 +744,44 @@ export default function VtuUrlManager({ facultyId }) {
                                     key: 'REGULAR',
                                     title: 'Regular Exam',
                                     subtitle: 'Main semester examinations',
-                                    icon: 'school',
                                     color: '#2563EB',
                                     activeBg: 'rgba(37, 99, 235, 0.08)',
-                                    borderColor: '#2563EB'
+                                    borderColor: '#2563EB',
+                                    icon: (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                                            <path d="M6 12v5c3 3 9 3 12 0v-5" />
+                                        </svg>
+                                    )
                                 },
                                 {
                                     key: 'MAKEUP',
                                     title: 'MakeUp / Summer',
                                     subtitle: 'Backlogs, fast-track & special exams',
-                                    icon: 'replay',
                                     color: '#7C3AED',
                                     activeBg: 'rgba(124, 58, 237, 0.08)',
-                                    borderColor: '#7C3AED'
+                                    borderColor: '#7C3AED',
+                                    icon: (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="1 4 1 10 7 10" />
+                                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                                        </svg>
+                                    )
                                 },
                                 {
                                     key: 'REVAL',
                                     title: 'Revaluation (RV)',
                                     subtitle: 'Reval, re-totaling & review results',
-                                    icon: 'fact_check',
                                     color: '#D97706',
                                     activeBg: 'rgba(217, 119, 6, 0.08)',
-                                    borderColor: '#D97706'
+                                    borderColor: '#D97706',
+                                    icon: (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                                            <path d="m9 14 2 2 4-4" />
+                                        </svg>
+                                    )
                                 },
                             ].map(card => {
                                 const active = newExamType === card.key;
@@ -792,13 +808,13 @@ export default function VtuUrlManager({ facultyId }) {
                                         }}
                                     >
                                         <div style={{
-                                            width: '36px', height: '36px', borderRadius: '8px',
-                                            background: active ? card.color : 'var(--surface-low, #f1f5f9)',
+                                            width: '38px', height: '38px', borderRadius: '8px',
+                                            background: active ? card.color : `${card.color}15`,
                                             color: active ? '#ffffff' : card.color,
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             flexShrink: 0, transition: 'all 0.18s ease'
                                         }}>
-                                            <span className="material-icons-round" style={{ fontSize: '20px' }}>{card.icon}</span>
+                                            {card.icon}
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -809,9 +825,9 @@ export default function VtuUrlManager({ facultyId }) {
                                                     {card.title}
                                                 </span>
                                                 {active && (
-                                                    <span className="material-icons-round" style={{ fontSize: '17px', color: card.color }}>
-                                                        check_circle
-                                                    </span>
+                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill={card.color} style={{ flexShrink: 0 }}>
+                                                        <path fillRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" clipRule="evenodd" />
+                                                    </svg>
                                                 )}
                                             </div>
                                             <div style={{ fontSize: '11px', color: 'var(--tx-muted, #64748b)', marginTop: '2px', fontWeight: 500 }}>
@@ -824,36 +840,78 @@ export default function VtuUrlManager({ facultyId }) {
                         </div>
                     </div>
 
-                    {/* Row 3: Dual UG Registration + Register Button */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+                    {/* Row 3: Action Bar with Dual UG Registration + Properly Styled Register Button */}
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        flexWrap: 'wrap', gap: 'var(--space-3)', marginTop: 'var(--space-4)',
+                        paddingTop: '16px', borderTop: '1px solid var(--border, #e2e8f0)'
+                    }}>
                         <div>
-                            {(selectedScheme === '2022' || selectedScheme === '2025') && (
+                            {(selectedScheme === '2022' || selectedScheme === '2025') ? (
                                 <label style={{
                                     display: 'inline-flex', alignItems: 'center', gap: '8px',
                                     fontSize: '12.5px', fontWeight: 600,
-                                    color: 'var(--tx-muted)', cursor: 'pointer'
+                                    color: 'var(--tx-muted, #64748b)', cursor: 'pointer'
                                 }}>
                                     <input
                                         type="checkbox"
                                         checked={addToBothUgSchemes}
                                         onChange={e => setAddToBothUgSchemes(e.target.checked)}
-                                        style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#2563EB' }}
                                     />
                                     Also register this URL for the other UG scheme (2022 &amp; 2025 together)
                                 </label>
+                            ) : (
+                                <div style={{ fontSize: '12.5px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                    Target Scheme: <strong style={{ color: 'var(--tx-main)' }}>{schemeLabel(selectedScheme)} Scheme</strong>
+                                </div>
                             )}
                         </div>
 
-                        <div style={{ minWidth: '160px' }}>
-                            <Button
-                                variant="primary"
-                                style={{ width: '100%', minHeight: '44px', fontWeight: 800, fontSize: '13px', opacity: loading ? 0.7 : 1 }}
+                        <div>
+                            <button
+                                type="button"
                                 onClick={addVtuUrl}
                                 disabled={loading || !newUrl}
+                                style={{
+                                    minHeight: '42px',
+                                    padding: '0 24px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: (!newUrl || loading) ? 'var(--border, #cbd5e1)' : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                    color: (!newUrl || loading) ? 'var(--tx-dim, #94a3b8)' : '#ffffff',
+                                    fontWeight: 800,
+                                    fontSize: '13px',
+                                    letterSpacing: '0.02em',
+                                    cursor: (!newUrl || loading) ? 'not-allowed' : 'pointer',
+                                    boxShadow: (!newUrl || loading) ? 'none' : '0 4px 14px rgba(37, 99, 235, 0.32)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.18s ease'
+                                }}
+                                onMouseEnter={e => {
+                                    if (newUrl && !loading) {
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)';
+                                        e.currentTarget.style.boxShadow = '0 6px 18px rgba(37, 99, 235, 0.42)';
+                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                    }
+                                }}
+                                onMouseLeave={e => {
+                                    if (newUrl && !loading) {
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)';
+                                        e.currentTarget.style.boxShadow = '0 4px 14px rgba(37, 99, 235, 0.32)';
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                    }
+                                }}
                             >
-                                <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>add_link</span>
-                                {loading ? 'Adding...' : 'Register URL'}
-                            </Button>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                </svg>
+                                <span>{loading ? 'Registering...' : 'Register URL'}</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1123,14 +1181,32 @@ export default function VtuUrlManager({ facultyId }) {
                                     >
                                         Cancel
                                     </button>
-                                    <Button
-                                        variant="primary"
+                                    <button
+                                        type="button"
                                         onClick={() => saveEditingPortal(u.id)}
                                         disabled={editSaving || !editUrl.trim()}
-                                        style={{ minHeight: '38px', padding: '0 20px', fontWeight: 800, fontSize: '12.5px' }}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            minHeight: '38px',
+                                            padding: '0 20px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: (editSaving || !editUrl.trim()) ? 'var(--border, #cbd5e1)' : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                            color: (editSaving || !editUrl.trim()) ? 'var(--tx-dim, #94a3b8)' : '#ffffff',
+                                            fontWeight: 800,
+                                            fontSize: '12.5px',
+                                            cursor: (editSaving || !editUrl.trim()) ? 'not-allowed' : 'pointer',
+                                            boxShadow: (editSaving || !editUrl.trim()) ? 'none' : '0 2px 10px rgba(37, 99, 235, 0.28)',
+                                            transition: 'all 0.15s ease'
+                                        }}
                                     >
-                                        {editSaving ? 'Saving...' : '✓ Save Changes'}
-                                    </Button>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                        <span>{editSaving ? 'Saving...' : 'Save Changes'}</span>
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -1167,59 +1243,117 @@ export default function VtuUrlManager({ facultyId }) {
                                         {u.url}
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                                     <button
                                         type="button"
                                         onClick={() => toggleVtuUrl(u)}
                                         style={{
-                                            padding: 'var(--space-2) var(--space-4)',
+                                            padding: '0 14px',
                                             minHeight: '38px',
                                             background: u.is_active ? 'var(--green-bg, #e6f7ed)' : 'var(--surface, #ffffff)',
                                             color: u.is_active ? 'var(--green, #0d9f57)' : 'var(--tx-muted, #64748b)',
-                                            border: `1px solid ${u.is_active ? 'var(--green, #0d9f57)' : 'var(--border, #cbd5e1)'}`,
-                                            borderRadius: 'var(--radius-3, 6px)',
+                                            border: `1.5px solid ${u.is_active ? 'var(--green, #0d9f57)' : 'var(--border, #cbd5e1)'}`,
+                                            borderRadius: '8px',
                                             fontWeight: 800,
                                             fontSize: '11px',
+                                            letterSpacing: '0.04em',
                                             cursor: 'pointer',
-                                            transition: 'all 0.2s',
+                                            transition: 'all 0.15s ease',
                                             whiteSpace: 'nowrap',
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            gap: '4px'
+                                            gap: '5px'
                                         }}
+                                        title={u.is_active ? 'Click to disable portal' : 'Click to enable portal'}
                                     >
-                                        {u.is_active ? '✓ ENABLED' : 'DISABLED'}
+                                        {u.is_active ? (
+                                            <>
+                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                    <polyline points="20 6 9 17 4 12" />
+                                                </svg>
+                                                <span>ENABLED</span>
+                                            </>
+                                        ) : (
+                                            <span>DISABLED</span>
+                                        )}
                                     </button>
-                                    <Button
+                                    <button
+                                        type="button"
                                         onClick={() => startEditingPortal(u)}
-                                        variant="secondary"
-                                        size="sm"
                                         style={{
-                                            minHeight: '38px',
-                                            padding: 'var(--space-2) var(--space-3)',
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            gap: '4px',
+                                            gap: '6px',
+                                            minHeight: '38px',
+                                            padding: '0 14px',
+                                            borderRadius: '8px',
+                                            border: '1.5px solid #bfdbfe',
+                                            background: '#eff6ff',
+                                            color: '#1d4ed8',
                                             fontWeight: 700,
-                                            fontSize: '11.5px',
-                                            color: 'var(--tx-main)'
+                                            fontSize: '12px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease',
+                                            whiteSpace: 'nowrap'
                                         }}
-                                        title={`Edit ${u.exam_name}`}
+                                        onMouseEnter={e => {
+                                            e.currentTarget.style.background = '#dbeafe';
+                                            e.currentTarget.style.borderColor = '#93c5fd';
+                                            e.currentTarget.style.transform = 'translateY(-1px)';
+                                        }}
+                                        onMouseLeave={e => {
+                                            e.currentTarget.style.background = '#eff6ff';
+                                            e.currentTarget.style.borderColor = '#bfdbfe';
+                                            e.currentTarget.style.transform = 'translateY(0)';
+                                        }}
+                                        title={`Edit ${u.exam_name || 'portal'}`}
                                         aria-label="Edit Portal"
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #2563eb)' }}>edit</span>
-                                        Edit
-                                    </Button>
-                                    <Button
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                            <path d="M12 20h9" />
+                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                        </svg>
+                                        <span>Edit</span>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => setConfirmingRemove(u)}
-                                        variant="ghost"
-                                        size="sm"
-                                        style={{ padding: 'var(--space-2)', color: 'var(--tx-dim)' }}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '38px',
+                                            height: '38px',
+                                            borderRadius: '8px',
+                                            border: '1.5px solid var(--border, #e2e8f0)',
+                                            background: 'var(--surface, #ffffff)',
+                                            color: 'var(--tx-dim, #94a3b8)',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease',
+                                            flexShrink: 0
+                                        }}
+                                        onMouseEnter={e => {
+                                            e.currentTarget.style.background = '#fef2f2';
+                                            e.currentTarget.style.borderColor = '#fecaca';
+                                            e.currentTarget.style.color = '#dc2626';
+                                            e.currentTarget.style.transform = 'translateY(-1px)';
+                                        }}
+                                        onMouseLeave={e => {
+                                            e.currentTarget.style.background = 'var(--surface, #ffffff)';
+                                            e.currentTarget.style.borderColor = 'var(--border, #e2e8f0)';
+                                            e.currentTarget.style.color = 'var(--tx-dim, #94a3b8)';
+                                            e.currentTarget.style.transform = 'translateY(0)';
+                                        }}
                                         title={`Delete URL from ${schemeLabel(selectedScheme)} scheme`}
                                         aria-label="Delete"
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '20px' }}>delete_outline</span>
-                                    </Button>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="3 6 5 6 21 6" />
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                            <line x1="10" y1="11" x2="10" y2="17" />
+                                            <line x1="14" y1="11" x2="14" y2="17" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
                         )

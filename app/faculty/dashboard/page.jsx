@@ -834,9 +834,32 @@ function FacultyDashboardView({
                                             <Button size="sm" variant="ghost" type="button" onClick={() => setQuickAddOpen(false)}>
                                                 Cancel
                                             </Button>
-                                            <Button size="sm" variant="primary" type="submit" disabled={quickAddLoading || !quickAddUrl}>
-                                                {quickAddLoading ? 'Saving...' : 'Add & Target Portal'}
-                                            </Button>
+                                            <button
+                                                type="submit"
+                                                disabled={quickAddLoading || !quickAddUrl}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    minHeight: '34px',
+                                                    padding: '0 14px',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    background: (quickAddLoading || !quickAddUrl) ? 'var(--border, #cbd5e1)' : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                                    color: (quickAddLoading || !quickAddUrl) ? 'var(--tx-dim, #94a3b8)' : '#ffffff',
+                                                    fontWeight: 700,
+                                                    fontSize: '12px',
+                                                    cursor: (quickAddLoading || !quickAddUrl) ? 'not-allowed' : 'pointer',
+                                                    boxShadow: (quickAddLoading || !quickAddUrl) ? 'none' : '0 2px 8px rgba(37, 99, 235, 0.28)',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                                </svg>
+                                                <span>{quickAddLoading ? 'Saving...' : 'Add & Target Portal'}</span>
+                                            </button>
                                         </div>
                                     </form>
                                 )}
