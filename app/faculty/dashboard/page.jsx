@@ -382,22 +382,26 @@ function FacultyDashboardView({
                 });
                 if (isMounted) {
                     const list = res?.suggestions || [];
-                    setSuggestions(list);
-                    if (list.length > 0) {
-                        setSuggestionsOpen(true);
-                    }
 
-                    // ── AUTO-SELECT: if user typed the full USN and it exactly
-                    //    matches exactly one result → auto-proceed immediately
+                    // ── AUTO-SELECT FIRST: exact full-USN match
+                    //    → skip dropdown entirely, trigger lookup immediately
                     if (
                         list.length === 1 &&
                         list[0].usn &&
                         list[0].usn.toUpperCase() === query.toUpperCase()
                     ) {
-                        setSuggestionsOpen(false);
+                        setSuggestions([]);         // nothing to show
+                        setSuggestionsOpen(false);  // keep closed
                         setActiveSuggestionIdx(-1);
                         setHasSubmitted(true);
                         lookupStudent?.(list[0].usn);
+                        return; // stop — don't open dropdown at all
+                    }
+
+                    // Partial match — show dropdown normally
+                    setSuggestions(list);
+                    if (list.length > 0) {
+                        setSuggestionsOpen(true);
                     }
                 }
             } catch (err) {
