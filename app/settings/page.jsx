@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input } from '@/components/ui/Foundation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
+import { PageHeader, PageHeaderEyebrow, PageHeaderTitle } from '@/components/ui/PageHeader';
 import { getStudentDefaultEmail, extractBranchFromUsn } from '@/lib/semester-utils';
 import { canonicalBranch, branchLabelFor, listBranches } from '@/lib/vtu-identity';
 
@@ -653,15 +653,31 @@ function SettingsContent() {
     ], [userType]);
 
     return (
-        <div className="gf-page" style={{ maxWidth: '1060px', margin: '0 auto', paddingBottom: '100px' }}>
+        <div className="gf-page" style={{ maxWidth: '1060px', margin: '0 auto', paddingBottom: '60px' }}>
+            {/* Mobile compaction styles */}
+            <style>{`
+                @media (max-width: 600px) {
+                    .sf-header { margin-bottom: 12px !important; }
+                    .sf-hero { padding: 14px 16px !important; gap: 12px !important; margin-bottom: 16px !important; }
+                    .sf-hero h2 { font-size: 15px !important; }
+                    .sf-hero .sf-meta { font-size: 11px !important; gap: 8px !important; }
+                    .sf-tab-bar { gap: 4px !important; padding: 4px !important; margin-bottom: 16px !important; }
+                    .sf-tab-btn { padding: 7px 10px !important; font-size: 11px !important; gap: 4px !important; }
+                    .sf-tab-btn .sf-tab-icon { font-size: 16px !important; }
+                    .sf-cards { gap: 14px !important; }
+                    .sf-avatar-studio { flex-direction: row !important; align-items: center !important; gap: 14px !important; }
+                    .sf-avatar-preview { width: 56px !important; height: 56px !important; font-size: 20px !important; border-radius: 14px !important; flex-shrink: 0; }
+                    .sf-avatar-actions { min-width: 0 !important; flex: 1; }
+                    .sf-avatar-actions button { font-size: 12px !important; padding: 7px 12px !important; }
+                    .sf-form-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+                }
+            `}</style>
+
             {/* Header Area */}
-            <div style={{ marginBottom: '24px' }}>
+            <div className="sf-header" style={{ marginBottom: '20px' }}>
                 <PageHeader>
                     <PageHeaderEyebrow>Account Settings</PageHeaderEyebrow>
-                    <PageHeaderTitle>Institutional Profile & Settings</PageHeaderTitle>
-                    <PageHeaderSubtitle>
-                        Manage your professional identity, academic workload, and security credentials.
-                    </PageHeaderSubtitle>
+                    <PageHeaderTitle>Profile &amp; Settings</PageHeaderTitle>
                 </PageHeader>
             </div>
 
@@ -670,18 +686,19 @@ function SettingsContent() {
                 style={{
                     background: 'var(--surface)',
                     border: '1px solid var(--border)',
-                    borderRadius: '16px',
-                    padding: '24px',
+                    borderRadius: '14px',
+                    padding: '18px 20px',
                     display: 'flex',
                     flexWrap: 'wrap',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '20px',
-                    marginBottom: '24px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+                    gap: '14px',
+                    marginBottom: '18px',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
                     position: 'relative',
                     overflow: 'hidden'
                 }}
+                className="sf-hero"
             >
                 {/* Decorative top accent line */}
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--primary) 0%, #3A6A6D 50%, #789397 100%)' }} />
@@ -738,8 +755,8 @@ function SettingsContent() {
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                            <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                            <h2 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--tx-main)', margin: 0 }} className="sf-hero-name">
                                 {userType === 'student'
                                     ? (profile?.name || session?.name || 'Student')
                                     : (userType === 'admin'
@@ -766,7 +783,7 @@ function SettingsContent() {
                             </span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--tx-muted)', fontWeight: 600 }} className="sf-meta">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', minWidth: 0, overflowWrap: 'anywhere' }}>
                                 <span className="material-icons-round" style={{ fontSize: '16px', color: 'var(--primary)', flexShrink: 0 }}>mail</span>
                                 {editEmail || (userType === 'student' ? getStudentDefaultEmail(session?.usn) : session?.email) || '—'}
@@ -809,17 +826,19 @@ function SettingsContent() {
                 style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '6px',
                     background: 'var(--surface)',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
-                    padding: '6px',
-                    marginBottom: '28px',
-                    flexWrap: 'wrap',
+                    padding: '5px',
+                    marginBottom: '20px',
+                    flexWrap: 'nowrap',
                     width: '100%',
                     boxSizing: 'border-box',
+                    overflowX: 'auto',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
                 }}
+                className="sf-tab-bar"
             >
                 {TABS.map(tab => {
                     const isSelected = activeTab === tab.id;
@@ -828,20 +847,22 @@ function SettingsContent() {
                             key={tab.id}
                             type="button"
                             onClick={() => setActiveTab(tab.id)}
+                            className="sf-tab-btn"
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '8px',
-                                padding: '10px 20px',
+                                gap: '6px',
+                                padding: '8px 14px',
                                 borderRadius: '8px',
                                 border: 'none',
                                 background: isSelected ? 'var(--primary)' : 'transparent',
                                 color: isSelected ? '#FFFFFF' : 'var(--tx-muted)',
                                 fontWeight: isSelected ? 800 : 600,
-                                fontSize: '13.5px',
+                                fontSize: '13px',
                                 cursor: 'pointer',
                                 transition: 'all 0.15s ease',
                                 whiteSpace: 'nowrap',
+                                flexShrink: 0,
                                 boxShadow: isSelected ? '0 2px 8px rgba(23, 75, 77, 0.25)' : 'none'
                             }}
                             onMouseEnter={e => {
@@ -858,9 +879,9 @@ function SettingsContent() {
                             }}
                         >
                             <span
-                                className="material-icons-round"
+                                className="material-icons-round sf-tab-icon"
                                 style={{
-                                    fontSize: '18px',
+                                    fontSize: '17px',
                                     color: isSelected ? '#FFFFFF' : 'inherit'
                                 }}
                             >
@@ -874,29 +895,30 @@ function SettingsContent() {
 
             {/* Tab 1: Profile & Identity */}
             {activeTab === 'profile' && (
-                <div style={{ display: 'grid', gap: '24px' }}>
+                <div style={{ display: 'grid', gap: '18px' }} className="sf-cards">
                     {/* Avatar Studio Card */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Avatar & Visual Identity</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }} className="sf-avatar-studio">
                                 <div
+                                    className="sf-avatar-preview"
                                     style={{
-                                        width: '100px',
-                                        height: '100px',
-                                        borderRadius: '20px',
+                                        width: '72px',
+                                        height: '72px',
+                                        borderRadius: '16px',
                                         background: 'var(--surface-low)',
                                         border: '2px solid var(--border)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        fontSize: '36px',
+                                        fontSize: '26px',
                                         fontWeight: 900,
                                         color: 'var(--primary)',
                                         overflow: 'hidden',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                                         flexShrink: 0
                                     }}
                                 >
@@ -907,7 +929,7 @@ function SettingsContent() {
                                     )}
                                 </div>
 
-                                <div style={{ flex: 1, minWidth: '240px' }}>
+                                <div style={{ flex: 1, minWidth: 0 }} className="sf-avatar-actions">
                                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                                         <Button
                                             variant="primary"
@@ -950,7 +972,7 @@ function SettingsContent() {
                             <CardTitle>Personal & Academic Details</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '16px' }} className="sf-form-grid">
                                 <div>
                                     <Input
                                         label="Full Name"
