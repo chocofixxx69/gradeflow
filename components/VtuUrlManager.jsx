@@ -29,18 +29,20 @@ export default function VtuUrlManager({ facultyId }) {
     });
     const [newUrl, setNewUrl] = useState('');
     const [newExamName, setNewExamName] = useState('');
+    const [newExamType, setNewExamType] = useState('REGULAR'); // 'REGULAR' | 'MAKEUP' | 'REVAL'
     // New portals always target whichever tab is open — no separate scheme
     // picker, so you can't accidentally register a URL into a scheme you
     // aren't looking at. The only extra choice is this opt-in checkbox,
     // offered only on the 2022/2025 tabs, for the one combo that's genuinely
     // useful: registering the same URL to both UG schemes at once.
     const [addToBothUgSchemes, setAddToBothUgSchemes] = useState(false);
+    const [userOverrodeExamType, setUserOverrodeExamType] = useState(false);
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(false);
     const [message, setMessage] = useState('');
     const [confirmingRemove, setConfirmingRemove] = useState(null);
     const [removing, setRemoving] = useState(false);
-    const [portalTypeFilter, setPortalTypeFilter] = useState('ALL'); // 'ALL' | 'REVAL' | 'REGULAR'
+    const [portalTypeFilter, setPortalTypeFilter] = useState('ALL'); // 'ALL' | 'REVAL' | 'MAKEUP' | 'REGULAR'
     const [portalSearchFilter, setPortalSearchFilter] = useState('');
 
     const fetchVtuUrls = useCallback(async (schemeToFetch = selectedScheme, isManual = false) => {
@@ -91,15 +93,39 @@ export default function VtuUrlManager({ facultyId }) {
         setPortalSearchFilter('');
     };
 
-    const isRevalPortal = (u) => {
+    // Auto-detect exam type from exam name as user types (unless they manually picked)
+    useEffect(() => {
+        if (userOverrodeExamType || !newExamName.trim()) return;
+        const lower = newExamName.toLowerCase();
+        if (lower.includes('reval') || lower.includes(' rv') || lower.includes('revaluation')) {
+            setNewExamType('REVAL');
+        } else if (lower.includes('makeup') || lower.includes('make up') || lower.includes('summer') ||
+                   lower.includes('special') || lower.includes('spl')) {
+            setNewExamType('MAKEUP');
+        } else {
+            setNewExamType('REGULAR');
+        }
+    }, [newExamName, userOverrodeExamType]);
+
+    // When user clears exam name, reset the override flag
+    useEffect(() => {
+        if (!newExamName.trim()) setUserOverrodeExamType(false);
+    }, [newExamName]);
+
+    // Returns 'REVAL' | 'MAKEUP' | 'REGULAR' for a portal entry
+    const getPortalCategory = (u) => {
         const name = (u.exam_name || u.url || '').toLowerCase();
-        return name.includes('reval') || name.includes('rv');
+        if (name.includes('reval') || name.includes(' rv') || /rvce?cbcs|rvcbcs|rv[0-9]/.test(name)) return 'REVAL';
+        if (name.includes('makeup') || name.includes('make up') || name.includes('make-up') ||
+            name.includes('summer') || name.includes('special') || name.includes('spl')) return 'MAKEUP';
+        return 'REGULAR';
     };
+    // Legacy alias used in badge labels
+    const isRevalPortal = (u) => getPortalCategory(u) === 'REVAL';
 
     const filteredVtuUrls = useMemo(() => {
         return (vtuUrls || []).filter(u => {
-            if (portalTypeFilter === 'REVAL' && !isRevalPortal(u)) return false;
-            if (portalTypeFilter === 'REGULAR' && isRevalPortal(u)) return false;
+            if (portalTypeFilter !== 'ALL' && getPortalCategory(u) !== portalTypeFilter) return false;
             if (portalSearchFilter.trim()) {
                 const q = portalSearchFilter.toLowerCase();
                 const matchName = (u.exam_name || '').toLowerCase().includes(q);
@@ -110,8 +136,18 @@ export default function VtuUrlManager({ facultyId }) {
         });
     }, [vtuUrls, portalTypeFilter, portalSearchFilter]);
 
-    const revalCount = useMemo(() => (vtuUrls || []).filter(isRevalPortal).length, [vtuUrls]);
-    const regularCount = (vtuUrls?.length || 0) - revalCount;
+    const revalCount   = useMemo(() => (vtuUrls || []).filter(u => getPortalCategory(u) === 'REVAL').length,   [vtuUrls]);
+    const makeupCount  = useMemo(() => (vtuUrls || []).filter(u => getPortalCategory(u) === 'MAKEUP').length,  [vtuUrls]);
+    const regularCount = useMemo(() => (vtuUrls || []).filter(u => getPortalCategory(u) === 'REGULAR').length, [vtuUrls]);
+
+    const broadcastUrlChange = () => {
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('vtu_urls_updated'));
+            try {
+                localStorage.setItem('vtu_urls_last_sync', String(Date.now()));
+            } catch (_) {}
+        }
+    };
 
     const addVtuUrl = async () => {
         if (!facultyId) return;
@@ -136,6 +172,20 @@ export default function VtuUrlManager({ facultyId }) {
             ? 'both'
             : selectedScheme;
 
+        // Build the final exam name — append type suffix if not already implied by the name
+        const rawName = newExamName.trim();
+        const lower = rawName.toLowerCase();
+        const typeKeywords = {
+            REVAL:   ['reval', 'revaluation', ' rv'],
+            MAKEUP:  ['makeup', 'make up', 'make-up', 'summer', 'special', 'spl'],
+            REGULAR: [], // No suffix needed; Regular is the default
+        };
+        const alreadyLabelled = (typeKeywords[newExamType] || []).some(kw => lower.includes(kw));
+        const typeSuffixes = { REVAL: ' Revaluation', MAKEUP: ' MakeUp', REGULAR: '' };
+        const finalExamName = rawName
+            ? (alreadyLabelled ? rawName : `${rawName}${typeSuffixes[newExamType] || ''}`)
+            : '';
+
         setLoading(true);
         try {
             const res = await fetch('/api/vtu-urls', {
@@ -144,7 +194,7 @@ export default function VtuUrlManager({ facultyId }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url: newUrl.trim(),
-                    exam_name: newExamName.trim(),
+                    exam_name: finalExamName,
                     faculty_id: facultyId,
                     scheme: effectiveScheme,
                     is_active: true
@@ -154,10 +204,13 @@ export default function VtuUrlManager({ facultyId }) {
             if (json.success) {
                 setNewUrl('');
                 setNewExamName('');
+                setNewExamType('REGULAR');
+                setUserOverrodeExamType(false);
                 const addedToLabel = effectiveScheme === 'both'
                     ? 'both 2022 & 2025 Schemes'
                     : `${schemeLabel(effectiveScheme)} Scheme`;
                 setMessage(`✓ URL registered successfully for ${addedToLabel}!`);
+                broadcastUrlChange();
                 fetchVtuUrls(selectedScheme);
             } else {
                 setMessage(json.error || 'Failed to add URL.');
@@ -182,6 +235,7 @@ export default function VtuUrlManager({ facultyId }) {
                 active: Math.max(0, (prev[selectedScheme]?.active || 0) + (nextState ? 1 : -1))
             }
         }));
+        broadcastUrlChange();
 
         try {
             await fetch('/api/vtu-urls', {
@@ -194,6 +248,7 @@ export default function VtuUrlManager({ facultyId }) {
                     is_active: nextState
                 }),
             });
+            broadcastUrlChange();
             fetchVtuUrls(selectedScheme);
         } catch (e) {
             fetchVtuUrls(selectedScheme);
@@ -213,6 +268,7 @@ export default function VtuUrlManager({ facultyId }) {
                     scheme: selectedScheme
                 }),
             });
+            broadcastUrlChange();
             fetchVtuUrls(selectedScheme);
             setMessage(is_active
                 ? `✓ All ${schemeLabel(selectedScheme)} Scheme URLs enabled for scraping.`
@@ -243,6 +299,7 @@ export default function VtuUrlManager({ facultyId }) {
                     ? '✓ All 26 official 2022 Scheme portals restored and enabled!'
                     : `✓ All official ${schemeLabel(selectedScheme)} Scheme portals restored and enabled!`
                 );
+                broadcastUrlChange();
                 fetchVtuUrls(selectedScheme);
             }
         } catch (e) {
@@ -263,6 +320,7 @@ export default function VtuUrlManager({ facultyId }) {
                 body: JSON.stringify({ id, faculty_id: facultyId }),
             });
             const json = await res.json();
+            broadcastUrlChange();
             fetchVtuUrls(selectedScheme);
             setMessage(json.message || '✓ URL updated in portal configuration.');
         } catch (e) {
@@ -290,13 +348,27 @@ export default function VtuUrlManager({ facultyId }) {
                 display: 'inline-flex', alignItems: 'center', gap: '4px'
             };
         },
-        typeBadge: (reval) => ({
-            fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-            textTransform: 'uppercase', letterSpacing: '0.03em',
-            background: reval ? 'rgba(245, 158, 11, 0.12)' : 'rgba(59, 130, 246, 0.12)',
-            color: reval ? '#D97706' : '#2563EB',
-            border: `1px solid ${reval ? 'rgba(245, 158, 11, 0.25)' : 'rgba(59, 130, 246, 0.25)'}`
-        }),
+        typeBadge: (category) => {
+            const cat = typeof category === 'boolean' ? (category ? 'REVAL' : 'REGULAR') : category;
+            if (cat === 'REVAL') return {
+                fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+                textTransform: 'uppercase', letterSpacing: '0.03em',
+                background: 'rgba(245, 158, 11, 0.12)', color: '#D97706',
+                border: '1px solid rgba(245, 158, 11, 0.25)'
+            };
+            if (cat === 'MAKEUP') return {
+                fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+                textTransform: 'uppercase', letterSpacing: '0.03em',
+                background: 'rgba(139, 92, 246, 0.12)', color: '#7C3AED',
+                border: '1px solid rgba(139, 92, 246, 0.25)'
+            };
+            return {
+                fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+                textTransform: 'uppercase', letterSpacing: '0.03em',
+                background: 'rgba(59, 130, 246, 0.12)', color: '#2563EB',
+                border: '1px solid rgba(59, 130, 246, 0.25)'
+            };
+        },
         quickFilterBtn: (active) => ({
             padding: '6px 12px', borderRadius: 'var(--radius-3, 6px)',
             border: `1px solid ${active ? 'var(--primary, #2563eb)' : 'var(--border, #e2e8f0)'}`,
@@ -490,6 +562,7 @@ export default function VtuUrlManager({ facultyId }) {
 
                     {message && <div style={c.msg(message.includes('✓'))}>{message}</div>}
 
+                    {/* Row 1: URL + Exam Name */}
                     <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
                         <div style={{ flex: '2 1 240px', minWidth: '200px' }}>
                             <Input
@@ -502,11 +575,55 @@ export default function VtuUrlManager({ facultyId }) {
                         <div style={{ flex: '1 1 180px', minWidth: '150px' }}>
                             <Input
                                 label="Exam Name"
-                                placeholder="e.g. Dec 25/Jan 26 Regular"
+                                placeholder="e.g. Dec 25/Jan 26"
                                 value={newExamName}
                                 onChange={e => setNewExamName(e.target.value)}
                             />
                         </div>
+                    </div>
+
+                    {/* Row 2: Exam Type Selector + Register Button */}
+                    <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 'var(--space-3)' }}>
+                        {/* Exam Type — segmented button group */}
+                        <div style={{ flex: '1 1 280px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+                                Exam Type
+                            </div>
+                            <div style={{ display: 'flex', borderRadius: 'var(--radius-3, 6px)', overflow: 'hidden', border: '1px solid var(--border, #e2e8f0)', width: 'fit-content' }}>
+                                {[
+                                    { key: 'REGULAR', label: 'Regular', icon: 'check_circle', color: '#2563EB', bg: 'rgba(37,99,235,0.1)' },
+                                    { key: 'MAKEUP',  label: 'MakeUp / Summer', icon: 'replay', color: '#7C3AED', bg: 'rgba(139,92,246,0.1)' },
+                                    { key: 'REVAL',   label: 'Revaluation', icon: 'fact_check', color: '#D97706', bg: 'rgba(245,158,11,0.1)' },
+                                ].map((opt, i, arr) => {
+                                    const active = newExamType === opt.key;
+                                    return (
+                                        <button
+                                            key={opt.key}
+                                            type="button"
+                                            title={opt.label}
+                                            onClick={() => { setNewExamType(opt.key); setUserOverrodeExamType(true); }}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                padding: '8px 14px',
+                                                background: active ? opt.bg : 'var(--surface, #fff)',
+                                                color: active ? opt.color : 'var(--tx-muted, #64748b)',
+                                                border: 'none',
+                                                borderLeft: i > 0 ? '1px solid var(--border, #e2e8f0)' : 'none',
+                                                fontWeight: active ? 800 : 600,
+                                                fontSize: '12.5px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>{opt.icon}</span>
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         <div style={{ alignSelf: 'flex-end', minWidth: '130px' }}>
                             <Button
                                 variant="primary"
@@ -600,18 +717,27 @@ export default function VtuUrlManager({ facultyId }) {
                     </div>
                 </div>
 
-                {/* Reval / Regular Quick Filter + Search — mirrors the Target Portal picker on the dashboard */}
+                {/* Regular / MakeUp / Reval Quick Filters + Search */}
                 {!fetching && vtuUrls.length > 0 && (
                     <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button type="button" style={c.quickFilterBtn(portalTypeFilter === 'ALL')} onClick={() => setPortalTypeFilter('ALL')}>
                                 All ({vtuUrls.length})
                             </button>
-                            <button type="button" style={c.quickFilterBtn(portalTypeFilter === 'REVAL')} onClick={() => setPortalTypeFilter('REVAL')}>
-                                Reval Only ({revalCount})
-                            </button>
                             <button type="button" style={c.quickFilterBtn(portalTypeFilter === 'REGULAR')} onClick={() => setPortalTypeFilter('REGULAR')}>
-                                Regular Only ({regularCount})
+                                Regular ({regularCount})
+                            </button>
+                            <button type="button" style={{
+                                ...c.quickFilterBtn(portalTypeFilter === 'MAKEUP'),
+                                ...(portalTypeFilter === 'MAKEUP' ? { borderColor: '#7C3AED', color: '#7C3AED', background: 'rgba(139,92,246,0.1)' } : {})
+                            }} onClick={() => setPortalTypeFilter('MAKEUP')}>
+                                MakeUp / Summer ({makeupCount})
+                            </button>
+                            <button type="button" style={{
+                                ...c.quickFilterBtn(portalTypeFilter === 'REVAL'),
+                                ...(portalTypeFilter === 'REVAL' ? { borderColor: '#D97706', color: '#D97706', background: 'rgba(245,158,11,0.1)' } : {})
+                            }} onClick={() => setPortalTypeFilter('REVAL')}>
+                                Reval ({revalCount})
                             </button>
                         </div>
                         <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
@@ -654,8 +780,8 @@ export default function VtuUrlManager({ facultyId }) {
                                     <span style={c.schemeBadge(u.scheme || selectedScheme)}>
                                         {schemeLabel(u.scheme || selectedScheme)}
                                     </span>
-                                    <span style={c.typeBadge(isRevalPortal(u))}>
-                                        {isRevalPortal(u) ? 'Reval' : 'Regular'}
+                                    <span style={c.typeBadge(getPortalCategory(u))}>
+                                        {{ REVAL: 'Reval', MAKEUP: 'MakeUp', REGULAR: 'Regular' }[getPortalCategory(u)]}
                                     </span>
                                 </div>
                                 <div style={{

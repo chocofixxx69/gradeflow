@@ -94,6 +94,8 @@ function FacultyDashboardView({
     setAssignmentToConfirmRemove,
     loadAssignments = null,
     assignmentSyncMsg = '',
+    facultyId = null,
+    refreshPortals = null,
 }) {
     const [mounted, setMounted] = useState(false);
     useEffect(() => {
@@ -102,9 +104,21 @@ function FacultyDashboardView({
 
     // Multi-Portal Selector State
     const [portalDropdownOpen, setPortalDropdownOpen] = useState(false);
+    const [portalSchemeFilter, setPortalSchemeFilter] = useState('ALL'); // 'ALL' | '2022' | '2025' | 'mba' | 'mca'
     const [portalSearchFilter, setPortalSearchFilter] = useState('');
-    const [portalQuickCategory, setPortalQuickCategory] = useState('ALL');
+    const [portalQuickCategory, setPortalQuickCategory] = useState('ALL'); // 'ALL' | 'REGULAR' | 'MAKEUP' | 'REVAL'
     const portalDropdownRef = useRef(null);
+
+    // Quick Add Portal Inline State
+    const [quickAddOpen, setQuickAddOpen] = useState(false);
+    const [quickAddUrl, setQuickAddUrl] = useState('');
+    const [quickAddExamName, setQuickAddExamName] = useState('');
+    const [quickAddExamType, setQuickAddExamType] = useState('REGULAR'); // 'REGULAR' | 'MAKEUP' | 'REVAL'
+    const [quickAddUserOverrode, setQuickAddUserOverrode] = useState(false);
+    const [quickAddScheme, setQuickAddScheme] = useState('2022');
+    const [quickAddLoading, setQuickAddLoading] = useState(false);
+    const [quickAddError, setQuickAddError] = useState('');
+    const [quickAddSuccess, setQuickAddSuccess] = useState('');
 
     useEffect(() => {
         if (!portalDropdownOpen) return;
@@ -117,15 +131,61 @@ function FacultyDashboardView({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [portalDropdownOpen]);
 
-    const isRevalPortal = (p) => {
+    // Auto-detect quick-add exam type from name
+    useEffect(() => {
+        if (quickAddUserOverrode || !quickAddExamName.trim()) return;
+        const lower = quickAddExamName.toLowerCase();
+        if (lower.includes('reval') || lower.includes(' rv') || lower.includes('revaluation')) {
+            setQuickAddExamType('REVAL');
+        } else if (lower.includes('makeup') || lower.includes('make up') || lower.includes('summer') ||
+                   lower.includes('special') || lower.includes('spl')) {
+            setQuickAddExamType('MAKEUP');
+        } else {
+            setQuickAddExamType('REGULAR');
+        }
+    }, [quickAddExamName, quickAddUserOverrode]);
+    useEffect(() => {
+        if (!quickAddExamName.trim()) setQuickAddUserOverrode(false);
+    }, [quickAddExamName]);
+
+    const normalizePortalScheme = useCallback((scheme) => {
+        const s = String(scheme || '').trim().toLowerCase();
+        if (s === 'mba') return 'mba';
+        if (s === 'mca' || s === 'pg') return 'mca';
+        if (s === '2025' || s === '2026') return '2025';
+        return '2022';
+    }, []);
+
+    // Returns 'REVAL' | 'MAKEUP' | 'REGULAR' for a portal entry
+    const getPortalCategory = useCallback((p) => {
         const name = (p.exam_name || p.url || '').toLowerCase();
-        return name.includes('reval') || name.includes('rv');
-    };
+        if (name.includes('reval') || name.includes(' rv') || /rvce?cbcs|rvcbcs|rv[0-9]/.test(name)) return 'REVAL';
+        if (name.includes('makeup') || name.includes('make up') || name.includes('make-up') ||
+            name.includes('summer') || name.includes('special') || name.includes('spl')) return 'MAKEUP';
+        return 'REGULAR';
+    }, []);
+    // Legacy alias for existing usages
+    const isRevalPortal = useCallback((p) => getPortalCategory(p) === 'REVAL', [getPortalCategory]);
+
+    const schemeCounts = useMemo(() => {
+        const counts = { ALL: (availablePortals || []).length, '2022': 0, '2025': 0, 'mba': 0, 'mca': 0 };
+        (availablePortals || []).forEach(p => {
+            const sc = normalizePortalScheme(p.scheme);
+            if (counts[sc] !== undefined) counts[sc]++;
+        });
+        return counts;
+    }, [availablePortals, normalizePortalScheme]);
 
     const filteredPortals = useMemo(() => {
         return (availablePortals || []).filter(p => {
-            if (portalQuickCategory === 'REVAL' && !isRevalPortal(p)) return false;
-            if (portalQuickCategory === 'REGULAR' && isRevalPortal(p)) return false;
+            // Scheme filter
+            if (portalSchemeFilter !== 'ALL') {
+                const sc = normalizePortalScheme(p.scheme);
+                if (sc !== portalSchemeFilter) return false;
+            }
+            // Type filter (Regular / MakeUp / Reval)
+            if (portalQuickCategory !== 'ALL' && getPortalCategory(p) !== portalQuickCategory) return false;
+            // Search filter
             if (portalSearchFilter.trim()) {
                 const q = portalSearchFilter.toLowerCase();
                 const matchName = (p.exam_name || '').toLowerCase().includes(q);
@@ -134,7 +194,13 @@ function FacultyDashboardView({
             }
             return true;
         });
-    }, [availablePortals, portalQuickCategory, portalSearchFilter]);
+    }, [availablePortals, portalSchemeFilter, portalQuickCategory, portalSearchFilter, normalizePortalScheme, getPortalCategory]);
+
+    const areAllFilteredSelected = useMemo(() => {
+        if (filteredPortals.length === 0) return false;
+        const selectedSet = new Set(selectedPortalUrls || []);
+        return filteredPortals.every(p => selectedSet.has(p.url));
+    }, [filteredPortals, selectedPortalUrls]);
 
     const togglePortal = (url) => {
         setSelectedPortalUrls?.(prev => {
@@ -143,13 +209,84 @@ function FacultyDashboardView({
         });
     };
 
-    const selectAllFilteredPortals = () => {
-        const urlsToAdd = filteredPortals.map(p => p.url).filter(Boolean);
-        setSelectedPortalUrls?.(prev => Array.from(new Set([...(Array.isArray(prev) ? prev : []), ...urlsToAdd])));
+    const toggleAllFilteredPortals = () => {
+        if (areAllFilteredSelected) {
+            // Deselect all filtered
+            const urlsToRemove = new Set(filteredPortals.map(p => p.url));
+            setSelectedPortalUrls?.(prev => (Array.isArray(prev) ? prev : []).filter(u => !urlsToRemove.has(u)));
+        } else {
+            // Select all filtered
+            const urlsToAdd = filteredPortals.map(p => p.url).filter(Boolean);
+            setSelectedPortalUrls?.(prev => Array.from(new Set([...(Array.isArray(prev) ? prev : []), ...urlsToAdd])));
+        }
     };
 
     const clearAllPortals = () => {
         setSelectedPortalUrls?.([]);
+    };
+
+    const handleQuickAddPortal = async (e) => {
+        e.preventDefault();
+        const cleanUrl = quickAddUrl.trim();
+        if (!cleanUrl.includes('results.vtu.ac.in')) {
+            setQuickAddError('URL must be an official results.vtu.ac.in link.');
+            return;
+        }
+
+        // Build final exam name with type suffix if not already present
+        const rawName = (quickAddExamName || cleanUrl).trim();
+        const lower = rawName.toLowerCase();
+        const typeKeywords = {
+            REVAL:   ['reval', 'revaluation', ' rv'],
+            MAKEUP:  ['makeup', 'make up', 'make-up', 'summer', 'special', 'spl'],
+            REGULAR: [],
+        };
+        const alreadyLabelled = (typeKeywords[quickAddExamType] || []).some(kw => lower.includes(kw));
+        const typeSuffixes = { REVAL: ' Revaluation', MAKEUP: ' MakeUp', REGULAR: '' };
+        const finalExamName = alreadyLabelled ? rawName : `${rawName}${typeSuffixes[quickAddExamType] || ''}`;
+
+        setQuickAddLoading(true);
+        setQuickAddError('');
+        setQuickAddSuccess('');
+        try {
+            const res = await fetch('/api/vtu-urls', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: cleanUrl,
+                    exam_name: finalExamName,
+                    faculty_id: facultyId,
+                    scheme: quickAddScheme,
+                    is_active: true
+                })
+            });
+            const json = await res.json();
+            if (json.success) {
+                setQuickAddSuccess(`✓ Portal added & targeted!`);
+                setQuickAddUrl('');
+                setQuickAddExamName('');
+                setQuickAddExamType('REGULAR');
+                setQuickAddUserOverrode(false);
+                // Auto select new URL
+                setSelectedPortalUrls?.(prev => Array.from(new Set([...(Array.isArray(prev) ? prev : []), cleanUrl])));
+                refreshPortals?.();
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('vtu_urls_updated'));
+                    try { localStorage.setItem('vtu_urls_last_sync', String(Date.now())); } catch (_) {}
+                }
+                setTimeout(() => {
+                    setQuickAddSuccess('');
+                    setQuickAddOpen(false);
+                }, 1600);
+            } else {
+                setQuickAddError(json.error || 'Failed to add URL.');
+            }
+        } catch (err) {
+            setQuickAddError('Network error while adding URL.');
+        } finally {
+            setQuickAddLoading(false);
+        }
     };
 
     // Multi-USN Detection
@@ -425,7 +562,10 @@ function FacultyDashboardView({
                         <button
                             type="button"
                             className={`${styles.targetPortalTrigger} ${portalDropdownOpen ? styles.targetPortalTriggerActive : ''}`}
-                            onClick={() => setPortalDropdownOpen(prev => !prev)}
+                            onClick={() => {
+                                refreshPortals?.();
+                                setPortalDropdownOpen(prev => !prev);
+                            }}
                             disabled={scraping}
                             aria-label="Select VTU Portals to Scrape"
                         >
@@ -453,35 +593,80 @@ function FacultyDashboardView({
 
                         {portalDropdownOpen && (
                             <div className={styles.targetPortalDropdown}>
+                                {/* 1. Scheme Filter Tabs (All, 2022, 2025, MBA, MCA) */}
+                                <div className={styles.targetPortalSchemeTabs} role="tablist" aria-label="Curriculum Schemes">
+                                    {[
+                                        { key: 'ALL', shortLabel: 'All', icon: 'apps' },
+                                        { key: '2022', shortLabel: '2022 Scheme', icon: 'auto_stories' },
+                                        { key: '2025', shortLabel: '2025 Scheme', icon: 'school' },
+                                        { key: 'mba', shortLabel: 'MBA', icon: 'workspace_premium' },
+                                        { key: 'mca', shortLabel: 'MCA', icon: 'memory' }
+                                    ].map(tab => {
+                                        const isActive = portalSchemeFilter === tab.key;
+                                        const count = schemeCounts[tab.key] ?? 0;
+                                        return (
+                                            <button
+                                                key={tab.key}
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={isActive}
+                                                className={`${styles.targetPortalSchemeTab} ${isActive ? styles.targetPortalSchemeTabActive : ''}`}
+                                                onClick={() => {
+                                                    setPortalSchemeFilter(tab.key);
+                                                    if (tab.key !== 'ALL') {
+                                                        setQuickAddScheme(tab.key);
+                                                    }
+                                                }}
+                                            >
+                                                <span className="material-icons-round" style={{ fontSize: '13px' }}>
+                                                    {tab.icon}
+                                                </span>
+                                                <span>{tab.shortLabel}</span>
+                                                <span className={styles.targetPortalSchemeTabBadge}>{count}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* 2. Type Filters & Selection Helpers */}
                                 <div className={styles.targetPortalQuickBar}>
                                     <button
                                         type="button"
                                         className={`${styles.quickFilterBtn} ${portalQuickCategory === 'ALL' ? styles.quickFilterBtnActive : ''}`}
                                         onClick={() => setPortalQuickCategory('ALL')}
                                     >
-                                        All ({availablePortals.length})
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`${styles.quickFilterBtn} ${portalQuickCategory === 'REVAL' ? styles.quickFilterBtnActive : ''}`}
-                                        onClick={() => setPortalQuickCategory('REVAL')}
-                                    >
-                                        Reval Only
+                                        All Types
                                     </button>
                                     <button
                                         type="button"
                                         className={`${styles.quickFilterBtn} ${portalQuickCategory === 'REGULAR' ? styles.quickFilterBtnActive : ''}`}
                                         onClick={() => setPortalQuickCategory('REGULAR')}
                                     >
-                                        Regular Only
+                                        Regular
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.quickFilterBtn} ${portalQuickCategory === 'MAKEUP' ? styles.quickFilterBtnActive : ''}`}
+                                        style={portalQuickCategory === 'MAKEUP' ? { borderColor: '#7C3AED', color: '#7C3AED', background: 'rgba(139,92,246,0.1)' } : {}}
+                                        onClick={() => setPortalQuickCategory('MAKEUP')}
+                                    >
+                                        MakeUp / Summer
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`${styles.quickFilterBtn} ${portalQuickCategory === 'REVAL' ? styles.quickFilterBtnActive : ''}`}
+                                        style={portalQuickCategory === 'REVAL' ? { borderColor: '#D97706', color: '#D97706', background: 'rgba(245,158,11,0.1)' } : {}}
+                                        onClick={() => setPortalQuickCategory('REVAL')}
+                                    >
+                                        Reval
                                     </button>
                                     <button
                                         type="button"
                                         className={styles.quickFilterBtn}
                                         style={{ marginLeft: 'auto' }}
-                                        onClick={selectAllFilteredPortals}
+                                        onClick={toggleAllFilteredPortals}
                                     >
-                                        Select All
+                                        {areAllFilteredSelected ? 'Deselect Filtered' : 'Select All Filtered'}
                                     </button>
                                     <button
                                         type="button"
@@ -492,63 +677,221 @@ function FacultyDashboardView({
                                     </button>
                                 </div>
 
-                                <input
-                                    type="text"
-                                    className={styles.targetPortalSearchInput}
-                                    placeholder="Filter portals by exam name or URL..."
-                                    value={portalSearchFilter}
-                                    onChange={(e) => setPortalSearchFilter(e.target.value)}
-                                />
+                                {/* 3. Search Bar with Clear Button */}
+                                <div className={styles.targetPortalSearchWrapper}>
+                                    <span className={`material-icons-round ${styles.targetPortalSearchIcon}`} style={{ fontSize: '16px' }}>
+                                        search
+                                    </span>
+                                    <input
+                                        type="text"
+                                        className={styles.targetPortalSearchInput}
+                                        placeholder="Filter portals by exam name or URL..."
+                                        value={portalSearchFilter}
+                                        onChange={(e) => setPortalSearchFilter(e.target.value)}
+                                    />
+                                    {portalSearchFilter && (
+                                        <button
+                                            type="button"
+                                            className={styles.targetPortalSearchClear}
+                                            onClick={() => setPortalSearchFilter('')}
+                                            aria-label="Clear filter"
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>close</span>
+                                        </button>
+                                    )}
+                                </div>
 
+                                {/* 4. Sub-bar: Counter & Inline Add Portal Toggle */}
+                                <div className={styles.targetPortalSubBar}>
+                                    <span>
+                                        Showing <strong>{filteredPortals.length}</strong> of {schemeCounts[portalSchemeFilter] ?? availablePortals.length} portals
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className={styles.targetPortalTextBtn}
+                                        onClick={() => setQuickAddOpen(prev => !prev)}
+                                    >
+                                        {quickAddOpen ? '✕ Close Add Form' : '+ Add Portal URL'}
+                                    </button>
+                                </div>
+
+                                {/* 5. Inline Quick Add Portal Form */}
+                                {quickAddOpen && (
+                                    <form className={styles.targetPortalQuickAddBox} onSubmit={handleQuickAddPortal}>
+                                        <div className={styles.targetPortalQuickAddTitle}>
+                                            <span className="material-icons-round" style={{ fontSize: '15px' }}>add_link</span>
+                                            Register New VTU Result Portal
+                                        </div>
+                                        <input
+                                            type="url"
+                                            required
+                                            className={styles.targetPortalQuickAddInput}
+                                            placeholder="https://results.vtu.ac.in/..."
+                                            value={quickAddUrl}
+                                            onChange={(e) => setQuickAddUrl(e.target.value)}
+                                        />
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            <input
+                                                type="text"
+                                                className={styles.targetPortalQuickAddInput}
+                                                style={{ flex: 2, minWidth: '130px' }}
+                                                placeholder="Exam Name (e.g. Dec 25/Jan 26)"
+                                                value={quickAddExamName}
+                                                onChange={(e) => setQuickAddExamName(e.target.value)}
+                                            />
+                                            <select
+                                                className={styles.targetPortalQuickAddInput}
+                                                style={{ flex: 1, minWidth: '100px' }}
+                                                value={quickAddScheme}
+                                                onChange={(e) => setQuickAddScheme(e.target.value)}
+                                            >
+                                                <option value="2022">2022 Scheme</option>
+                                                <option value="2025">2025 Scheme</option>
+                                                <option value="both">Both 2022 &amp; 2025</option>
+                                                <option value="mba">MBA Scheme</option>
+                                                <option value="mca">MCA Scheme</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Exam Type Segmented Picker */}
+                                        <div>
+                                            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Exam Type</div>
+                                            <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border, #e2e8f0)', width: '100%' }}>
+                                                {[
+                                                    { key: 'REGULAR', label: 'Regular',         icon: 'check_circle', color: '#2563EB', bg: 'rgba(37,99,235,0.1)' },
+                                                    { key: 'MAKEUP',  label: 'MakeUp / Summer', icon: 'replay',       color: '#7C3AED', bg: 'rgba(139,92,246,0.1)' },
+                                                    { key: 'REVAL',   label: 'Reval',            icon: 'fact_check',   color: '#D97706', bg: 'rgba(245,158,11,0.1)' },
+                                                ].map((opt, i) => {
+                                                    const active = quickAddExamType === opt.key;
+                                                    return (
+                                                        <button
+                                                            key={opt.key}
+                                                            type="button"
+                                                            onClick={() => { setQuickAddExamType(opt.key); setQuickAddUserOverrode(true); }}
+                                                            style={{
+                                                                flex: 1,
+                                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                                                padding: '7px 6px',
+                                                                background: active ? opt.bg : 'var(--surface, #fff)',
+                                                                color: active ? opt.color : 'var(--tx-muted, #64748b)',
+                                                                border: 'none',
+                                                                borderLeft: i > 0 ? '1px solid var(--border, #e2e8f0)' : 'none',
+                                                                fontWeight: active ? 800 : 600,
+                                                                fontSize: '11px',
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.15s',
+                                                                whiteSpace: 'nowrap',
+                                                            }}
+                                                        >
+                                                            <span className="material-icons-round" style={{ fontSize: '13px' }}>{opt.icon}</span>
+                                                            {opt.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {quickAddError && (
+                                            <div style={{ fontSize: '11px', color: 'var(--red, #b91c1c)', fontWeight: 600 }}>
+                                                {quickAddError}
+                                            </div>
+                                        )}
+                                        {quickAddSuccess && (
+                                            <div style={{ fontSize: '11px', color: 'var(--success, #166534)', fontWeight: 700 }}>
+                                                {quickAddSuccess}
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '2px' }}>
+                                            <Button size="sm" variant="ghost" type="button" onClick={() => setQuickAddOpen(false)}>
+                                                Cancel
+                                            </Button>
+                                            <Button size="sm" variant="primary" type="submit" disabled={quickAddLoading || !quickAddUrl}>
+                                                {quickAddLoading ? 'Saving...' : 'Add & Target Portal'}
+                                            </Button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                {/* 6. Accessible Portal List with Glitch-Free Labels & Scheme Badges */}
                                 <div className={styles.targetPortalList}>
                                     {filteredPortals.map((p, idx) => {
                                         const isChecked = selectedPortalUrls.includes(p.url);
-                                        const isReval = isRevalPortal(p);
+                                        const cat = getPortalCategory(p);
+                                        const normScheme = normalizePortalScheme(p.scheme);
+                                        const schemeLabelText = normScheme === 'mba' ? 'MBA' : normScheme === 'mca' ? 'MCA' : `${normScheme}`;
                                         return (
-                                            <div
-                                                key={p.id || p.url || idx}
+                                            <label
+                                                key={p.id || `${p.scheme || '2022'}-${p.url}-${idx}`}
                                                 className={`${styles.targetPortalItem} ${isChecked ? styles.targetPortalItemChecked : ''}`}
-                                                onClick={() => togglePortal(p.url)}
                                             >
                                                 <input
                                                     type="checkbox"
                                                     className={styles.targetPortalCheckbox}
                                                     checked={isChecked}
-                                                    onChange={() => {}}
-                                                    onClick={(e) => e.stopPropagation()}
+                                                    onChange={() => togglePortal(p.url)}
                                                 />
                                                 <div className={styles.targetPortalItemInfo}>
                                                     <span className={styles.targetPortalItemName}>{p.exam_name || p.url}</span>
                                                     <span className={styles.targetPortalItemUrl}>{p.url}</span>
                                                 </div>
-                                                <span className={`${styles.targetPortalTypeBadge} ${isReval ? styles.targetPortalTypeReval : styles.targetPortalTypeRegular}`}>
-                                                    {isReval ? 'Reval' : 'Regular'}
-                                                </span>
-                                            </div>
+                                                <div className={styles.targetPortalBadgesRow}>
+                                                    <span className={`${styles.targetPortalSchemeBadge} ${styles['targetPortalScheme_' + normScheme]}`}>
+                                                        {schemeLabelText}
+                                                    </span>
+                                                    <span className={`${styles.targetPortalTypeBadge} ${
+                                                        cat === 'REVAL' ? styles.targetPortalTypeReval
+                                                        : cat === 'MAKEUP' ? styles.targetPortalTypeMakeup
+                                                        : styles.targetPortalTypeRegular
+                                                    }`}>
+                                                        {{ REVAL: 'Reval', MAKEUP: 'MakeUp', REGULAR: 'Regular' }[cat]}
+                                                    </span>
+                                                </div>
+                                            </label>
                                         );
                                     })}
                                     {filteredPortals.length === 0 && (
-                                        <div style={{ padding: '14px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
-                                            No matching portals found.
+                                        <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: '12px', color: 'var(--tx-muted)' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '24px', color: 'var(--tx-dim)', display: 'block', marginBottom: '4px' }}>
+                                                search_off
+                                            </span>
+                                            No matching portals found for this filter.
+                                            {portalSearchFilter && (
+                                                <div style={{ marginTop: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        className={styles.targetPortalTextBtn}
+                                                        onClick={() => setPortalSearchFilter('')}
+                                                    >
+                                                        Clear Search
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
 
+                                {/* 7. Dropdown Footer */}
                                 <div className={styles.targetPortalFooter}>
-                                    <span>{selectedPortalUrls.length} selected</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span className={styles.targetPortalSelectedCount}>
+                                            <strong>{selectedPortalUrls.length}</strong> selected
+                                        </span>
+                                        {selectedPortalUrls.length > 0 && (
+                                            <button
+                                                type="button"
+                                                className={styles.targetPortalTextBtn}
+                                                onClick={clearAllPortals}
+                                                title="Deselect all portals"
+                                            >
+                                                Clear All
+                                            </button>
+                                        )}
+                                    </div>
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                         <Link
                                             href="/faculty/vtu-urls"
-                                            style={{
-                                                color: 'var(--primary)',
-                                                fontWeight: 700,
-                                                fontSize: '12px',
-                                                textDecoration: 'none',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
-                                            }}
-                                            title="Manage VTU result portal URLs"
+                                            className={styles.targetPortalManageLink}
+                                            title="Manage VTU result portal URLs & configurations"
                                         >
                                             <span className="material-icons-round" style={{ fontSize: '15px' }}>tune</span>
                                             Manage Portals
@@ -575,8 +918,15 @@ function FacultyDashboardView({
                         {selectedPortalUrls.map(url => {
                             const p = availablePortals.find(item => item.url === url);
                             const label = p?.exam_name || url;
+                            const normScheme = p?.scheme ? normalizePortalScheme(p.scheme) : null;
+                            const schemeLabelText = normScheme === 'mba' ? 'MBA' : normScheme === 'mca' ? 'MCA' : `${normScheme}`;
                             return (
                                 <div key={url} className={styles.portalChip}>
+                                    {normScheme && (
+                                        <span className={`${styles.targetPortalSchemeBadge} ${styles['targetPortalScheme_' + normScheme]}`} style={{ padding: '1px 5px', fontSize: '9px' }}>
+                                            {schemeLabelText}
+                                        </span>
+                                    )}
                                     <span className={styles.portalChipText} title={url}>{label}</span>
                                     <button
                                         type="button"
@@ -1528,7 +1878,7 @@ function FacultyDashboardContent() {
     // All schemes (2022, 2025, MBA, MCA), polled through useLive so a portal
     // added or toggled from the Manage Portals page (or another tab) shows up
     // here on the next poll tick / focus revalidation, with no manual refresh.
-    const { data: portalsData } = useLive(faculty?.id ? '/api/vtu-urls' : null, {
+    const { data: portalsData, refresh: refreshPortals } = useLive(faculty?.id ? '/api/vtu-urls' : null, {
         query: { faculty_id: faculty?.id },
         interval: LIVE.NORMAL,
     });
@@ -1536,6 +1886,22 @@ function FacultyDashboardContent() {
         () => (portalsData?.urls || []).filter(u => u.is_active),
         [portalsData]
     );
+
+    // Sync portal changes immediately when triggered from VtuUrlManager or another tab
+    useEffect(() => {
+        const handleSync = () => {
+            refreshPortals?.();
+        };
+        window.addEventListener('vtu_urls_updated', handleSync);
+        const handleStorage = (e) => {
+            if (e.key === 'vtu_urls_last_sync') handleSync();
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => {
+            window.removeEventListener('vtu_urls_updated', handleSync);
+            window.removeEventListener('storage', handleStorage);
+        };
+    }, [refreshPortals]);
     const [selectedPortalUrl, setSelectedPortalUrl] = useState('ALL');
     const [selectedPortalUrls, setSelectedPortalUrls] = useState([]);
     const [customPortalUrl, setCustomPortalUrl] = useState('');
@@ -2285,6 +2651,8 @@ function FacultyDashboardContent() {
             setAssignmentToConfirmRemove={setAssignmentToConfirmRemove}
             loadAssignments={loadAssignments}
             assignmentSyncMsg={assignmentSyncMsg}
+            facultyId={faculty?.id}
+            refreshPortals={refreshPortals}
         />
         <ConfirmDialog
             open={Boolean(assignmentToConfirmRemove)}

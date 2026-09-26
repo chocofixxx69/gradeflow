@@ -1170,13 +1170,13 @@
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
-    right: 0;
-    min-width: 320px;
-    max-width: 500px;
+    min-width: 340px;
+    max-width: 620px;
+    width: clamp(340px, 94vw, 620px);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-3);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.16), 0 8px 12px -6px rgba(0, 0, 0, 0.1);
     z-index: 100;
     padding: 12px;
     display: flex;
@@ -1188,6 +1188,69 @@
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Scheme Tabs (2022, 2025, MBA, MCA) ─────────────────── */
+.targetPortalSchemeTabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--surface-low);
+    padding: 3px;
+    border-radius: var(--radius-2);
+    border: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.targetPortalSchemeTabs::-webkit-scrollbar {
+    display: none;
+}
+
+.targetPortalSchemeTab {
+    flex: 1 1 auto;
+    min-width: fit-content;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    font-weight: 700;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--tx-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.targetPortalSchemeTab:hover {
+    color: var(--tx-main);
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.targetPortalSchemeTabActive {
+    background: var(--surface);
+    color: var(--tx-main);
+    font-weight: 800;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.targetPortalSchemeTabBadge {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 9999px;
+    background: var(--border);
+    color: var(--tx-muted);
+    line-height: 1.3;
+}
+
+.targetPortalSchemeTabActive .targetPortalSchemeTabBadge {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--primary);
 }
 
 .targetPortalQuickBar {
@@ -1223,28 +1286,72 @@
     border-color: var(--primary);
 }
 
+.targetPortalSearchWrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
 .targetPortalSearchInput {
     width: 100%;
     height: 32px;
-    padding: 0 10px;
+    padding: 0 28px 0 28px;
     font-size: 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-2);
     background: var(--surface-low);
     color: var(--tx-main);
     outline: none;
+    transition: border-color 0.15s ease;
 }
 
 .targetPortalSearchInput:focus {
     border-color: var(--primary);
+    background: var(--surface);
+}
+
+.targetPortalSearchIcon {
+    position: absolute;
+    left: 8px;
+    color: var(--tx-dim);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+}
+
+.targetPortalSearchClear {
+    position: absolute;
+    right: 6px;
+    background: none;
+    border: none;
+    color: var(--tx-muted);
+    cursor: pointer;
+    padding: 2px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+}
+
+.targetPortalSearchClear:hover {
+    color: var(--tx-main);
+}
+
+.targetPortalSubBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--tx-muted);
+    padding: 0 2px;
 }
 
 .targetPortalList {
-    max-height: 220px;
+    max-height: 260px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     padding-right: 4px;
 }
 
@@ -1252,14 +1359,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 7px 10px;
+    padding: 8px 10px;
     border-radius: var(--radius-2);
     cursor: pointer;
     font-size: 12.5px;
     font-weight: 500;
     color: var(--tx-main);
-    transition: background 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease;
     user-select: none;
+    border: 1px solid transparent;
 }
 
 .targetPortalItem:hover {
@@ -1267,7 +1375,8 @@
 }
 
 .targetPortalItemChecked {
-    background: rgba(16, 185, 129, 0.08);
+    background: rgba(16, 185, 129, 0.07);
+    border-color: rgba(16, 185, 129, 0.25);
     font-weight: 600;
 }
 
@@ -1276,6 +1385,8 @@
     height: 16px;
     accent-color: var(--primary);
     cursor: pointer;
+    flex-shrink: 0;
+    margin: 0;
 }
 
 .targetPortalItemInfo {
@@ -1290,6 +1401,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: 12.5px;
 }
 
 .targetPortalItemUrl {
@@ -1301,13 +1413,54 @@
     white-space: nowrap;
 }
 
+.targetPortalBadgesRow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.targetPortalSchemeBadge {
+    font-size: 9.5px;
+    font-weight: 800;
+    padding: 2px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.targetPortalScheme_2022 {
+    background: rgba(37, 99, 235, 0.12);
+    color: #2563EB;
+    border: 1px solid rgba(37, 99, 235, 0.25);
+}
+
+.targetPortalScheme_2025 {
+    background: rgba(139, 92, 246, 0.12);
+    color: #8B5CF6;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.targetPortalScheme_mba {
+    background: rgba(217, 119, 6, 0.12);
+    color: #D97706;
+    border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.targetPortalScheme_mca {
+    background: rgba(13, 148, 136, 0.12);
+    color: #0D9488;
+    border: 1px solid rgba(13, 148, 136, 0.25);
+}
+
 .targetPortalTypeBadge {
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 700;
-    padding: 2px 6px;
+    padding: 2px 5px;
     border-radius: 4px;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+    white-space: nowrap;
 }
 
 .targetPortalTypeReval {
@@ -1322,6 +1475,49 @@
     border: 1px solid rgba(59, 130, 246, 0.25);
 }
 
+.targetPortalTypeMakeup {
+    background: rgba(139, 92, 246, 0.12);
+    color: #7C3AED;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+/* ─── Inline Quick Add Portal ───────────────────────────── */
+.targetPortalQuickAddBox {
+    background: var(--surface-low);
+    border: 1px dashed var(--primary);
+    border-radius: var(--radius-2);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.targetPortalQuickAddTitle {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.targetPortalQuickAddInput {
+    width: 100%;
+    height: 30px;
+    padding: 0 8px;
+    font-size: 11.5px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-1);
+    background: var(--surface);
+    color: var(--tx-main);
+    outline: none;
+}
+
+.targetPortalQuickAddInput:focus {
+    border-color: var(--primary);
+}
+
 .targetPortalFooter {
     display: flex;
     align-items: center;
@@ -1331,6 +1527,41 @@
     border-top: 1px solid var(--border);
     font-size: 11.5px;
     color: var(--tx-muted);
+}
+
+.targetPortalSelectedCount {
+    color: var(--tx-main);
+    font-size: 12px;
+}
+
+.targetPortalTextBtn {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 4px;
+    text-decoration: underline;
+}
+
+.targetPortalTextBtn:hover {
+    color: var(--primary-hover, var(--primary));
+}
+
+.targetPortalManageLink {
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 12px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: opacity 0.15s ease;
+}
+
+.targetPortalManageLink:hover {
+    opacity: 0.8;
 }
 
 /* ─── Selected Portal Chips ─────────────────────────────── */

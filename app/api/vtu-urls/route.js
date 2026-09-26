@@ -39,7 +39,8 @@ export async function GET(req) {
             query = query.eq('scheme', scheme);
         }
 
-        let { data, error } = await query.order('sort_order', { ascending: true });
+        let { data, error } = await query
+            .order('sort_order', { ascending: true });
         if (error) throw error;
 
         // If 2022 scheme has fewer than the canonical 26 portals, auto-heal and seed any missing portals immediately
@@ -47,13 +48,18 @@ export async function GET(req) {
             data = await autoSeedScheme(faculty_id, '2022');
         } else if (scheme && (!data || data.length === 0)) {
             data = await autoSeedScheme(faculty_id, scheme);
-        } else if (!scheme && (!data || data.length === 0)) {
-            // Seed both schemes if completely empty
-            const [s22, s25] = await Promise.all([
-                autoSeedScheme(faculty_id, '2022'),
-                autoSeedScheme(faculty_id, '2025')
-            ]);
-            data = [...s22, ...s25];
+        } else if (!scheme) {
+            // If fetching all schemes, ensure each scheme (2022, 2025, mba, mca) is seeded
+            const existingSchemes = new Set((data || []).map(r => (r.scheme || '2022').toLowerCase()));
+            const targetSchemes = ['2022', '2025', 'mba', 'mca'];
+            const missing = targetSchemes.filter(s => !existingSchemes.has(s) && (s !== 'mca' || !existingSchemes.has('pg')));
+            if (missing.length > 0) {
+                const newSeeded = await Promise.all(missing.map(s => autoSeedScheme(faculty_id, s)));
+                const flatNew = newSeeded.flat().filter(Boolean);
+                if (flatNew.length > 0) {
+                    data = [...(data || []), ...flatNew];
+                }
+            }
         }
 
         // Fetch counts for summary badges
@@ -70,7 +76,8 @@ export async function GET(req) {
         };
 
         (allFacUrls || []).forEach(r => {
-            const sc = r.scheme || '2022';
+            let sc = (r.scheme || '2022').toLowerCase();
+            if (sc === 'pg') sc = 'mca';
             if (counts[sc]) {
                 counts[sc].total++;
                 if (r.is_active) counts[sc].active++;
