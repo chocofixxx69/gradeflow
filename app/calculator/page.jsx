@@ -18,7 +18,7 @@ import { apiRequest, getStudentAuthHeaders } from '@/lib/api/client';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, Stack } from '@/components/ui/Foundation';
-import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
+import { PageHeader, PageHeaderEyebrow, PageHeaderTitle } from '@/components/ui/PageHeader';
 import styles from './Calculator.module.css';
 
 // Canonical Course Taxonomy Tag matching Faculty Portal
@@ -92,9 +92,14 @@ function CalculatorContent() {
     const [catalogSource, setCatalogSource] = useState('institutional');
     const [stats, setStats] = useState({ sgpa: 0, totalCredits: 0, totalCrP: 0, formula: '' });
     const [isLoadingVaultRecords, setIsLoadingVaultRecords] = useState(false);
+    // Catalog picker modal state
+    const [showCatalogPicker, setShowCatalogPicker] = useState(false);
+    const [catalogPickerList, setCatalogPickerList] = useState([]);
+    const [catalogPickerLoading, setCatalogPickerLoading] = useState(false);
+    const [catalogPickerSearch, setCatalogPickerSearch] = useState('');
 
-    // Synchronize catalog matrix with Faculty Portal / Institutional Database
-    const refreshMatrix = useCallback(async (b, s, sch) => {
+    // Synchronize catalog matrix — first checks student's real marks, then falls back to catalog
+    const refreshMatrix = useCallback(async (b, s, sch, studentUsn) => {
         setLoading(true);
         setError(null);
         const cleanBranch = normalizeBranch(b || 'CS');
@@ -102,7 +107,40 @@ function CalculatorContent() {
         const schemeStr = String(sch || '2022').trim();
 
         try {
-            // 1. Primary Source: Live Institutional Database (subject_catalog)
+            // ── PRIORITY 1: Load student's actual enrolled marks from subject_marks ──
+            // Only attempt if we have a USN (student is logged in or USN was set)
+            const currentUsn = studentUsn || usn;
+            if (currentUsn && currentUsn.trim().length > 4) {
+                const { data: marksData, error: marksErr } = await supabase
+                    .from('subject_marks')
+                    .select('subject_code, subject_name, credits, total, internal, external, grade, passed')
+                    .eq('usn', currentUsn.trim().toUpperCase())
+                    .eq('semester', semNum);
+
+                if (!marksErr && marksData && marksData.length > 0) {
+                    const mapped = marksData.map(d => {
+                        const isAudit = isAuditCourse(d.subject_code);
+                        const totalScore = Number(d.total) || ((Number(d.internal) || 0) + (Number(d.external) || 0));
+                        const grade = d.grade || (totalScore > 0 ? getGradeFromTotal(totalScore, schemeStr) : '-');
+                        return {
+                            id: `${d.subject_code}_marks`,
+                            code: d.subject_code,
+                            name: d.subject_name,
+                            credits: isAudit ? 0 : (Number(d.credits) || 0),
+                            isAudit,
+                            total: totalScore || '',
+                            grade,
+                            source: 'marks_vault'
+                        };
+                    });
+                    setSubjects(mapped);
+                    setCatalogSource('institutional');
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            // ── PRIORITY 2: Load from Faculty Subject Catalog (deduplicated) ──
             const { data, error: catErr } = await supabase
                 .from('subject_catalog')
                 .select('*')
@@ -112,7 +150,20 @@ function CalculatorContent() {
                 .order('subject_code', { ascending: true });
 
             if (!catErr && data && data.length > 0) {
-                const mapped = data.map(d => {
+                // Deduplicate elective groups: keep only first of BESCK104A/B/C/D/E etc.
+                // A "group" is identified by trimming trailing letter if credits match
+                const seen = new Set();
+                const deduped = [];
+                for (const d of data) {
+                    const baseCode = d.subject_code.replace(/[A-Z]$/, '');
+                    const isElective = /[A-Z]$/.test(d.subject_code) && d.subject_code.length > 6;
+                    if (isElective) {
+                        if (seen.has(baseCode)) continue;
+                        seen.add(baseCode);
+                    }
+                    deduped.push(d);
+                }
+                const mapped = deduped.map(d => {
                     const isAudit = isAuditCourse(d.subject_code);
                     return {
                         id: d.id || `${d.subject_code}_${Math.random()}`,
@@ -130,7 +181,7 @@ function CalculatorContent() {
                 return;
             }
 
-            // 2. Fallback: VTU Syllabus Curriculum Catalog
+            // ── PRIORITY 3: VTU Syllabus Fallback ──
             const fallback = await getSubjectsFor(cleanBranch, semNum, schemeStr);
             if (fallback && fallback.length > 0) {
                 const mappedFallback = fallback.map(d => {
@@ -168,7 +219,7 @@ function CalculatorContent() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [usn]);
 
     // Initialize session and student identity
     useEffect(() => {
@@ -179,7 +230,8 @@ function CalculatorContent() {
             try {
                 const user = JSON.parse(stuSession);
                 setLoggedInUser(user);
-                setUsn((user.usn || '').toUpperCase());
+                const studentUsn = (user.usn || '').toUpperCase();
+                setUsn(studentUsn);
                 setStudentName(user.name || '');
 
                 const cleanBranch = normalizeBranch(user.branch || user.branch_code || 'CS');
@@ -192,16 +244,17 @@ function CalculatorContent() {
                 const semToUse = (!isNaN(userSem) && userSem >= 1 && userSem <= 8) ? userSem : 1;
                 setSemester(semToUse);
 
-                refreshMatrix(cleanBranch, semToUse, cleanScheme);
+                // Pass USN directly so refreshMatrix can load real marks immediately
+                refreshMatrix(cleanBranch, semToUse, cleanScheme, studentUsn);
             } catch (e) {
                 console.error('Session parse error:', e);
-                refreshMatrix('CS', 1, '2022');
+                refreshMatrix('CS', 1, '2022', null);
             }
         } else if (facSession) {
             setLoggedInUser(null);
-            refreshMatrix(branch, semester, scheme);
+            refreshMatrix(branch, semester, scheme, null);
         } else {
-            refreshMatrix(branch, semester, scheme);
+            refreshMatrix(branch, semester, scheme, null);
         }
     }, [refreshMatrix]);
 
@@ -231,22 +284,50 @@ function CalculatorContent() {
         setSuccess(null);
     };
 
-    // Add a custom subject row (e.g. Backlog or extra elective taken)
-    const addCustomSubject = () => {
-        const newCode = `CUSTOM_${Math.floor(1000 + Math.random() * 9000)}`;
+    // Open the Faculty Catalog Picker to add a real course
+    const openCatalogPicker = async () => {
+        setShowCatalogPicker(true);
+        setCatalogPickerSearch('');
+        setCatalogPickerLoading(true);
+        try {
+            const { data, error: catErr } = await supabase
+                .from('subject_catalog')
+                .select('id, subject_code, subject_name, credits, semester')
+                .eq('scheme', scheme)
+                .eq('branch', normalizeBranch(branch))
+                .order('semester', { ascending: true })
+                .order('subject_code', { ascending: true });
+            if (!catErr && data) {
+                // Exclude already-added subjects
+                const addedCodes = new Set(subjects.map(s => s.code));
+                setCatalogPickerList(data.filter(d => !addedCodes.has(d.subject_code)));
+            } else {
+                setCatalogPickerList([]);
+            }
+        } catch (e) {
+            setCatalogPickerList([]);
+        } finally {
+            setCatalogPickerLoading(false);
+        }
+    };
+
+    const addFromCatalog = (course) => {
+        const isAudit = isAuditCourse(course.subject_code);
         setSubjects(prev => [
             ...prev,
             {
-                id: Math.random(),
-                code: newCode,
-                name: 'Custom Elective / Course',
-                credits: 3,
-                isAudit: false,
+                id: course.id || `${course.subject_code}_added`,
+                code: course.subject_code,
+                name: course.subject_name,
+                credits: isAudit ? 0 : (Number(course.credits) || 0),
+                isAudit,
                 total: '',
                 grade: '-',
-                source: 'custom'
+                source: 'catalog_added'
             }
         ]);
+        // Remove from picker list
+        setCatalogPickerList(prev => prev.filter(c => c.subject_code !== course.subject_code));
     };
 
     const removeSubject = (id) => {
@@ -341,8 +422,8 @@ function CalculatorContent() {
         try {
             const { data, error: fetchErr } = await supabase
                 .from('subject_marks')
-                .select('semester, total_marks, grade, credits, subject_code')
-                .eq('student_usn', usn.toUpperCase());
+                .select('semester, total, grade, credits, subject_code')
+                .eq('usn', usn.toUpperCase());
 
             if (fetchErr) throw fetchErr;
 
@@ -356,7 +437,7 @@ function CalculatorContent() {
                         code: m.subject_code,
                         grade: m.grade,
                         credits: m.credits,
-                        total: m.total_marks
+                        total: m.total
                     });
                 });
 
@@ -397,14 +478,21 @@ function CalculatorContent() {
         return classify(stats.sgpa).label;
     }, [stats.sgpa]);
 
+    // Filtered list for catalog picker
+    const filteredPickerList = useMemo(() => {
+        const q = catalogPickerSearch.toLowerCase();
+        if (!q) return catalogPickerList;
+        return catalogPickerList.filter(c =>
+            c.subject_name.toLowerCase().includes(q) || c.subject_code.toLowerCase().includes(q)
+        );
+    }, [catalogPickerList, catalogPickerSearch]);
+
     return (
         <div className={`gf-page gf-page-wide gf-fade-up ${styles.calcWrapper}`}>
+            {/* Compact header — no duplicate subtitle, just clean title */}
             <PageHeader>
-                <PageHeaderEyebrow>Institutional Academic Engine</PageHeaderEyebrow>
-                <PageHeaderTitle>VTU SGPA & CGPA Calculator</PageHeaderTitle>
-                <PageHeaderSubtitle>
-                    Synchronized with the institutional Faculty Subject Catalog. Enter continuous or final scores to compute verified SGPA and CGPA.
-                </PageHeaderSubtitle>
+                <PageHeaderEyebrow>VTU Academic Engine</PageHeaderEyebrow>
+                <PageHeaderTitle>SGPA &amp; CGPA Calculator</PageHeaderTitle>
             </PageHeader>
 
             {/* Live Institutional Catalog Status Bar */}
@@ -424,7 +512,7 @@ function CalculatorContent() {
                     <button
                         type="button"
                         className={styles.quickBtn}
-                        onClick={() => refreshMatrix(branch, semester, scheme)}
+                        onClick={() => refreshMatrix(branch, semester, scheme, usn)}
                         title="Re-fetch subjects directly from database catalog"
                     >
                         <span className="material-icons-round" style={{ fontSize: '15px' }}>sync</span>
@@ -572,7 +660,7 @@ function CalculatorContent() {
                                     onChange={e => {
                                         const b = e.target.value;
                                         setBranch(b);
-                                        refreshMatrix(b, semester, scheme);
+                                        refreshMatrix(b, semester, scheme, usn);
                                     }}
                                 >
                                     {Object.entries(VTU_BRANCHES).map(([code, name]) => (
@@ -593,7 +681,7 @@ function CalculatorContent() {
                                     onChange={e => {
                                         const s = e.target.value;
                                         setScheme(s);
-                                        refreshMatrix(branch, semester, s);
+                                        refreshMatrix(branch, semester, s, usn);
                                     }}
                                 >
                                     {Object.keys(VTU_SCHEMES).map(k => (
@@ -619,7 +707,7 @@ function CalculatorContent() {
                                             className={`${styles.semBtn} ${isActive ? styles.semBtnActive : ''}`}
                                             onClick={() => {
                                                 setSemester(n);
-                                                refreshMatrix(branch, n, scheme);
+                                                refreshMatrix(branch, n, scheme, usn);
                                             }}
                                             aria-pressed={isActive}
                                             aria-label={`Select semester ${n}`}
@@ -737,11 +825,11 @@ function CalculatorContent() {
                                         <button
                                             type="button"
                                             className={styles.quickBtn}
-                                            onClick={addCustomSubject}
-                                            title="Add additional or backlog subject to this semester"
+                                            onClick={openCatalogPicker}
+                                            title="Add a subject from the official Faculty Subject Catalog"
                                         >
-                                            <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>add</span>
-                                            + Add Subject
+                                            <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>library_add</span>
+                                            Add from Catalog
                                         </button>
                                     </div>
                                 </div>
@@ -790,8 +878,11 @@ function CalculatorContent() {
                                                                         <span className="material-icons-round" style={{ fontSize: '12px' }}>{tag.icon}</span>
                                                                         {tag.label}
                                                                     </span>
-                                                                    {sub.source === 'custom' && (
-                                                                        <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 800 }}>Custom</span>
+                                                                    {sub.source === 'marks_vault' && (
+                                                                        <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 800 }}>✓ Verified</span>
+                                                                    )}
+                                                                    {sub.source === 'catalog_added' && (
+                                                                        <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 800 }}>+ Added</span>
                                                                     )}
                                                                 </div>
                                                             </td>
@@ -851,7 +942,7 @@ function CalculatorContent() {
                                                             </td>
 
                                                             <td className={styles.ledgerTdAction}>
-                                                                {sub.source === 'custom' && (
+                                                                {(sub.source === 'custom' || sub.source === 'catalog_added') && (
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => removeSubject(sub.id)}
@@ -1041,6 +1132,163 @@ function CalculatorContent() {
                     )}
                 </main>
             </div>
+
+            {/* ── Faculty Catalog Picker Modal ── */}
+            {showCatalogPicker && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 1000,
+                        background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '16px'
+                    }}
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowCatalogPicker(false); }}
+                >
+                    <div style={{
+                        background: 'var(--surface, #fff)',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '540px',
+                        maxHeight: '80vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 24px 64px rgba(0,0,0,0.18)'
+                    }}>
+                        {/* Modal Header */}
+                        <div style={{
+                            padding: '20px 20px 12px',
+                            borderBottom: '1px solid var(--border)',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            justifyContent: 'space-between',
+                            gap: '12px'
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>auto_stories</span>
+                                    <span style={{ fontWeight: 800, fontSize: '16px', color: 'var(--tx-main)' }}>Faculty Subject Catalog</span>
+                                </div>
+                                <p style={{ fontSize: '12px', color: 'var(--tx-muted)', margin: 0 }}>
+                                    Official courses from the institutional catalog · {scheme} Scheme · {VTU_BRANCHES[branch] || branch}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowCatalogPicker(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-dim)', padding: '4px', borderRadius: '6px' }}
+                                aria-label="Close catalog picker"
+                            >
+                                <span className="material-icons-round" style={{ fontSize: '20px' }}>close</span>
+                            </button>
+                        </div>
+
+                        {/* Search Box */}
+                        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                background: 'var(--surface-low, #f7f5f2)',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                border: '1px solid var(--border)'
+                            }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>search</span>
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="Search by course name or code..."
+                                    value={catalogPickerSearch}
+                                    onChange={e => setCatalogPickerSearch(e.target.value)}
+                                    style={{
+                                        border: 'none', background: 'transparent', outline: 'none',
+                                        fontSize: '13.5px', color: 'var(--tx-main)', width: '100%'
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Course List */}
+                        <div style={{ overflowY: 'auto', flex: 1 }}>
+                            {catalogPickerLoading ? (
+                                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-muted)' }}>
+                                    <span className="material-icons-round" style={{ fontSize: '32px', animation: 'spin 1s linear infinite', display: 'block', marginBottom: '8px' }}>sync</span>
+                                    Loading catalog...
+                                </div>
+                            ) : filteredPickerList.length === 0 ? (
+                                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-dim)', fontSize: '13px' }}>
+                                    {catalogPickerSearch ? 'No courses match your search.' : 'All available courses are already added.'}
+                                </div>
+                            ) : (
+                                filteredPickerList.map(course => {
+                                    const isAudit = isAuditCourse(course.subject_code);
+                                    return (
+                                        <div
+                                            key={course.subject_code}
+                                            onClick={() => addFromCatalog(course)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '12px 20px',
+                                                cursor: 'pointer',
+                                                borderBottom: '1px solid var(--border)',
+                                                transition: 'background 0.15s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-low, #f7f5f2)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--tx-main)', marginBottom: '2px' }}>
+                                                    {course.subject_name}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', fontFamily: 'monospace' }}>
+                                                        {course.subject_code}
+                                                    </span>
+                                                    <span style={{
+                                                        fontSize: '10px', fontWeight: 800, padding: '1px 6px',
+                                                        borderRadius: '4px', background: 'var(--surface-low)',
+                                                        color: 'var(--tx-dim)'
+                                                    }}>
+                                                        Sem {course.semester}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                                                <span style={{
+                                                    fontSize: '12px', fontWeight: 800,
+                                                    color: isAudit ? 'var(--tx-dim)' : 'var(--primary)',
+                                                    background: isAudit ? 'var(--surface-low)' : 'rgba(23,75,77,0.08)',
+                                                    padding: '3px 8px', borderRadius: '6px'
+                                                }}>
+                                                    {isAudit ? '0 CR' : `${course.credits} CR`}
+                                                </span>
+                                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>add_circle</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div style={{
+                            padding: '12px 20px',
+                            borderTop: '1px solid var(--border)',
+                            textAlign: 'right'
+                        }}>
+                            <button
+                                onClick={() => setShowCatalogPicker(false)}
+                                style={{
+                                    background: 'var(--primary, #174B4D)', color: '#fff',
+                                    border: 'none', borderRadius: '8px', padding: '8px 20px',
+                                    fontWeight: 700, fontSize: '13px', cursor: 'pointer'
+                                }}
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
