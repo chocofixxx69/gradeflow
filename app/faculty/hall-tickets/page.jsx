@@ -1385,8 +1385,7 @@ function HallTicketsContent() {
                                                         {/* Hero Active Class Card - Clean GradeFlow Institutional Style */}
                                                         <div style={{
                                                             background: 'var(--surface, #ffffff)',
-                                                            border: '1.5px solid var(--border, #D1D8DA)',
-                                                            borderLeft: '4px solid var(--primary, #174B4D)',
+                                                            border: '1px solid var(--border, #D1D8DA)',
                                                             borderRadius: '10px',
                                                             padding: '16px 18px',
                                                             display: 'flex',
@@ -1976,7 +1975,6 @@ function HallTicketsContent() {
                                         padding: '12px 14px',
                                         borderRadius: '8px',
                                         border: '1px solid var(--border, #D1D8DA)',
-                                        borderLeft: '4px solid var(--primary, #174B4D)',
                                         background: 'var(--surface-low, #FDF6ED)',
                                         display: 'flex',
                                         alignItems: 'center',
