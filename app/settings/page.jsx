@@ -1613,15 +1613,30 @@ function SettingsContent() {
                                     )}
                                 </div>
 
-                                <Button
+                                <button
                                     type="submit"
-                                    variant="primary"
                                     disabled={passwordLoading || !currentPassword || !newPassword || newPassword !== confirmPassword}
-                                    loading={passwordLoading}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '10px 20px',
+                                        background: (passwordLoading || !currentPassword || !newPassword || newPassword !== confirmPassword)
+                                            ? 'var(--surface-low)' : 'var(--primary)',
+                                        color: (passwordLoading || !currentPassword || !newPassword || newPassword !== confirmPassword)
+                                            ? 'var(--tx-dim)' : '#fff',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        fontSize: '13.5px',
+                                        fontWeight: 700,
+                                        cursor: (passwordLoading || !currentPassword || !newPassword || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                                        lineHeight: 1,
+                                        transition: 'all 0.15s'
+                                    }}
                                 >
-                                    <span className="material-icons-round" style={{ fontSize: '18px' }}>lock_reset</span>
-                                    {passwordLoading ? 'Updating Password...' : 'Update Password'}
-                                </Button>
+                                    <span className="material-icons-round" style={{ fontSize: '16px', lineHeight: 1 }}>lock</span>
+                                    {passwordLoading ? 'Updating...' : 'Update Password'}
+                                </button>
                             </form>
                         </CardContent>
                     </Card>
@@ -1629,43 +1644,89 @@ function SettingsContent() {
                     {/* Active Session & Security Inspection */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Session & Security Details</CardTitle>
+                            <CardTitle>Session &amp; Security Details</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ display: 'grid', gap: '14px', fontSize: '13px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
-                                    <span style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Active Role</span>
-                                    <span style={{ fontWeight: 800, color: 'var(--tx-main)' }}>{userType === 'student' ? 'Undergraduate Student' : 'Institutional Faculty'}</span>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
-                                    <span style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Last Login IP</span>
-                                    <span style={{ fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace' }}>
-                                        {profile?.last_login_ip || '127.0.0.1 (Local Session)'}
-                                    </span>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
-                                    <span style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Last Active Timestamp</span>
-                                    <span style={{ fontWeight: 600, color: 'var(--tx-muted)' }}>
-                                        {profile?.last_login_at ? new Date(profile.last_login_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Current Session'}
-                                    </span>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
-                                    <span style={{ color: 'var(--tx-dim)', fontWeight: 700 }}>Token Architecture</span>
-                                    <span style={{ fontWeight: 700, color: 'var(--tx-main)' }}>Signed HMAC SHA-256 (HTTP-Only Cookie + Local Storage)</span>
-                                </div>
-
-                                <div style={{ paddingTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
-                                    <Button
-                                        variant="outline"
-                                        onClick={handleLogout}
-                                        style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)' }}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                                {/* Row helper: label left, value right, stacks on narrow */}
+                                {[
+                                    {
+                                        label: 'Active Role',
+                                        value: userType === 'student' ? 'Undergraduate Student' : 'Institutional Faculty',
+                                        valueColor: 'var(--tx-main)',
+                                        mono: false
+                                    },
+                                    {
+                                        label: 'Last Login IP',
+                                        value: profile?.last_login_ip || '127.0.0.1 (Local Session)',
+                                        valueColor: 'var(--primary)',
+                                        mono: true
+                                    },
+                                    {
+                                        label: 'Last Active',
+                                        value: profile?.last_login_at
+                                            ? new Date(profile.last_login_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+                                            : 'Current Session',
+                                        valueColor: 'var(--tx-muted)',
+                                        mono: false
+                                    },
+                                    {
+                                        label: 'Auth Method',
+                                        value: 'HMAC SHA-256 · HTTP-Only Cookie',
+                                        valueColor: 'var(--tx-main)',
+                                        mono: true
+                                    },
+                                ].map((row, i, arr) => (
+                                    <div
+                                        key={row.label}
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '11px 0',
+                                            borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
+                                            flexWrap: 'wrap'
+                                        }}
                                     >
-                                        <span className="material-icons-round" style={{ fontSize: '18px' }}>logout</span>
+                                        <span style={{ fontSize: '12px', color: 'var(--tx-dim)', fontWeight: 700, flexShrink: 0 }}>{row.label}</span>
+                                        <span style={{
+                                            fontSize: '13px',
+                                            fontWeight: 700,
+                                            color: row.valueColor,
+                                            fontFamily: row.mono ? 'monospace' : 'inherit',
+                                            textAlign: 'right'
+                                        }}>{row.value}</span>
+                                    </div>
+                                ))}
+
+                                {/* Sign Out — full width, prominent */}
+                                <div style={{ paddingTop: '16px' }}>
+                                    <button
+                                        onClick={handleLogout}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '8px',
+                                            padding: '11px 20px',
+                                            background: 'transparent',
+                                            border: '1.5px solid #ef4444',
+                                            borderRadius: '10px',
+                                            color: '#ef4444',
+                                            fontSize: '13.5px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            lineHeight: 1,
+                                            transition: 'all 0.15s'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '17px', lineHeight: 1 }}>logout</span>
                                         Sign Out of This Device
-                                    </Button>
+                                    </button>
                                 </div>
                             </div>
                         </CardContent>
@@ -1693,67 +1754,55 @@ function SettingsContent() {
 
             {/* Tab 4: About & System */}
             {activeTab === 'about' && (
-                <div style={{ display: 'grid', gap: '24px' }}>
+                <div style={{ display: 'grid', gap: '18px' }}>
                     <Card>
                         <CardHeader>
-                            <CardTitle>System & Institutional Governance</CardTitle>
+                            <CardTitle>System &amp; Institutional Governance</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                                {/* Built by section — clean inline row */}
                                 <div>
-                                    <div style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
-                                        Engineering & AI Architecture Team
+                                    <div style={{ fontSize: '10px', color: 'var(--tx-dim)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>
+                                        Engineering &amp; AI Architecture Team
                                     </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                                         <a
                                             href="https://ainanai.vercel.app/"
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             title="Mohammed Ainan — AI Engineer & Full Stack Developer"
                                             style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                background: 'var(--surface-low)',
-                                                border: '1px solid var(--border)',
-                                                padding: '8px 16px',
-                                                borderRadius: '24px',
-                                                fontWeight: 800,
-                                                fontSize: '13px',
-                                                color: 'var(--tx-main)',
-                                                textDecoration: 'none',
-                                                transition: 'all 0.15s ease'
+                                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                background: 'var(--surface-low)', border: '1px solid var(--border)',
+                                                padding: '6px 12px', borderRadius: '20px',
+                                                fontWeight: 700, fontSize: '12.5px', color: 'var(--tx-main)',
+                                                textDecoration: 'none', transition: 'all 0.15s'
                                             }}
                                             onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
                                             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--tx-main)'; }}
                                         >
-                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>person</span>
+                                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>person</span>
                                             Mohammed Ainan Armar
                                         </a>
-                                        <span style={{ color: 'var(--primary)', fontWeight: 900 }}>&</span>
+                                        <span style={{ color: 'var(--tx-dim)', fontWeight: 700, fontSize: '13px' }}>&</span>
                                         <a
                                             href="https://rawahahruknuddin.vercel.app/"
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             title="Rawahah Ruknuddin — AI Product Engineer"
                                             style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                background: 'var(--surface-low)',
-                                                border: '1px solid var(--border)',
-                                                padding: '8px 16px',
-                                                borderRadius: '24px',
-                                                fontWeight: 800,
-                                                fontSize: '13px',
-                                                color: 'var(--tx-main)',
-                                                textDecoration: 'none',
-                                                transition: 'all 0.15s ease'
+                                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                background: 'var(--surface-low)', border: '1px solid var(--border)',
+                                                padding: '6px 12px', borderRadius: '20px',
+                                                fontWeight: 700, fontSize: '12.5px', color: 'var(--tx-main)',
+                                                textDecoration: 'none', transition: 'all 0.15s'
                                             }}
                                             onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
                                             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--tx-main)'; }}
                                         >
-                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>person</span>
+                                            <span className="material-icons-round" style={{ fontSize: '14px', color: 'var(--primary)' }}>person</span>
                                             Rawahah Ruknuddin
                                         </a>
                                     </div>
@@ -1761,20 +1810,20 @@ function SettingsContent() {
 
                                 <div style={{ height: '1px', background: 'var(--border)' }} />
 
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                    <span style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>Affiliated Institution</span>
-                                    <span style={{ fontSize: '13px', color: 'var(--tx-main)', fontWeight: 800 }}>Anjuman Institute of Technology & Management (AITM), Bhatkal</span>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                    <span style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>University Engine</span>
-                                    <span style={{ fontSize: '13px', color: 'var(--tx-main)', fontWeight: 800 }}>VTU NEP Academic Engine (Autonomous & Affiliated Standard)</span>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                    <span style={{ fontSize: '13px', color: 'var(--tx-muted)', fontWeight: 600 }}>GradeFlow Version</span>
-                                    <span style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: 800 }}>v2.4 Institutional Release</span>
-                                </div>
+                                {/* Info rows — label stacked above value for long text */}
+                                {[
+                                    { label: 'Affiliated Institution', value: 'Anjuman Institute of Technology & Management (AITM), Bhatkal', color: 'var(--tx-main)' },
+                                    { label: 'University Engine', value: 'VTU NEP Academic Engine (Autonomous & Affiliated Standard)', color: 'var(--tx-main)' },
+                                    { label: 'GradeFlow Version', value: 'v2.4 Institutional Release', color: 'var(--primary)' },
+                                ].map((row, i, arr) => (
+                                    <div key={row.label} style={{
+                                        paddingBottom: i < arr.length - 1 ? '12px' : 0,
+                                        borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none'
+                                    }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--tx-dim)', fontWeight: 700, marginBottom: '3px' }}>{row.label}</div>
+                                        <div style={{ fontSize: '13px', fontWeight: 800, color: row.color, lineHeight: 1.4 }}>{row.value}</div>
+                                    </div>
+                                ))}
                             </div>
                         </CardContent>
                     </Card>
