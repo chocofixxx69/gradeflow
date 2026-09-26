@@ -110,10 +110,13 @@ export default function HallTicketsPage() {
 function HallTicketsContent() {
     const [meta, setMeta] = useState({ branches: [], batches: [], semesters: [1,2,3,4,5,6,7,8], subjects: [], cohortMatrix: {} });
 
-    // Scope Selection. Faculty selects Department, Semester, and one or multiple Classes.
+    // Scope Selection. Faculty selects either by Class (connected to Classes feature) or by Department & Semester Cohort.
+    const [scopeMode, setScopeMode] = useState('class'); // 'class' | 'cohort'
+    const [multiClassMode, setMultiClassMode] = useState(false);
     const [selectedClassIds, setSelectedClassIds] = useState([]);
     const [branch, setBranch] = useState('CS');
-    const [semester, setSemester] = useState(6);
+    const [semester, setSemester] = useState(3);
+    const [hasAutoSelectedClass, setHasAutoSelectedClass] = useState(false);
 
     // Students Data
     const [selectedUsns, setSelectedUsns] = useState(new Set());
@@ -377,6 +380,42 @@ function HallTicketsContent() {
         autoFillSyllabus(branch, s);
     }, [branch, autoFillSyllabus]);
 
+    // Direct 1-click selection from the Classes feature
+    const handleSelectClass = useCallback((classId) => {
+        if (!classId) {
+            setSelectedClassIds([]);
+            return;
+        }
+        const chosen = classes.find(c => String(c.id) === String(classId));
+        if (chosen) {
+            setSelectedClassIds([chosen.id]);
+            if (chosen.branch) setBranch(chosen.branch);
+            if (chosen.semester) {
+                const s = Number(chosen.semester);
+                setSemester(s);
+                autoFillSyllabus(chosen.branch || branch, s);
+            }
+            setDismissedMismatch(true);
+        }
+    }, [classes, branch, autoFillSyllabus]);
+
+    // Auto-select first active registered class from Classes feature on initial load
+    useEffect(() => {
+        if (!hasAutoSelectedClass && classes.length > 0 && scopeMode === 'class') {
+            const bestClass = classes.find(c => (c.student_count || 0) > 0) || classes[0];
+            if (bestClass) {
+                setSelectedClassIds([bestClass.id]);
+                if (bestClass.branch) setBranch(bestClass.branch);
+                if (bestClass.semester) {
+                    const s = Number(bestClass.semester);
+                    setSemester(s);
+                    autoFillSyllabus(bestClass.branch || 'CS', s);
+                }
+                setHasAutoSelectedClass(true);
+            }
+        }
+    }, [classes, hasAutoSelectedClass, scopeMode, autoFillSyllabus]);
+
     // Class selection handler: toggles class in multi-select
     const toggleClassSelection = useCallback((id) => {
         setSelectedClassIds(prev => {
@@ -486,9 +525,9 @@ function HallTicketsContent() {
     // explained. Only relevant while no explicit class is selected, since
     // that's when the roster query falls back to branch+batch+semester.
     const semesterMismatchClasses = useMemo(() => {
-        if (dismissedMismatch) return [];
+        if (dismissedMismatch || scopeMode === 'class' || selectedClassIds.length > 0) return [];
         return branchClasses.filter(c => Number(c.semester) !== Number(semester));
-    }, [branchClasses, semester, dismissedMismatch]);
+    }, [branchClasses, semester, dismissedMismatch, scopeMode, selectedClassIds.length]);
 
     // Pre-generation readiness check — surfaced near the action buttons so a
     // problem (missing exam date, duplicate subject code, no students) is
@@ -1116,102 +1155,414 @@ function HallTicketsContent() {
             <div className="aitm-main-layout-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '28px', alignItems: 'flex-start' }}>
                 {/* ── LEFT PANEL: Configuration & Settings (Restored to exact spacious original layout) ── */}
                 <div className="no-print config-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {/* Scope Selector Card */}
+                    {/* Scope Selector Card — Class-First & Connected to Classes Feature */}
                     <Card>
                         <CardHeader>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                 <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>tune</span>
-                                    Class & Cohort Scope
+                                    <span className="material-icons-round" style={{ fontSize: '20px', color: 'var(--primary)' }}>school</span>
+                                    Class &amp; Cohort Scope
                                 </CardTitle>
                                 {selectedClassIds.length > 0 && (
                                     <span style={{
                                         fontSize: '11px',
-                                        fontWeight: 700,
-                                        color: 'var(--primary)',
-                                        background: 'rgba(59, 130, 246, 0.1)',
-                                        padding: '3px 8px',
+                                        fontWeight: 800,
+                                        color: '#1D4ED8',
+                                        background: '#EFF6FF',
+                                        border: '1px solid #BFDBFE',
+                                        padding: '3px 10px',
                                         borderRadius: '12px'
                                     }}>
-                                        {selectedClassIds.length} {selectedClassIds.length === 1 ? 'Class' : 'Classes'} Selected
+                                        {selectedClassIds.length} {selectedClassIds.length === 1 ? 'Class' : 'Classes'} Active
                                     </span>
                                 )}
                             </div>
                         </CardHeader>
                         <CardContent style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {/* Row 1: Department & Semester */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '14px' }}>
-                                <div>
-                                    <Select
-                                        label="1. Department"
-                                        value={branch}
-                                        onChange={e => handleBranchChange(e.target.value)}
-                                        options={branchOptions}
-                                    />
-                                </div>
-                                <div>
-                                    <Select
-                                        label="2. Target Semester"
-                                        value={semester}
-                                        onChange={e => handleSemesterChange(e.target.value)}
-                                        options={semesterOptions}
-                                    />
-                                </div>
+
+                            {/* Scope Mode Switcher Tabs */}
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr',
+                                gap: '6px',
+                                padding: '4px',
+                                background: 'var(--surface-low, #f1f5f9)',
+                                borderRadius: '10px',
+                                border: '1px solid var(--border, #e2e8f0)'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setScopeMode('class');
+                                        if (selectedClassIds.length === 0 && classes.length > 0) {
+                                            const best = classes.find(c => (c.student_count || 0) > 0) || classes[0];
+                                            handleSelectClass(best.id);
+                                        }
+                                    }}
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '2px',
+                                        padding: '10px 12px',
+                                        borderRadius: '8px',
+                                        border: scopeMode === 'class' ? '1.5px solid #2563EB' : '1px solid transparent',
+                                        background: scopeMode === 'class' ? 'var(--surface, #ffffff)' : 'transparent',
+                                        color: scopeMode === 'class' ? '#1D4ED8' : 'var(--tx-muted, #64748b)',
+                                        boxShadow: scopeMode === 'class' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '13px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: scopeMode === 'class' ? '#2563EB' : 'inherit' }}>groups</span>
+                                        <span>Select by Class</span>
+                                        {classes.length > 0 && (
+                                            <span style={{ fontSize: '10.5px', background: scopeMode === 'class' ? '#EFF6FF' : 'rgba(0,0,0,0.06)', padding: '1px 6px', borderRadius: '10px', fontWeight: 800 }}>
+                                                {classes.length}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                                        Connected to Classes Feature
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setScopeMode('cohort');
+                                        setSelectedClassIds([]);
+                                    }}
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '2px',
+                                        padding: '10px 12px',
+                                        borderRadius: '8px',
+                                        border: scopeMode === 'cohort' ? '1.5px solid #2563EB' : '1px solid transparent',
+                                        background: scopeMode === 'cohort' ? 'var(--surface, #ffffff)' : 'transparent',
+                                        color: scopeMode === 'cohort' ? '#1D4ED8' : 'var(--tx-muted, #64748b)',
+                                        boxShadow: scopeMode === 'cohort' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '13px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', color: scopeMode === 'cohort' ? '#2563EB' : 'inherit' }}>apartment</span>
+                                        <span>By Dept &amp; Semester</span>
+                                    </div>
+                                    <span style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>
+                                        Full Semester Cohort
+                                    </span>
+                                </button>
                             </div>
 
-                            {/* Row 2: Class Selection (Multi-select) */}
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                        3. Class / Section Scope (Select One or Multiple)
-                                    </label>
-                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                        {/* Only useful with 2+ classes to pick from — with just one,
-                                            its own "+ Select" chip already does the same thing. */}
-                                        {availableClasses.length > 1 && (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={selectAllClasses}
+                            {/* ── MODE 1: CLASS SELECTION (Primary & Connected to Classes Feature) ── */}
+                            {scopeMode === 'class' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                    {classes.length === 0 ? (
+                                        <div style={{
+                                            padding: '24px 16px',
+                                            textAlign: 'center',
+                                            background: 'var(--surface-low, #f8fafc)',
+                                            borderRadius: '10px',
+                                            border: '1.5px dashed var(--border, #cbd5e1)'
+                                        }}>
+                                            <span className="material-icons-round" style={{ fontSize: '36px', color: 'var(--tx-dim)', marginBottom: '8px', display: 'block' }}>
+                                                school
+                                            </span>
+                                            <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--tx-main)', marginBottom: '4px' }}>
+                                                No Classes Found in Classes Feature
+                                            </div>
+                                            <p style={{ fontSize: '12px', color: 'var(--tx-muted)', maxWidth: '360px', margin: '0 auto 16px auto', lineHeight: 1.4 }}>
+                                                Create your class sections and import student rosters in the Classes feature, or generate by Department &amp; Semester cohort below.
+                                            </p>
+                                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                <a
+                                                    href="/faculty/classes"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
                                                     style={{
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        color: 'var(--primary)',
-                                                        fontWeight: 700,
-                                                        fontSize: '11px',
-                                                        cursor: 'pointer',
-                                                        padding: '2px 4px'
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        padding: '8px 16px',
+                                                        borderRadius: '8px',
+                                                        background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                                        color: '#ffffff',
+                                                        fontSize: '12.5px',
+                                                        fontWeight: 800,
+                                                        textDecoration: 'none'
                                                     }}
                                                 >
-                                                    Select All ({availableClasses.length})
+                                                    <span>Open Classes Feature</span>
+                                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>open_in_new</span>
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setScopeMode('cohort')}
+                                                    style={{
+                                                        padding: '8px 16px',
+                                                        borderRadius: '8px',
+                                                        background: 'var(--surface, #ffffff)',
+                                                        border: '1px solid var(--border, #cbd5e1)',
+                                                        color: 'var(--tx-main)',
+                                                        fontSize: '12.5px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Use Cohort Mode Instead
                                                 </button>
-                                                <span style={{ color: 'var(--border)' }}>•</span>
-                                            </>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={deselectAllClasses}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                color: selectedClassIds.length === 0 ? 'var(--primary)' : 'var(--tx-muted)',
-                                                fontWeight: selectedClassIds.length === 0 ? 800 : 600,
-                                                fontSize: '11px',
-                                                cursor: 'pointer',
-                                                padding: '2px 4px'
-                                            }}
-                                        >
-                                            Entire Semester Cohort
-                                        </button>
-                                    </div>
-                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Single Class Dropdown Picker */}
+                                            {!multiClassMode ? (
+                                                <div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                                            Select Registered Class
+                                                        </label>
+                                                        <a
+                                                            href="/faculty/classes"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                                        >
+                                                            <span>Manage Classes</span>
+                                                            <span className="material-icons-round" style={{ fontSize: '12px' }}>open_in_new</span>
+                                                        </a>
+                                                    </div>
 
-                                {availableClasses.length === 0 ? (
+                                                    <select
+                                                        value={selectedClassIds[0] || ''}
+                                                        onChange={e => handleSelectClass(e.target.value)}
+                                                        style={{
+                                                            width: '100%',
+                                                            minHeight: '44px',
+                                                            padding: '10px 14px',
+                                                            borderRadius: '8px',
+                                                            border: '1.5px solid var(--border, #cbd5e1)',
+                                                            background: 'var(--surface-low, #f8fafc)',
+                                                            color: 'var(--tx-main)',
+                                                            fontSize: '13.5px',
+                                                            fontWeight: 700,
+                                                            outline: 'none',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <option value="" disabled>-- Select a Class --</option>
+                                                        {classes.map(c => (
+                                                            <option key={c.id} value={c.id}>
+                                                                {c.name} • Sem {c.semester} • {c.student_count ?? 0} Students {c.section ? `• Sec ${c.section}` : ''} ({c.branch})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ) : (
+                                                /* Multi-class Checkbox Picker */
+                                                <div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                                            Select One or Multiple Classes
+                                                        </label>
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedClassIds(classes.map(c => c.id))}
+                                                                style={{ background: 'none', border: 'none', color: '#2563EB', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                                            >
+                                                                Select All
+                                                            </button>
+                                                            <span style={{ color: 'var(--border)' }}>•</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedClassIds([])}
+                                                                style={{ background: 'none', border: 'none', color: 'var(--tx-muted)', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                                            >
+                                                                Clear
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                                                        {classes.map(c => {
+                                                            const isChecked = selectedClassIds.includes(c.id);
+                                                            return (
+                                                                <div
+                                                                    key={c.id}
+                                                                    onClick={() => toggleClassSelection(c.id)}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'space-between',
+                                                                        padding: '10px 14px',
+                                                                        borderRadius: '8px',
+                                                                        border: `1.5px solid ${isChecked ? '#2563EB' : 'var(--border, #e2e8f0)'}`,
+                                                                        background: isChecked ? '#EFF6FF' : 'var(--surface-low, #f8fafc)',
+                                                                        cursor: 'pointer',
+                                                                        transition: 'all 0.15s ease'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={() => {}}
+                                                                            style={{ cursor: 'pointer', accentColor: '#2563EB', width: '16px', height: '16px' }}
+                                                                        />
+                                                                        <div>
+                                                                            <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                <span>{c.name}</span>
+                                                                                {c.section && (
+                                                                                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#1D4ED8', background: '#DBEAFE', padding: '1px 6px', borderRadius: '4px' }}>
+                                                                                        Sec {c.section}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                                                Semester {c.semester} • {c.student_count ?? 0} students • {c.branch}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span style={{ fontSize: '11px', fontWeight: 700, color: isChecked ? '#1D4ED8' : 'var(--tx-dim)' }}>
+                                                                        {isChecked ? '✓ Selected' : '+ Select'}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Toggle between Single Class & Multi-Class selection */}
+                                            {classes.length > 1 && (
+                                                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-muted)', cursor: 'pointer' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={multiClassMode}
+                                                            onChange={e => {
+                                                                setMultiClassMode(e.target.checked);
+                                                                if (!e.target.checked && selectedClassIds.length > 1) {
+                                                                    setSelectedClassIds([selectedClassIds[0]]);
+                                                                }
+                                                            }}
+                                                            style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                                                        />
+                                                        <span>Combine multiple classes together (e.g. Sec A + Sec B)</span>
+                                                    </label>
+                                                </div>
+                                            )}
+
+                                            {/* Active Class Connected Details Card */}
+                                            {selectedClassIds.length === 1 && (() => {
+                                                const cur = classes.find(c => String(c.id) === String(selectedClassIds[0]));
+                                                if (!cur) return null;
+                                                return (
+                                                    <div style={{
+                                                        background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.06) 0%, rgba(29, 78, 216, 0.03) 100%)',
+                                                        border: '1.5px solid rgba(37, 99, 235, 0.22)',
+                                                        borderRadius: '10px',
+                                                        padding: '12px 14px',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '18px', color: '#2563EB' }}>verified</span>
+                                                                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                                    {cur.name}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px' }}>
+                                                                ✓ Connected to Classes
+                                                            </span>
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700 }}>
+                                                                Dept: {cur.branch}
+                                                            </span>
+                                                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700 }}>
+                                                                Semester {cur.semester} ({ROMAN_SEMESTERS[cur.semester] || cur.semester})
+                                                            </span>
+                                                            {cur.section && (
+                                                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700 }}>
+                                                                    Section {cur.section}
+                                                                </span>
+                                                            )}
+                                                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#F0FDF4', color: '#166534', fontWeight: 700 }}>
+                                                                👥 {filteredStudents.length} Students Pulled
+                                                            </span>
+                                                            {cur.batch && (
+                                                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#F8FAFC', border: '1px solid var(--border)', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                                                    Batch {cur.batch}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Multi-class Summary */}
+                                            {selectedClassIds.length > 1 && (
+                                                <div style={{
+                                                    background: '#EFF6FF',
+                                                    border: '1px solid #BFDBFE',
+                                                    borderRadius: '8px',
+                                                    padding: '10px 14px',
+                                                    fontSize: '12px',
+                                                    color: '#1E40AF',
+                                                    fontWeight: 700,
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center'
+                                                }}>
+                                                    <span>{selectedClassIds.length} Classes Combined</span>
+                                                    <span>👥 {filteredStudents.length} Total Students</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── MODE 2: DEPARTMENT & SEMESTER COHORT ── */}
+                            {scopeMode === 'cohort' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '14px' }}>
+                                        <div>
+                                            <Select
+                                                label="1. Department"
+                                                value={branch}
+                                                onChange={e => handleBranchChange(e.target.value)}
+                                                options={branchOptions}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Select
+                                                label="2. Target Semester"
+                                                value={semester}
+                                                onChange={e => handleSemesterChange(e.target.value)}
+                                                options={semesterOptions}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Cohort status box */}
                                     <div style={{
                                         padding: '12px 14px',
                                         borderRadius: '8px',
-                                        border: selectedClassIds.length === 0 ? '1.5px solid rgba(59, 130, 246, 0.4)' : '1px solid var(--border)',
-                                        background: selectedClassIds.length === 0 ? 'rgba(59, 130, 246, 0.05)' : 'var(--surface-low)',
+                                        border: '1.5px solid rgba(59, 130, 246, 0.3)',
+                                        background: 'rgba(59, 130, 246, 0.05)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
@@ -1222,154 +1573,39 @@ function HallTicketsContent() {
                                                 Entire {branch} Semester {ROMAN_SEMESTERS[semester] || semester} Cohort
                                             </div>
                                             <div style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
-                                                No specific class sections configured in the registry for {branch} Semester {semester}. Pulling all {filteredStudents.length} students enrolled in this cohort.
+                                                Pulling all {filteredStudents.length} students enrolled in {branch} Semester {semester}.
                                             </div>
                                         </div>
                                         <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>
                                             Active Cohort
                                         </span>
                                     </div>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        {availableClasses.map(c => {
-                                            const isSelected = selectedClassIds.includes(c.id);
-                                            return (
-                                                <div
-                                                    key={c.id}
-                                                    onClick={() => toggleClassSelection(c.id)}
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        padding: '10px 14px',
-                                                        borderRadius: '8px',
-                                                        border: `1.5px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
-                                                        background: isSelected ? 'rgba(59, 130, 246, 0.06)' : 'var(--surface-low)',
-                                                        cursor: 'pointer',
-                                                        transition: 'all 0.15s ease'
-                                                    }}
-                                                >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => {}}
-                                                            style={{ cursor: 'pointer', accentColor: 'var(--primary)' }}
-                                                        />
-                                                        <div>
-                                                            <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span>{c.name}</span>
-                                                                {c.section && (
-                                                                    <span style={{
-                                                                        fontSize: '10px',
-                                                                        fontWeight: 800,
-                                                                        color: '#1D4ED8',
-                                                                        background: 'rgba(59, 130, 246, 0.15)',
-                                                                        padding: '1px 6px',
-                                                                        borderRadius: '6px'
-                                                                    }}>
-                                                                        Sec {c.section}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                                <span>Semester {c.semester}</span>
-                                                                <span>•</span>
-                                                                <span>{c.student_count ?? 0} students</span>
-                                                                {c.scheme && (
-                                                                    <>
-                                                                        <span>•</span>
-                                                                        <span>Scheme {c.scheme}</span>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <span style={{
-                                                        fontSize: '11px',
-                                                        fontWeight: 700,
-                                                        color: isSelected ? 'var(--primary)' : 'var(--tx-dim)',
-                                                        background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '12px'
-                                                    }}>
-                                                        {isSelected ? '✓ Selected' : '+ Select'}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
 
-                                {/* Scope Helper Summary — one short line, no filler. */}
-                                <div style={{ marginTop: '8px', fontSize: '11.5px', color: 'var(--tx-muted)' }}>
-                                    {selectedClassIds.length > 0 ? (
-                                        <>Roster: <strong>{filteredStudents.length} students</strong> in {selectedClassIds.length} selected {selectedClassIds.length === 1 ? 'class' : 'classes'}.</>
-                                    ) : (
-                                        <>
-                                            Roster: <strong>{filteredStudents.length} students</strong> in {branch} Semester {ROMAN_SEMESTERS[semester] || semester}.
-                                        </>
+                                    {semesterMismatchClasses.length > 0 && (
+                                        <div style={{
+                                            padding: '10px 12px', borderRadius: '8px',
+                                            background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.25)',
+                                            fontSize: '11.5px', color: 'var(--tx-main)'
+                                        }}>
+                                            <strong>{semesterMismatchClasses[0].name}</strong> is registered under Semester {semesterMismatchClasses[0].semester}.
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    handleSemesterChange(Number(semesterMismatchClasses[0].semester));
+                                                    setDismissedMismatch(true);
+                                                }}
+                                                style={{ marginLeft: '8px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                            >
+                                                Switch to Sem {semesterMismatchClasses[0].semester}
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
+                            )}
 
-                                {/* One-click fix instead of an explanation to read: a class's own
-                                    semester (its student-count badge above) can differ from Target
-                                    Semester, so the roster count differs too. Match one to the other
-                                    right here instead of making the user go work it out. */}
-                                {semesterMismatchClasses.length > 0 && (
-                                    <div style={{
-                                        marginTop: '8px', padding: '12px 14px', borderRadius: '8px',
-                                        background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.25)',
-                                        fontSize: '11.5px', color: 'var(--tx-main)'
-                                    }}>
-                                        <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                                            <div>
-                                                <strong>{semesterMismatchClasses[0].name}</strong> is registered under Semester {semesterMismatchClasses[0].semester} ({semesterMismatchClasses[0].student_count ?? 0} students) — while you are generating for <strong>Semester {semester}</strong>.
-                                                {selectedClassIds.length === 0 ? (
-                                                    <span> Only {filteredStudents.length} batch students who progressed to Semester {semester} are currently pulled.</span>
-                                                ) : (
-                                                    <span> All {filteredStudents.length} students from this class are selected for this Semester {semester} hall ticket generation.</span>
-                                                )}
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setDismissedMismatch(true)}
-                                                title="Dismiss notice"
-                                                style={{ background: 'transparent', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', padding: '0 2px' }}
-                                            >
-                                                <span className="material-icons-round" style={{ fontSize: '15px' }}>close</span>
-                                            </button>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const targetSem = Number(semesterMismatchClasses[0].semester);
-                                                    handleSemesterChange(targetSem);
-                                                    if (!selectedClassIds.includes(semesterMismatchClasses[0].id)) {
-                                                        setSelectedClassIds([semesterMismatchClasses[0].id]);
-                                                    }
-                                                    setDismissedMismatch(true);
-                                                }}
-                                                style={{ background: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                                            >
-                                                Use Semester {semesterMismatchClasses[0].semester} instead
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (!selectedClassIds.includes(semesterMismatchClasses[0].id)) {
-                                                        setSelectedClassIds([semesterMismatchClasses[0].id]);
-                                                    }
-                                                    setDismissedMismatch(true);
-                                                }}
-                                                style={{ background: 'var(--surface)', color: 'var(--tx-main)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                                            >
-                                                Keep Semester {semester} &amp; use full roster ({semesterMismatchClasses[0].student_count ?? 0})
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                            {/* Roster Summary Line */}
+                            <div style={{ fontSize: '11.5px', color: 'var(--tx-muted)', borderTop: '1px solid var(--border, #e2e8f0)', paddingTop: '10px' }}>
+                                Roster Status: <strong style={{ color: 'var(--tx-main)' }}>{filteredStudents.length} students</strong> selected for hall ticket generation ({sheets.length} print sheet{sheets.length === 1 ? '' : 's'}).
                             </div>
                         </CardContent>
                     </Card>
