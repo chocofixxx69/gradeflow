@@ -386,6 +386,19 @@ function FacultyDashboardView({
                     if (list.length > 0) {
                         setSuggestionsOpen(true);
                     }
+
+                    // ── AUTO-SELECT: if user typed the full USN and it exactly
+                    //    matches exactly one result → auto-proceed immediately
+                    if (
+                        list.length === 1 &&
+                        list[0].usn &&
+                        list[0].usn.toUpperCase() === query.toUpperCase()
+                    ) {
+                        setSuggestionsOpen(false);
+                        setActiveSuggestionIdx(-1);
+                        setHasSubmitted(true);
+                        lookupStudent?.(list[0].usn);
+                    }
                 }
             } catch (err) {
                 console.error('Autocomplete fetch error:', err);
@@ -399,7 +412,7 @@ function FacultyDashboardView({
             isMounted = false;
             clearTimeout(timer);
         };
-    }, [usn, isMultiUsn]);
+    }, [usn, isMultiUsn, lookupStudent]);
 
     const handleSelectSuggestion = useCallback((suggestedUsn) => {
         setUsn?.(suggestedUsn);
