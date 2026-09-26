@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Input } from '@/components/ui/Foundation';
+import { VTU_OFFICIAL_SUBJECT_DATA } from '@/lib/vtu-curriculum-catalog';
 
 const STANDARD_TIME_SLOTS = [
     // Morning 1-hr & 1.5-hr slots
@@ -177,23 +178,23 @@ export function formatFriendlyDate(raw) {
     }
 }
 
-function abbreviate(name) {
-    const STOP = new Set(['AND', 'OF', 'THE', 'FOR', 'IN', 'TO', 'A', 'AN', '&', 'WITH', 'USING']);
-    const words = String(name || '')
-        .replace(/\(.*?\)/g, ' ')
-        .replace(/[^A-Za-z0-9\s-]/g, ' ')
-        .split(/[\s-]+/)
-        .filter(Boolean)
-        .filter(w => !STOP.has(w.toUpperCase()));
-    if (!words.length) return '';
-    if (words.length === 1) return words[0].slice(0, 4).toUpperCase();
-    return words.map(w => w[0].toUpperCase()).join('').slice(0, 5);
-}
+import {
+    electiveFamilyKey,
+    getGlobalCatalogMaps,
+    lookupSubjectInCatalog,
+    lookupSubjectByName,
+    KNOWN_SHORT_NAMES,
+    resolveFullSubjectName
+} from '@/lib/subject-catalog-utils';
 
-function electiveFamilyKey(code) {
-    const m = String(code || '').toUpperCase().match(/^(\d*B)[A-Z]{2,3}(\d{3})[A-Z]?$/);
-    return m ? `${m[1]}XX${m[2]}X` : null;
-}
+export {
+    electiveFamilyKey,
+    getGlobalCatalogMaps,
+    lookupSubjectInCatalog,
+    lookupSubjectByName,
+    KNOWN_SHORT_NAMES,
+    resolveFullSubjectName
+};
 
 export default function TimetableEditor({
     timetable = [],
@@ -216,6 +217,15 @@ export default function TimetableEditor({
             const fam = electiveFamilyKey(c);
             if (fam) family.set(fam, entry);
         });
+
+        // Ensure global options are also included if local catalog is empty
+        const globalCat = getGlobalCatalogMaps();
+        if (code.size === 0) {
+            globalCat.byCode.forEach((v, k) => {
+                code.set(k, v);
+            });
+        }
+
         return {
             byCode: code,
             byFamily: family,
@@ -223,12 +233,28 @@ export default function TimetableEditor({
         };
     }, [catalogSubjects]);
 
-    /** Catalog entry for a typed code, falling back to its elective family. */
+    /** Catalog entry for a typed code, falling back to authoritative catalog. */
     const lookup = (raw) => {
-        const c = String(raw || '').toUpperCase().trim();
-        if (!c) return null;
-        return byCode.get(c) || byFamily.get(electiveFamilyKey(c)) || null;
+        return lookupSubjectInCatalog(raw, catalogSubjects);
     };
+
+    // Auto-upgrade any legacy abbreviations (DDCO, OS, DSA, MATHS, etc.) or empty subject names in the timetable
+    useEffect(() => {
+        if (!timetable || timetable.length === 0) return;
+        let hasChanges = false;
+        const upgraded = timetable.map(row => {
+            const currentName = String(row.subjectName || '').trim();
+            const full = resolveFullSubjectName(row.subjectCode, currentName, catalogSubjects);
+            if (full && full !== currentName && (!currentName || KNOWN_SHORT_NAMES.has(currentName.toUpperCase()) || currentName.length <= 5)) {
+                hasChanges = true;
+                return { ...row, subjectName: full };
+            }
+            return row;
+        });
+        if (hasChanges) {
+            onChange(upgraded);
+        }
+    }, [timetable, catalogSubjects]);
 
     const [customRowFlags, setCustomRowFlags] = useState({});
 
@@ -276,41 +302,35 @@ export default function TimetableEditor({
     };
 
     /**
-     * Picking or typing a subject code fills the short name from the catalog.
-     * Only fills when the short name is blank or still matches the previous
-     * code's abbreviation, so a hand-written short name is never overwritten.
+     * Picking or typing a subject code synchronizes the complete Subject Name from the catalog.
      */
     const handleCodeChange = (index, rawValue) => {
         const value = String(rawValue || '').toUpperCase();
         const row = timetable[index] || {};
-        const prev = lookup(row.subjectCode);
-        const next = lookup(value);
-
-        const shortIsAuto = !row.subjectName
-            || (prev && row.subjectName === abbreviate(prev.name));
+        const match = lookup(value);
 
         const updated = [...timetable];
         updated[index] = {
             ...row,
             subjectCode: value,
-            subjectName: (next && shortIsAuto) ? abbreviate(next.name) : row.subjectName,
+            subjectName: match ? match.name : row.subjectName,
         };
         onChange(updated);
     };
 
     /**
-     * The short-name field also accepts a full subject name picked from the
-     * catalog list - selecting one sets the code and collapses the field to the
-     * abbreviation, which is what the ticket prints.
+     * Manually editing Subject Name, or picking a full subject name from the datalist.
+     * Preserves manual edits unless a known catalog subject name was chosen.
      */
-    const handleShortChange = (index, rawValue) => {
+    const handleNameChange = (index, rawValue) => {
         const value = String(rawValue || '');
-        const match = options.find(o => o.name.toLowerCase() === value.toLowerCase().trim());
+        const match = options.find(o => o.name.toLowerCase() === value.toLowerCase().trim())
+            || lookupSubjectByName(value, catalogSubjects);
         const row = timetable[index] || {};
 
         const updated = [...timetable];
         updated[index] = match
-            ? { ...row, subjectCode: match.code, subjectName: abbreviate(match.name) }
+            ? { ...row, subjectCode: match.code, subjectName: match.name }
             : { ...row, subjectName: value };
         onChange(updated);
     };
@@ -423,11 +443,10 @@ export default function TimetableEditor({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
             <style jsx>{`
                 .tt-field-grid {
-                    /* Date and the two short-code fields don't need much room;
-                       Catalog Subject (a full course name) gets the rest. Fixed
-                       tracks, not auto-fit, so all 5 fields share one row instead
-                       of one wrapping alone onto its own line. */
-                    grid-template-columns: 140px 170px 1.5fr 1.1fr 0.9fr;
+                    /* Balanced tracks giving ample room for full Subject Name:
+                       Date (135px), Time (165px), Catalog Subject (1.1fr),
+                       Subject Code (95px), Full Subject Name (1.7fr). */
+                    grid-template-columns: 135px 165px 1.1fr 95px 1.7fr;
                 }
                 @media (max-width: 900px) {
                     .tt-field-grid {
@@ -905,18 +924,15 @@ export default function TimetableEditor({
                                             onChange={(e) => {
                                                 const selectedCode = e.target.value;
                                                 if (!selectedCode) return;
-                                                const found = catalogSubjects.find(s => (s.code || '').toUpperCase() === selectedCode.toUpperCase());
+                                                const found = catalogSubjects.find(s => (s.code || '').toUpperCase() === selectedCode.toUpperCase())
+                                                    || lookup(selectedCode);
                                                 if (found) {
-                                                    // One atomic update, not two handleUpdateRow calls — each of
-                                                    // those builds its own copy from the same (stale, pre-render)
-                                                    // timetable array, so the second call's write clobbers the
-                                                    // first's: only the last field set actually survives, leaving
-                                                    // code/short-name mismatched (e.g. new code, stale old name).
+                                                    // One atomic update, populating both code and full subject name
                                                     const updated = [...timetable];
                                                     updated[idx] = {
                                                         ...updated[idx],
                                                         subjectCode: found.code,
-                                                        subjectName: found.shortName || abbreviate(found.name) || found.name,
+                                                        subjectName: found.name,
                                                     };
                                                     onChange(updated);
                                                 }
@@ -1005,28 +1021,26 @@ export default function TimetableEditor({
                                         ) : null}
                                 </div>
                                 <div>
-                                    <label style={fieldLabel}>Subject (Short) <span style={{ textTransform: 'none', fontWeight: 500 }}>(editable)</span></label>
-                                        {/* Also accepts a full subject name from the
-                                            list - picking one sets the code and
-                                            collapses this field to the abbreviation
-                                            the ticket prints. Still free text, so a
-                                            custom short name can be typed over it. */}
+                                    <label style={fieldLabel}>Subject Name <span style={{ textTransform: 'none', fontWeight: 500 }}>(editable)</span></label>
+                                        {/* Accepts a full subject name from the
+                                            list or custom manual edit. Picking one
+                                            sets the code and populates complete name. */}
                                         <input
                                             type="text"
                                             list="tt-subject-names"
                                             value={row.subjectName}
-                                            placeholder="CC"
-                                            onChange={(e) => handleShortChange(idx, e.target.value)}
+                                            placeholder="e.g. Operating Systems"
+                                            onChange={(e) => handleNameChange(idx, e.target.value)}
                                             style={{
                                                 width: '100%',
-                                                minWidth: '70px',
+                                                minWidth: '120px',
                                                 padding: '5px 20px 5px 8px', // right space reserved for the native list-picker arrow, so it never overlaps typed text
                                                 borderRadius: '6px',
                                                 border: '1px solid var(--border)',
                                                 background: 'var(--surface)',
                                                 color: 'var(--tx-main)',
                                                 fontSize: '12px',
-                                                fontWeight: 700,
+                                                fontWeight: 600,
                                                 boxSizing: 'border-box'
                                             }}
                                         />

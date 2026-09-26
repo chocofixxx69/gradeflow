@@ -10,42 +10,42 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle, PageHeaderSubtitle } from '@/components/ui/PageHeader';
 import { Button, Select, Input } from '@/components/ui/Foundation';
 import HallTicketSheet from '@/components/hall-tickets/HallTicketSheet';
-import TimetableEditor, { parseSlotInterval, doIntervalsOverlap, toISO } from '@/components/hall-tickets/TimetableEditor';
+import TimetableEditor, { parseSlotInterval, doIntervalsOverlap, toISO, resolveFullSubjectName } from '@/components/hall-tickets/TimetableEditor';
 import { getJsPDF } from '@/lib/lazy-export-libs';
 import { recordFacultyAction } from '@/lib/api/faculty-action';
 
-// Standard default timetable by semester for CS stream
+// Standard default timetable by semester for CS stream with complete authoritative subject names
 const DEFAULT_TIMETABLES = {
     6: [
-        { date: '24/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS601', subjectName: 'CC' },
-        { date: '24/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS602', subjectName: 'ML' },
-        { date: '25/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS613B', subjectName: 'CV' },
-        { date: '25/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BEE654B', subjectName: 'TRES' }
+        { date: '24/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS601', subjectName: 'Cloud Computing' },
+        { date: '24/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS602', subjectName: 'Machine Learning' },
+        { date: '25/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS613B', subjectName: 'Computer Vision' },
+        { date: '25/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BEE654B', subjectName: 'Technologies of Renewable Energy Sources' }
     ],
     7: [
-        { date: '02/12/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS701', subjectName: 'IOT' },
-        { date: '02/12/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS702', subjectName: 'PC' },
-        { date: '03/12/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS703', subjectName: 'CN' },
-        { date: '03/12/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS714D', subjectName: 'BDA' },
-        { date: '04/12/2025', time: '10:00 am to 11:00 am', subjectCode: 'BME755D', subjectName: 'NCS' }
+        { date: '02/12/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS701', subjectName: 'Internet of Things' },
+        { date: '02/12/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS702', subjectName: 'Parallel Computing' },
+        { date: '03/12/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS703', subjectName: 'Cryptography & Network Security' },
+        { date: '03/12/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS714D', subjectName: 'Big Data Analytics' },
+        { date: '04/12/2025', time: '10:00 am to 11:00 am', subjectCode: 'BME755D', subjectName: 'Non-Conventional Energy Sources' }
     ],
     4: [
-        { date: '20/05/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS401', subjectName: 'ADA' },
-        { date: '20/05/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS402', subjectName: 'MC' },
-        { date: '21/05/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS403', subjectName: 'DBMS' },
-        { date: '21/05/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS456C', subjectName: 'UI/UX' }
+        { date: '20/05/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS401', subjectName: 'Analysis & Design of Algorithms' },
+        { date: '20/05/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS402', subjectName: 'Microcontrollers' },
+        { date: '21/05/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS403', subjectName: 'Database Management Systems' },
+        { date: '21/05/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS456C', subjectName: 'UI/UX Design' }
     ],
     3: [
-        { date: '15/11/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS301', subjectName: 'MATHS' },
-        { date: '15/11/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS302', subjectName: 'DDCO' },
-        { date: '16/11/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS303', subjectName: 'OS' },
-        { date: '16/11/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS304', subjectName: 'DSA' }
+        { date: '15/11/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS301', subjectName: 'Mathematics for Computer Science' },
+        { date: '15/11/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS302', subjectName: 'Digital Design & Computer Organization' },
+        { date: '16/11/2025', time: '10:00 am to 11:00 am', subjectCode: 'BCS303', subjectName: 'Operating Systems' },
+        { date: '16/11/2025', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS304', subjectName: 'Data Structures and Applications' }
     ],
     1: [
-        { date: '10/01/2026', time: '10:00 am to 11:00 am', subjectCode: 'BMATS101', subjectName: 'MATHS-I' },
-        { date: '10/01/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BPHYS102', subjectName: 'PHYSICS' },
-        { date: '11/01/2026', time: '10:00 am to 11:00 am', subjectCode: 'BPOPS103', subjectName: 'POP C' },
-        { date: '11/01/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BESCK104B', subjectName: 'ELECTRICAL' }
+        { date: '10/01/2026', time: '10:00 am to 11:00 am', subjectCode: 'BMATS101', subjectName: 'Mathematics-I for CSE Stream' },
+        { date: '10/01/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BPHYS102', subjectName: 'Applied Physics for CSE Stream' },
+        { date: '11/01/2026', time: '10:00 am to 11:00 am', subjectCode: 'BPOPS103', subjectName: 'Principles of Programming Using C' },
+        { date: '11/01/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BESCK104B', subjectName: 'Introduction to Electrical Engineering' }
     ]
 };
 
@@ -173,7 +173,7 @@ function HallTicketsContent() {
                 if (!cancelled && res?.subjects && res.subjects.length > 0) {
                     const formatted = res.subjects.map(s => ({
                         code: s.code,
-                        name: s.name,
+                        name: resolveFullSubjectName(s.code, s.name),
                         shortName: getSubjectShortName(s.name, s.code),
                         credits: s.credits
                     }));
@@ -191,7 +191,7 @@ function HallTicketsContent() {
                     return s.branches?.some(b => matchesBranch(b, normBranch)) || matchesBranch(s.branch, normBranch);
                 }).map(s => ({
                     code: s.code,
-                    name: s.name,
+                    name: resolveFullSubjectName(s.code, s.name),
                     shortName: getSubjectShortName(s.name, s.code),
                     credits: s.credits
                 }));
@@ -384,13 +384,11 @@ function HallTicketsContent() {
                     const dStr = `${String(examDate.getDate()).padStart(2, '0')}/${String(examDate.getMonth() + 1).padStart(2, '0')}/${examDate.getFullYear()}`;
                     const timeSlot = idx % 2 === 0 ? '10:00 am to 11:00 am' : '02:30 pm to 03:30 pm';
 
-                    const shortName = getSubjectShortName(s.name, s.code);
-
                     return {
                         date: dStr,
                         time: timeSlot,
                         subjectCode: s.code,
-                        subjectName: shortName || s.code
+                        subjectName: resolveFullSubjectName(s.code, s.name || s.subject_name || s.code)
                     };
                 });
 
@@ -718,26 +716,30 @@ function HallTicketsContent() {
         // A4 page dimensions: 210mm x 297mm
         const marginX = 14;
         const contentWidth = 182; // 210 - (14 * 2)
-        const headerHeight = 19;
-        const bannerHeight = 5.2;
-        const row1Height = 5.2;
-        const row2Height = 5.2;
-        const thHeight = 5;
-        const rowH = 4.8;
+        const headerHeight = 17.5;
+        const bannerHeight = 4.8;
+        const row1Height = 4.8;
+        const row2Height = 4.8;
+        const thHeight = 5.2;
         const numSubjects = timetable.length;
+        // Dynamic row height giving maximum vertical breathing room:
+        // 7.5mm for <=4 subjects (spacious, readable, no compression)
+        // 6.4mm for 5 subjects
+        // 5.5mm for >=6 subjects
+        const rowH = numSubjects <= 4 ? 7.5 : numSubjects === 5 ? 6.4 : 5.5;
         const tableHeight = thHeight + (numSubjects * rowH);
         
-        // Dynamic snug cardBoxHeight: snaps cleanly immediately below the last subject row (no awkward empty gap)
+        // Dynamic snug cardBoxHeight: snaps cleanly immediately below the last subject row
         const cardBoxHeight = headerHeight + bannerHeight + row1Height + row2Height + tableHeight;
         
-        const sigSpace = 10; // 10mm of clear white space for physical pen signatures
-        const sigLabelHeight = 4; // height of "Signature of Class Advisor" text
-        const cutGap = 3.5; // gap before and after cutline
+        const sigSpace = 8.5; // clear white space for physical pen signatures
+        const sigLabelHeight = 3.8; // height of "Signature of Class Advisor" text
+        const cutGap = 2.0; // gap before and after cutline
         const ticketSlotHeight = cardBoxHeight + sigSpace + sigLabelHeight + (cutGap * 2);
         
-        // Centered top margin so all 3 tickets are balanced on the A4 sheet
+        // Centered top margin so all 3 tickets are balanced on the A4 sheet with zero clipping
         const totalUsedHeight = (ticketSlotHeight * 3) - cutGap;
-        const topMargin = Math.max(8, Math.round((297 - totalUsedHeight) / 2));
+        const topMargin = Math.max(10, Math.round((297 - totalUsedHeight) / 2));
 
         sheets.forEach((sheetStudents, sheetIdx) => {
             if (sheetIdx > 0) doc.addPage();
@@ -750,52 +752,52 @@ function HallTicketsContent() {
                 doc.setLineWidth(0.35);
                 doc.rect(marginX, startY, contentWidth, cardBoxHeight);
 
-                // 2. Header Box (19mm)
+                // 2. Header Box (17.5mm)
                 doc.line(marginX, startY + headerHeight, marginX + contentWidth, startY + headerHeight);
 
-                // Logo Column Box (24mm wide)
-                const logoWidth = 24;
+                // Logo Column Box (22mm wide)
+                const logoWidth = 22;
                 doc.line(marginX + logoWidth, startY, marginX + logoWidth, startY + headerHeight);
 
                 // Embed Official AITM Crest Logo Image
                 if (logoData) {
                     try {
-                        doc.addImage(logoData, 'PNG', marginX + 2.5, startY + 1.2, 19, 16.5, 'AITM_LOGO', 'FAST');
+                        doc.addImage(logoData, 'PNG', marginX + 3.0, startY + 1.2, 16.0, 15.0, 'AITM_LOGO', 'FAST');
                     } catch (err) {
                         console.warn('Logo image embed failed:', err);
                     }
                 }
 
-                // College Name & Details
+                // College Name & Details (calibrated for 17.5mm header)
                 const headerCenterX = marginX + logoWidth + (contentWidth - logoWidth) / 2;
                 doc.setFont('times', 'bold');
-                doc.setFontSize(10.5);
-                doc.text('ANJUMAN INSTITUTE OF TECHNOLOGY & MANAGEMENT', headerCenterX, startY + 5.2, { align: 'center' });
+                doc.setFontSize(10.2);
+                doc.text('ANJUMAN INSTITUTE OF TECHNOLOGY & MANAGEMENT', headerCenterX, startY + 4.6, { align: 'center' });
 
                 doc.setFont('times', 'normal');
-                doc.setFontSize(8.2);
-                doc.text('Anjumanabad, Bhatkal-582320', headerCenterX, startY + 9.2, { align: 'center' });
+                doc.setFontSize(7.8);
+                doc.text('Anjumanabad, Bhatkal-582320', headerCenterX, startY + 8.2, { align: 'center' });
 
-                doc.text(departmentName || 'Department of Computer Science & Engineering', headerCenterX, startY + 13.2, { align: 'center' });
+                doc.text(departmentName || 'Department of Computer Science & Engineering', headerCenterX, startY + 11.8, { align: 'center' });
 
                 doc.setFont('times', 'bold');
-                doc.setFontSize(9.5);
-                doc.text('HALL TICKET', headerCenterX, startY + 17.5, { align: 'center' });
+                doc.setFontSize(9.2);
+                doc.text('HALL TICKET', headerCenterX, startY + 15.8, { align: 'center' });
 
-                // 3. Examination Banner (5.2mm)
+                // 3. Examination Banner (4.8mm)
                 const bannerY = startY + headerHeight;
                 doc.line(marginX, bannerY + bannerHeight, marginX + contentWidth, bannerY + bannerHeight);
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.5);
-                doc.text(examTitle, marginX + contentWidth / 2, bannerY + 3.8, { align: 'center' });
+                doc.text(examTitle, marginX + contentWidth / 2, bannerY + 3.5, { align: 'center' });
 
-                // 4. Student Details Row 1: Branch & USN (5.2mm)
+                // 4. Student Details Row 1: Branch & USN (4.8mm)
                 const row1Y = bannerY + bannerHeight;
                 doc.line(marginX, row1Y + row1Height, marginX + contentWidth, row1Y + row1Height);
 
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.5);
-                doc.text('Branch', marginX + 2, row1Y + 3.8);
+                doc.text('Branch', marginX + 2, row1Y + 3.5);
                 doc.line(marginX + 18, row1Y, marginX + 18, row1Y + row1Height);
 
                 doc.setFont('times', 'normal');
@@ -803,36 +805,36 @@ function HallTicketsContent() {
                     || canonicalBranchCode(student.usn ? extractBranchFromUsn(student.usn) : null)
                     || canonicalBranchCode(student.branch)
                     || '—';
-                doc.text(branchLabel, marginX + 20, row1Y + 3.8);
+                doc.text(branchLabel, marginX + 20, row1Y + 3.5);
 
                 const usnSplitX = marginX + 118;
                 doc.line(usnSplitX, row1Y, usnSplitX, row1Y + row1Height);
                 doc.setFont('times', 'bold');
-                doc.text('USN', usnSplitX + 2.5, row1Y + 3.8);
+                doc.text('USN', usnSplitX + 2.5, row1Y + 3.5);
                 doc.line(usnSplitX + 15, row1Y, usnSplitX + 15, row1Y + row1Height);
 
                 doc.setFont('courier', 'bold');
                 doc.setFontSize(9.2);
-                doc.text(student.usn, usnSplitX + 18, row1Y + 3.8);
+                doc.text(student.usn, usnSplitX + 18, row1Y + 3.5);
 
-                // 5. Student Details Row 2: Name & Class / Section (5.2mm)
+                // 5. Student Details Row 2: Name & Class / Section (4.8mm)
                 const row2Y = row1Y + row1Height;
                 doc.line(marginX, row2Y + row2Height, marginX + contentWidth, row2Y + row2Height);
 
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.5);
-                doc.text('Name', marginX + 2, row2Y + 3.8);
+                doc.text('Name', marginX + 2, row2Y + 3.5);
                 doc.line(marginX + 18, row2Y, marginX + 18, row2Y + row2Height);
 
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.8);
-                doc.text((student.name || '').toUpperCase(), marginX + 20, row2Y + 3.8);
+                doc.text((student.name || '').toUpperCase(), marginX + 20, row2Y + 3.5);
 
                 // Right side of Row 2: Class / Section (strictly aligned with USN box above)
                 doc.line(usnSplitX, row2Y, usnSplitX, row2Y + row2Height);
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8);
-                doc.text('Class/Sec', usnSplitX + 1.5, row2Y + 3.8);
+                doc.text('Class/Sec', usnSplitX + 1.5, row2Y + 3.5);
                 doc.line(usnSplitX + 16, row2Y, usnSplitX + 16, row2Y + row2Height);
 
                 doc.setFont('times', 'bold');
@@ -840,62 +842,98 @@ function HallTicketsContent() {
                 const classLabelPdf = student.section
                     ? (student.class_name ? `${student.class_name} (${student.section})` : `Sec ${student.section}`)
                     : (student.class_name || '—');
-                doc.text(classLabelPdf, usnSplitX + 18, row2Y + 3.8);
+                doc.text(classLabelPdf, usnSplitX + 18, row2Y + 3.5);
 
                 // 6. Timetable + Photo Grid (Snug Fit without empty gaps)
                 const tableY = row2Y + row2Height;
-                const photoBoxWidth = 32;
-                const tableWidth = contentWidth - photoBoxWidth; // 150mm
-                const colDateW = 26;
-                const colTimeW = 44;
-                const colCodeW = 28;
-                const colNameW = tableWidth - (colDateW + colTimeW + colCodeW); // 52mm
+                const photoBoxWidth = 28;
+                const tableWidth = contentWidth - photoBoxWidth; // 154mm
+                const colDateW = 23;
+                const colTimeW = 41;
+                const colCodeW = 26;
+                const colNameW = tableWidth - (colDateW + colTimeW + colCodeW); // 64mm
 
                 // Vertical Divider between Timetable and Photo box (ends exactly at table bottom)
                 doc.line(marginX + tableWidth, tableY, marginX + tableWidth, startY + cardBoxHeight);
 
-                // Timetable Header (5mm)
+                // Timetable Header (5.2mm)
                 doc.line(marginX, tableY + thHeight, marginX + tableWidth, tableY + thHeight);
 
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8);
-                doc.text('Date', marginX + colDateW / 2, tableY + 3.5, { align: 'center' });
+                doc.text('Date', marginX + colDateW / 2, tableY + 3.7, { align: 'center' });
                 doc.line(marginX + colDateW, tableY, marginX + colDateW, startY + cardBoxHeight);
 
-                doc.text('Time', marginX + colDateW + colTimeW / 2, tableY + 3.5, { align: 'center' });
+                doc.text('Time', marginX + colDateW + colTimeW / 2, tableY + 3.7, { align: 'center' });
                 doc.line(marginX + colDateW + colTimeW, tableY, marginX + colDateW + colTimeW, startY + cardBoxHeight);
 
-                doc.text('Subject Code', marginX + colDateW + colTimeW + colCodeW / 2, tableY + 3.5, { align: 'center' });
+                doc.text('Subject Code', marginX + colDateW + colTimeW + colCodeW / 2, tableY + 3.7, { align: 'center' });
                 doc.line(marginX + colDateW + colTimeW + colCodeW, tableY, marginX + colDateW + colTimeW + colCodeW, startY + cardBoxHeight);
 
-                doc.text('Subject name', marginX + colDateW + colTimeW + colCodeW + colNameW / 2, tableY + 3.5, { align: 'center' });
+                doc.text('Subject Name', marginX + colDateW + colTimeW + colCodeW + colNameW / 2, tableY + 3.7, { align: 'center' });
 
-                // Timetable Rows
+                // Timetable Rows (Larger, spacious vertical padding)
                 timetable.forEach((exam, rIdx) => {
                     const rowTop = tableY + thHeight + (rIdx * rowH);
                     doc.line(marginX, rowTop + rowH, marginX + tableWidth, rowTop + rowH);
 
                     doc.setFont('times', 'normal');
-                    doc.setFontSize(7.5);
-                    doc.text(exam.date || '', marginX + colDateW / 2, rowTop + 3.4, { align: 'center' });
-                    doc.text(exam.time || '', marginX + colDateW + colTimeW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.setFontSize(7.8);
+                    const midY = rowTop + (rowH / 2) + 1.2;
+                    doc.text(exam.date || '', marginX + colDateW / 2, midY, { align: 'center' });
+                    doc.text(exam.time || '', marginX + colDateW + colTimeW / 2, midY, { align: 'center' });
 
                     doc.setFont('courier', 'bold');
-                    doc.text(exam.subjectCode || '', marginX + colDateW + colTimeW + colCodeW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.setFontSize(8.2);
+                    doc.text(exam.subjectCode || '', marginX + colDateW + colTimeW + colCodeW / 2, midY, { align: 'center' });
 
+                    const rawName = exam.subjectName || exam.name || exam.code || '';
+                    const fullName = resolveFullSubjectName(exam.subjectCode, rawName, catalogSubjects);
                     doc.setFont('times', 'bold');
-                    doc.text(exam.subjectName || '', marginX + colDateW + colTimeW + colCodeW + colNameW / 2, rowTop + 3.4, { align: 'center' });
+                    doc.setFontSize(7.6);
+                    const nameLines = doc.splitTextToSize(fullName, colNameW - 4);
+                    if (nameLines.length > 1) {
+                        const lineHeight = 3.0;
+                        const startTextY = rowTop + (rowH / 2) - ((nameLines.length - 1) * lineHeight / 2) + 1.0;
+                        nameLines.forEach((line, lIdx) => {
+                            doc.text(line, marginX + colDateW + colTimeW + colCodeW + colNameW / 2, startTextY + (lIdx * lineHeight), { align: 'center' });
+                        });
+                    } else {
+                        doc.text(fullName, marginX + colDateW + colTimeW + colCodeW + colNameW / 2, midY, { align: 'center' });
+                    }
                 });
 
-                // Photo Placeholder text inside photo box (vertically centered)
-                doc.setFont('times', 'normal');
-                doc.setFontSize(8);
-                doc.setTextColor(150, 150, 150);
-                doc.text('[ Photo ]', marginX + tableWidth + photoBoxWidth / 2, tableY + (tableHeight / 2) + 1.5, { align: 'center' });
+                // Photo Placeholder: Passport frame + Vector silhouette user icon + Affix Photo label
+                const photoCenterX = marginX + tableWidth + (photoBoxWidth / 2);
+                const photoCenterY = tableY + (tableHeight / 2);
+
+                // 1. Passport photo outer border box (dashed border inside cell)
+                const passW = 21;
+                const passH = 26;
+                doc.setDrawColor(160, 165, 175);
+                doc.setLineWidth(0.3);
+                doc.setLineDash([1, 1], 0);
+                doc.roundedRect(photoCenterX - (passW / 2), photoCenterY - (passH / 2), passW, passH, 1, 1, 'D');
+                doc.setLineDash([], 0);
+
+                // 2. User Profile Silhouette (Head & Shoulders)
+                doc.setFillColor(156, 163, 175);
+                doc.setDrawColor(107, 114, 128);
+                doc.setLineWidth(0.25);
+                // Head circle
+                doc.circle(photoCenterX, photoCenterY - 4.5, 3.8, 'FD');
+                // Torso / shoulders
+                doc.ellipse(photoCenterX, photoCenterY + 3.8, 7.5, 4.0, 'FD');
+
+                // 3. "AFFIX PHOTO" label
+                doc.setFont('times', 'bold');
+                doc.setFontSize(6.5);
+                doc.setTextColor(90, 95, 105);
+                doc.text('AFFIX PHOTO', photoCenterX, photoCenterY + 10.8, { align: 'center' });
                 doc.setTextColor(0, 0, 0);
 
                 // 7. Signature Footer with Clean Physical Signature Spacing
-                const sigLabelY = startY + cardBoxHeight + sigSpace;
+                const sigLabelY = startY + cardBoxHeight + sigSpace + (sigLabelHeight / 2);
                 doc.setFont('times', 'bold');
                 doc.setFontSize(8.5);
                 doc.text('Signature of Class Advisor', marginX, sigLabelY);
@@ -903,7 +941,7 @@ function HallTicketsContent() {
 
                 // 8. Scissors cutting guide between tickets on the same page
                 if (cardIdx < sheetStudents.length - 1) {
-                    const cutY = sigLabelY + sigLabelHeight + cutGap;
+                    const cutY = sigLabelY + (sigLabelHeight / 2) + cutGap;
                     doc.setFont('courier', 'bold');
                     doc.setFontSize(6.8);
                     doc.text('-----------------------------------------X------------------------------------------------X--------------------------------------', marginX + contentWidth / 2, cutY, { align: 'center' });
@@ -940,7 +978,7 @@ function HallTicketsContent() {
                 @media print {
                     @page {
                         size: A4 portrait;
-                        margin: 8mm 12mm;
+                        margin: 6mm 10mm;
                     }
                     html, body {
                         background: #FFFFFF !important;
@@ -1016,7 +1054,7 @@ function HallTicketsContent() {
                         position: static !important;
                     }
 
-                    /* 4. A4 Sheet Container: Exactly 278mm height (A4 297mm - 16mm margins = 281mm printable) guaranteeing 3 tickets per sheet with zero overflow */
+                    /* 4. A4 Sheet Container: Exactly 283mm height (A4 297mm - 12mm margins = 285mm printable) guaranteeing exactly 3 tickets per sheet with zero overflow */
                     .aitm-a4-sheet {
                         box-shadow: none !important;
                         border: none !important;
@@ -1024,8 +1062,8 @@ function HallTicketsContent() {
                         padding: 0 !important;
                         width: 100% !important;
                         max-width: 100% !important;
-                        height: 278mm !important;
-                        max-height: 278mm !important;
+                        height: 283mm !important;
+                        max-height: 283mm !important;
                         min-height: 0 !important;
                         box-sizing: border-box !important;
                         page-break-inside: avoid !important;
@@ -1034,26 +1072,32 @@ function HallTicketsContent() {
                         break-after: page !important;
                         display: flex !important;
                         flex-direction: column !important;
-                        justifyContent: space-between !important;
+                        justify-content: flex-start !important;
                         overflow: hidden !important;
                         background: #FFFFFF !important;
                     }
 
-                    .aitm-a4-sheet:last-of-type {
-                        page-break-after: auto !important;
-                        break-after: auto !important;
+                    .aitm-a4-sheet:last-of-type,
+                    .aitm-a4-sheet:last-child {
+                        page-break-after: avoid !important;
+                        break-after: avoid !important;
                     }
 
                     /* 5. Slot container: exactly 1/3 of printable sheet, never overflow */
                     .aitm-ticket-slot {
                         flex: 1 1 0 !important;
-                        max-height: 89mm !important;
+                        max-height: 93mm !important;
                         display: flex !important;
                         flex-direction: column !important;
-                        justifyContent: center !important;
+                        justify-content: flex-start !important;
                         overflow: hidden !important;
                         margin: 0 !important;
-                        padding: 0 !important;
+                        padding: 1mm 0 !important;
+                        box-sizing: border-box !important;
+                    }
+
+                    .aitm-ticket-slot.aitm-empty-slot {
+                        visibility: hidden !important;
                     }
 
                     .aitm-hall-ticket-card {
@@ -1120,26 +1164,52 @@ function HallTicketsContent() {
                         border-right-color: #000000 !important;
                     }
                     .aitm-card-timetable-grid {
-                        min-height: 68px !important;
+                        min-height: 72px !important;
                         grid-template-columns: 1fr 108px !important;
                     }
-                    .aitm-card-timetable-grid table th,
-                    .aitm-card-timetable-grid table td {
-                        padding: 2px 3px !important;
-                        font-size: 9.5px !important;
+                    .aitm-card-timetable-grid table th {
+                        padding: 5px 4px !important;
+                        font-size: 10px !important;
                         border-color: #000000 !important;
+                        font-weight: bold !important;
+                    }
+                    .aitm-card-timetable-grid table td {
+                        padding: 7px 4px !important;
+                        font-size: 10px !important;
+                        line-height: 1.35 !important;
+                        vertical-align: middle !important;
+                        border-color: #000000 !important;
+                    }
+                    .aitm-card-timetable-grid table td.subject-name-cell {
+                        padding-left: 8px !important;
+                        padding-right: 6px !important;
+                        text-align: left !important;
+                        white-space: normal !important;
+                        word-break: break-word !important;
+                        overflow-wrap: break-word !important;
                     }
                     .aitm-card-photo-box {
                         border-left: 1.2px solid #000000 !important;
                         padding: 4px !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        background-color: #FFFFFF !important;
+                    }
+                    .aitm-card-photo-box svg {
+                        display: block !important;
+                        width: 32px !important;
+                        height: 32px !important;
                     }
                     .aitm-card-signatures {
-                        padding: 26px 4px 2px 4px !important;
-                        font-size: 10px !important;
+                        padding: 20px 6px 3px 6px !important;
+                        font-size: 9.5px !important;
                     }
                     .aitm-cutting-line {
-                        margin: 3px 0 !important;
-                        font-size: 9.5px !important;
+                        margin: 1.5mm 0 !important;
+                        font-size: 8.5px !important;
+                        line-height: 1 !important;
                         color: #000000 !important;
                     }
                 }

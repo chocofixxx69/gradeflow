@@ -1,6 +1,7 @@
 import React from 'react';
 import AitmLogo from './AitmLogo';
 import { canonicalBranchCode, extractBranchFromUsn } from '@/lib/semester-utils';
+import { resolveFullSubjectName } from './TimetableEditor';
 
 /**
  * HallTicketCard — Exact reproduction of the official Anjuman Institute of Technology & Management
@@ -22,10 +23,10 @@ export default function HallTicketCard({
         collegeAddress: 'Anjumanabad, Bhatkal-582320'
     },
     timetable = [
-        { date: '24/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS601', subjectName: 'CC' },
-        { date: '24/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS602', subjectName: 'ML' },
-        { date: '25/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS613B', subjectName: 'CV' },
-        { date: '25/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BEE654B', subjectName: 'TRES' }
+        { date: '24/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS601', subjectName: 'Cloud Computing' },
+        { date: '24/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BCS602', subjectName: 'Machine Learning' },
+        { date: '25/03/2026', time: '10:00 am to 11:00 am', subjectCode: 'BCS613B', subjectName: 'Computer Vision' },
+        { date: '25/03/2026', time: '02:30 pm to 03:30 pm', subjectCode: 'BEE654B', subjectName: 'Technologies of Renewable Energy Sources' }
     ]
 }) {
     // Canonical branch code, resolved identically to the rest of the app.
@@ -149,21 +150,26 @@ export default function HallTicketCard({
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', textAlign: 'center' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1.5px solid #000000', backgroundColor: '#FAFAFA' }}>
-                                    <th style={{ width: '18%', padding: '3.5px 3px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Date</th>
-                                    <th style={{ width: '29%', padding: '3.5px 3px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Time</th>
-                                    <th style={{ width: '18%', padding: '3.5px 3px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Subject Code</th>
-                                    <th style={{ width: '35%', padding: '3.5px 3px', fontWeight: '800' }}>Subject name</th>
+                                    <th style={{ width: '17%', padding: '6px 4px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Date</th>
+                                    <th style={{ width: '26%', padding: '6px 4px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Time</th>
+                                    <th style={{ width: '16%', padding: '6px 4px', fontWeight: '800', borderRight: '1.5px solid #000000' }}>Subject Code</th>
+                                    <th style={{ width: '41%', padding: '6px 8px', fontWeight: '800', textAlign: 'left' }}>Subject Name</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {timetable.map((row, idx) => (
-                                    <tr key={idx} style={{ borderBottom: idx < timetable.length - 1 ? '1px solid #000000' : 'none' }}>
-                                        <td style={{ padding: '3.5px 3px', borderRight: '1.5px solid #000000' }}>{row.date}</td>
-                                        <td style={{ padding: '3.5px 3px', borderRight: '1.5px solid #000000' }}>{row.time}</td>
-                                        <td style={{ padding: '3.5px 3px', borderRight: '1.5px solid #000000', fontFamily: 'Courier, monospace', fontWeight: 'bold' }}>{row.subjectCode}</td>
-                                        <td style={{ padding: '3.5px 3px', fontWeight: 'bold' }}>{row.subjectName}</td>
-                                    </tr>
-                                ))}
+                                {timetable.map((row, idx) => {
+                                    const fullName = resolveFullSubjectName(row.subjectCode, row.subjectName);
+                                    return (
+                                        <tr key={idx} style={{ borderBottom: idx < timetable.length - 1 ? '1px solid #000000' : 'none' }}>
+                                            <td style={{ padding: '8px 4px', borderRight: '1.5px solid #000000', verticalAlign: 'middle', fontSize: '10.5px' }}>{row.date}</td>
+                                            <td style={{ padding: '8px 4px', borderRight: '1.5px solid #000000', verticalAlign: 'middle', fontSize: '10.5px' }}>{row.time}</td>
+                                            <td style={{ padding: '8px 4px', borderRight: '1.5px solid #000000', fontFamily: 'Courier, monospace', fontWeight: 'bold', verticalAlign: 'middle', fontSize: '11px' }}>{row.subjectCode}</td>
+                                            <td className="subject-name-cell" style={{ padding: '8px 8px', fontWeight: 'bold', textAlign: 'left', wordBreak: 'normal', overflowWrap: 'break-word', whiteSpace: 'normal', lineHeight: '1.35', verticalAlign: 'middle', fontSize: '11px' }}>
+                                                {fullName}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -190,12 +196,44 @@ export default function HallTicketCard({
                             />
                         ) : (
                             <div style={{
-                                color: '#9CA3AF',
-                                fontSize: '11px',
-                                letterSpacing: '0.05em',
-                                fontFamily: "'Times New Roman', serif"
+                                width: '78px',
+                                height: '96px',
+                                border: '1.5px dashed #9CA3AF',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                backgroundColor: '#F9FAFB',
+                                padding: '4px',
+                                boxSizing: 'border-box'
                             }}>
-                                [ Photo ]
+                                <svg
+                                    width="38"
+                                    height="38"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    style={{ display: 'block' }}
+                                >
+                                    <circle cx="12" cy="7.5" r="4.2" fill="#9CA3AF" />
+                                    <path
+                                        d="M4 20C4 15.5 7.6 13.8 12 13.8C16.4 13.8 20 15.5 20 20"
+                                        fill="#9CA3AF"
+                                    />
+                                </svg>
+                                <span style={{
+                                    fontSize: '8.5px',
+                                    fontWeight: 700,
+                                    letterSpacing: '0.05em',
+                                    textTransform: 'uppercase',
+                                    color: '#4B5563',
+                                    fontFamily: "'Times New Roman', Times, serif, Arial",
+                                    textAlign: 'center',
+                                    lineHeight: '1.1'
+                                }}>
+                                    Affix Photo
+                                </span>
                             </div>
                         )}
                     </div>
@@ -207,7 +245,7 @@ export default function HallTicketCard({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-end',
-                padding: '28px 6px 4px 6px', /* Snug calibrated signature spacing */
+                padding: '22px 6px 4px 6px', /* Balanced calibrated signature spacing */
                 fontSize: '11px',
                 fontWeight: '800'
             }}>
