@@ -118,6 +118,12 @@ function HallTicketsContent() {
     const [semester, setSemester] = useState(3);
     const [hasAutoSelectedClass, setHasAutoSelectedClass] = useState(false);
 
+    // Class Picker Modal / Expand State
+    const [classPickerOpen, setClassPickerOpen] = useState(false);
+    const [classSearch, setClassSearch] = useState('');
+    const [classSemFilter, setClassSemFilter] = useState('ALL');
+    const [classOnlyWithStudents, setClassOnlyWithStudents] = useState(false);
+
     // Students Data
     const [selectedUsns, setSelectedUsns] = useState(new Set());
     const [studentSearch, setStudentSearch] = useState('');
@@ -210,6 +216,38 @@ function HallTicketsContent() {
     const availableClasses = useMemo(() => {
         return branchClasses.filter(c => Number(c.semester) === Number(semester));
     }, [branchClasses, semester]);
+
+    // Distinct available semesters across all registered classes
+    const availableClassSems = useMemo(() => {
+        const sems = new Set();
+        classes.forEach(c => {
+            if (c.semester != null) sems.add(Number(c.semester));
+        });
+        return Array.from(sems).sort((a, b) => a - b);
+    }, [classes]);
+
+    // Filtered classes inside the interactive picker
+    const filteredPickerClasses = useMemo(() => {
+        let list = classes;
+        if (classOnlyWithStudents) {
+            list = list.filter(c => (c.student_count || 0) > 0);
+        }
+        if (classSemFilter !== 'ALL') {
+            list = list.filter(c => Number(c.semester) === Number(classSemFilter));
+        }
+        if (classSearch.trim()) {
+            const q = classSearch.toLowerCase().trim();
+            list = list.filter(c => {
+                const nameMatch = (c.name || '').toLowerCase().includes(q);
+                const branchMatch = (c.branch || '').toLowerCase().includes(q) || (c.branch_code || '').toLowerCase().includes(q);
+                const secMatch = (c.section || '').toLowerCase().includes(q);
+                const semMatch = `sem ${c.semester}`.includes(q) || `semester ${c.semester}`.includes(q);
+                const batchMatch = (c.batch || '').toLowerCase().includes(q);
+                return nameMatch || branchMatch || secMatch || semMatch || batchMatch;
+            });
+        }
+        return list;
+    }, [classes, classOnlyWithStudents, classSemFilter, classSearch]);
 
     // 2. Roster. If specific class(es) are selected, query by class_ids; otherwise
     // query by branch & semester.
@@ -396,6 +434,7 @@ function HallTicketsContent() {
                 autoFillSyllabus(chosen.branch || branch, s);
             }
             setDismissedMismatch(true);
+            setClassPickerOpen(false);
         }
     }, [classes, branch, autoFillSyllabus]);
 
@@ -1322,212 +1361,574 @@ function HallTicketsContent() {
                                         </div>
                                     ) : (
                                         <>
-                                            {/* Single Class Dropdown Picker */}
-                                            {!multiClassMode ? (
-                                                <div>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                                            Select Registered Class
-                                                        </label>
-                                                        <a
-                                                            href="/faculty/classes"
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                                                        >
-                                                            <span>Manage Classes</span>
-                                                            <span className="material-icons-round" style={{ fontSize: '12px' }}>open_in_new</span>
-                                                        </a>
-                                                    </div>
-
-                                                    <select
-                                                        value={selectedClassIds[0] || ''}
-                                                        onChange={e => handleSelectClass(e.target.value)}
-                                                        style={{
-                                                            width: '100%',
-                                                            minHeight: '44px',
-                                                            padding: '10px 14px',
-                                                            borderRadius: '8px',
-                                                            border: '1.5px solid var(--border, #cbd5e1)',
-                                                            background: 'var(--surface-low, #f8fafc)',
-                                                            color: 'var(--tx-main)',
-                                                            fontSize: '13.5px',
-                                                            fontWeight: 700,
-                                                            outline: 'none',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        <option value="" disabled>-- Select a Class --</option>
-                                                        {classes.map(c => (
-                                                            <option key={c.id} value={c.id}>
-                                                                {c.name} • Sem {c.semester} • {c.student_count ?? 0} Students {c.section ? `• Sec ${c.section}` : ''} ({c.branch})
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            ) : (
-                                                /* Multi-class Checkbox Picker */
-                                                <div>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                                            Select One or Multiple Classes
-                                                        </label>
-                                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setSelectedClassIds(classes.map(c => c.id))}
-                                                                style={{ background: 'none', border: 'none', color: '#2563EB', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                                                            >
-                                                                Select All
-                                                            </button>
-                                                            <span style={{ color: 'var(--border)' }}>•</span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setSelectedClassIds([])}
-                                                                style={{ background: 'none', border: 'none', color: 'var(--tx-muted)', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                                                            >
-                                                                Clear
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
-                                                        {classes.map(c => {
-                                                            const isChecked = selectedClassIds.includes(c.id);
-                                                            return (
-                                                                <div
-                                                                    key={c.id}
-                                                                    onClick={() => toggleClassSelection(c.id)}
-                                                                    style={{
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        justifyContent: 'space-between',
-                                                                        padding: '10px 14px',
-                                                                        borderRadius: '8px',
-                                                                        border: `1.5px solid ${isChecked ? '#2563EB' : 'var(--border, #e2e8f0)'}`,
-                                                                        background: isChecked ? '#EFF6FF' : 'var(--surface-low, #f8fafc)',
-                                                                        cursor: 'pointer',
-                                                                        transition: 'all 0.15s ease'
-                                                                    }}
-                                                                >
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={isChecked}
-                                                                            onChange={() => {}}
-                                                                            style={{ cursor: 'pointer', accentColor: '#2563EB', width: '16px', height: '16px' }}
-                                                                        />
-                                                                        <div>
-                                                                            <div style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                <span>{c.name}</span>
-                                                                                {c.section && (
-                                                                                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#1D4ED8', background: '#DBEAFE', padding: '1px 6px', borderRadius: '4px' }}>
-                                                                                        Sec {c.section}
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '2px' }}>
-                                                                                Semester {c.semester} • {c.student_count ?? 0} students • {c.branch}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <span style={{ fontSize: '11px', fontWeight: 700, color: isChecked ? '#1D4ED8' : 'var(--tx-dim)' }}>
-                                                                        {isChecked ? '✓ Selected' : '+ Select'}
-                                                                    </span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Toggle between Single Class & Multi-Class selection */}
-                                            {classes.length > 1 && (
-                                                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-muted)', cursor: 'pointer' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={multiClassMode}
-                                                            onChange={e => {
-                                                                setMultiClassMode(e.target.checked);
-                                                                if (!e.target.checked && selectedClassIds.length > 1) {
-                                                                    setSelectedClassIds([selectedClassIds[0]]);
-                                                                }
-                                                            }}
-                                                            style={{ accentColor: '#2563EB', cursor: 'pointer' }}
-                                                        />
-                                                        <span>Combine multiple classes together (e.g. Sec A + Sec B)</span>
-                                                    </label>
-                                                </div>
-                                            )}
-
-                                            {/* Active Class Connected Details Card */}
-                                            {selectedClassIds.length === 1 && (() => {
+                                            {/* ── CLASS SELECTION INTERFACE ── */}
+                                            {/* Mode A: Active Class Hero Card (when 1 class is selected and picker is closed) */}
+                                            {(!multiClassMode && selectedClassIds.length === 1 && !classPickerOpen) ? (() => {
                                                 const cur = classes.find(c => String(c.id) === String(selectedClassIds[0]));
                                                 if (!cur) return null;
                                                 return (
-                                                    <div style={{
-                                                        background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.06) 0%, rgba(29, 78, 216, 0.03) 100%)',
-                                                        border: '1.5px solid rgba(37, 99, 235, 0.22)',
-                                                        borderRadius: '10px',
-                                                        padding: '12px 14px',
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        gap: '8px'
-                                                    }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span className="material-icons-round" style={{ fontSize: '18px', color: '#2563EB' }}>verified</span>
-                                                                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--tx-main)' }}>
-                                                                    {cur.name}
-                                                                </span>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                        {/* Hero Active Class Card */}
+                                                        <div style={{
+                                                            background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(29, 78, 216, 0.02) 100%)',
+                                                            border: '1.5px solid rgba(37, 99, 235, 0.3)',
+                                                            borderRadius: '12px',
+                                                            padding: '16px 18px',
+                                                            boxShadow: '0 2px 10px -2px rgba(37, 99, 235, 0.08)',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '12px'
+                                                        }}>
+                                                            {/* Card Header */}
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                                    <div style={{
+                                                                        width: '42px',
+                                                                        height: '42px',
+                                                                        borderRadius: '10px',
+                                                                        background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                                                        color: '#ffffff',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+                                                                        flexShrink: 0
+                                                                    }}>
+                                                                        <span className="material-icons-round" style={{ fontSize: '24px' }}>school</span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                                            <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--tx-main)', letterSpacing: '-0.01em' }}>
+                                                                                {cur.name}
+                                                                            </span>
+                                                                            <span style={{
+                                                                                fontSize: '10.5px',
+                                                                                fontWeight: 800,
+                                                                                color: '#15803D',
+                                                                                background: '#DCFCE7',
+                                                                                border: '1px solid #BBF7D0',
+                                                                                padding: '2px 8px',
+                                                                                borderRadius: '12px',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px'
+                                                                            }}>
+                                                                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16A34A', display: 'inline-block' }} />
+                                                                                Connected Class
+                                                                            </span>
+                                                                        </div>
+                                                                        <div style={{ fontSize: '12px', color: 'var(--tx-muted)', marginTop: '2px' }}>
+                                                                            Live roster connected to Classes feature • Syllabus synchronized
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Action Buttons: Switch Class & Manage */}
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setClassPickerOpen(true)}
+                                                                        style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px',
+                                                                            padding: '7px 14px',
+                                                                            borderRadius: '8px',
+                                                                            background: 'var(--surface, #ffffff)',
+                                                                            border: '1.5px solid #2563EB',
+                                                                            color: '#2563EB',
+                                                                            fontSize: '12px',
+                                                                            fontWeight: 800,
+                                                                            cursor: 'pointer',
+                                                                            boxShadow: '0 1px 3px rgba(37, 99, 235, 0.1)',
+                                                                            transition: 'all 0.15s ease'
+                                                                        }}
+                                                                        onMouseEnter={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                                                                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface, #ffffff)'; }}
+                                                                    >
+                                                                        <span className="material-icons-round" style={{ fontSize: '16px' }}>swap_horiz</span>
+                                                                        <span>Switch Class</span>
+                                                                    </button>
+
+                                                                    <a
+                                                                        href="/faculty/classes"
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                            padding: '7px 10px',
+                                                                            borderRadius: '8px',
+                                                                            color: 'var(--tx-muted)',
+                                                                            fontSize: '12px',
+                                                                            fontWeight: 600,
+                                                                            textDecoration: 'none'
+                                                                        }}
+                                                                        title="Manage classes in separate tab"
+                                                                    >
+                                                                        <span>Manage</span>
+                                                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>open_in_new</span>
+                                                                    </a>
+                                                                </div>
                                                             </div>
-                                                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px' }}>
-                                                                ✓ Connected to Classes
-                                                            </span>
+
+                                                            {/* Class Badges Row */}
+                                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(226, 232, 240, 0.8)' }}>
+                                                                <span style={{
+                                                                    fontSize: '12px',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '6px',
+                                                                    background: '#F0FDF4',
+                                                                    border: '1px solid #BBF7D0',
+                                                                    color: '#166534',
+                                                                    fontWeight: 800,
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '5px'
+                                                                }}>
+                                                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>groups</span>
+                                                                    <span>{filteredStudents.length} Students Pulled</span>
+                                                                </span>
+
+                                                                <span style={{
+                                                                    fontSize: '12px',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '6px',
+                                                                    background: '#EFF6FF',
+                                                                    border: '1px solid #BFDBFE',
+                                                                    color: '#1E40AF',
+                                                                    fontWeight: 700
+                                                                }}>
+                                                                    Semester {cur.semester} ({ROMAN_SEMESTERS[cur.semester] || cur.semester})
+                                                                </span>
+
+                                                                {cur.section && (
+                                                                    <span style={{
+                                                                        fontSize: '12px',
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '6px',
+                                                                        background: '#F5F3FF',
+                                                                        border: '1px solid #DDD6FE',
+                                                                        color: '#6D28D9',
+                                                                        fontWeight: 700
+                                                                    }}>
+                                                                        Section {cur.section}
+                                                                    </span>
+                                                                )}
+
+                                                                <span style={{
+                                                                    fontSize: '12px',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '6px',
+                                                                    background: 'var(--surface-low, #F8FAFC)',
+                                                                    border: '1px solid var(--border, #E2E8F0)',
+                                                                    color: 'var(--tx-main)',
+                                                                    fontWeight: 600
+                                                                }}>
+                                                                    Dept: {cur.branch}
+                                                                </span>
+
+                                                                {cur.batch && (
+                                                                    <span style={{
+                                                                        fontSize: '12px',
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '6px',
+                                                                        background: 'var(--surface-low, #F8FAFC)',
+                                                                        border: '1px solid var(--border, #E2E8F0)',
+                                                                        color: 'var(--tx-muted)',
+                                                                        fontWeight: 600
+                                                                    }}>
+                                                                        Batch {cur.batch}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
 
-                                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700 }}>
-                                                                Dept: {cur.branch}
-                                                            </span>
-                                                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700 }}>
-                                                                Semester {cur.semester} ({ROMAN_SEMESTERS[cur.semester] || cur.semester})
-                                                            </span>
-                                                            {cur.section && (
-                                                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700 }}>
-                                                                    Section {cur.section}
-                                                                </span>
-                                                            )}
-                                                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#F0FDF4', color: '#166534', fontWeight: 700 }}>
-                                                                👥 {filteredStudents.length} Students Pulled
-                                                            </span>
-                                                            {cur.batch && (
-                                                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#F8FAFC', border: '1px solid var(--border)', color: 'var(--tx-muted)', fontWeight: 600 }}>
-                                                                    Batch {cur.batch}
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                        {/* Toggle multi-class combination */}
+                                                        {classes.length > 1 && (
+                                                            <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: '2px' }}>
+                                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-muted)', cursor: 'pointer' }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={multiClassMode}
+                                                                        onChange={e => {
+                                                                            setMultiClassMode(e.target.checked);
+                                                                            if (e.target.checked) setClassPickerOpen(true);
+                                                                        }}
+                                                                        style={{ accentColor: '#2563EB', cursor: 'pointer', width: '15px', height: '15px' }}
+                                                                    />
+                                                                    <span>Combine multiple classes together (e.g. Sec A + Sec B)</span>
+                                                                </label>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
-                                            })()}
-
-                                            {/* Multi-class Summary */}
-                                            {selectedClassIds.length > 1 && (
+                                            })() : (
+                                                /* Mode B: Modern Interactive Class Picker (Searchable & Filterable) */
                                                 <div style={{
-                                                    background: '#EFF6FF',
-                                                    border: '1px solid #BFDBFE',
-                                                    borderRadius: '8px',
-                                                    padding: '10px 14px',
-                                                    fontSize: '12px',
-                                                    color: '#1E40AF',
-                                                    fontWeight: 700,
+                                                    background: 'var(--surface, #ffffff)',
+                                                    border: '1.5px solid var(--border, #cbd5e1)',
+                                                    borderRadius: '12px',
+                                                    padding: '16px',
                                                     display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center'
+                                                    flexDirection: 'column',
+                                                    gap: '12px',
+                                                    boxShadow: '0 4px 16px -4px rgba(0, 0, 0, 0.06)'
                                                 }}>
-                                                    <span>{selectedClassIds.length} Classes Combined</span>
-                                                    <span>👥 {filteredStudents.length} Total Students</span>
+                                                    {/* Picker Header */}
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--tx-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                                {multiClassMode ? 'Select Classes to Combine' : 'Choose Registered Class'}
+                                                            </label>
+                                                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', background: '#EFF6FF', padding: '1px 7px', borderRadius: '10px' }}>
+                                                                {classes.length} registered
+                                                            </span>
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            {multiClassMode && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedClassIds(classes.map(c => c.id))}
+                                                                        style={{ background: 'none', border: 'none', color: '#2563EB', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                                                                    >
+                                                                        Select All
+                                                                    </button>
+                                                                    <span style={{ color: 'var(--border)' }}>•</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedClassIds([])}
+                                                                        style={{ background: 'none', border: 'none', color: 'var(--tx-muted)', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                                                                    >
+                                                                        Clear
+                                                                    </button>
+                                                                    <span style={{ color: 'var(--border)' }}>•</span>
+                                                                </div>
+                                                            )}
+
+                                                            {!multiClassMode && selectedClassIds.length > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setClassPickerOpen(false)}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        background: 'none',
+                                                                        border: '1px solid var(--border)',
+                                                                        borderRadius: '6px',
+                                                                        padding: '3px 8px',
+                                                                        color: 'var(--tx-muted)',
+                                                                        fontSize: '11px',
+                                                                        fontWeight: 700,
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '13px' }}>close</span>
+                                                                    <span>Close Picker</span>
+                                                                </button>
+                                                            )}
+
+                                                            <a
+                                                                href="/faculty/classes"
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ fontSize: '11.5px', fontWeight: 700, color: '#2563EB', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                                            >
+                                                                <span>Manage Classes</span>
+                                                                <span className="material-icons-round" style={{ fontSize: '13px' }}>open_in_new</span>
+                                                            </a>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Search Input & Filter Chips Toolbar */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                        {/* Search bar */}
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            background: 'var(--surface-low, #f8fafc)',
+                                                            border: '1px solid var(--border, #cbd5e1)',
+                                                            borderRadius: '8px',
+                                                            padding: '0 10px',
+                                                            gap: '8px'
+                                                        }}>
+                                                            <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-muted)' }}>search</span>
+                                                            <input
+                                                                type="text"
+                                                                value={classSearch}
+                                                                onChange={e => setClassSearch(e.target.value)}
+                                                                placeholder="Search by class name, section, department, or batch (e.g. CS, Sec A, 2025)..."
+                                                                style={{
+                                                                    flex: 1,
+                                                                    border: 'none',
+                                                                    background: 'transparent',
+                                                                    padding: '9px 0',
+                                                                    fontSize: '12.5px',
+                                                                    color: 'var(--tx-main)',
+                                                                    outline: 'none'
+                                                                }}
+                                                            />
+                                                            {classSearch && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setClassSearch('')}
+                                                                    style={{ background: 'none', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                                                                >
+                                                                    <span className="material-icons-round" style={{ fontSize: '15px' }}>clear</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Filter chips */}
+                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            {/* All */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => { setClassSemFilter('ALL'); setClassOnlyWithStudents(false); }}
+                                                                style={{
+                                                                    padding: '3px 9px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 700,
+                                                                    border: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '1px solid #2563EB' : '1px solid var(--border)',
+                                                                    background: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '#EFF6FF' : 'var(--surface-low, #f8fafc)',
+                                                                    color: (classSemFilter === 'ALL' && !classOnlyWithStudents) ? '#1D4ED8' : 'var(--tx-muted)',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                All ({classes.length})
+                                                            </button>
+
+                                                            {/* With Students */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setClassOnlyWithStudents(prev => !prev)}
+                                                                style={{
+                                                                    padding: '3px 9px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 700,
+                                                                    border: classOnlyWithStudents ? '1px solid #16A34A' : '1px solid var(--border)',
+                                                                    background: classOnlyWithStudents ? '#F0FDF4' : 'var(--surface-low, #f8fafc)',
+                                                                    color: classOnlyWithStudents ? '#15803D' : 'var(--tx-muted)',
+                                                                    cursor: 'pointer',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}
+                                                            >
+                                                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: classOnlyWithStudents ? '#16A34A' : '#94A3B8' }} />
+                                                                <span>With Students ({classes.filter(c => (c.student_count || 0) > 0).length})</span>
+                                                            </button>
+
+                                                            {/* Semester quick filter chips */}
+                                                            {availableClassSems.map(s => {
+                                                                const count = classes.filter(c => Number(c.semester) === Number(s)).length;
+                                                                const isActive = classSemFilter === String(s);
+                                                                return (
+                                                                    <button
+                                                                        key={s}
+                                                                        type="button"
+                                                                        onClick={() => setClassSemFilter(isActive ? 'ALL' : String(s))}
+                                                                        style={{
+                                                                            padding: '3px 9px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '11px',
+                                                                            fontWeight: 700,
+                                                                            border: isActive ? '1px solid #2563EB' : '1px solid var(--border)',
+                                                                            background: isActive ? '#EFF6FF' : 'var(--surface-low, #f8fafc)',
+                                                                            color: isActive ? '#1D4ED8' : 'var(--tx-muted)',
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                    >
+                                                                        Sem {s} ({count})
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Class Cards Grid/List */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto', paddingRight: '2px' }}>
+                                                        {filteredPickerClasses.length === 0 ? (
+                                                            <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--tx-muted)', fontSize: '12px' }}>
+                                                                <span className="material-icons-round" style={{ fontSize: '28px', color: 'var(--tx-dim)', marginBottom: '4px', display: 'block' }}>search_off</span>
+                                                                No registered classes match your search query.
+                                                                <div style={{ marginTop: '8px' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { setClassSearch(''); setClassSemFilter('ALL'); setClassOnlyWithStudents(false); }}
+                                                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', fontSize: '11.5px', color: '#2563EB', fontWeight: 700, cursor: 'pointer' }}
+                                                                    >
+                                                                        Reset Filters
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            filteredPickerClasses.map(c => {
+                                                                const isSelected = selectedClassIds.includes(c.id);
+                                                                const hasStudents = (c.student_count || 0) > 0;
+
+                                                                return (
+                                                                    <div
+                                                                        key={c.id}
+                                                                        onClick={() => {
+                                                                            if (multiClassMode) {
+                                                                                toggleClassSelection(c.id);
+                                                                            } else {
+                                                                                handleSelectClass(c.id);
+                                                                            }
+                                                                        }}
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'space-between',
+                                                                            padding: '12px 14px',
+                                                                            borderRadius: '9px',
+                                                                            border: isSelected ? '2px solid #2563EB' : '1px solid var(--border, #e2e8f0)',
+                                                                            background: isSelected ? '#EFF6FF' : 'var(--surface-low, #f8fafc)',
+                                                                            cursor: 'pointer',
+                                                                            transition: 'all 0.15s ease',
+                                                                            boxShadow: isSelected ? '0 2px 8px rgba(37, 99, 235, 0.12)' : 'none'
+                                                                        }}
+                                                                        onMouseEnter={e => {
+                                                                            if (!isSelected) {
+                                                                                e.currentTarget.style.borderColor = '#93C5FD';
+                                                                                e.currentTarget.style.background = '#F0F7FF';
+                                                                            }
+                                                                        }}
+                                                                        onMouseLeave={e => {
+                                                                            if (!isSelected) {
+                                                                                e.currentTarget.style.borderColor = 'var(--border, #e2e8f0)';
+                                                                                e.currentTarget.style.background = 'var(--surface-low, #f8fafc)';
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {/* Left Details */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                            {multiClassMode && (
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={isSelected}
+                                                                                    onChange={() => {}}
+                                                                                    style={{ cursor: 'pointer', accentColor: '#2563EB', width: '16px', height: '16px' }}
+                                                                                />
+                                                                            )}
+                                                                            <div>
+                                                                                <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                                    <span>{c.name}</span>
+                                                                                    {c.section && (
+                                                                                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#1D4ED8', background: '#DBEAFE', padding: '1px 6px', borderRadius: '4px' }}>
+                                                                                            Sec {c.section}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div style={{ fontSize: '11px', color: 'var(--tx-muted)', marginTop: '3px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                                    <span>Semester {c.semester}</span>
+                                                                                    <span>•</span>
+                                                                                    <span>Dept: {c.branch}</span>
+                                                                                    {c.batch && (
+                                                                                        <>
+                                                                                            <span>•</span>
+                                                                                            <span>Batch {c.batch}</span>
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Right Badges & Action */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                            <span style={{
+                                                                                fontSize: '11px',
+                                                                                padding: '3px 8px',
+                                                                                borderRadius: '6px',
+                                                                                background: hasStudents ? '#DCFCE7' : '#F1F5F9',
+                                                                                border: hasStudents ? '1px solid #BBF7D0' : '1px solid #E2E8F0',
+                                                                                color: hasStudents ? '#15803D' : '#64748B',
+                                                                                fontWeight: 800,
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px'
+                                                                            }}>
+                                                                                <span className="material-icons-round" style={{ fontSize: '13px' }}>groups</span>
+                                                                                <span>{c.student_count ?? 0} Students</span>
+                                                                            </span>
+
+                                                                            {!multiClassMode ? (
+                                                                                <span style={{
+                                                                                    fontSize: '11px',
+                                                                                    fontWeight: 800,
+                                                                                    color: isSelected ? '#1D4ED8' : '#2563EB',
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '2px'
+                                                                                }}>
+                                                                                    {isSelected ? '✓ Active' : 'Select →'}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span style={{
+                                                                                    fontSize: '11px',
+                                                                                    fontWeight: 700,
+                                                                                    color: isSelected ? '#1D4ED8' : 'var(--tx-dim)'
+                                                                                }}>
+                                                                                    {isSelected ? '✓ Added' : '+ Add'}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
+
+                                                    {/* Multi-class Summary Bar & Bottom Toggle */}
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+                                                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', fontWeight: 600, color: 'var(--tx-muted)', cursor: 'pointer' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={multiClassMode}
+                                                                onChange={e => {
+                                                                    setMultiClassMode(e.target.checked);
+                                                                    if (!e.target.checked && selectedClassIds.length > 1) {
+                                                                        setSelectedClassIds([selectedClassIds[0]]);
+                                                                    }
+                                                                }}
+                                                                style={{ accentColor: '#2563EB', cursor: 'pointer', width: '15px', height: '15px' }}
+                                                            />
+                                                            <span>Combine multiple classes together (e.g. Sec A + Sec B)</span>
+                                                        </label>
+
+                                                        {multiClassMode && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#1E40AF' }}>
+                                                                    {selectedClassIds.length} classes • {filteredStudents.length} students
+                                                                </span>
+                                                                {selectedClassIds.length > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setClassPickerOpen(false)}
+                                                                        style={{
+                                                                            padding: '5px 12px',
+                                                                            borderRadius: '6px',
+                                                                            background: '#2563EB',
+                                                                            color: '#ffffff',
+                                                                            border: 'none',
+                                                                            fontSize: '11.5px',
+                                                                            fontWeight: 800,
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                    >
+                                                                        Apply &amp; View Roster
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
                                         </>
