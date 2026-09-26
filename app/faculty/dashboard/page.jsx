@@ -343,6 +343,131 @@ function FacultyDashboardView({
         return { valid, invalid, allValid: invalid.length === 0 };
     }, [parsedUsns, isMultiUsn]);
 
+    // Autocomplete Suggestions & Smart Error Suppression
+    const [suggestions, setSuggestions] = useState([]);
+    const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+    const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+    const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
+    const [hasSubmitted, setHasSubmitted] = useState(false);
+    const searchDropdownRef = useRef(null);
+
+    // Close suggestions dropdown on outside click
+    useEffect(() => {
+        if (!suggestionsOpen) return;
+        const handleClickOutside = (e) => {
+            if (searchDropdownRef.current && !searchDropdownRef.current.contains(e.target)) {
+                setSuggestionsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [suggestionsOpen]);
+
+    // Debounced fetch of matching student records
+    useEffect(() => {
+        const query = (usn || '').trim();
+        if (isMultiUsn || query.length < 2) {
+            setSuggestions([]);
+            setSuggestionsLoading(false);
+            return;
+        }
+
+        let isMounted = true;
+        setSuggestionsLoading(true);
+
+        const timer = setTimeout(async () => {
+            try {
+                const res = await apiRequest('/api/faculty/dashboard', {
+                    query: { autocomplete: query }
+                });
+                if (isMounted) {
+                    const list = res?.suggestions || [];
+                    setSuggestions(list);
+                    if (list.length > 0) {
+                        setSuggestionsOpen(true);
+                    }
+                }
+            } catch (err) {
+                console.error('Autocomplete fetch error:', err);
+                if (isMounted) setSuggestions([]);
+            } finally {
+                if (isMounted) setSuggestionsLoading(false);
+            }
+        }, 160);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, [usn, isMultiUsn]);
+
+    const handleSelectSuggestion = useCallback((suggestedUsn) => {
+        setUsn?.(suggestedUsn);
+        setSuggestionsOpen(false);
+        setActiveSuggestionIdx(-1);
+        setHasSubmitted(true);
+        lookupStudent?.(suggestedUsn);
+    }, [lookupStudent, setUsn]);
+
+    const handleSearchKeyDown = (event) => {
+        if (event.key === 'ArrowDown') {
+            if (!suggestionsOpen && suggestions.length > 0) {
+                setSuggestionsOpen(true);
+                setActiveSuggestionIdx(0);
+                event.preventDefault();
+                return;
+            }
+            if (suggestionsOpen && suggestions.length > 0) {
+                event.preventDefault();
+                setActiveSuggestionIdx(prev => (prev < suggestions.length - 1 ? prev + 1 : 0));
+            }
+        } else if (event.key === 'ArrowUp') {
+            if (suggestionsOpen && suggestions.length > 0) {
+                event.preventDefault();
+                setActiveSuggestionIdx(prev => (prev > 0 ? prev - 1 : suggestions.length - 1));
+            }
+        } else if (event.key === 'Enter') {
+            if (suggestionsOpen && activeSuggestionIdx >= 0 && suggestions[activeSuggestionIdx]) {
+                event.preventDefault();
+                handleSelectSuggestion(suggestions[activeSuggestionIdx].usn);
+                return;
+            }
+            setSuggestionsOpen(false);
+            setHasSubmitted(true);
+            lookupStudent?.(usn);
+        } else if (event.key === 'Escape') {
+            setSuggestionsOpen(false);
+            setActiveSuggestionIdx(-1);
+        }
+    };
+
+    const renderHighlightMatch = (text, query) => {
+        if (!text) return '';
+        const q = (query || '').trim().toUpperCase();
+        const t = String(text).toUpperCase();
+        const idx = t.indexOf(q);
+        if (!q || idx === -1) {
+            return <span>{text}</span>;
+        }
+        const before = text.substring(0, idx);
+        const match = text.substring(idx, idx + q.length);
+        const after = text.substring(idx + q.length);
+        return (
+            <span>
+                {before}
+                <mark className={styles.suggestionHighlight}>{match}</mark>
+                {after}
+            </span>
+        );
+    };
+
+    // Error Suppression: Only display format error if user explicitly submitted (Enter / Lookup button)
+    // or if the entered text is 10+ characters and still invalid. While typing prefix (e.g. 2AB23),
+    // NEVER show the premature red error banner or red field borders.
+    const isFullLengthMalformed = !isMultiUsn && usn && usn.trim().length >= 10 && !usnValidation.isValid;
+    const shouldDisplayUsnError = !isMultiUsn && usn && !usnValidation.isValid && !usnValidation.suggestion && (hasSubmitted || isFullLengthMalformed);
+
+
     useEffect(() => {
         if (!showBacklogModal) return;
         const origOverflow = document.body.style.overflow;
@@ -451,25 +576,143 @@ function FacultyDashboardView({
                 </div>
 
                 <Inline className={styles.lookupRow} stackMobile>
-                    <SearchInput
-                        label="Student USN"
-                        hideLabel
-                        placeholder={isMultiUsn ? `${parsedUsns.length} USNs entered for batch lookup...` : "Enter Student USN(s) (e.g. 2AB23CS063, 2AB23CS043)"}
-                        value={usn}
-                        onChange={(event) => {
-                            const raw = event.target.value;
-                            const cleaned = raw.toUpperCase().replace(/[^A-Z0-9\s,;\n\r]/g, '');
-                            setUsn?.(cleaned);
-                        }}
-                        onKeyDown={(event) => event.key === 'Enter' && lookupStudent?.(usn)}
-                        onClear={() => {
-                            setUsn?.('');
-                            setBatchResults?.(null);
-                            setInspectedStudent?.(null);
-                        }}
-                        error={usn && !isMultiUsn && !usnValidation.isValid && !usnValidation.suggestion ? usnValidation.error : undefined}
-                    />
-                    <Button iconStart="search" onClick={() => lookupStudent?.(usn)} loading={loading}>
+                    <div className={styles.searchWrapper} ref={searchDropdownRef}>
+                        <SearchInput
+                            label="Student USN"
+                            hideLabel
+                            placeholder={isMultiUsn ? `${parsedUsns.length} USNs entered for batch lookup...` : "Enter Student USN(s) (e.g. 2AB23CS063, 2AB23CS043)"}
+                            value={usn}
+                            onChange={(event) => {
+                                const raw = event.target.value;
+                                const cleaned = raw.toUpperCase().replace(/[^A-Z0-9\s,;\n\r]/g, '');
+                                setUsn?.(cleaned);
+                                setHasSubmitted(false);
+                                setActiveSuggestionIdx(-1);
+                            }}
+                            onFocus={() => {
+                                if (suggestions.length > 0 && !isMultiUsn) {
+                                    setSuggestionsOpen(true);
+                                }
+                            }}
+                            onKeyDown={handleSearchKeyDown}
+                            onClear={() => {
+                                setUsn?.('');
+                                setBatchResults?.(null);
+                                setInspectedStudent?.(null);
+                                setSuggestions([]);
+                                setSuggestionsOpen(false);
+                                setHasSubmitted(false);
+                            }}
+                            error={shouldDisplayUsnError ? usnValidation.error : undefined}
+                        />
+
+                        {/* Autocomplete Suggestions Dropdown */}
+                        {suggestionsOpen && !isMultiUsn && (suggestions.length > 0 || suggestionsLoading || (usn.trim().length >= 2 && !suggestionsLoading)) && (
+                            <div className={styles.suggestionsDropdown} role="listbox" aria-label="Student Suggestions">
+                                <div className={styles.suggestionsHeader}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary)' }}>school</span>
+                                        <span>Matching Students</span>
+                                    </div>
+                                    {suggestions.length > 0 && (
+                                        <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                            {suggestions.length} found
+                                        </span>
+                                    )}
+                                </div>
+
+                                {suggestionsLoading && suggestions.length === 0 && (
+                                    <div className={styles.suggestionLoadingRow}>
+                                        <span className="material-icons-round" style={{ fontSize: '16px', animation: 'spin 1s linear infinite' }}>sync</span>
+                                        <span>Searching institutional database for "{usn}"...</span>
+                                    </div>
+                                )}
+
+                                {!suggestionsLoading && suggestions.length === 0 && usn.trim().length >= 2 && (
+                                    <div className={styles.suggestionEmptyRow}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--tx-muted)' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>search_off</span>
+                                            <span>No student found matching <strong>{usn}</strong></span>
+                                        </div>
+                                        <div className={styles.suggestionEmptyHint}>
+                                            Press <strong>Enter</strong> to lookup anyway, or click <strong>Fetch VTU</strong> to scan portals.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {suggestions.length > 0 && (
+                                    <ul className={styles.suggestionsList}>
+                                        {suggestions.map((item, idx) => {
+                                            const isSelected = idx === activeSuggestionIdx;
+                                            return (
+                                                <li key={item.usn} style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                                                    <button
+                                                        type="button"
+                                                        role="option"
+                                                        aria-selected={isSelected}
+                                                        className={`${styles.suggestionItem} ${isSelected ? styles.suggestionItemSelected : ''}`}
+                                                        onMouseEnter={() => setActiveSuggestionIdx(idx)}
+                                                        onClick={() => handleSelectSuggestion(item.usn)}
+                                                    >
+                                                        <div className={styles.suggestionLeft}>
+                                                            <span className="material-icons-round" style={{ fontSize: '18px', color: isSelected ? 'var(--primary)' : 'var(--tx-dim)' }}>
+                                                                person
+                                                            </span>
+                                                            <div style={{ minWidth: 0 }}>
+                                                                <div className={styles.suggestionUsn}>
+                                                                    {renderHighlightMatch(item.usn, usn)}
+                                                                </div>
+                                                                {item.name ? (
+                                                                    <div className={styles.suggestionName}>
+                                                                        {item.name}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className={styles.suggestionName} style={{ fontStyle: 'italic', opacity: 0.7 }}>
+                                                                        Institutional Marks Record
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className={styles.suggestionRight}>
+                                                            {item.branch && (
+                                                                <span className={styles.suggestionTag}>{item.branch}</span>
+                                                            )}
+                                                            {item.semester && (
+                                                                <span className={styles.suggestionTag}>Sem {item.semester}</span>
+                                                            )}
+                                                            {item.batch && (
+                                                                <span className={styles.suggestionTag}>{item.batch}</span>
+                                                            )}
+                                                            <span className={styles.suggestionActionHint}>
+                                                                {isSelected ? '↵ Select' : 'Select'}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+
+                                {suggestions.length > 0 && (
+                                    <div className={styles.suggestionFooter}>
+                                        <span className={styles.suggestionNavHint}>
+                                            <kbd className={styles.kbd}>↑</kbd><kbd className={styles.kbd}>↓</kbd> navigate
+                                            <kbd className={styles.kbd} style={{ marginLeft: '6px' }}>↵</kbd> select
+                                            <kbd className={styles.kbd} style={{ marginLeft: '6px' }}>Esc</kbd> dismiss
+                                        </span>
+                                        <span style={{ fontSize: '11px', color: 'var(--tx-dim)' }}>Click or Enter to view</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <Button iconStart="search" onClick={() => {
+                        setSuggestionsOpen(false);
+                        setHasSubmitted(true);
+                        lookupStudent?.(usn);
+                    }} loading={loading}>
                         {loading ? 'Searching...' : isMultiUsn ? `Lookup ${parsedUsns.length} USNs` : 'Lookup'}
                     </Button>
                     <Button
@@ -529,7 +772,7 @@ function FacultyDashboardView({
                     </div>
                 )}
 
-                {!isMultiUsn && usn && !usnValidation.isValid && !usnValidation.suggestion && (
+                {!isMultiUsn && usn && shouldDisplayUsnError && (
                     <div style={{
                         marginTop: '10px',
                         padding: '8px 12px',

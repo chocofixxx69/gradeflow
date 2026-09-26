@@ -30,6 +30,54 @@ export async function GET(req) {
         if (authError) return authError;
 
         const { searchParams } = new URL(req.url);
+        const autocompleteParam = searchParams.get('autocomplete') || searchParams.get('suggest');
+
+        // Autocomplete suggestions for Student Lookup
+        if (autocompleteParam) {
+            const rawQ = autocompleteParam.trim();
+            const cleanQ = cleanAlphanumeric(rawQ).toUpperCase();
+            if (cleanQ.length >= 2 || rawQ.length >= 2) {
+                const { data: studentMatches } = await supabaseAdmin
+                    .from('students')
+                    .select('usn, name, branch, semester, branch_code, year')
+                    .or(`usn.ilike.%${cleanQ}%,name.ilike.%${rawQ}%`)
+                    .order('usn', { ascending: true })
+                    .limit(10);
+
+                let results = (studentMatches || []).map(s => ({
+                    usn: s.usn,
+                    name: s.name,
+                    branch: s.branch_code || s.branch,
+                    semester: s.semester,
+                    batch: s.year ? String(s.year) : null
+                }));
+
+                // If fewer than 10 matches, also check subject_marks distinct USNs
+                if (results.length < 10 && cleanQ.length >= 2) {
+                    const existingUsns = new Set(results.map(r => (r.usn || '').toUpperCase()));
+                    const { data: markMatches } = await supabaseAdmin
+                        .from('subject_marks')
+                        .select('usn')
+                        .ilike('usn', `%${cleanQ}%`)
+                        .limit(25);
+
+                    if (markMatches) {
+                        for (const m of markMatches) {
+                            const u = (m.usn || '').toUpperCase();
+                            if (u && !existingUsns.has(u)) {
+                                existingUsns.add(u);
+                                results.push({ usn: u, name: null, branch: null, semester: null, batch: null });
+                                if (results.length >= 10) break;
+                            }
+                        }
+                    }
+                }
+
+                return ok({ suggestions: results });
+            }
+            return ok({ suggestions: [] });
+        }
+
         const searchUsnParam = searchParams.get('search_usns') || searchParams.get('search_usn');
 
         // Helper to process a single student lookup cleanly

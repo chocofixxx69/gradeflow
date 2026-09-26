@@ -74,6 +74,200 @@
     margin-top: var(--space-4);
 }
 
+.searchWrapper {
+    position: relative;
+    flex: 1;
+    min-width: 280px;
+    width: 100%;
+}
+
+.suggestionsDropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.16), 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+    z-index: 120;
+    max-height: 380px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.suggestionsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--surface-low);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tx-dim);
+}
+
+.suggestionsList {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 0;
+    margin: 0;
+    list-style: none;
+}
+
+.suggestionItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+    border-bottom: 1px solid var(--border-light, rgba(0, 0, 0, 0.04));
+    user-select: none;
+    text-align: left;
+    width: 100%;
+    background: transparent;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    font-family: inherit;
+}
+
+.suggestionItem:last-child {
+    border-bottom: none;
+}
+
+.suggestionItem:hover,
+.suggestionItemSelected {
+    background: rgba(13, 148, 136, 0.08);
+}
+
+.suggestionLeft {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.suggestionUsn {
+    font-family: var(--font-mono, monospace);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--tx-main);
+    letter-spacing: 0.03em;
+}
+
+.suggestionHighlight {
+    background: rgba(13, 148, 136, 0.18);
+    color: var(--primary);
+    font-weight: 800;
+    padding: 0 2px;
+    border-radius: 3px;
+}
+
+.suggestionName {
+    font-size: 12px;
+    color: var(--tx-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.suggestionRight {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.suggestionTag {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: var(--surface-low);
+    border: 1px solid var(--border);
+    color: var(--tx-muted);
+}
+
+.suggestionActionHint {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(13, 148, 136, 0.1);
+    opacity: 0.85;
+    transition: all 0.12s ease;
+}
+
+.suggestionItem:hover .suggestionActionHint,
+.suggestionItemSelected .suggestionActionHint {
+    opacity: 1;
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+.suggestionLoadingRow,
+.suggestionEmptyRow {
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--tx-muted);
+}
+
+.suggestionLoadingRow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.suggestionEmptyRow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.suggestionEmptyHint {
+    font-size: 11.5px;
+    color: var(--tx-dim);
+}
+
+.suggestionFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--surface-low);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--tx-dim);
+}
+
+.kbd {
+    display: inline-block;
+    padding: 1px 4px;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--tx-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+    margin: 0 2px;
+}
+
 /* ─── Status notices ────────────────────────────────────── */
 .notice {
     color: var(--tx-muted);
