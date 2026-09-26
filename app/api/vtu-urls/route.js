@@ -112,11 +112,24 @@ export async function POST(req) {
             return NextResponse.json({ error: 'You can only modify your own VTU URL configuration.' }, { status: 403 });
         }
 
-        // If an explicit ID is passed (e.g. toggling an existing entry by ID)
-        if (id && is_active !== undefined) {
+        // If an explicit ID is passed (editing an existing entry or toggling status)
+        if (id) {
+            const updates = {};
+            if (is_active !== undefined) updates.is_active = is_active;
+            if (exam_name !== undefined) updates.exam_name = exam_name.trim();
+            if (url !== undefined) {
+                if (!url.includes('vtu.ac.in')) {
+                    return NextResponse.json({ error: 'Invalid VTU URL. Must be an official results.vtu.ac.in link.' }, { status: 400 });
+                }
+                updates.url = url.trim();
+            }
+            if (scheme !== undefined) {
+                updates.scheme = scheme.toLowerCase();
+            }
+
             const { data: updated, error: updateErr } = await supabase
                 .from('faculty_vtu_urls')
-                .update({ is_active })
+                .update(updates)
                 .eq('id', id)
                 .eq('faculty_id', faculty_id)
                 .select()
@@ -173,6 +186,8 @@ export async function POST(req) {
         return NextResponse.json({ error: 'An internal error occurred.' }, { status: 500 });
     }
 }
+
+export const PATCH = POST;
 
 // PUT - Toggle all URLs scoped to a specific scheme, or restore defaults
 export async function PUT(req) {

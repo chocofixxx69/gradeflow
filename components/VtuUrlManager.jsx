@@ -37,6 +37,17 @@ export default function VtuUrlManager({ facultyId }) {
     // useful: registering the same URL to both UG schemes at once.
     const [addToBothUgSchemes, setAddToBothUgSchemes] = useState(false);
     const [userOverrodeExamType, setUserOverrodeExamType] = useState(false);
+    const [autoDetectedInfo, setAutoDetectedInfo] = useState(null);
+
+    // Editing Portal State
+    const [editingPortalId, setEditingPortalId] = useState(null);
+    const [editExamName, setEditExamName] = useState('');
+    const [editUrl, setEditUrl] = useState('');
+    const [editScheme, setEditScheme] = useState('2022');
+    const [editExamType, setEditExamType] = useState('REGULAR');
+    const [editSaving, setEditSaving] = useState(false);
+    const [editError, setEditError] = useState('');
+
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(false);
     const [message, setMessage] = useState('');
@@ -93,35 +104,154 @@ export default function VtuUrlManager({ facultyId }) {
         setPortalSearchFilter('');
     };
 
-    // Auto-detect exam type from exam name as user types (unless they manually picked)
-    useEffect(() => {
-        if (userOverrodeExamType || !newExamName.trim()) return;
-        const lower = newExamName.toLowerCase();
-        if (lower.includes('reval') || lower.includes(' rv') || lower.includes('revaluation')) {
-            setNewExamType('REVAL');
-        } else if (lower.includes('makeup') || lower.includes('make up') || lower.includes('summer') ||
-                   lower.includes('special') || lower.includes('spl')) {
-            setNewExamType('MAKEUP');
-        } else {
-            setNewExamType('REGULAR');
-        }
-    }, [newExamName, userOverrodeExamType]);
-
-    // When user clears exam name, reset the override flag
-    useEffect(() => {
-        if (!newExamName.trim()) setUserOverrodeExamType(false);
-    }, [newExamName]);
+    const normalizeScheme = useCallback((s) => {
+        const sc = String(s || '').trim().toLowerCase();
+        if (sc === 'mba') return 'mba';
+        if (sc === 'mca' || sc === 'pg') return 'mca';
+        if (sc === '2025' || sc === '2026') return '2025';
+        return '2022';
+    }, []);
 
     // Returns 'REVAL' | 'MAKEUP' | 'REGULAR' for a portal entry
-    const getPortalCategory = (u) => {
-        const name = (u.exam_name || u.url || '').toLowerCase();
-        if (name.includes('reval') || name.includes(' rv') || /rvce?cbcs|rvcbcs|rv[0-9]/.test(name)) return 'REVAL';
-        if (name.includes('makeup') || name.includes('make up') || name.includes('make-up') ||
-            name.includes('summer') || name.includes('special') || name.includes('spl')) return 'MAKEUP';
+    const getPortalCategory = useCallback((u) => {
+        const combined = `${u?.exam_name || ''} ${u?.url || ''}`.toLowerCase();
+        if (combined.includes('reval') || combined.includes('revaluation') || combined.includes(' rv') || combined.includes('/rv') || /rvce?cbcs|rvcbcs|rv[0-9]|rvspl|servcbcs/.test(combined)) return 'REVAL';
+        if (combined.includes('makeup') || combined.includes('make up') || combined.includes('make-up') || combined.includes('summer') || combined.includes('special') || combined.includes('spl') || /secbcs|spljul/.test(combined)) return 'MAKEUP';
         return 'REGULAR';
-    };
+    }, []);
     // Legacy alias used in badge labels
-    const isRevalPortal = (u) => getPortalCategory(u) === 'REVAL';
+    const isRevalPortal = useCallback((u) => getPortalCategory(u) === 'REVAL', [getPortalCategory]);
+
+    // Robust Auto-detect of exam type from BOTH URL and Exam Name
+    useEffect(() => {
+        const urlStr = (newUrl || '').trim();
+        const nameStr = (newExamName || '').trim();
+        if (!urlStr && !nameStr) {
+            setAutoDetectedInfo(null);
+            setUserOverrodeExamType(false);
+            return;
+        }
+
+        const combined = `${urlStr} ${nameStr}`.toLowerCase();
+        let detected = 'REGULAR';
+        let reason = '';
+
+        if (
+            combined.includes('reval') || combined.includes('revaluation') ||
+            combined.includes(' rv') || combined.includes('/rv') || combined.includes('rv_') ||
+            /rvce?cbcs|rvcbcs|rv[0-9]|rvspl|servcbcs/i.test(combined)
+        ) {
+            detected = 'REVAL';
+            reason = 'Revaluation (RV)';
+        } else if (
+            combined.includes('makeup') || combined.includes('make up') || combined.includes('make-up') ||
+            combined.includes('summer') || combined.includes('special') || combined.includes('spl') ||
+            /secbcs|spljul/i.test(combined)
+        ) {
+            detected = 'MAKEUP';
+            reason = 'MakeUp / Summer';
+        } else {
+            detected = 'REGULAR';
+            reason = 'Regular Semester';
+        }
+
+        setAutoDetectedInfo({ type: detected, reason });
+
+        if (!userOverrodeExamType) {
+            setNewExamType(detected);
+        }
+
+        // Auto-suggest clean exam title if user hasn't typed one yet
+        if (!nameStr && urlStr.includes('vtu.ac.in')) {
+            const urlPath = urlStr.split('/').pop() || '';
+            const cleanPath = urlPath.replace(/index\.php|\.php/i, '');
+            if (/d25j26rvcbcs/i.test(cleanPath)) setNewExamName('Dec 25/Jan 26 Revaluation');
+            else if (/mj26rvcbcs/i.test(cleanPath)) setNewExamName('May/June 2026 Revaluation');
+            else if (/mj26cbcs/i.test(cleanPath)) setNewExamName('May/June 2026 Regular');
+            else if (/d25j26ecbcs/i.test(cleanPath)) setNewExamName('Dec 25/Jan 26 Regular');
+            else if (/jjrvcbcs25/i.test(cleanPath)) setNewExamName('Jun/Jul 25 Reval');
+            else if (/jjecbcs25/i.test(cleanPath)) setNewExamName('Jun/Jul 25 Regular');
+            else if (/makeupecbcs25/i.test(cleanPath)) setNewExamName('Jun/Jul 25 MakeUp');
+            else if (/servcbcs25/i.test(cleanPath)) setNewExamName('Jun/Jul 25 Summer Reval');
+            else if (/secbcs25/i.test(cleanPath)) setNewExamName('Jun/Jul 25 Summer');
+            else if (/djrvcbcs25/i.test(cleanPath)) setNewExamName('Dec 24/Jan 25 Reval');
+            else if (/djcbcs25/i.test(cleanPath)) setNewExamName('Dec 24/Jan 25 Regular');
+        }
+    }, [newUrl, newExamName, userOverrodeExamType]);
+
+    // Editing handlers
+    const startEditingPortal = (portal) => {
+        setEditingPortalId(portal.id);
+        setEditExamName(portal.exam_name || '');
+        setEditUrl(portal.url || '');
+        setEditScheme(normalizeScheme(portal.scheme || selectedScheme));
+        setEditExamType(getPortalCategory(portal));
+        setEditError('');
+    };
+
+    const cancelEditingPortal = () => {
+        setEditingPortalId(null);
+        setEditError('');
+    };
+
+    const saveEditingPortal = async (portalId) => {
+        if (!facultyId || !portalId) return;
+        const cleanUrl = editUrl.trim();
+        if (!cleanUrl.includes('results.vtu.ac.in')) {
+            setEditError('URL must be an official results.vtu.ac.in link.');
+            return;
+        }
+
+        const rawName = (editExamName || cleanUrl).trim();
+        const lower = rawName.toLowerCase();
+        const typeKeywords = {
+            REVAL:   ['reval', 'revaluation', ' rv'],
+            MAKEUP:  ['makeup', 'make up', 'make-up', 'summer', 'special', 'spl'],
+            REGULAR: [],
+        };
+        const alreadyLabelled = (typeKeywords[editExamType] || []).some(kw => lower.includes(kw));
+        const typeSuffixes = { REVAL: ' Revaluation', MAKEUP: ' MakeUp', REGULAR: '' };
+        const finalExamName = alreadyLabelled ? rawName : `${rawName}${typeSuffixes[editExamType] || ''}`;
+
+        setEditSaving(true);
+        setEditError('');
+        try {
+            const res = await fetch('/api/vtu-urls', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: portalId,
+                    faculty_id: facultyId,
+                    url: cleanUrl,
+                    exam_name: finalExamName,
+                    scheme: editScheme
+                })
+            });
+            const json = await res.json();
+            if (json.success) {
+                setVtuUrls(prev => prev.map(item => {
+                    if (item.id === portalId) {
+                        return { ...item, url: cleanUrl, exam_name: finalExamName, scheme: editScheme };
+                    }
+                    return item;
+                }));
+                if (editScheme !== selectedScheme) {
+                    fetchVtuUrls(selectedScheme);
+                }
+                broadcastUrlChange();
+                setMessage(`✓ Portal "${finalExamName}" updated successfully!`);
+                setTimeout(() => setMessage(''), 4000);
+                setEditingPortalId(null);
+            } else {
+                setEditError(json.error || 'Failed to update portal.');
+            }
+        } catch (err) {
+            setEditError('Network error while saving changes.');
+        } finally {
+            setEditSaving(false);
+        }
+    };
 
     const filteredVtuUrls = useMemo(() => {
         return (vtuUrls || []).filter(u => {
@@ -582,75 +712,150 @@ export default function VtuUrlManager({ facultyId }) {
                         </div>
                     </div>
 
-                    {/* Row 2: Exam Type Selector + Register Button */}
-                    <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 'var(--space-3)' }}>
-                        {/* Exam Type — segmented button group */}
-                        <div style={{ flex: '1 1 280px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-                                Exam Type
+                    {/* Row 2: Prominent Exam Category Selector Cards (Regular / MakeUp / Reval) */}
+                    <div style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--tx-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                                    Exam Category / Type
+                                </span>
+                                <span style={{ fontSize: '11px', color: 'var(--tx-muted)', fontWeight: 600 }}>
+                                    (Required — Click to choose)
+                                </span>
                             </div>
-                            <div style={{ display: 'flex', borderRadius: 'var(--radius-3, 6px)', overflow: 'hidden', border: '1px solid var(--border, #e2e8f0)', width: 'fit-content' }}>
-                                {[
-                                    { key: 'REGULAR', label: 'Regular', icon: 'check_circle', color: '#2563EB', bg: 'rgba(37,99,235,0.1)' },
-                                    { key: 'MAKEUP',  label: 'MakeUp / Summer', icon: 'replay', color: '#7C3AED', bg: 'rgba(139,92,246,0.1)' },
-                                    { key: 'REVAL',   label: 'Revaluation', icon: 'fact_check', color: '#D97706', bg: 'rgba(245,158,11,0.1)' },
-                                ].map((opt, i, arr) => {
-                                    const active = newExamType === opt.key;
-                                    return (
-                                        <button
-                                            key={opt.key}
-                                            type="button"
-                                            title={opt.label}
-                                            onClick={() => { setNewExamType(opt.key); setUserOverrodeExamType(true); }}
-                                            style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                padding: '8px 14px',
-                                                background: active ? opt.bg : 'var(--surface, #fff)',
-                                                color: active ? opt.color : 'var(--tx-muted, #64748b)',
-                                                border: 'none',
-                                                borderLeft: i > 0 ? '1px solid var(--border, #e2e8f0)' : 'none',
-                                                fontWeight: active ? 800 : 600,
-                                                fontSize: '12.5px',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.15s',
-                                                whiteSpace: 'nowrap',
-                                            }}
-                                        >
-                                            <span className="material-icons-round" style={{ fontSize: '14px' }}>{opt.icon}</span>
-                                            {opt.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            {autoDetectedInfo && (
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                    fontSize: '11.5px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px',
+                                    background: newExamType === 'REVAL' ? 'rgba(217, 119, 6, 0.12)' : newExamType === 'MAKEUP' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(37, 99, 235, 0.12)',
+                                    color: newExamType === 'REVAL' ? '#D97706' : newExamType === 'MAKEUP' ? '#7C3AED' : '#2563EB',
+                                    border: `1px solid ${newExamType === 'REVAL' ? 'rgba(217, 119, 6, 0.3)' : newExamType === 'MAKEUP' ? 'rgba(124, 58, 237, 0.3)' : 'rgba(37, 99, 235, 0.3)'}`
+                                }}>
+                                    <span className="material-icons-round" style={{ fontSize: '14px' }}>auto_awesome</span>
+                                    Auto-selected: <strong>{autoDetectedInfo.reason}</strong>
+                                </span>
+                            )}
                         </div>
 
-                        <div style={{ alignSelf: 'flex-end', minWidth: '130px' }}>
+                        {/* 3 Large, Visible, Tactile Cards */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                            {[
+                                {
+                                    key: 'REGULAR',
+                                    title: 'Regular Exam',
+                                    subtitle: 'Main semester examinations',
+                                    icon: 'school',
+                                    color: '#2563EB',
+                                    activeBg: 'rgba(37, 99, 235, 0.08)',
+                                    borderColor: '#2563EB'
+                                },
+                                {
+                                    key: 'MAKEUP',
+                                    title: 'MakeUp / Summer',
+                                    subtitle: 'Backlogs, fast-track & special exams',
+                                    icon: 'replay',
+                                    color: '#7C3AED',
+                                    activeBg: 'rgba(124, 58, 237, 0.08)',
+                                    borderColor: '#7C3AED'
+                                },
+                                {
+                                    key: 'REVAL',
+                                    title: 'Revaluation (RV)',
+                                    subtitle: 'Reval, re-totaling & review results',
+                                    icon: 'fact_check',
+                                    color: '#D97706',
+                                    activeBg: 'rgba(217, 119, 6, 0.08)',
+                                    borderColor: '#D97706'
+                                },
+                            ].map(card => {
+                                const active = newExamType === card.key;
+                                return (
+                                    <button
+                                        key={card.key}
+                                        type="button"
+                                        onClick={() => {
+                                            setNewExamType(card.key);
+                                            setUserOverrodeExamType(true);
+                                        }}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '12px 14px',
+                                            borderRadius: 'var(--radius-4, 10px)',
+                                            border: active ? `2px solid ${card.borderColor}` : '1.5px solid var(--border, #e2e8f0)',
+                                            background: active ? card.activeBg : 'var(--surface, #ffffff)',
+                                            boxShadow: active ? `0 2px 8px ${card.color}26` : 'none',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'all 0.18s ease'
+                                        }}
+                                    >
+                                        <div style={{
+                                            width: '36px', height: '36px', borderRadius: '8px',
+                                            background: active ? card.color : 'var(--surface-low, #f1f5f9)',
+                                            color: active ? '#ffffff' : card.color,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            flexShrink: 0, transition: 'all 0.18s ease'
+                                        }}>
+                                            <span className="material-icons-round" style={{ fontSize: '20px' }}>{card.icon}</span>
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span style={{
+                                                    fontWeight: 800, fontSize: '13px',
+                                                    color: active ? card.color : 'var(--tx-main, #1e293b)'
+                                                }}>
+                                                    {card.title}
+                                                </span>
+                                                {active && (
+                                                    <span className="material-icons-round" style={{ fontSize: '17px', color: card.color }}>
+                                                        check_circle
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--tx-muted, #64748b)', marginTop: '2px', fontWeight: 500 }}>
+                                                {card.subtitle}
+                                            </div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Row 3: Dual UG Registration + Register Button */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+                        <div>
+                            {(selectedScheme === '2022' || selectedScheme === '2025') && (
+                                <label style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                    fontSize: '12.5px', fontWeight: 600,
+                                    color: 'var(--tx-muted)', cursor: 'pointer'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={addToBothUgSchemes}
+                                        onChange={e => setAddToBothUgSchemes(e.target.checked)}
+                                        style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                                    />
+                                    Also register this URL for the other UG scheme (2022 &amp; 2025 together)
+                                </label>
+                            )}
+                        </div>
+
+                        <div style={{ minWidth: '160px' }}>
                             <Button
                                 variant="primary"
-                                style={{ width: '100%', minHeight: '42px', opacity: loading ? 0.7 : 1 }}
+                                style={{ width: '100%', minHeight: '44px', fontWeight: 800, fontSize: '13px', opacity: loading ? 0.7 : 1 }}
                                 onClick={addVtuUrl}
                                 disabled={loading || !newUrl}
                             >
+                                <span className="material-icons-round" style={{ fontSize: '18px', marginRight: '6px' }}>add_link</span>
                                 {loading ? 'Adding...' : 'Register URL'}
                             </Button>
                         </div>
                     </div>
-
-                    {(selectedScheme === '2022' || selectedScheme === '2025') && (
-                        <label style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            marginTop: 'var(--space-3)', fontSize: '12.5px', fontWeight: 600,
-                            color: 'var(--tx-muted)', cursor: 'pointer'
-                        }}>
-                            <input
-                                type="checkbox"
-                                checked={addToBothUgSchemes}
-                                onChange={e => setAddToBothUgSchemes(e.target.checked)}
-                                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-                            />
-                            Also register this URL for the other UG scheme (2022 &amp; 2025 together)
-                        </label>
-                    )}
                 </div>
 
                 <div style={{ height: '1px', background: 'var(--border)', margin: 'var(--space-6) 0' }} />
@@ -763,74 +968,261 @@ export default function VtuUrlManager({ facultyId }) {
                             Loading {schemeLabel(selectedScheme)} Scheme portals...
                         </div>
                     ) : filteredVtuUrls.map(u => (
-                        <div key={u.id} style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            flexWrap: 'wrap', gap: 'var(--space-3)', minWidth: 0,
-                            padding: 'var(--space-4) var(--space-5)', background: 'var(--surface-low)',
-                            borderRadius: 'var(--radius-6)',
-                            border: `1px solid ${u.is_active ? (selectedScheme === '2025' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(37, 99, 235, 0.4)') : 'var(--border)'}`,
-                            opacity: u.is_active ? 1 : 0.6,
-                            transition: 'all 0.2s ease'
-                        }}>
-                            <div style={{ overflow: 'hidden', minWidth: 0, flex: '1 1 220px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)' }}>
-                                        {u.exam_name || 'Unnamed Exam'}
-                                    </span>
-                                    <span style={c.schemeBadge(u.scheme || selectedScheme)}>
-                                        {schemeLabel(u.scheme || selectedScheme)}
-                                    </span>
-                                    <span style={c.typeBadge(getPortalCategory(u))}>
-                                        {{ REVAL: 'Reval', MAKEUP: 'MakeUp', REGULAR: 'Regular' }[getPortalCategory(u)]}
-                                    </span>
+                        editingPortalId === u.id ? (
+                            <div key={u.id} style={{
+                                background: 'var(--surface, #ffffff)',
+                                borderRadius: 'var(--radius-6, 12px)',
+                                border: '2px solid var(--primary, #2563eb)',
+                                padding: 'var(--space-4) var(--space-5)',
+                                boxShadow: '0 8px 24px rgba(37, 99, 235, 0.12)',
+                                transition: 'all 0.2s ease'
+                            }}>
+                                {/* Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ width: '30px', height: '30px', borderRadius: '6px', background: 'rgba(37,99,235,0.1)', color: 'var(--primary, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <span className="material-icons-round" style={{ fontSize: '18px' }}>edit_note</span>
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: 'var(--tx-main)' }}>
+                                                Editing Portal: {u.exam_name || 'Unnamed Exam'}
+                                            </h4>
+                                            <span style={{ fontSize: '11px', color: 'var(--tx-muted)' }}>
+                                                Modify title, destination URL, curriculum scheme, or exam type
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={cancelEditingPortal}
+                                        style={{ background: 'none', border: 'none', color: 'var(--tx-muted)', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
+                                    >
+                                        ✕ Cancel
+                                    </button>
                                 </div>
-                                <div style={{
-                                    fontSize: '11px',
-                                    color: 'var(--tx-dim)',
-                                    fontFamily: 'monospace',
-                                    marginTop: 'var(--space-1)',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
-                                }}>
-                                    {u.url}
+
+                                {editError && (
+                                    <div style={{ ...c.msg(false), marginBottom: '12px' }}>{editError}</div>
+                                )}
+
+                                {/* Row 1: Inputs */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                                            Exam Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editExamName}
+                                            onChange={e => setEditExamName(e.target.value)}
+                                            placeholder="e.g. Dec 25/Jan 26 Regular"
+                                            style={{
+                                                width: '100%', height: '38px', padding: '0 12px', fontSize: '13px',
+                                                border: '1.5px solid var(--border, #e2e8f0)', borderRadius: '6px',
+                                                background: 'var(--surface-low, #f8fafc)', color: 'var(--tx-main)', outline: 'none'
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                                            VTU Results URL
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={editUrl}
+                                            onChange={e => setEditUrl(e.target.value)}
+                                            placeholder="https://results.vtu.ac.in/..."
+                                            style={{
+                                                width: '100%', height: '38px', padding: '0 12px', fontSize: '13px',
+                                                fontFamily: 'monospace', border: '1.5px solid var(--border, #e2e8f0)', borderRadius: '6px',
+                                                background: 'var(--surface-low, #f8fafc)', color: 'var(--tx-main)', outline: 'none'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Row 2: Scheme & Exam Type Pickers */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+                                    {/* Scheme */}
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                                            Curriculum Scheme
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {[
+                                                { key: '2022', label: '2022 Scheme' },
+                                                { key: '2025', label: '2025 Scheme' },
+                                                { key: 'mba',  label: 'MBA' },
+                                                { key: 'mca',  label: 'MCA' },
+                                            ].map(s => {
+                                                const active = editScheme === s.key;
+                                                return (
+                                                    <button
+                                                        key={s.key}
+                                                        type="button"
+                                                        onClick={() => setEditScheme(s.key)}
+                                                        style={{
+                                                            padding: '6px 12px', borderRadius: '6px',
+                                                            border: active ? '1.5px solid var(--primary, #2563eb)' : '1px solid var(--border, #e2e8f0)',
+                                                            background: active ? 'rgba(37,99,235,0.1)' : 'var(--surface-low, #f8fafc)',
+                                                            color: active ? 'var(--primary, #2563eb)' : 'var(--tx-muted, #64748b)',
+                                                            fontWeight: active ? 800 : 600, fontSize: '12px', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {s.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Exam Type */}
+                                    <div>
+                                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tx-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                                            Exam Category
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {[
+                                                { key: 'REGULAR', label: 'Regular', icon: 'school', color: '#2563EB', bg: 'rgba(37,99,235,0.1)' },
+                                                { key: 'MAKEUP',  label: 'MakeUp / Summer', icon: 'replay', color: '#7C3AED', bg: 'rgba(124,58,237,0.1)' },
+                                                { key: 'REVAL',   label: 'Revaluation', icon: 'fact_check', color: '#D97706', bg: 'rgba(217,119,6,0.1)' },
+                                            ].map(opt => {
+                                                const active = editExamType === opt.key;
+                                                return (
+                                                    <button
+                                                        key={opt.key}
+                                                        type="button"
+                                                        onClick={() => setEditExamType(opt.key)}
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                            padding: '6px 12px', borderRadius: '6px',
+                                                            border: active ? `1.5px solid ${opt.color}` : '1px solid var(--border, #e2e8f0)',
+                                                            background: active ? opt.bg : 'var(--surface-low, #f8fafc)',
+                                                            color: active ? opt.color : 'var(--tx-muted, #64748b)',
+                                                            fontWeight: active ? 800 : 600, fontSize: '12px', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <span className="material-icons-round" style={{ fontSize: '14px' }}>{opt.icon}</span>
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Footer buttons */}
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--border, #e2e8f0)' }}>
+                                    <button
+                                        type="button"
+                                        onClick={cancelEditingPortal}
+                                        style={{
+                                            padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border, #cbd5e1)',
+                                            background: 'var(--surface, #ffffff)', color: 'var(--tx-muted, #64748b)', fontWeight: 700, fontSize: '12px', cursor: 'pointer'
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <Button
+                                        variant="primary"
+                                        onClick={() => saveEditingPortal(u.id)}
+                                        disabled={editSaving || !editUrl.trim()}
+                                        style={{ minHeight: '38px', padding: '0 20px', fontWeight: 800, fontSize: '12.5px' }}
+                                    >
+                                        {editSaving ? 'Saving...' : '✓ Save Changes'}
+                                    </Button>
                                 </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
-                                <button
-                                    type="button"
-                                    onClick={() => toggleVtuUrl(u)}
-                                    style={{
-                                        padding: 'var(--space-2) var(--space-4)',
-                                        minHeight: '40px',
-                                        background: u.is_active ? 'var(--green-bg, #e6f7ed)' : 'var(--surface, #ffffff)',
-                                        color: u.is_active ? 'var(--green, #0d9f57)' : 'var(--tx-muted, #64748b)',
-                                        border: `1px solid ${u.is_active ? 'var(--green, #0d9f57)' : 'var(--border, #cbd5e1)'}`,
-                                        borderRadius: 'var(--radius-3, 6px)',
-                                        fontWeight: 800,
+                        ) : (
+                            <div key={u.id} style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                flexWrap: 'wrap', gap: 'var(--space-3)', minWidth: 0,
+                                padding: 'var(--space-4) var(--space-5)', background: 'var(--surface-low)',
+                                borderRadius: 'var(--radius-6)',
+                                border: `1px solid ${u.is_active ? (selectedScheme === '2025' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(37, 99, 235, 0.4)') : 'var(--border)'}`,
+                                opacity: u.is_active ? 1 : 0.6,
+                                transition: 'all 0.2s ease'
+                            }}>
+                                <div style={{ overflow: 'hidden', minWidth: 0, flex: '1 1 220px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)' }}>
+                                            {u.exam_name || 'Unnamed Exam'}
+                                        </span>
+                                        <span style={c.schemeBadge(u.scheme || selectedScheme)}>
+                                            {schemeLabel(u.scheme || selectedScheme)}
+                                        </span>
+                                        <span style={c.typeBadge(getPortalCategory(u))}>
+                                            {{ REVAL: 'Reval', MAKEUP: 'MakeUp', REGULAR: 'Regular' }[getPortalCategory(u)]}
+                                        </span>
+                                    </div>
+                                    <div style={{
                                         fontSize: '11px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
+                                        color: 'var(--tx-dim)',
+                                        fontFamily: 'monospace',
+                                        marginTop: 'var(--space-1)',
                                         whiteSpace: 'nowrap',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                >
-                                    {u.is_active ? '✓ ENABLED' : 'DISABLED'}
-                                </button>
-                                <Button
-                                    onClick={() => setConfirmingRemove(u)}
-                                    variant="ghost"
-                                    size="sm"
-                                    style={{ padding: 'var(--space-2)', color: 'var(--tx-dim)' }}
-                                    title={`Delete URL from ${schemeLabel(selectedScheme)} scheme`}
-                                    aria-label="Delete"
-                                >
-                                    <span className="material-icons-round" style={{ fontSize: '20px' }}>delete_outline</span>
-                                </Button>
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                    }}>
+                                        {u.url}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleVtuUrl(u)}
+                                        style={{
+                                            padding: 'var(--space-2) var(--space-4)',
+                                            minHeight: '38px',
+                                            background: u.is_active ? 'var(--green-bg, #e6f7ed)' : 'var(--surface, #ffffff)',
+                                            color: u.is_active ? 'var(--green, #0d9f57)' : 'var(--tx-muted, #64748b)',
+                                            border: `1px solid ${u.is_active ? 'var(--green, #0d9f57)' : 'var(--border, #cbd5e1)'}`,
+                                            borderRadius: 'var(--radius-3, 6px)',
+                                            fontWeight: 800,
+                                            fontSize: '11px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            whiteSpace: 'nowrap',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}
+                                    >
+                                        {u.is_active ? '✓ ENABLED' : 'DISABLED'}
+                                    </button>
+                                    <Button
+                                        onClick={() => startEditingPortal(u)}
+                                        variant="secondary"
+                                        size="sm"
+                                        style={{
+                                            minHeight: '38px',
+                                            padding: 'var(--space-2) var(--space-3)',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            fontWeight: 700,
+                                            fontSize: '11.5px',
+                                            color: 'var(--tx-main)'
+                                        }}
+                                        title={`Edit ${u.exam_name}`}
+                                        aria-label="Edit Portal"
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '15px', color: 'var(--primary, #2563eb)' }}>edit</span>
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        onClick={() => setConfirmingRemove(u)}
+                                        variant="ghost"
+                                        size="sm"
+                                        style={{ padding: 'var(--space-2)', color: 'var(--tx-dim)' }}
+                                        title={`Delete URL from ${schemeLabel(selectedScheme)} scheme`}
+                                        aria-label="Delete"
+                                    >
+                                        <span className="material-icons-round" style={{ fontSize: '20px' }}>delete_outline</span>
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
+                        )
                     ))}
 
                     {!fetching && vtuUrls.length === 0 && (

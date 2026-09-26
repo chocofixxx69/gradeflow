@@ -131,22 +131,52 @@ function FacultyDashboardView({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [portalDropdownOpen]);
 
-    // Auto-detect quick-add exam type from name
+    // Auto-detect quick-add exam type from both URL and name
     useEffect(() => {
-        if (quickAddUserOverrode || !quickAddExamName.trim()) return;
-        const lower = quickAddExamName.toLowerCase();
-        if (lower.includes('reval') || lower.includes(' rv') || lower.includes('revaluation')) {
-            setQuickAddExamType('REVAL');
-        } else if (lower.includes('makeup') || lower.includes('make up') || lower.includes('summer') ||
-                   lower.includes('special') || lower.includes('spl')) {
-            setQuickAddExamType('MAKEUP');
-        } else {
-            setQuickAddExamType('REGULAR');
+        const urlStr = (quickAddUrl || '').trim();
+        const nameStr = (quickAddExamName || '').trim();
+        if (!urlStr && !nameStr) {
+            setQuickAddUserOverrode(false);
+            return;
         }
-    }, [quickAddExamName, quickAddUserOverrode]);
-    useEffect(() => {
-        if (!quickAddExamName.trim()) setQuickAddUserOverrode(false);
-    }, [quickAddExamName]);
+
+        const combined = `${urlStr} ${nameStr}`.toLowerCase();
+        let detected = 'REGULAR';
+        if (
+            combined.includes('reval') || combined.includes('revaluation') ||
+            combined.includes(' rv') || combined.includes('/rv') || combined.includes('rv_') ||
+            /rvce?cbcs|rvcbcs|rv[0-9]|rvspl|servcbcs/.test(combined)
+        ) {
+            detected = 'REVAL';
+        } else if (
+            combined.includes('makeup') || combined.includes('make up') || combined.includes('make-up') ||
+            combined.includes('summer') || combined.includes('special') || combined.includes('spl') ||
+            /secbcs|spljul/.test(combined)
+        ) {
+            detected = 'MAKEUP';
+        }
+
+        if (!quickAddUserOverrode) {
+            setQuickAddExamType(detected);
+        }
+
+        // Auto-suggest clean exam title if user hasn't typed one yet
+        if (!nameStr && urlStr.includes('vtu.ac.in')) {
+            const urlPath = urlStr.split('/').pop() || '';
+            const cleanPath = urlPath.replace(/index\.php|\.php/i, '');
+            if (/d25j26rvcbcs/i.test(cleanPath)) setQuickAddExamName('Dec 25/Jan 26 Revaluation');
+            else if (/mj26rvcbcs/i.test(cleanPath)) setQuickAddExamName('May/June 2026 Revaluation');
+            else if (/mj26cbcs/i.test(cleanPath)) setQuickAddExamName('May/June 2026 Regular');
+            else if (/d25j26ecbcs/i.test(cleanPath)) setQuickAddExamName('Dec 25/Jan 26 Regular');
+            else if (/jjrvcbcs25/i.test(cleanPath)) setQuickAddExamName('Jun/Jul 25 Reval');
+            else if (/jjecbcs25/i.test(cleanPath)) setQuickAddExamName('Jun/Jul 25 Regular');
+            else if (/makeupecbcs25/i.test(cleanPath)) setQuickAddExamName('Jun/Jul 25 MakeUp');
+            else if (/servcbcs25/i.test(cleanPath)) setQuickAddExamName('Jun/Jul 25 Summer Reval');
+            else if (/secbcs25/i.test(cleanPath)) setQuickAddExamName('Jun/Jul 25 Summer');
+            else if (/djrvcbcs25/i.test(cleanPath)) setQuickAddExamName('Dec 24/Jan 25 Reval');
+            else if (/djcbcs25/i.test(cleanPath)) setQuickAddExamName('Dec 24/Jan 25 Regular');
+        }
+    }, [quickAddUrl, quickAddExamName, quickAddUserOverrode]);
 
     const normalizePortalScheme = useCallback((scheme) => {
         const s = String(scheme || '').trim().toLowerCase();
@@ -158,10 +188,9 @@ function FacultyDashboardView({
 
     // Returns 'REVAL' | 'MAKEUP' | 'REGULAR' for a portal entry
     const getPortalCategory = useCallback((p) => {
-        const name = (p.exam_name || p.url || '').toLowerCase();
-        if (name.includes('reval') || name.includes(' rv') || /rvce?cbcs|rvcbcs|rv[0-9]/.test(name)) return 'REVAL';
-        if (name.includes('makeup') || name.includes('make up') || name.includes('make-up') ||
-            name.includes('summer') || name.includes('special') || name.includes('spl')) return 'MAKEUP';
+        const combined = `${p?.exam_name || ''} ${p?.url || ''}`.toLowerCase();
+        if (combined.includes('reval') || combined.includes(' rv') || combined.includes('/rv') || /rvce?cbcs|rvcbcs|rv[0-9]|rvspl|servcbcs/.test(combined)) return 'REVAL';
+        if (combined.includes('makeup') || combined.includes('make up') || combined.includes('make-up') || combined.includes('summer') || combined.includes('special') || combined.includes('spl') || /secbcs|spljul/.test(combined)) return 'MAKEUP';
         return 'REGULAR';
     }, []);
     // Legacy alias for existing usages
