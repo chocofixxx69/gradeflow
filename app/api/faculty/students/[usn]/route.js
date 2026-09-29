@@ -153,7 +153,7 @@ export async function GET(req, { params }) {
             // 20 credits per semester, which for 2AB23CS006 produced a CGPA of 7.56
             // from a stale semester-6 SGPA of 7.56 while this very page's mark sheet
             // showed 6.72 for that semester. Nothing here recomputes anything.
-            getStudentRecordDirect(supabaseAdmin, cleanUsn)
+            getStudentRecordDirect(supabaseAdmin, cleanUsn, { fresh: true })
         ]);
 
         if (stuErr) throw stuErr;

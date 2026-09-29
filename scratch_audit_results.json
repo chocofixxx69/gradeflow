@@ -1,16 +1,5 @@
 {
-  "totallyMissing": [
-    {
-      "usn": "2AB24CI031",
-      "name": "MAVIYA RUKNUDDIN",
-      "branch": "AI",
-      "batch": "24",
-      "isLateral": false,
-      "scheme": "2025",
-      "recordedSemesters": [],
-      "totalMarks": 0
-    }
-  ],
+  "totallyMissing": [],
   "missingIntermediateSems": [
     {
       "usn": "2AB23EE008",
@@ -477,7 +466,7 @@
     },
     {
       "usn": "2AB23EC021",
-      "name": "NAWWAAF PESHMAM",
+      "name": "NAWWAF PESHMAM",
       "branch": "EC",
       "batch": "23",
       "isLateral": false,
@@ -504,16 +493,16 @@
       "isLateral": true,
       "scheme": "2022",
       "recordedSemesters": [
+        3,
         4,
         6
       ],
-      "totalMarks": 18,
+      "totalMarks": 27,
       "gaps": [
-        3,
         5
       ],
       "expectedStart": 3,
-      "range": "4 to 6"
+      "range": "3 to 6"
     },
     {
       "usn": "2AB23EC026",
@@ -598,6 +587,23 @@
       ],
       "expectedStart": 1,
       "range": "1 to 6"
+    },
+    {
+      "usn": "2AB24CI031",
+      "name": "MAVIYA",
+      "branch": "AI",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2
+      ],
+      "totalMarks": 1,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 2"
     },
     {
       "usn": "2AB23EC031",
@@ -714,32 +720,13 @@
         5,
         6
       ],
-      "totalMarks": 22,
+      "totalMarks": 28,
       "gaps": [
         3,
         4
       ],
       "expectedStart": 1,
       "range": "1 to 6"
-    },
-    {
-      "usn": "2AB24CI036",
-      "name": "MOHAMMED ASHAM",
-      "branch": "AI",
-      "batch": "24",
-      "isLateral": false,
-      "scheme": "2022",
-      "recordedSemesters": [
-        2,
-        3,
-        4
-      ],
-      "totalMarks": 26,
-      "gaps": [
-        1
-      ],
-      "expectedStart": 1,
-      "range": "2 to 4"
     },
     {
       "usn": "2AB23CV009",
@@ -954,6 +941,18 @@
         2
       ],
       "totalMarks": 2
+    },
+    {
+      "usn": "2AB24CI031",
+      "name": "MAVIYA",
+      "branch": "AI",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2
+      ],
+      "totalMarks": 1
     },
     {
       "usn": "2AB25CI045",

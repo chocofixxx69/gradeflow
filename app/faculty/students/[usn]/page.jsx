@@ -62,7 +62,7 @@ function StudentRecordContent() {
         if (!usn) return;
         setLoading(true);
         try {
-            const res = await apiRequest(`/api/faculty/students/${usn}`);
+            const res = await apiRequest(`/api/faculty/students/${usn}?_t=${Date.now()}`);
             if (res) {
                 setData(res);
                 setGuardianForm({

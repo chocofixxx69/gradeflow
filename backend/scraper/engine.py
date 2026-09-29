@@ -246,38 +246,64 @@ async def _async_check_url(page, url: str, usn: str, max_retries: int = 5) -> di
     for attempt in range(max_retries):
         dialog_log.clear()
 
-        # 2. Locate Captcha
+        # 2. Locate Captcha and ensure bitmap is completely downloaded & decoded
         captcha_img = page.locator("img[alt='CAPTCHA code'], img[src*='captcha']").first
         try:
-            await captcha_img.wait_for(state="visible", timeout=6000)
+            await page.wait_for_function("""() => {
+                const el = document.querySelector("img[alt='CAPTCHA code'], img[src*='captcha']");
+                return el && el.complete && el.naturalWidth > 20;
+            }""", timeout=6000)
             captcha_bytes = await captcha_img.screenshot()
         except Exception:
             if attempt == 0:
                 try:
-                    await page.reload(wait_until="domcontentloaded", timeout=8000)
-                    await captcha_img.wait_for(state="visible", timeout=5000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=8000)
+                    await page.wait_for_function("""() => {
+                        const el = document.querySelector("img[alt='CAPTCHA code'], img[src*='captcha']");
+                        return el && el.complete && el.naturalWidth > 20;
+                    }""", timeout=5000)
                     captcha_bytes = await captcha_img.screenshot()
                 except Exception:
                     print(f"    [-] {url_short}: Portal inactive.", file=sys.stderr, flush=True)
                     return None
             else:
-                try: await page.reload(wait_until="domcontentloaded", timeout=6000)
+                try: await page.goto(url, wait_until="domcontentloaded", timeout=6000)
                 except Exception: pass
                 continue
+
+        async def _refresh_captcha_image():
+            try:
+                changed = await page.evaluate("""() => {
+                    const img = document.querySelector("img[alt='CAPTCHA code'], img[src*='captcha']");
+                    if (img && img.src) {
+                        const base = img.src.split('&t=')[0].split('?t=')[0];
+                        const sep = base.includes('?') ? '&' : '?';
+                        img.src = base + sep + 't=' + Math.random();
+                        return true;
+                    }
+                    return false;
+                }""")
+                if changed:
+                    await asyncio.sleep(0.35)
+                    await captcha_img.wait_for(state="visible", timeout=2000)
+                    return
+            except Exception:
+                pass
+            try:
+                await page.reload(wait_until="domcontentloaded", timeout=6000)
+                await captcha_img.wait_for(state="visible", timeout=3000)
+            except Exception:
+                pass
 
         # Solve Captcha in thread pool to prevent blocking Playwright event loop
         captcha_text = await asyncio.to_thread(solve_captcha, captcha_bytes)
         if not captcha_text:
-            print(f"    [!] {url_short} (Attempt {attempt+1}): Solver retry...", file=sys.stderr, flush=True)
-            # Try fast in-DOM captcha refresh before full reload
-            try:
-                if await captcha_img.is_visible(timeout=500):
-                    await captcha_img.click(timeout=1000)
-                    await asyncio.sleep(0.2)
-            except Exception:
-                try: await page.reload(wait_until="domcontentloaded", timeout=5000)
-                except Exception: pass
+            print(f"    [!] {url_short} (Attempt {attempt+1}): Solver returned empty. Retrying...", file=sys.stderr, flush=True)
+            try: await page.goto(url, wait_until="domcontentloaded", timeout=6000)
+            except Exception: pass
             continue
+
+        print(f"    [CAPTCHA] {url_short} (Attempt {attempt+1}): Solved '{captcha_text}' (len {len(captcha_text)})", file=sys.stderr, flush=True)
 
         # 3. Fill and Submit Form
         try:
@@ -316,16 +342,13 @@ async def _async_check_url(page, url: str, usn: str, max_retries: int = 5) -> di
             print(f"    [-] {url_short}: Not applied for reval or awaited. Skipping.", file=sys.stderr, flush=True)
             return None
 
-        # C. Invalid Captcha
+        # C. Invalid Captcha -> Clean page reload to sync PHP session
         if ("invalid" in alert_msg and "captcha" in alert_msg) or "captcha code does not match" in alert_msg:
-            print(f"    [!] {url_short} (Attempt {attempt+1}): Invalid captcha. Retrying...", file=sys.stderr, flush=True)
+            print(f"    [!] {url_short} (Attempt {attempt+1}): Invalid captcha. Reloading clean portal...", file=sys.stderr, flush=True)
             try:
-                if await captcha_img.is_visible(timeout=500):
-                    await captcha_img.click(timeout=1000)
-                    await asyncio.sleep(0.2)
+                await page.goto(url, wait_until="domcontentloaded", timeout=8000)
             except Exception:
-                try: await page.reload(wait_until="domcontentloaded", timeout=5000)
-                except Exception: pass
+                pass
             continue
 
         # 5. Extract Data via Single V8 Evaluation (~2ms)
@@ -471,6 +494,19 @@ async def _async_check_url(page, url: str, usn: str, max_retries: int = 5) -> di
 def deduce_scheme_from_usn(usn: str) -> str:
     """Deduces VTU curriculum scheme from USN or database."""
     clean = usn.strip().upper()
+    
+    # 1. Authority: Admission year from USN (e.g. 2AB24... is 2024 batch -> 2022 scheme)
+    m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', clean)
+    if m:
+        try:
+            yr = int(m.group(1))
+            if yr >= 25:
+                return "2025"
+            return "2022"
+        except ValueError:
+            pass
+
+    # 2. Database fallback if USN format doesn't match standard regex
     try:
         res = supabase.table("students").select("scheme").eq("usn", clean).limit(1).execute()
         if res.data and res.data[0].get("scheme"):
@@ -478,13 +514,6 @@ def deduce_scheme_from_usn(usn: str) -> str:
     except Exception:
         pass
 
-    m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', clean)
-    if m:
-        try:
-            yr = int(m.group(1))
-            return "2025" if yr >= 25 else "2022"
-        except ValueError:
-            pass
     return "2022"
 
 def _get_true_grade_point(grade, tot_m, ext_m=None, code=None):
@@ -560,19 +589,41 @@ def _save_db(usn, name, sem, url, subs):
         }
         if branch: updates["branch"] = branch
         if branch_code: updates["branch_code"] = branch_code
-        if name and name.strip() and name.strip().upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
-            updates["name"] = name.strip()
+        # Clean incoming name: Never accept USN or placeholder as student name
+        incoming_name = (name or "").strip()
+        is_incoming_valid = (
+            bool(incoming_name) and 
+            incoming_name.upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME") and
+            incoming_name.upper() != usn.strip().upper()
+        )
+        if is_incoming_valid:
+            updates["name"] = incoming_name
 
         try:
-            cur_s = supabase.table("students").select("semester, name, email").eq("usn", usn).limit(1).execute()
+            cur_s = supabase.table("students").select("semester, name, email, scheme").eq("usn", usn).limit(1).execute()
             if cur_s.data and len(cur_s.data) > 0:
                 old_sem = cur_s.data[0].get("semester") or 0
                 if old_sem > sem:
                     updates["semester"] = old_sem
-                if not updates.get("name") and cur_s.data[0].get("name"):
-                    existing_name = cur_s.data[0]["name"]
-                    if existing_name.upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
-                        updates["name"] = existing_name
+
+                existing_name = (cur_s.data[0].get("name") or "").strip()
+                has_existing_valid_name = (
+                    bool(existing_name) and 
+                    existing_name.upper() not in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME") and
+                    existing_name.upper() != usn.strip().upper()
+                )
+                
+                # Always preserve existing authentic name over USN or blank
+                if has_existing_valid_name and not is_incoming_valid:
+                    updates["name"] = existing_name
+                elif not updates.get("name") and has_existing_valid_name:
+                    updates["name"] = existing_name
+
+                # Protect scheme from accidental regression
+                existing_scheme = str(cur_s.data[0].get("scheme") or "").strip()
+                if existing_scheme == "2022" and updates.get("scheme") == "2025":
+                    updates["scheme"] = "2022"
+
                 existing_email = cur_s.data[0].get("email")
                 if existing_email:
                     updates["email"] = existing_email
@@ -709,6 +760,12 @@ async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, bu
     usn = usn.strip().upper()
     target_scheme = str(scheme).strip() if scheme else deduce_scheme_from_usn(usn)
 
+    adm_yr = None
+    m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', usn)
+    if m:
+        try: adm_yr = int(m.group(1))
+        except ValueError: pass
+
     if target_url and target_url.strip():
         raw_urls = [u.strip() for u in re.split(r'[,;\s]+', target_url) if u.strip() and u.strip().lower().startswith('http')]
         urls = raw_urls if raw_urls else [target_url.strip()]
@@ -718,12 +775,6 @@ async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, bu
         if not urls:
             print(f"\n[ENGINE] 0 active URLs for {target_scheme} Scheme. Skipping {usn}.", file=sys.stderr)
             return False
-
-        adm_yr = None
-        m = re.search(r'^[0-9][A-Z]{2}(\d{2})[A-Z]{2,3}\d{3}$', usn)
-        if m:
-            try: adm_yr = int(m.group(1))
-            except ValueError: pass
 
         # Filter out portals held prior to admission year
         if adm_yr == 24:
@@ -811,8 +862,8 @@ async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, bu
                             results_dict[url] = res
                             found_count += 1
                             resolved_name = res.get("name")
-                            if not resolved_name or resolved_name.strip().upper() in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME"):
-                                resolved_name = default_name or usn
+                            if not resolved_name or resolved_name.strip().upper() in ("UNKNOWN", "STUDENT NAME", "CANDIDATE NAME", usn.strip().upper()):
+                                resolved_name = default_name or None
 
                             # Live streaming to Supabase
                             groups = {}
@@ -823,17 +874,6 @@ async def _async_scrape_all_semesters(usn: str, faculty_id=None, scheme=None, bu
                                 saved = await asyncio.to_thread(_save_db, usn, resolved_name, sem, url, subs)
                                 if saved:
                                     saved_semesters.add(sem)
-
-                            # Early termination checks
-                            if target_scheme == "2025" and 1 in saved_semesters and 2 in saved_semesters:
-                                print(f"    [+] Both Semester 1 & 2 captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
-                                stop_event.set()
-                            elif adm_yr == 24 and {1, 2, 3, 4}.issubset(saved_semesters):
-                                print(f"    [+] All 4 Semesters (Sem 1-4) captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
-                                stop_event.set()
-                            elif adm_yr == 23 and {1, 2, 3, 4, 5, 6}.issubset(saved_semesters):
-                                print(f"    [+] All 6 Semesters (Sem 1-6) captured for {usn}. Skipping remaining portals.", file=sys.stderr, flush=True)
-                                stop_event.set()
                 except Exception as e:
                     print(f"    [!] Error checking {url}: {e}", file=sys.stderr, flush=True)
                 finally:
@@ -884,7 +924,24 @@ def scrape_all_semesters(usn: str, faculty_id=None, scheme=None, burst: bool = T
         return False
 
 if __name__ == "__main__":
-    usn_arg = sys.argv[1] if len(sys.argv) > 1 else input("Enter USN: ")
-    fac_arg = sys.argv[2] if len(sys.argv) > 2 else None
-    sch_arg = sys.argv[3] if len(sys.argv) > 3 else None
-    scrape_all_semesters(usn_arg, faculty_id=fac_arg, scheme=sch_arg)
+    import argparse
+    parser = argparse.ArgumentParser(description="GradeFlow High-Performance VTU Scraper Engine")
+    parser.add_argument("pos_usn", nargs="?", default=None, help="USN to scrape (positional)")
+    parser.add_argument("--usn", dest="flag_usn", default=None, help="USN to scrape")
+    parser.add_argument("--faculty-id", default=None, help="Faculty ID for scoped portal preferences")
+    parser.add_argument("--scheme", default=None, help="Scheme (2022 or 2025)")
+    parser.add_argument("--url", default=None, help="Target portal URL(s) comma-separated")
+    parser.add_argument("--concurrency", type=int, default=None, help="Max concurrent tabs")
+    
+    args = parser.parse_args()
+    target_usn = args.flag_usn or args.pos_usn
+    if not target_usn:
+        target_usn = input("Enter USN: ").strip()
+
+    scrape_all_semesters(
+        usn=target_usn,
+        faculty_id=args.faculty_id,
+        scheme=args.scheme,
+        target_url=args.url,
+        concurrency=args.concurrency
+    )
