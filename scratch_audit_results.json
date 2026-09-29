@@ -1,0 +1,985 @@
+{
+  "totallyMissing": [
+    {
+      "usn": "2AB24CI031",
+      "name": "MAVIYA RUKNUDDIN",
+      "branch": "AI",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [],
+      "totalMarks": 0
+    }
+  ],
+  "missingIntermediateSems": [
+    {
+      "usn": "2AB23EE008",
+      "name": "RESHMA ROCKY FERNANDEES",
+      "branch": "EE",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        4
+      ],
+      "totalMarks": 25,
+      "gaps": [
+        3
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB23EC005",
+      "name": "ANJALI JATTAPPA NAIK",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        3,
+        6
+      ],
+      "totalMarks": 29,
+      "gaps": [
+        4,
+        5
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB25CS018",
+      "name": "FUHER KAZI",
+      "branch": "CS",
+      "batch": "25",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [
+        2
+      ],
+      "totalMarks": 8,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 2"
+    },
+    {
+      "usn": "2AB23EE009",
+      "name": "SAKSHI VINOD KULALI",
+      "branch": "EE",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        5,
+        6
+      ],
+      "totalMarks": 34,
+      "gaps": [
+        3,
+        4
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23EE010",
+      "name": "SANNIDH CHANDAVAR",
+      "branch": "EE",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        5,
+        6
+      ],
+      "totalMarks": 35,
+      "gaps": [
+        1,
+        4
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23CS084",
+      "name": "TANVI VENKATESH NAIK",
+      "branch": "CS",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 36,
+      "gaps": [
+        1,
+        2
+      ],
+      "expectedStart": 1,
+      "range": "3 to 6"
+    },
+    {
+      "usn": "2AB24CS012",
+      "name": "AZIM PATEL",
+      "branch": "CS",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 4"
+    },
+    {
+      "usn": "2AB24CS050",
+      "name": "MOHAMMED SHAHNAWAZ SHARIF BAIG",
+      "branch": "CS",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB24CS079",
+      "name": "SYED MOHAMMED HUZAIFA",
+      "branch": "CS",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        4
+      ],
+      "totalMarks": 25,
+      "gaps": [
+        3
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB24CS086",
+      "name": "MOHAMMED ZEESHAN",
+      "branch": "CS",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        4
+      ],
+      "totalMarks": 18,
+      "gaps": [
+        1,
+        2
+      ],
+      "expectedStart": 1,
+      "range": "3 to 4"
+    },
+    {
+      "usn": "2AB24EE403",
+      "name": "KACHI SANNAN HASAN",
+      "branch": "EE",
+      "batch": "24",
+      "isLateral": true,
+      "scheme": "2022",
+      "recordedSemesters": [
+        4,
+        6
+      ],
+      "totalMarks": 11,
+      "gaps": [
+        3,
+        5
+      ],
+      "expectedStart": 3,
+      "range": "4 to 6"
+    },
+    {
+      "usn": "2AB23EC011",
+      "name": "KAMRAN",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 44,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23ME005",
+      "name": "MOHAMMED MUSTAFA MAYROZE",
+      "branch": "ME",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        3,
+        5,
+        6
+      ],
+      "totalMarks": 37,
+      "gaps": [
+        4
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB24CI060",
+      "name": "PRASANNA SOMASHEKHAR NAIK",
+      "branch": "AI",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        4
+      ],
+      "totalMarks": 18,
+      "gaps": [
+        1,
+        2
+      ],
+      "expectedStart": 1,
+      "range": "3 to 4"
+    },
+    {
+      "usn": "2AB23ME003",
+      "name": "DEEVITH DIGAMBAR PHAYDE",
+      "branch": "ME",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 44,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23ME002",
+      "name": "ADARSHA DEVENDRA NAIK",
+      "branch": "ME",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        4,
+        5
+      ],
+      "totalMarks": 27,
+      "gaps": [
+        1,
+        2
+      ],
+      "expectedStart": 1,
+      "range": "3 to 5"
+    },
+    {
+      "usn": "2AB23EC016",
+      "name": "MOHAMMED FAIZAN",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        3,
+        5,
+        6
+      ],
+      "totalMarks": 43,
+      "gaps": [
+        4
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23ME001",
+      "name": "ABDUL RAHIMAN AREHOLE",
+      "branch": "ME",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 39,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23EC022",
+      "name": "NAWWAR AHMED",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 43,
+      "gaps": [
+        3
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23ME006",
+      "name": "MUHAMMED SHAMIL",
+      "branch": "ME",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 36,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23EC015",
+      "name": "MOHAMMED BASSAM KOLA",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "totalMarks": 35,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 5"
+    },
+    {
+      "usn": "2AB23EC025",
+      "name": "SALSABEEL KOBATTEY",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 35,
+      "gaps": [
+        2,
+        3
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23EC020",
+      "name": "MUHAMMAD RUWAIF FAKERDEY",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        5,
+        6
+      ],
+      "totalMarks": 35,
+      "gaps": [
+        1,
+        4
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23EC021",
+      "name": "NAWWAAF PESHMAM",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        3,
+        5,
+        6
+      ],
+      "totalMarks": 35,
+      "gaps": [
+        4
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB24EE402",
+      "name": "ALIYA AFREEN",
+      "branch": "EE",
+      "batch": "24",
+      "isLateral": true,
+      "scheme": "2022",
+      "recordedSemesters": [
+        4,
+        6
+      ],
+      "totalMarks": 18,
+      "gaps": [
+        3,
+        5
+      ],
+      "expectedStart": 3,
+      "range": "4 to 6"
+    },
+    {
+      "usn": "2AB23EC026",
+      "name": "SANDHYA NAGARAJ DEVADIG",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 38,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23EC003",
+      "name": "AISHA RUSHAN",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 44,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23EC028",
+      "name": "SYED UBAID",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 36,
+      "gaps": [
+        1,
+        2
+      ],
+      "expectedStart": 1,
+      "range": "3 to 6"
+    },
+    {
+      "usn": "2AB23EC030",
+      "name": "TANUSHRI RAMANANDA KAGAL",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        3,
+        4,
+        6
+      ],
+      "totalMarks": 43,
+      "gaps": [
+        5
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23EC031",
+      "name": "UMER",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 39,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23EC032",
+      "name": "UMME KHULUD",
+      "branch": "EC",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4,
+        6
+      ],
+      "totalMarks": 35,
+      "gaps": [
+        2,
+        5
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB23CD026",
+      "name": "AYSHA AMAL",
+      "branch": "DS",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 37,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB24EC400",
+      "name": "MOHAMMADSADIQ ABDULHAMID MULLA",
+      "branch": "EC",
+      "batch": "24",
+      "isLateral": true,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        5
+      ],
+      "totalMarks": 18,
+      "gaps": [
+        4
+      ],
+      "expectedStart": 3,
+      "range": "3 to 5"
+    },
+    {
+      "usn": "2AB23EE003",
+      "name": "JAFAR VAJATALI SAYED",
+      "branch": "EE",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 44,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB23CV008",
+      "name": "MOHAMMED NAWAZ BENNUR",
+      "branch": "CV",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        5,
+        6
+      ],
+      "totalMarks": 22,
+      "gaps": [
+        3,
+        4
+      ],
+      "expectedStart": 1,
+      "range": "1 to 6"
+    },
+    {
+      "usn": "2AB24CI036",
+      "name": "MOHAMMED ASHAM",
+      "branch": "AI",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 4"
+    },
+    {
+      "usn": "2AB23CV009",
+      "name": "MUAAZ MUSHTAQ AHAMED",
+      "branch": "CV",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "totalMarks": 22,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 6"
+    },
+    {
+      "usn": "2AB24EC032",
+      "name": "VIVEK NAIK",
+      "branch": "EC",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB24EC026",
+      "name": "SAFEERA ANJUM SHAFIULLA KHAN",
+      "branch": "EC",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 4"
+    },
+    {
+      "usn": "2AB24EC011",
+      "name": "MAHESH GIRISH GOUDA",
+      "branch": "EC",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        2,
+        4
+      ],
+      "totalMarks": 19,
+      "gaps": [
+        3
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB23CV010",
+      "name": "NAWWAR PESHMAM",
+      "branch": "CV",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "totalMarks": 23,
+      "gaps": [
+        1
+      ],
+      "expectedStart": 1,
+      "range": "2 to 5"
+    },
+    {
+      "usn": "2AB24EC031",
+      "name": "VINAY M PATGAR",
+      "branch": "EC",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB24EE002",
+      "name": "FARDAN AHAMED",
+      "branch": "EE",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB24CI019",
+      "name": "DANIYAFARHEEN ALI AKBAR SHAIKH",
+      "branch": "AI",
+      "batch": "24",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        1,
+        3,
+        4
+      ],
+      "totalMarks": 26,
+      "gaps": [
+        2
+      ],
+      "expectedStart": 1,
+      "range": "1 to 4"
+    },
+    {
+      "usn": "2AB23CS085",
+      "name": "ABDUL QAWI KARANI",
+      "branch": "CS",
+      "batch": "23",
+      "isLateral": false,
+      "scheme": "2022",
+      "recordedSemesters": [
+        3,
+        4
+      ],
+      "totalMarks": 18,
+      "gaps": [
+        1,
+        2
+      ],
+      "expectedStart": 1,
+      "range": "3 to 4"
+    }
+  ],
+  "lowMarkCounts": [
+    {
+      "usn": "2AB25CS014",
+      "name": "ARBAZ IMTIAZ KHAZI",
+      "branch": "CS",
+      "batch": "25",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [
+        1
+      ],
+      "totalMarks": 1
+    },
+    {
+      "usn": "2AB25CS034",
+      "name": "MOHAMMED EHTISHAM",
+      "branch": "CS",
+      "batch": "25",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [
+        1,
+        2
+      ],
+      "totalMarks": 2
+    },
+    {
+      "usn": "2AB25CI082",
+      "name": "SHIBAN",
+      "branch": "AI",
+      "batch": "25",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [
+        1,
+        2
+      ],
+      "totalMarks": 2
+    },
+    {
+      "usn": "2AB25CI045",
+      "name": "ISMAIL RUKNUDDIN",
+      "branch": "AI",
+      "batch": "25",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [
+        1,
+        2
+      ],
+      "totalMarks": 3
+    },
+    {
+      "usn": "2AB25RI003",
+      "name": "MOHAMMED MADANI",
+      "branch": "RI",
+      "batch": "25",
+      "isLateral": false,
+      "scheme": "2025",
+      "recordedSemesters": [
+        1
+      ],
+      "totalMarks": 1
+    }
+  ],
+  "lateralCount": 41
+}

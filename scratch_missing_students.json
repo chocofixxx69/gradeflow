@@ -1,0 +1,64 @@
+{
+  "totalRegistered": 628,
+  "missingBoth": [
+    {
+      "id": "7b4cdbf0-1d4e-4137-82d8-83c11fdd1f85",
+      "usn": "2AB24CI031",
+      "name": "MAVIYA RUKNUDDIN",
+      "branch": null,
+      "semester": null,
+      "scheme": "2025"
+    }
+  ],
+  "missingMarksOnly": [],
+  "missingRemarksOnly": [
+    {
+      "id": "e8433f24-46c2-4b5d-a9f5-e24cbedd698a",
+      "usn": "2AB24CV403",
+      "name": "PAVAN AIGAL",
+      "branch": "Civil Engineering",
+      "semester": 7,
+      "scheme": "2022"
+    },
+    {
+      "id": "2d54ee92-8a70-49ce-9906-2311692b5834",
+      "usn": "2AB25CI082",
+      "name": "SHIBAN",
+      "branch": "AI & Machine Learning (AIML)",
+      "semester": 3,
+      "scheme": "2025"
+    },
+    {
+      "id": "952c6a2e-6406-420a-b039-273c9f30d5ff",
+      "usn": "2AB23CV008",
+      "name": "MOHAMMED NAWAZ BENNUR",
+      "branch": "Civil Engineering",
+      "semester": 7,
+      "scheme": "2022"
+    },
+    {
+      "id": "cc807b7b-ce06-4792-867a-29308e3247fc",
+      "usn": "2AB24CI035",
+      "name": "MOHAMMED AREEB AKRAMI",
+      "branch": "AI & Machine Learning (AIML)",
+      "semester": 5,
+      "scheme": "2022"
+    },
+    {
+      "id": "aa5b023a-88c7-4af4-8e39-90eec8b04178",
+      "usn": "2AB23CV009",
+      "name": "MUAAZ MUSHTAQ AHAMED",
+      "branch": "Civil Engineering",
+      "semester": 7,
+      "scheme": "2022"
+    },
+    {
+      "id": "1a1f6d58-30fe-42d4-9a39-7cccc379e342",
+      "usn": "2AB23CV010",
+      "name": "NAWWAR PESHMAM",
+      "branch": "Civil Engineering",
+      "semester": 6,
+      "scheme": "2022"
+    }
+  ]
+}
