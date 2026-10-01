@@ -1926,7 +1926,22 @@ function AdminPanelContent() {
                                                     <span style={{ fontWeight: 800 }}>{s.name || 'Student'}</span>
                                                 </div>
                                             </td>
-                                            <td style={{ ...c.td, fontFamily: 'monospace', fontSize: '12px', color: 'var(--tx-muted)' }}>{s.usn}</td>
+                                            <td style={c.td}>
+                                                <span style={{
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 800,
+                                                    fontSize: '12px',
+                                                    color: 'var(--primary)',
+                                                    background: 'rgba(37, 99, 235, 0.08)',
+                                                    padding: '2px 7px',
+                                                    borderRadius: '5px',
+                                                    border: '1px solid rgba(37, 99, 235, 0.2)',
+                                                    letterSpacing: '0.04em',
+                                                    display: 'inline-block'
+                                                }}>
+                                                    {s.usn}
+                                                </span>
+                                            </td>
                                             <td style={c.td}>{s.branch || '—'}</td>
                                             <td style={c.td}>Semester {s.semester || '1'}</td>
                                             <td style={c.td}>{s.scheme || '2022'}</td>
@@ -1972,7 +1987,24 @@ function AdminPanelContent() {
                                             <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Student'}</div>
-                                                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn} · {s.branch || 'Unassigned'}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                                                    <span style={{
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 800,
+                                                        fontSize: '11px',
+                                                        color: 'var(--primary)',
+                                                        background: 'rgba(37, 99, 235, 0.1)',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px',
+                                                        border: '1px solid rgba(37, 99, 235, 0.25)',
+                                                        letterSpacing: '0.03em'
+                                                    }}>
+                                                        {s.usn}
+                                                    </span>
+                                                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tx-muted)' }}>
+                                                        {s.branch || 'Unassigned'}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
@@ -2192,11 +2224,33 @@ function AdminPanelContent() {
 
                     <div style={c.tableWrap}>
                         {/* Filters & Search Header */}
-                        <div style={{ ...c.tableHead, gap: '12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 240px', minWidth: '200px' }}>
-                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--tx-dim)' }}>search</span>
+                        <div style={{ ...c.tableHead, gap: '10px', padding: isMobile ? '12px' : '14px 20px', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center' }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                flex: isMobile ? '1 1 100%' : '1 1 240px',
+                                minWidth: isMobile ? '100%' : '200px',
+                                background: 'var(--surface-low)',
+                                border: '1.5px solid var(--border)',
+                                borderRadius: '8px',
+                                padding: '4px 10px',
+                                boxSizing: 'border-box'
+                            }}>
+                                <span className="material-icons-round" style={{ fontSize: '18px', color: 'var(--primary)' }}>search</span>
                                 <input
-                                    style={{ ...c.searchInput, width: '100%', flex: 1, border: 'none', background: 'transparent', padding: '6px 0' }}
+                                    style={{
+                                        width: '100%',
+                                        flex: 1,
+                                        border: 'none',
+                                        background: 'transparent',
+                                        padding: '6px 0',
+                                        fontSize: '13px',
+                                        fontWeight: 700,
+                                        color: 'var(--tx-main)',
+                                        outline: 'none',
+                                        fontFamily: 'inherit'
+                                    }}
                                     placeholder="Search by USN or Student Name..."
                                     value={search}
                                     onChange={e => setSearch(e.target.value)}
@@ -2208,12 +2262,32 @@ function AdminPanelContent() {
                                 )}
                             </div>
 
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={isMobile ? {
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '6px',
+                                width: '100%',
+                                marginTop: '2px'
+                            } : {
+                                display: 'flex',
+                                gap: '8px',
+                                alignItems: 'center',
+                                flexWrap: 'wrap'
+                            }}>
                                 {/* Status Filter */}
                                 <select
                                     value={studentStatusFilter}
                                     onChange={e => setStudentStatusFilter(e.target.value)}
-                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                    style={{
+                                        ...c.searchInput,
+                                        width: isMobile ? '100%' : 'auto',
+                                        padding: isMobile ? '6px 8px' : '7px 12px',
+                                        fontSize: isMobile ? '11px' : '12px',
+                                        height: isMobile ? '34px' : 'auto',
+                                        cursor: 'pointer',
+                                        fontWeight: 700,
+                                        boxSizing: 'border-box'
+                                    }}
                                 >
                                     <option value="all">All Statuses ({statusCounts.all})</option>
                                     <option value="active">🟢 Active ({statusCounts.active})</option>
@@ -2226,7 +2300,16 @@ function AdminPanelContent() {
                                     <select
                                         value={studentBranchFilter}
                                         onChange={e => setStudentBranchFilter(e.target.value)}
-                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                        style={{
+                                            ...c.searchInput,
+                                            width: isMobile ? '100%' : 'auto',
+                                            padding: isMobile ? '6px 8px' : '7px 12px',
+                                            fontSize: isMobile ? '11px' : '12px',
+                                            height: isMobile ? '34px' : 'auto',
+                                            cursor: 'pointer',
+                                            fontWeight: 700,
+                                            boxSizing: 'border-box'
+                                        }}
                                     >
                                         <option value="all">All Branches</option>
                                         {availableBranches.map(b => (
@@ -2239,7 +2322,16 @@ function AdminPanelContent() {
                                 <select
                                     value={studentSemFilter}
                                     onChange={e => setStudentSemFilter(e.target.value)}
-                                    style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                    style={{
+                                        ...c.searchInput,
+                                        width: isMobile ? '100%' : 'auto',
+                                        padding: isMobile ? '6px 8px' : '7px 12px',
+                                        fontSize: isMobile ? '11px' : '12px',
+                                        height: isMobile ? '34px' : 'auto',
+                                        cursor: 'pointer',
+                                        fontWeight: 700,
+                                        boxSizing: 'border-box'
+                                    }}
                                 >
                                     <option value="all">All Semesters</option>
                                     {[1, 2, 3, 4, 5, 6, 7, 8].map(sm => (
@@ -2252,7 +2344,16 @@ function AdminPanelContent() {
                                     <select
                                         value={studentBatchFilter}
                                         onChange={e => setStudentBatchFilter(e.target.value)}
-                                        style={{ ...c.searchInput, width: 'auto', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}
+                                        style={{
+                                            ...c.searchInput,
+                                            width: isMobile ? '100%' : 'auto',
+                                            padding: isMobile ? '6px 8px' : '7px 12px',
+                                            fontSize: isMobile ? '11px' : '12px',
+                                            height: isMobile ? '34px' : 'auto',
+                                            cursor: 'pointer',
+                                            fontWeight: 700,
+                                            boxSizing: 'border-box'
+                                        }}
                                     >
                                         <option value="all">All Batches</option>
                                         {availableBatches.map(b => (
@@ -2372,8 +2473,21 @@ function AdminPanelContent() {
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td style={{ ...c.td, fontFamily: 'monospace', color: 'var(--tx-muted)' }}>
-                                                    {s.usn}
+                                                <td style={c.td}>
+                                                    <span style={{
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 800,
+                                                        fontSize: '12.5px',
+                                                        color: 'var(--primary)',
+                                                        background: 'rgba(37, 99, 235, 0.08)',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid rgba(37, 99, 235, 0.2)',
+                                                        letterSpacing: '0.04em',
+                                                        display: 'inline-block'
+                                                    }}>
+                                                        {s.usn}
+                                                    </span>
                                                 </td>
                                                 <td style={c.td}>Sem {s.semester || '—'}</td>
                                                 <td style={c.td}>{s.branch || '—'}</td>
@@ -2487,7 +2601,25 @@ function AdminPanelContent() {
                                                     <div style={c.avatar}>{((s.name || s.usn || '?')[0]).toUpperCase()}</div>
                                                     <div style={{ minWidth: 0 }}>
                                                         <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--tx-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Student'}</div>
-                                                        <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--tx-muted)' }}>{s.usn} · {s.branch || 'Unassigned'} · Sem {s.semester || '—'}</div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '3px' }}>
+                                                            <span style={{
+                                                                fontFamily: 'monospace',
+                                                                fontWeight: 800,
+                                                                fontSize: '11.5px',
+                                                                color: 'var(--primary)',
+                                                                background: 'rgba(37, 99, 235, 0.1)',
+                                                                padding: '2px 7px',
+                                                                borderRadius: '5px',
+                                                                border: '1px solid rgba(37, 99, 235, 0.25)',
+                                                                letterSpacing: '0.04em',
+                                                                display: 'inline-block'
+                                                            }}>
+                                                                {s.usn}
+                                                            </span>
+                                                            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tx-muted)' }}>
+                                                                {s.branch || 'Unassigned'} · Sem {s.semester || '—'}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div>
