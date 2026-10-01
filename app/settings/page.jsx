@@ -415,6 +415,7 @@ function SettingsContent() {
                     };
                     localStorage.setItem('faculty_session', JSON.stringify(updatedSession));
                     window.dispatchEvent(new Event('storage'));
+                    window.dispatchEvent(new CustomEvent('gf_profile_updated', { detail: updatedSession }));
 
                     setInitialFormState({
                         name: editName,
@@ -439,6 +440,7 @@ function SettingsContent() {
                 };
                 localStorage.setItem('admin_session', JSON.stringify(updatedSession));
                 window.dispatchEvent(new Event('storage'));
+                window.dispatchEvent(new CustomEvent('gf_profile_updated', { detail: updatedSession }));
                 setProfile(prev => ({
                     ...prev,
                     full_name: editName,
@@ -504,6 +506,7 @@ function SettingsContent() {
                 };
                 localStorage.setItem('student_session', JSON.stringify(updatedSession));
                 window.dispatchEvent(new Event('storage'));
+                window.dispatchEvent(new CustomEvent('gf_profile_updated', { detail: updatedSession }));
                 setPhotoUrl(finalPhotoUrl);
                 setPhotoPreview(null);
                 setInitialFormState({

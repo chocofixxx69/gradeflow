@@ -13,6 +13,8 @@ import {
 } from './navigationConfig';
 import RaiseIssueModal from './RaiseIssueModal';
 import { prewarmAnalyticsPage } from '@/lib/faculty-filter-store';
+import GradeFlowLogo from './GradeFlowLogo';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 
 function parseSession(value) {
     if (!value) return null;
@@ -40,12 +42,30 @@ export default function Navbar() {
     const searchParams = useSearchParams();
     const currentTab = searchParams?.get('tab') || '';
     const [user, setUser] = useState(null);
+    const [photoUrl, setPhotoUrl] = useState(null);
+    const [theme, setTheme] = useState('light');
+    const [exitConfirm, setExitConfirm] = useState({ open: false, target: '' });
     const [menuOpen, setMenuOpen] = useState(false);
     const [sessionRole, setSessionRole] = useState(() => resolveRoleFromPath(pathname, 'student'));
     const [collapsed, setCollapsed] = useState(false);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
     const sidebarRef = useRef(null);
     const mobileMenuButtonRef = useRef(null);
+
+    // Initialize & synchronize theme
+    useEffect(() => {
+        const currentTheme = document.documentElement.getAttribute('data-theme') || localStorage.getItem('gf_theme') || 'light';
+        setTheme(currentTheme);
+    }, []);
+
+    const toggleTheme = useCallback(() => {
+        setTheme(prev => {
+            const next = prev === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('gf_theme', next);
+            document.documentElement.setAttribute('data-theme', next);
+            return next;
+        });
+    }, []);
 
     const toggleSidebarCollapse = useCallback(() => {
         setCollapsed(prev => {
@@ -56,47 +76,52 @@ export default function Navbar() {
         });
     }, []);
 
+    const syncActiveSession = useCallback(() => {
+        const student = parseSession(localStorage.getItem('student_session'));
+        const faculty = parseSession(localStorage.getItem('faculty_session'));
+        const admin = parseSession(localStorage.getItem('admin_session'));
+
+        let activeUser = null;
+        let role = resolveRoleFromPath(pathname, 'student');
+
+        if (pathname?.startsWith('/admin')) {
+            activeUser = admin;
+            role = 'admin';
+        } else if (pathname?.startsWith('/faculty')) {
+            activeUser = faculty;
+            role = 'faculty';
+        } else {
+            if (faculty) {
+                activeUser = faculty;
+                role = 'faculty';
+            } else if (student) {
+                activeUser = student;
+                role = 'student';
+            } else if (admin) {
+                activeUser = admin;
+                role = 'admin';
+            }
+        }
+
+        setUser(activeUser);
+        setSessionRole(role);
+        setPhotoUrl(activeUser?.photo_url || activeUser?.photo || null);
+    }, [pathname]);
+
     useEffect(() => {
         const isCollapsed = localStorage.getItem('gf_sidebar_collapsed') === 'true';
         setCollapsed(isCollapsed);
         document.documentElement.classList.toggle('gf-sidebar-is-collapsed', isCollapsed);
 
-        const student = parseSession(localStorage.getItem('student_session'));
-        const faculty = parseSession(localStorage.getItem('faculty_session'));
-        const admin = parseSession(localStorage.getItem('admin_session'));
+        syncActiveSession();
 
-        if (pathname?.startsWith('/admin')) {
-            if (admin) {
-                setUser(admin);
-                setSessionRole('admin');
-            } else {
-                setUser(null);
-                setSessionRole('admin');
-            }
-        } else if (pathname?.startsWith('/faculty')) {
-            if (faculty) {
-                setUser(faculty);
-                setSessionRole('faculty');
-            } else {
-                setUser(null);
-                setSessionRole('faculty');
-            }
-        } else {
-            if (faculty) {
-                setUser(faculty);
-                setSessionRole('faculty');
-            } else if (student) {
-                setUser(student);
-                setSessionRole('student');
-            } else if (admin) {
-                setUser(admin);
-                setSessionRole('admin');
-            } else {
-                setUser(null);
-                setSessionRole(resolveRoleFromPath(pathname));
-            }
-        }
-    }, [pathname]);
+        window.addEventListener('storage', syncActiveSession);
+        window.addEventListener('gf_profile_updated', syncActiveSession);
+        return () => {
+            window.removeEventListener('storage', syncActiveSession);
+            window.removeEventListener('gf_profile_updated', syncActiveSession);
+        };
+    }, [syncActiveSession]);
 
     useEffect(() => {
         setMenuOpen(false);
@@ -251,6 +276,16 @@ export default function Navbar() {
         }
     }, [activeRole, router, user]);
 
+    const handleExitConfirm = useCallback(() => {
+        const target = exitConfirm.target;
+        setExitConfirm({ open: false, target: '' });
+        if (target === 'logout') {
+            logout();
+        } else if (target) {
+            router.push(target);
+        }
+    }, [exitConfirm.target, logout, router]);
+
     if (isHiddenRoute) return null;
 
     return (
@@ -262,8 +297,18 @@ export default function Navbar() {
                 aria-label={`${getRoleLabel(activeRole)} navigation`}
             >
                 <div className="gf-sidebar-top-row">
-                    <Link href="/" className="gf-sidebar-header" title="GradeFlow Home">
-                        <div className="gf-logo-box">G</div>
+                    <Link
+                        href="/"
+                        className="gf-sidebar-header"
+                        title="GradeFlow Home"
+                        onClick={(e) => {
+                            if (user) {
+                                e.preventDefault();
+                                setExitConfirm({ open: true, target: '/' });
+                            }
+                        }}
+                    >
+                        <GradeFlowLogo size={36} />
                         {!collapsed && (
                             <div className="gf-sidebar-header-info">
                                 <div className="gf-sidebar-title">GradeFlow</div>
@@ -347,24 +392,6 @@ export default function Navbar() {
 
                 <div className="gf-sidebar-footer">
                     {user && (
-                        <div className="gf-sidebar-user">
-                            <div className="gf-avatar" aria-hidden="true">
-                                {getInitial(userLabel)}
-                            </div>
-                            {!collapsed && (
-                                <div className="gf-user-info">
-                                    <div className="gf-user-name">
-                                        {userLabel}
-                                    </div>
-                                    <div className="gf-user-meta">
-                                        {userMeta}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {user && (
                         <>
                             <button
                                 onClick={() => setIsIssueModalOpen(true)}
@@ -377,7 +404,7 @@ export default function Navbar() {
                             </button>
 
                             <button
-                                onClick={logout}
+                                onClick={() => setExitConfirm({ open: true, target: 'logout' })}
                                 className="gf-nav-link gf-nav-link-danger"
                                 style={{ marginTop: '2px' }}
                                 title={collapsed ? 'Sign out' : undefined}
@@ -428,6 +455,19 @@ export default function Navbar() {
                         {getRoleLabel(activeRole)}
                     </div>
                 </div>
+
+                <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="gf-theme-toggle-btn"
+                    style={{ width: '36px', height: '36px', marginLeft: 'auto', flexShrink: 0 }}
+                    title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                    aria-label="Toggle theme mode"
+                >
+                    <span className="material-icons-round" style={{ fontSize: '18px' }}>
+                        {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                    </span>
+                </button>
             </header>
 
             <div className="gf-shell-topbar" role="banner">
@@ -457,8 +497,20 @@ export default function Navbar() {
                 </div>
 
                 <div className="gf-topbar-actions">
+                    <button
+                        type="button"
+                        onClick={toggleTheme}
+                        className="gf-theme-toggle-btn"
+                        title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                        aria-label="Toggle theme mode"
+                    >
+                        <span className="material-icons-round" style={{ fontSize: '20px' }}>
+                            {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                        </span>
+                    </button>
+
                     {user && (
-                        <div className="gf-topbar-user">
+                        <Link href="/settings" className="gf-topbar-user" title="Open Profile Settings">
                             <div className="gf-topbar-user-info">
                                 <div className="gf-user-name">
                                     {userLabel}
@@ -468,9 +520,18 @@ export default function Navbar() {
                                 </div>
                             </div>
                             <div className="gf-avatar" aria-hidden="true">
-                                {getInitial(userLabel)}
+                                {photoUrl ? (
+                                    <img
+                                        src={photoUrl}
+                                        alt=""
+                                        className="gf-avatar-img"
+                                        onError={() => setPhotoUrl(null)}
+                                    />
+                                ) : (
+                                    getInitial(userLabel)
+                                )}
                             </div>
-                        </div>
+                        </Link>
                     )}
                 </div>
             </div>
@@ -482,6 +543,15 @@ export default function Navbar() {
                     aria-hidden="true"
                 />
             )}
+
+            <ConfirmDialog
+                open={exitConfirm.open}
+                title="Leave GradeFlow"
+                description="Are you sure you want to leave?"
+                confirmLabel="Leave"
+                onCancel={() => setExitConfirm({ open: false, target: '' })}
+                onConfirm={handleExitConfirm}
+            />
 
         </>
     );

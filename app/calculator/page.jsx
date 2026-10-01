@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
 import { Button, Input, Inline, Stack } from '@/components/ui/Foundation';
 import { PageHeader, PageHeaderEyebrow, PageHeaderTitle } from '@/components/ui/PageHeader';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import styles from './Calculator.module.css';
 
 // Canonical Course Taxonomy Tag matching Faculty Portal
@@ -92,11 +93,21 @@ function CalculatorContent() {
     const [catalogSource, setCatalogSource] = useState('institutional');
     const [stats, setStats] = useState({ sgpa: 0, totalCredits: 0, totalCrP: 0, formula: '' });
     const [isLoadingVaultRecords, setIsLoadingVaultRecords] = useState(false);
+    // Clear all subjects confirmation state
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
     // Catalog picker modal state
     const [showCatalogPicker, setShowCatalogPicker] = useState(false);
     const [catalogPickerList, setCatalogPickerList] = useState([]);
     const [catalogPickerLoading, setCatalogPickerLoading] = useState(false);
     const [catalogPickerSearch, setCatalogPickerSearch] = useState('');
+
+    const handleClearAllSubjects = useCallback(() => {
+        setShowClearConfirm(false);
+        setSubjects([]);
+        setStats({ sgpa: 0, totalCredits: 0, totalCrP: 0, formula: '' });
+        setSuccess('✓ Cleared all selected subjects from current ledger.');
+        setTimeout(() => setSuccess(null), 4000);
+    }, []);
 
     // Synchronize catalog matrix — first checks student's real marks, then falls back to catalog
     const refreshMatrix = useCallback(async (b, s, sch, studentUsn) => {
@@ -817,10 +828,20 @@ function CalculatorContent() {
                                             type="button"
                                             className={styles.quickBtn}
                                             onClick={resetMarks}
-                                            title="Clear all inputs"
+                                            title="Clear all scores without removing subjects"
                                         >
                                             <span className="material-icons-round" style={{ fontSize: '15px' }}>restart_alt</span>
-                                            Clear
+                                            Reset Scores
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={styles.quickBtn}
+                                            onClick={() => setShowClearConfirm(true)}
+                                            title="Clear all selected subjects from this ledger"
+                                            disabled={subjects.length === 0}
+                                        >
+                                            <span className="material-icons-round" style={{ fontSize: '15px', color: '#b91c1c' }}>delete_sweep</span>
+                                            Clear All
                                         </button>
                                         <button
                                             type="button"
@@ -859,7 +880,18 @@ function CalculatorContent() {
                                             ) : subjects.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={5} style={{ padding: '48px', textAlign: 'center', color: 'var(--tx-dim)' }}>
-                                                        No subjects catalogued for {VTU_BRANCHES[branch] || branch} Semester {semester} ({scheme} Scheme).
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                                            <div>No subjects in current ledger for {VTU_BRANCHES[branch] || branch} Semester {semester} ({scheme} Scheme).</div>
+                                                            <button
+                                                                type="button"
+                                                                className={styles.quickBtn}
+                                                                style={{ background: 'var(--primary)', color: '#fff', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer' }}
+                                                                onClick={() => refreshMatrix(branch, semester, scheme, usn)}
+                                                            >
+                                                                <span className="material-icons-round" style={{ fontSize: '16px' }}>sync</span>
+                                                                Restore Official Curriculum
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ) : (
@@ -1289,6 +1321,16 @@ function CalculatorContent() {
                     </div>
                 </div>
             )}
+
+            {/* Clear All Confirmation Dialog */}
+            <ConfirmDialog
+                open={showClearConfirm}
+                title="Clear all selected subjects?"
+                description="This will clear all subjects from your current calculation session. Your official database records will remain completely untouched, and you can restore them at any time."
+                confirmLabel="Clear All"
+                onCancel={() => setShowClearConfirm(false)}
+                onConfirm={handleClearAllSubjects}
+            />
         </div>
     );
 }

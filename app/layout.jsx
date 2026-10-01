@@ -37,6 +37,13 @@ export default function RootLayout({ children }) {
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
+                            (function() {
+                                try {
+                                    var stored = localStorage.getItem('gf_theme');
+                                    var theme = stored === 'dark' || (!stored && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+                                    document.documentElement.setAttribute('data-theme', theme);
+                                } catch (e) {}
+                            })();
                             function gfIsStaleBuildError(msg) {
                                 if (!msg) return false;
                                 return /ChunkLoadError|Loading chunk [\\d]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|error loading dynamically imported module/i.test(msg);
