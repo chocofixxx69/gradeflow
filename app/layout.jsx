@@ -39,9 +39,8 @@ export default function RootLayout({ children }) {
                         __html: `
                             (function() {
                                 try {
-                                    var stored = localStorage.getItem('gf_theme');
-                                    var theme = stored === 'dark' || (!stored && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-                                    document.documentElement.setAttribute('data-theme', theme);
+                                    localStorage.removeItem('gf_theme');
+                                    document.documentElement.setAttribute('data-theme', 'light');
                                 } catch (e) {}
                             })();
                             function gfIsStaleBuildError(msg) {

@@ -189,10 +189,10 @@ input[type="password"]::-ms-clear {
 
 /* ── Dark Mode Design Tokens (Deep Charcoal & Slate Academic Intelligence) ── */
 [data-theme="dark"] {
-  --primary: #2CA5A9;
-  --primary-hover: #35B5B9;
-  --secondary: #4E868A;
-  --accent: #8DA9AD;
+  --primary: #1EA076;
+  --primary-hover: #22B586;
+  --secondary: #3A6A6D;
+  --accent: #52B788;
   --success: #22C55E;
   --success-bg: #0F291E;
   --success-border: #166534;
@@ -213,7 +213,7 @@ input[type="password"]::-ms-clear {
 
   --primary-bg: #142427;
   --primary-low: #142427;
-  --primary-glow: rgba(44, 165, 169, 0.18);
+  --primary-glow: rgba(30, 160, 118, 0.18);
   --blue: var(--primary);
   --blue-bg: #142427;
 
@@ -327,7 +327,7 @@ body {
 
 [data-theme="dark"] body {
   background-image: 
-    radial-gradient(at 0% 0%, rgba(44, 165, 169, 0.06) 0px, transparent 55%),
+    radial-gradient(at 0% 0%, rgba(30, 160, 118, 0.06) 0px, transparent 55%),
     radial-gradient(at 100% 100%, rgba(23, 75, 77, 0.08) 0px, transparent 55%);
 }
 
