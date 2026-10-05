@@ -12,7 +12,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
-import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { getCleanBranchOptions, getBatchCurrentSemester } from '@/lib/semester-utils';
 import { filterAndRankStudents, filterAndRank, matchesGeneric } from '@/lib/search-utils';
 import { writeWorkbook } from '@/lib/workbook-export';
 import { fmtNum } from '@/lib/format';
@@ -233,12 +233,26 @@ function InstitutionalIntelligenceContent() {
     // Shared Filters
     const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'ALL');
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
-    const [semester, setSemester] = useState(() => Number(initialSaved.semester) || 6);
+    const [semester, setSemester] = useState(() => {
+        const s = Number(initialSaved.semester);
+        if (!isNaN(s) && s >= 1 && s <= 8) return s;
+        return getBatchCurrentSemester(initialSaved.batch || '2023', { maxCompleted: true });
+    });
+
+    // Auto-align semester when batch changes
+    useEffect(() => {
+        if (batch && batch !== 'ALL') {
+            const maxComp = getBatchCurrentSemester(batch, { maxCompleted: true });
+            if (semester > maxComp + 1 || semester < 1) {
+                setSemester(maxComp);
+            }
+        }
+    }, [batch]);
 
     // Filter overrides for Class Comparison
     const [classBranch, setClassBranch] = useState('ALL');
     const [classBatch, setClassBatch] = useState('2023');
-    const [classSemester, setClassSemester] = useState('6');
+    const [classSemester, setClassSemester] = useState(() => String(getBatchCurrentSemester(initialSaved.batch || '2023', { maxCompleted: true })));
     const [classSearch, setClassSearch] = useState('');
     const [expandedClassId, setExpandedClassId] = useState(null);
 

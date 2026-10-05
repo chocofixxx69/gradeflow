@@ -140,13 +140,46 @@ function StudentsDirectoryContent() {
         const sec = searchParams.get('section');
         const ent = searchParams.get('entry');
         const cid = searchParams.get('classId') || searchParams.get('class_id');
+        const p = parseInt(searchParams.get('page'), 10);
+        const lim = parseInt(searchParams.get('limit'), 10);
+        const st = searchParams.get('status');
+        const bk = searchParams.get('backlogs');
+        const q = searchParams.get('search');
         if (b) setBatch(b);
         if (br) setBranch(br.toUpperCase());
         if (sem) setSemester(sem);
         if (sec) setSection(sec.toUpperCase());
         if (ent) setEntry(ent);
         if (cid) setClassId(cid);
+        if (!isNaN(p) && p > 0) setPage(p);
+        if (!isNaN(lim) && lim > 0) setLimit(lim);
+        if (st) setStatus(st);
+        if (bk) setBacklogsFilter(bk);
+        if (q) { setSearchInput(q); setSearch(q); }
     }, [searchParams]);
+
+    // Keep URL query string and session storage synchronized with current directory state (page, filters, batch)
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams();
+        if (page > 1) params.set('page', String(page));
+        if (limit !== 25) params.set('limit', String(limit));
+        if (batch) params.set('batch', batch);
+        if (branch) params.set('branch', branch);
+        if (semester && semester !== 'all') params.set('semester', semester);
+        if (section && section !== 'all') params.set('section', section);
+        if (status && status !== 'all') params.set('status', status);
+        if (entry && entry !== 'all') params.set('entry', entry);
+        if (backlogsFilter && backlogsFilter !== 'all') params.set('backlogs', backlogsFilter);
+        if (search) params.set('search', search);
+
+        const queryString = params.toString();
+        const newUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
+        window.history.replaceState(null, '', newUrl);
+        try {
+            sessionStorage.setItem('gf_last_students_url', newUrl);
+        } catch {}
+    }, [page, limit, batch, branch, semester, section, status, entry, backlogsFilter, search]);
 
     // Debounce search input by 300ms
     useEffect(() => {
@@ -1023,6 +1056,10 @@ function StudentsDirectoryContent() {
                                 students.map((s, idx) => {
                                     const hasBacklogs = s.total_backlogs > 0;
                                     const sv = s.semesterView;
+                                    const currentDirQuery = typeof window !== 'undefined'
+                                        ? (window.location.pathname + window.location.search)
+                                        : `/faculty/students?page=${page}&limit=${limit}&batch=${batch || ''}&branch=${branch || ''}`;
+                                    const studentDetailHref = `/faculty/students/${s.usn}?from=${encodeURIComponent(currentDirQuery)}`;
                                     return (
                                         <tr
                                             key={s.usn}
@@ -1038,7 +1075,7 @@ function StudentsDirectoryContent() {
                                             </td>
                                             <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'monospace' }}>
                                                 <Link
-                                                    href={`/faculty/students/${s.usn}`}
+                                                    href={studentDetailHref}
                                                     style={{ color: 'var(--primary, #174B4D)', textDecoration: 'none' }}
                                                     className="gf-hover-underline"
                                                 >
@@ -1052,7 +1089,7 @@ function StudentsDirectoryContent() {
                                                 )}
                                             </td>
                                             <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                                                <Link href={`/faculty/students/${s.usn}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                                                <Link href={studentDetailHref} style={{ color: 'inherit', textDecoration: 'none' }}>
                                                     <HighlightMatch text={s.name} query={search} />
                                                 </Link>
                                                 {s.is_inactive && (
@@ -1184,7 +1221,7 @@ function StudentsDirectoryContent() {
                                                 )}
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                                <Link href={`/faculty/students/${s.usn}`}>
+                                                <Link href={`/faculty/students/${s.usn}?from=${encodeURIComponent(typeof window !== 'undefined' ? (window.location.pathname + window.location.search) : '/faculty/students')}`}>
 
                                                     <Button size="sm" variant="ghost" iconStart="visibility">
                                                         View
@@ -1238,7 +1275,7 @@ function StudentsDirectoryContent() {
                             return (
                                 <Link
                                     key={`m-${s.usn}`}
-                                    href={`/faculty/students/${s.usn}`}
+                                    href={`/faculty/students/${s.usn}?from=${encodeURIComponent(typeof window !== 'undefined' ? (window.location.pathname + window.location.search) : '/faculty/students')}`}
                                     className={styles.mobileCard}
                                     style={{
                                         background: s.is_inactive ? 'rgba(239, 68, 68, 0.02)' : 'var(--surface)',

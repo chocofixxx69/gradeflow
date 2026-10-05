@@ -1,12 +1,12 @@
 'use client';
 
-import AuthGuard from '@/components/AuthGuard';
-import StudyMaterialsContent from '@/components/StudyMaterialsContent';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function StudyMaterialsPage() {
-    return (
-        <AuthGuard role="any">
-            <StudyMaterialsContent initialRole="student" />
-        </AuthGuard>
-    );
+    const router = useRouter();
+    useEffect(() => {
+        router.replace('/dashboard');
+    }, [router]);
+    return null;
 }

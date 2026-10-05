@@ -34,9 +34,16 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
+load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_SERVICE_KEY")
+    or os.getenv("SUPABASE_ANON_KEY")
+    or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -44,10 +51,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HOMEPAGE = "https://results.vtu.ac.in/"
 
-# Links that appear on the homepage but aren't exam-result portals.
+# Links that appear on the homepage but aren't direct exam-result portals.
 IGNORE_PATTERNS = (
     "index.php",  # the homepage logo link itself
 )
+
+# Regex matching session directory hub pages (which only list links rather than hosting result forms)
+HUB_PATTERN = re.compile(r"^https?://results\.vtu\.ac\.in/index[A-Za-z0-9_]*\.php$", re.IGNORECASE)
 
 # Labels matching any of these are not BE/B.Tech programs — skip entirely.
 BE_DENYLIST = re.compile(
@@ -116,10 +126,12 @@ def fetch_homepage_links():
 
 
 def _filter_be(links):
-    """Drop anything that isn't a BE/B.Tech program (Ph.D, M.S Research, MBA/MCA, Online Degree, etc)."""
+    """Drop anything that isn't a BE/B.Tech program (Ph.D, M.S Research, MBA/MCA, Online Degree, etc) or is a directory hub."""
     be_links, skipped = [], []
     for label, url in links:
-        if BE_DENYLIST.search(label):
+        is_hub = bool(HUB_PATTERN.search(url)) or url.rstrip("/").endswith("index.php") and "vtu.ac.in/index.php" in url
+        is_non_be = bool(BE_DENYLIST.search(label)) or bool(re.search(r"cdoe|phd|mtech|mba|mca", url, re.I))
+        if is_hub or is_non_be:
             skipped.append((label, url))
         else:
             be_links.append((label, url))
@@ -163,11 +175,11 @@ def sync_faculty_tables(new_links, sort_order_by_url):
 
     records = [
         {"faculty_id": fid, "url": url, "exam_name": label, "is_active": True,
-         "sort_order": sort_order_by_url.get(url, 0)}
+         "sort_order": sort_order_by_url.get(url, 0), "scheme": "2022"}
         for fid in faculty_ids
         for label, url in new_links
     ]
-    supabase.table("faculty_vtu_urls").upsert(records, on_conflict="faculty_id,url").execute()
+    supabase.table("faculty_vtu_urls").upsert(records, on_conflict="faculty_id,url,scheme").execute()
     return len(records)
 
 

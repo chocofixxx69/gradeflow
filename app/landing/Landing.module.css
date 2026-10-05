@@ -209,7 +209,13 @@
   color: #FFFFFF !important;
   border-radius: 12px !important;
   box-shadow: 0 4px 16px rgba(23, 75, 77, 0.25) !important;
-  border: 1.5px solid var(--primary) !important;
+  border: 2px solid var(--primary) !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  line-height: 1.2 !important;
   transition: all var(--transition-fast) !important;
 }
 
@@ -229,6 +235,12 @@
   border: 2px solid var(--primary) !important;
   border-radius: 12px !important;
   box-shadow: 0 4px 16px rgba(23, 75, 77, 0.14) !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  line-height: 1.2 !important;
   transition: all var(--transition-fast) !important;
 }
 

@@ -141,7 +141,7 @@ function RankingsAndMeritContent() {
         setLeaderboardLoading(true);
         setLeaderboardError('');
         try {
-            const res = await fetchLeaderboard({ filters: { branch, section: section || undefined }, viewSemester, subjectCode });
+            const res = await fetchLeaderboard({ filters: { branch, batch, section: section || undefined }, viewSemester, subjectCode });
             setLeaderboardData(res);
             if (!viewSemester && res?.targetSemester) setViewSemester(res.targetSemester);
         } catch (err) {
@@ -150,7 +150,7 @@ function RankingsAndMeritContent() {
         } finally {
             setLeaderboardLoading(false);
         }
-    }, [branch, section, viewSemester, subjectCode]);
+    }, [branch, batch, section, viewSemester, subjectCode]);
 
     // 4. Auto-fetch Merit List or Leaderboard on mount and whenever filters change
     useEffect(() => {
@@ -160,6 +160,15 @@ function RankingsAndMeritContent() {
             loadLeaderboard();
         }
     }, [viewTab, loadMeritList, loadLeaderboard]);
+
+    // Keep viewSemester valid when switching cohorts/batches
+    useEffect(() => {
+        if (leaderboardData?.availableSemesters?.length > 0) {
+            if (viewSemester && !leaderboardData.availableSemesters.includes(viewSemester)) {
+                setViewSemester(leaderboardData.targetSemester || leaderboardData.availableSemesters[leaderboardData.availableSemesters.length - 1]);
+            }
+        }
+    }, [leaderboardData?.availableSemesters, leaderboardData?.targetSemester, viewSemester]);
     const availableSections = useMemo(() => {
         const norm = (b) => canonicalBranchCode(b) || (b ? String(b).toUpperCase().trim() : '');
         const targetBranch = branch && branch !== 'ALL' ? norm(branch) : null;

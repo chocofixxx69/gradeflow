@@ -242,20 +242,26 @@ export default function HallTicketCard({
                 </div>
             </div>
 
-            {/* 6. Signatures Row with Generous Vertical Space for Physical Signatures */}
+            {/* 6. Four Signatures Row with Generous Physical Signature Spacing */}
             <div className="aitm-card-signatures" style={{
-                display: 'flex',
-                justifyContent: 'space-between',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
                 alignItems: 'flex-end',
-                padding: '22px 6px 4px 6px', /* Balanced calibrated signature spacing */
-                fontSize: '11px',
+                padding: '24px 6px 4px 6px', /* Balanced calibrated signature spacing */
+                fontSize: '10px',
                 fontWeight: '800'
             }}>
                 <div style={{ textAlign: 'left' }}>
-                    Signature of Class Advisor
+                    Student Signature
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                    Class Advisor Signature
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                    Invigilator Signature
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    Signature of HoD
+                    HOD Signature
                 </div>
             </div>
         </div>

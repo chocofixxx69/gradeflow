@@ -139,14 +139,45 @@ export async function POST(req) {
             return NextResponse.json({ success: true, url: updated });
         }
 
-        if (url && !url.includes('vtu.ac.in')) {
-            return NextResponse.json({ error: 'Invalid VTU URL' }, { status: 400 });
+        const rawUrl = String(url || '').trim();
+        if (!rawUrl) {
+            return NextResponse.json({ error: 'VTU URL is required' }, { status: 400 });
+        }
+
+        // Multiple URLs check: reject if multiple URLs, commas, newlines, or whitespace found
+        const urlMatches = rawUrl.match(/https?:\/\/[^\s,;]+/gi) || [];
+        if (urlMatches.length > 1 || /[\s,;\n\r]/.test(rawUrl)) {
+            return NextResponse.json({
+                error: 'Only a single VTU portal URL can be registered at a time. Multiple URLs are not allowed.'
+            }, { status: 400 });
+        }
+
+        if (!rawUrl.includes('results.vtu.ac.in')) {
+            return NextResponse.json({ error: 'Invalid VTU URL. Must be an official results.vtu.ac.in link.' }, { status: 400 });
+        }
+
+        // Reject directory hubs and root homepage link
+        if (/^https?:\/\/results\.vtu\.ac\.in\/(?:index\.php|index[A-Za-z0-9_]+\.php)?\/?$/i.test(rawUrl)) {
+            return NextResponse.json({
+                error: 'Session directory hubs (e.g. indexMJ26.php, indexCDOE.php, index.php) are navigation lists, not direct result lookup forms. Please provide the direct result portal URL.'
+            }, { status: 400 });
         }
 
         const targetSchemes = scheme === 'both' ? ['2022', '2025'] : [scheme || '2022'];
 
-        // Normalize URL for duplicate comparison
-        const cleanIncoming = String(url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+        // Reject non-BE programs if targeting BE schemes
+        if (targetSchemes.includes('2022') || targetSchemes.includes('2025')) {
+            const isNonBe = /cdoe|phd|mtech/i.test(rawUrl) || /(?:ph\.?\s*d|m\.?s\s*\(?research\)?|mba|mca|m\.?\s*tech|online degree)/i.test(exam_name || '');
+            if (isNonBe) {
+                return NextResponse.json({
+                    error: 'Non-B.E programs (Online Degree, Ph.D, M.Tech) cannot be added to Undergraduate B.E schemes.'
+                }, { status: 400 });
+            }
+        }
+
+        // Normalize URL for duplicate comparison (strips protocol, index.php, and trailing slashes)
+        const normalizeForDup = (u) => String(u || '').trim().replace(/^https?:\/\//i, '').replace(/\/index\.php$/i, '').replace(/\/+$/, '').toLowerCase();
+        const cleanIncoming = normalizeForDup(rawUrl);
 
         // Check if this URL is already registered for this faculty under target scheme(s)
         const { data: existingRecords } = await supabase
@@ -156,7 +187,7 @@ export async function POST(req) {
             .in('scheme', targetSchemes);
 
         const duplicate = (existingRecords || []).find(r => {
-            const cleanExisting = String(r.url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+            const cleanExisting = normalizeForDup(r.url);
             return cleanExisting === cleanIncoming;
         });
 

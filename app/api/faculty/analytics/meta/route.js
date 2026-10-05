@@ -295,29 +295,32 @@ export async function GET(req) {
                 entry.name = m.subject_name;
             }
 
-            // Record title for deduplication against catalog placeholders
-            if (!activeTitlesBySem.has(sem)) activeTitlesBySem.set(sem, new Set());
+            // Record title for deduplication against catalog placeholders (scoped by scheme)
+            const schemeKey = `${entry.scheme || '2022'}|${sem}`;
+            if (!activeTitlesBySem.has(schemeKey)) activeTitlesBySem.set(schemeKey, new Set());
             const cleanTitle = (entry.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (cleanTitle) activeTitlesBySem.get(sem).add(cleanTitle);
+            if (cleanTitle) activeTitlesBySem.get(schemeKey).add(cleanTitle);
         });
 
-        // Complement with catalog subjects only if they don't duplicate existing active subjects
+        // Complement with catalog subjects only if they don't duplicate existing active subjects in the same scheme
         (catalogSubjects || []).forEach(s => {
             const code = (s.subject_code || '').toUpperCase().trim();
             if (!code) return;
             const sem = Number(s.semester) || 1;
+            const sScheme = s.scheme || (code.startsWith('1') ? '2025' : '2022');
             const b = canonicalBranchCode(s.branch) || (s.branch || 'ALL').toUpperCase().trim();
             const key = `${code}|${sem}`;
 
-            // Check if there is already an active subject in this semester with an identical or duplicate title
-            const semActiveTitles = activeTitlesBySem.get(sem);
+            // Check if there is already an active subject in this scheme and semester with duplicate title
+            const schemeKey = `${sScheme}|${sem}`;
+            const semActiveTitles = activeTitlesBySem.get(schemeKey);
             const cleanCatalogTitle = (s.subject_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             const isDuplicateOfActive = semActiveTitles && cleanCatalogTitle && (
                 semActiveTitles.has(cleanCatalogTitle) ||
                 Array.from(semActiveTitles).some(t => t.length > 5 && (t.includes(cleanCatalogTitle) || cleanCatalogTitle.includes(t)))
             );
 
-            if (isDuplicateOfActive) {
+            if (isDuplicateOfActive && !subjectMap.has(key)) {
                 return; // Suppress duplicate catalog placeholder when real active subject already exists
             }
 

@@ -510,11 +510,24 @@ function SubjectAnalyticsContent() {
                                 options={meta.semesters.map(s => {
                                     const isAllBranch = !branch || branch === 'ALL' || branch === 'All Branches';
                                     const normBranch = canonicalBranchCode(branch) || branch;
-                                    const count = (meta.subjects || []).filter(sub => {
+                                    const targetScheme = batch ? (Number(batch) >= 2025 ? '2025' : '2022') : null;
+                                    const semSubjects = (meta.subjects || []).filter(sub => {
                                         if (Number(sub.semester) !== Number(s)) return false;
+                                        if (targetScheme && sub.scheme && sub.scheme !== targetScheme) return false;
+                                        return true;
+                                    });
+                                    const branchActive = semSubjects.filter(sub => {
                                         if (isAllBranch) return (sub.studentCount || 0) > 0;
                                         return (sub.branchCounts?.[normBranch] || 0) > 0;
-                                    }).length;
+                                    });
+                                    const baseSubjects = branchActive.length > 0 ? branchActive : semSubjects.filter(sub => {
+                                        if (isAllBranch) return true;
+                                        if (sub.branches && Array.isArray(sub.branches)) {
+                                            return sub.branches.some(b => matchesBranch(b, branch));
+                                        }
+                                        return matchesBranch(sub.branch || sub.code, branch);
+                                    });
+                                    const count = new Set(baseSubjects.map(x => x.code)).size;
                                     return {
                                         value: s,
                                         label: `Semester ${s} ${count > 0 ? `(${count} Active Subject${count === 1 ? '' : 's'})` : ''}`

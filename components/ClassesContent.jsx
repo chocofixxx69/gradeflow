@@ -1577,10 +1577,6 @@ export function ClassesContent({ embedded = false }) {
                     if (!isNaN(n) && n > highestStudentSem) highestStudentSem = n;
                 });
             }
-            if (st.has_data && st.semester) {
-                const n = Number(st.semester);
-                if (!isNaN(n) && n > highestStudentSem) highestStudentSem = n;
-            }
         });
 
         if (highestStudentSem > 0) return highestStudentSem;

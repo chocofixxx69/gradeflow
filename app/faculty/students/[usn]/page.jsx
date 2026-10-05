@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
 import { apiRequest } from '@/lib/api/client';
 import { getJsPDF } from '@/lib/lazy-export-libs';
@@ -24,6 +24,41 @@ export default function StudentRecordPage() {
 function StudentRecordContent() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const fromParam = searchParams?.get('from');
+
+    const backNavigation = useMemo(() => {
+        if (fromParam) {
+            try {
+                const decoded = decodeURIComponent(fromParam);
+                if (decoded.includes('/analytics/results') || decoded.includes('tab=sheet')) {
+                    return { href: decoded, label: 'Back to Result Sheet' };
+                }
+                if (decoded.includes('tab=batch')) {
+                    return { href: decoded, label: 'Back to Batch Trajectory' };
+                }
+                if (decoded.includes('tab=semester')) {
+                    return { href: decoded, label: 'Back to Semester Gazette' };
+                }
+                if (decoded.includes('tab=reval')) {
+                    return { href: decoded, label: 'Back to Revaluation Audit' };
+                }
+                if (decoded.includes('/analytics/merit')) {
+                    return { href: decoded, label: 'Back to Merit List' };
+                }
+                if (decoded.includes('/students')) {
+                    return { href: decoded, label: 'Back to Students Directory' };
+                }
+                return { href: decoded, label: 'Back' };
+            } catch {}
+        }
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('gf_last_students_url');
+            if (saved) return { href: saved, label: 'Back to Students Directory' };
+        }
+        return { href: '/faculty/students', label: 'Back to Students Directory' };
+    }, [fromParam]);
+
     const rawUsn = params?.usn;
     const usn = rawUsn ? String(rawUsn).toUpperCase() : '';
 
@@ -234,11 +269,11 @@ function StudentRecordContent() {
             {/* Back link */}
             <div style={{ marginBottom: '16px' }}>
                 <Link
-                    href="/faculty/students"
+                    href={backNavigation.href}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: 'var(--tx-muted)', textDecoration: 'none' }}
                 >
                     <span className="material-icons-round" style={{ fontSize: '16px' }}>arrow_back</span>
-                    Back to Students Directory
+                    {backNavigation.label}
                 </Link>
             </div>
 

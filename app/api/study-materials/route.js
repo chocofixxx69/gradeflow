@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyStaffToken } from '@/lib/server-session';
+import { getStaffSession } from '@/lib/server-session';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
@@ -63,7 +63,7 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         // Authorize faculty or admin
-        const staff = await verifyStaffToken(request);
+        const staff = await getStaffSession(request);
         if (!staff) {
             return NextResponse.json(
                 { success: false, error: { message: 'Unauthorized. Faculty or Admin credentials required.' } },
@@ -165,7 +165,7 @@ export async function POST(request) {
 // DELETE /api/study-materials?subject_code=1BCS301&id=mat_123
 export async function DELETE(request) {
     try {
-        const staff = await verifyStaffToken(request);
+        const staff = await getStaffSession(request);
         if (!staff) {
             return NextResponse.json(
                 { success: false, error: { message: 'Unauthorized. Faculty or Admin credentials required.' } },

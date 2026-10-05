@@ -921,12 +921,14 @@ function HallTicketsContent() {
                 doc.text('AFFIX PHOTO', photoCenterX, photoCenterY + 10.8, { align: 'center' });
                 doc.setTextColor(0, 0, 0);
 
-                // 7. Signature Footer with Clean Physical Signature Spacing
+                // 7. Signature Footer with Clean Physical Signature Spacing (4 Signatures)
                 const sigLabelY = startY + cardBoxHeight + sigSpace + (sigLabelHeight / 2);
                 doc.setFont('times', 'bold');
-                doc.setFontSize(8.5);
-                doc.text('Signature of Class Advisor', marginX, sigLabelY);
-                doc.text('Signature of HoD', marginX + contentWidth, sigLabelY, { align: 'right' });
+                doc.setFontSize(7.2);
+                doc.text('Student Signature', marginX, sigLabelY);
+                doc.text('Class Advisor Signature', marginX + (contentWidth * 0.33), sigLabelY, { align: 'center' });
+                doc.text('Invigilator Signature', marginX + (contentWidth * 0.67), sigLabelY, { align: 'center' });
+                doc.text('HOD Signature', marginX + contentWidth, sigLabelY, { align: 'right' });
 
                 // 8. Scissors cutting guide between tickets on the same page
                 if (cardIdx < sheetStudents.length - 1) {
@@ -1192,8 +1194,11 @@ function HallTicketsContent() {
                         height: 32px !important;
                     }
                     .aitm-card-signatures {
+                        display: grid !important;
+                        grid-template-columns: repeat(4, 1fr) !important;
+                        align-items: flex-end !important;
                         padding: 20px 6px 3px 6px !important;
-                        font-size: 9.5px !important;
+                        font-size: 8.5px !important;
                     }
                     .aitm-cutting-line {
                         margin: 1.5mm 0 !important;

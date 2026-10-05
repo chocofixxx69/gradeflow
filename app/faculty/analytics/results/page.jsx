@@ -14,7 +14,7 @@ import { DiplomaTag } from '@/components/ui/EntryTag';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
-import { getCleanBranchOptions, canonicalBranchCode } from '@/lib/semester-utils';
+import { getCleanBranchOptions, canonicalBranchCode, getBatchCurrentSemester } from '@/lib/semester-utils';
 import { filterAndRankStudents, matchesStudent } from '@/lib/search-utils';
 
 export default function ExamResultsHubPage() {
@@ -48,8 +48,14 @@ function ExamResultsHubContent() {
 
     // Shared Scope Filters
     const [branch, setBranch] = useState(() => initialSaved.branch || initialMeta?.branches?.[0]?.code || 'CS');
-    const [semester, setSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 6);
     const [batch, setBatch] = useState(() => initialSaved.batch || initialMeta?.batches?.[0] || '2023');
+    const [semester, setSemester] = useState(() => {
+        if (initialSaved.semester && initialSaved.semester !== 'all') {
+            const s = Number(initialSaved.semester);
+            if (!isNaN(s) && s >= 1 && s <= 8) return s;
+        }
+        return getBatchCurrentSemester(initialSaved.batch || '2023', { maxCompleted: true });
+    });
     const [section, setSection] = useState('ALL');
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -81,9 +87,18 @@ function ExamResultsHubContent() {
         return Array.from(sectionSet).sort();
     }, [meta.classes, branch, semester, batch, viewTab]);
 
-    // Reset section filter when branch or batch changes
+    // Reset section filter and calibrate semester when branch or batch changes
     useEffect(() => {
         setSection('ALL');
+        if (batch && batch !== 'ALL') {
+            const maxCompleted = getBatchCurrentSemester(batch, { maxCompleted: true });
+            if (typeof semester === 'number' && (semester > maxCompleted + 1 || semester < 1)) {
+                setSemester(maxCompleted);
+            }
+            if (upToSemester > maxCompleted) {
+                setUpToSemester(maxCompleted);
+            }
+        }
     }, [branch, batch]);
 
     // Clear stale section selection if no longer present in available sections
@@ -131,11 +146,23 @@ function ExamResultsHubContent() {
     const [semLoading, setSemLoading] = useState(() => !initialSemData);
 
     // Tab 2: Batch Trajectory States
-    const [upToSemester, setUpToSemester] = useState(() => (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 7);
+    const [upToSemester, setUpToSemester] = useState(() => {
+        if (initialSaved.semester && initialSaved.semester !== 'all') {
+            const s = Number(initialSaved.semester);
+            if (!isNaN(s) && s >= 1 && s <= 8) return Math.min(8, s);
+        }
+        return getBatchCurrentSemester(initialSaved.batch || '2023', { maxCompleted: true });
+    });
     const initialBatchData = getCachedApiData('/api/faculty/analytics/batch-report', {
         branch: initialSaved.branch || 'CS',
         batch: initialSaved.batch || '2023',
-        upToSemester: (initialSaved.semester && initialSaved.semester !== 'all') ? Number(initialSaved.semester) : 7
+        upToSemester: (() => {
+            if (initialSaved.semester && initialSaved.semester !== 'all') {
+                const s = Number(initialSaved.semester);
+                if (!isNaN(s) && s >= 1 && s <= 8) return Math.min(8, s);
+            }
+            return getBatchCurrentSemester(initialSaved.batch || '2023', { maxCompleted: true });
+        })()
     });
     const [batchData, setBatchData] = useState(() => initialBatchData || {
         students: [],
@@ -460,7 +487,7 @@ function ExamResultsHubContent() {
                 await downloadWorkbook([{
                     name: 'Revaluation Delta',
                     preamble: [
-                        [`Revaluation Impact & Delta Audit — ${branch} · Semester ${semester}`],
+                        [`Revaluation Impact & Detail Audit — ${branch} · Semester ${semester}`],
                         [`Applications evaluated: ${filteredRevalRoster.length}   Generated: ${new Date().toLocaleString()}`],
                         []
                     ],
@@ -577,7 +604,7 @@ function ExamResultsHubContent() {
                 }
                 doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`Revaluation Impact & Delta Audit - ${branch} (Sem ${semester})`, 14, 15);
+                doc.text(`Revaluation Impact & Detail Audit - ${branch} (Sem ${semester})`, 14, 15);
 
                 doc.setFontSize(9);
                 doc.setFont('helvetica', 'normal');
@@ -772,7 +799,7 @@ function ExamResultsHubContent() {
                     }}
                 >
                     <span className="material-icons-round" style={{ fontSize: '18px' }}>published_with_changes</span>
-                    Revaluation Impact Delta
+                    Revaluation Impact Detail
                 </button>
             </div>
 
@@ -967,7 +994,7 @@ function ExamResultsHubContent() {
                                                         {awardClassOf(s)}
                                                     </td>
                                                     <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                                                        <Link href={`/faculty/students/${s.usn}`} style={{ textDecoration: 'none' }}>
+                                                        <Link href={`/faculty/students/${s.usn}?from=${encodeURIComponent(`/faculty/analytics/results?tab=${viewTab}&branch=${branch}&batch=${batch}&semester=${semester}`)}`} style={{ textDecoration: 'none' }}>
                                                             <Button size="sm" variant="ghost">Report</Button>
                                                         </Link>
                                                     </td>
@@ -1087,7 +1114,7 @@ function ExamResultsHubContent() {
                                                         );
                                                     })}
                                                     <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                                                        <Link href={`/faculty/students/${s.usn}`} style={{ textDecoration: 'none' }}>
+                                                        <Link href={`/faculty/students/${s.usn}?from=${encodeURIComponent(`/faculty/analytics/results?tab=${viewTab}&branch=${branch}&batch=${batch}&semester=${semester}`)}`} style={{ textDecoration: 'none' }}>
                                                             <Button size="sm" variant="ghost">Transcript</Button>
                                                         </Link>
                                                     </td>
@@ -1102,7 +1129,7 @@ function ExamResultsHubContent() {
                 </>
             )}
 
-            {/* TAB 3: REVALUATION IMPACT DELTA */}
+            {/* TAB 3: REVALUATION IMPACT DETAIL */}
             {viewTab === 'reval' && (
                 <>
                     {/* Summary Metrics */}
@@ -1151,7 +1178,7 @@ function ExamResultsHubContent() {
                     {/* Table View */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Revaluation Delta Roster ({filteredRevalRoster.length})</CardTitle>
+                            <CardTitle>Revaluation Detail Roster ({filteredRevalRoster.length})</CardTitle>
                         </CardHeader>
                         <CardContent style={{ padding: 0 }}>
                             <div style={{ overflowX: 'auto' }}>

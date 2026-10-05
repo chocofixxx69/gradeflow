@@ -11,7 +11,7 @@ import { Button, Select, Input } from '@/components/ui/Foundation';
 
 import { getSavedFilters, saveFilters } from '@/lib/faculty-filter-store';
 import { getCachedApiData, apiRequest, clearApiCache } from '@/lib/api/client';
-import { getCleanBranchOptions } from '@/lib/semester-utils';
+import { getCleanBranchOptions, getBatchCurrentSemester } from '@/lib/semester-utils';
 import { filterAndRankStudents } from '@/lib/search-utils';
 import { writeWorkbook } from '@/lib/workbook-export';
 import { fmtPercent } from '@/lib/format';
@@ -49,10 +49,19 @@ function AcademicComplianceContent() {
     const [searchQuery, setSearchQuery] = useState('');
 
     // Eligibility-specific Filters & State
+    const getBatchProgressionGate = useCallback((batchInput) => {
+        const curSem = getBatchCurrentSemester(batchInput);
+        if (curSem <= 3) return 3;
+        if (curSem <= 5) return 5;
+        return 7;
+    }, []);
+
     const [targetSemester, setTargetSemester] = useState(() => {
         const s = Number(initialSaved.semester);
-        if (s === 3 || s === 7) return s;
-        if ((initialSaved.batch || '2023').includes('24')) return 3;
+        if (s === 3 || s === 5 || s === 7) return s;
+        const curSem = getBatchCurrentSemester(initialSaved.batch || '2023');
+        if (curSem <= 3) return 3;
+        if (curSem <= 5) return 5;
         return 7;
     });
     const [eligibilityFilterTab, setEligibilityFilterTab] = useState('all'); // 'all' | 'detained' | 'eligible'
@@ -60,7 +69,14 @@ function AcademicComplianceContent() {
     const initialEligibilityData = getCachedApiData('/api/faculty/analytics/eligibility', {
         branch: initialSaved.branch || 'CS',
         ...(initialSaved.batch ? { batch: initialSaved.batch } : {}),
-        targetSemester: (initialSaved.batch || '2023').includes('24') ? 3 : 7
+        targetSemester: (() => {
+            const s = Number(initialSaved.semester);
+            if (s === 3 || s === 5 || s === 7) return s;
+            const curSem = getBatchCurrentSemester(initialSaved.batch || '2023');
+            if (curSem <= 3) return 3;
+            if (curSem <= 5) return 5;
+            return 7;
+        })()
     });
     const [eligibilityReport, setEligibilityReport] = useState(() => initialEligibilityData || {
         summary: { totalEvaluated: 0, eligibleCount: 0, detainedCount: 0, eligibilityRate: 0 },
@@ -70,6 +86,12 @@ function AcademicComplianceContent() {
         targetSemester: 7
     });
     const [eligibilityLoading, setEligibilityLoading] = useState(() => !initialEligibilityData);
+
+    // Auto-update target semester gate when batch changes
+    useEffect(() => {
+        const appropriateGate = getBatchProgressionGate(batch);
+        setTargetSemester(appropriateGate);
+    }, [batch, getBatchProgressionGate]);
 
     // Backlog-specific Filters & State
     const [backlogThreshold, setBacklogThreshold] = useState(1);
@@ -483,7 +505,8 @@ function AcademicComplianceContent() {
                                 onChange={e => setTargetSemester(Number(e.target.value))}
                                 options={[
                                     { value: 3, label: 'Semester 3 (1st -> 2nd Year Gate)' },
-                                    { value: 7, label: 'Semester 7 (Vertical Clearance Gate)' }
+                                    { value: 5, label: 'Semester 5 (2nd -> 3rd Year Gate)' },
+                                    { value: 7, label: 'Semester 7 (Vertical Clearance Gate / 4th Year)' }
                                 ]}
                             />
                         ) : (

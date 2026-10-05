@@ -4,7 +4,6 @@ export const NAV_CONFIG = {
     { key: 'leaderboard', label: 'Class Leaderboard', href: '/leaderboard', icon: 'emoji_events', group: 'Academic Tools' },
     { key: 'analytics', label: 'Analytics', href: '/analytics', icon: 'insights', group: 'Academic Tools' },
     { key: 'calculator', label: 'Calculator', href: '/calculator', icon: 'calculate', group: 'Academic Tools' },
-    { key: 'materials', label: 'Study Materials', href: '/study-materials', icon: 'menu_book', group: 'Academic Tools' },
     { key: 'settings', label: 'Settings', href: '/settings', icon: 'settings', group: 'Account' },
   ],
   faculty: [
@@ -25,7 +24,6 @@ export const NAV_CONFIG = {
     { key: 'subjectAnalytics', label: 'Subject Performance', href: '/faculty/analytics/subject', icon: 'bar_chart', group: 'Teaching & Courses' },
     { key: 'facultyPerformance', label: 'Teaching Insights', href: '/faculty/analytics/faculty-performance', icon: 'supervisor_account', group: 'Teaching & Courses' },
     { key: 'subjects', label: 'Subject Catalog', href: '/faculty/subjects', icon: 'library_books', group: 'Teaching & Courses' },
-    { key: 'materials', label: 'Study Materials', href: '/faculty/study-materials', icon: 'menu_book', group: 'Teaching & Courses' },
 
     // Exam Tools
     { key: 'hallTickets', label: 'Hall Tickets', href: '/faculty/hall-tickets', icon: 'confirmation_number', group: 'Exam Tools' },
@@ -95,12 +93,10 @@ export const ROUTE_LABELS = {
   '/analytics': 'Analytics',
   '/guide': 'Guide',
   '/curriculum': 'Curriculum',
-  '/study-materials': 'Study Materials',
   '/files': 'Files',
   '/settings': 'Settings',
   '/faculty': 'Faculty',
   '/faculty/dashboard': 'Dashboard',
-  '/faculty/study-materials': 'Study Materials',
   '/faculty/classes': 'Classes',
   '/faculty/students': 'Students',
   '/faculty/subjects': 'Subject Catalog',
@@ -118,7 +114,7 @@ export const ROUTE_LABELS = {
   '/faculty/analytics/department': 'Department Overview',
   '/faculty/analytics/merit-list': 'Batch Merit List',
   '/faculty/analytics/leaderboard': 'Class Leaderboard & Toppers',
-  '/faculty/analytics/reval-impact': 'Reval Impact Delta',
+  '/faculty/analytics/reval-impact': 'Reval Impact Detail',
   '/faculty/analytics/backlogs': 'Standing Backlogs',
   '/faculty/analytics/cohort-trends': 'Cohort Trends',
   '/faculty/analytics/sections-compare': 'Sections Comparison',

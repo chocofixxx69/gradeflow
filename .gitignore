@@ -63,3 +63,5 @@ supabase/.temp/
 # Ad-hoc local probe/debug scripts — never commit
 .probe/
 scratch/
+data/
+

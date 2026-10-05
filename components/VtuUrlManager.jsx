@@ -281,20 +281,49 @@ export default function VtuUrlManager({ facultyId }) {
 
     const addVtuUrl = async () => {
         if (!facultyId) return;
-        if (!newUrl.includes('results.vtu.ac.in')) {
-            setMessage('URL must be from results.vtu.ac.in');
+        const trimmedUrl = (newUrl || '').trim();
+        if (!trimmedUrl) {
+            setMessage('Please enter a VTU results portal URL.');
             return;
         }
 
-        // Duplicate URL validation (normalized comparison)
-        const cleanIncoming = newUrl.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+        // 1. Detect and prevent multiple URLs entered at once
+        const urlMatches = trimmedUrl.match(/https?:\/\/[^\s,;]+/gi) || [];
+        if (urlMatches.length > 1 || /[\s,;\n\r]/.test(trimmedUrl)) {
+            setMessage('⚠️ Only a single VTU portal URL can be registered at a time. Multiple URLs are not allowed.');
+            return;
+        }
+
+        if (!trimmedUrl.includes('results.vtu.ac.in')) {
+            setMessage('URL must be an official link from results.vtu.ac.in');
+            return;
+        }
+
+        // 2. Reject directory hubs and root homepage link
+        if (/^https?:\/\/results\.vtu\.ac\.in\/(?:index\.php|index[A-Za-z0-9_]+\.php)?\/?$/i.test(trimmedUrl)) {
+            setMessage('⚠️ Directory hubs (e.g. indexMJ26.php, indexCDOE.php, index.php) are navigation lists, not direct result lookup forms. Please provide the direct result portal URL.');
+            return;
+        }
+
+        // 3. Reject non-BE programs if targeting BE schemes
+        if (selectedScheme === '2022' || selectedScheme === '2025') {
+            const isNonBe = /cdoe|phd|mtech/i.test(trimmedUrl) || /(?:ph\.?\s*d|m\.?s\s*\(?research\)?|mba|mca|m\.?\s*tech|online degree)/i.test(newExamName);
+            if (isNonBe) {
+                setMessage('⚠️ Non-B.E programs (Online Degree, Ph.D, M.Tech) cannot be added to Undergraduate B.E schemes.');
+                return;
+            }
+        }
+
+        // 4. Duplicate URL validation (normalized comparison stripping protocol, /index.php and trailing slashes)
+        const normalizeForDup = (u) => String(u || '').trim().replace(/^https?:\/\//i, '').replace(/\/index\.php$/i, '').replace(/\/+$/, '').toLowerCase();
+        const cleanIncoming = normalizeForDup(trimmedUrl);
         const duplicate = vtuUrls.find(u => {
-            const cleanExisting = (u.url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+            const cleanExisting = normalizeForDup(u.url);
             return cleanExisting === cleanIncoming;
         });
 
         if (duplicate) {
-            setMessage(`⚠️ Duplicate URL: This portal is already registered as "${duplicate.exam_name}" for ${schemeLabel(duplicate.scheme || selectedScheme)} Scheme.`);
+            setMessage(`⚠️ Duplicate URL: This portal is already registered as "${duplicate.exam_name}" for ${schemeLabel(duplicate.scheme || selectedScheme)} Scheme. Duplicate portals are not allowed.`);
             return;
         }
 
@@ -878,6 +907,9 @@ export default function VtuUrlManager({ facultyId }) {
                                     padding: '0 24px',
                                     borderRadius: '8px',
                                     border: 'none',
+                                    boxSizing: 'border-box',
+                                    lineHeight: '1.2',
+                                    verticalAlign: 'middle',
                                     background: (!newUrl || loading) ? 'var(--border, #cbd5e1)' : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
                                     color: (!newUrl || loading) ? 'var(--tx-dim, #94a3b8)' : '#ffffff',
                                     fontWeight: 800,
